@@ -5,12 +5,13 @@ import { startStage, stopStage } from './api';
 import StageColumn from './components/StageColumn';
 import StatusGatePage from '../src/components/StatusGatePage';
 import CreateGatePage from '../pages/CreateGatePage';
+import PlantaReadOnlyPage from '../pages/PlantaOnlyDearPage';
 
 const color = '#008241ff';
 
 /** Tablero reutilizable: usa tu hook y StageColumn */
 function Board({ stages }) {
-  const { data, loading, err, replaceItem } = usePortones();
+  const { data, loading, err, replaceItem, refresh, refreshing } = usePortones({ pollMs: 300000 });
   const [busyId, setBusyId] = useState(null);
 
   const handleStart = async (id, stage) => {
@@ -41,11 +42,15 @@ function Board({ stages }) {
   if (err)      return <div style={{ padding: 16, color: 'crimson' }}>Error: {err}</div>;
 
   return (
-    <div style={{ padding: 16, fontFamily: 'system-ui, sans-serif' }}>
-      <h2 style={{ color, border: `3px solid ${color}`, padding: 8, maxWidth: 800 }}>
-        FILTROS POR SECTOR
-      </h2>
-
+   <div style={{ padding: 16, fontFamily: 'system-ui, sans-serif' }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:12 }}>
+      <h2 style={{ color, border: `3px solid ${color}`, padding: 8, margin: 0 }}>
+         FILTROS POR SECTOR
+       </h2>
+       <button onClick={refresh} disabled={refreshing} style={{ padding:'6px 10px', borderRadius:8 }}>
+         {refreshing ? 'Actualizando…' : 'Refrescar'}
+        </button>
+      </div>
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
@@ -139,6 +144,8 @@ export default function App() {
         <Route path="/createGate" element={<CreateGatePage />} />
 
         {/* Not found -> home */}
+        
+        <Route path="/planta" element={<PlantaReadOnlyPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

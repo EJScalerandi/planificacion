@@ -103,7 +103,7 @@ export default function CreateGatePage() {
   }
 
   // ------- Página CreateGate (tu contenido previo) -------
-  const { data, loading, err, replaceItem, refresh } = usePortones();
+  const { data, loading, err, replaceItem, refresh, refreshing } = usePortones({ pollMs: 300000 });
 
   // Métricas
   const terminadosEnPlanta = useMemo(() => {
@@ -218,6 +218,13 @@ export default function CreateGatePage() {
     <div style={{ padding: 16, fontFamily: 'system-ui, sans-serif' }}>
       {/* Título + métricas + botón salir */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+        <button
+     onClick={refresh}
+      disabled={refreshing}
+      style={{ padding: '6px 10px', borderRadius: 8 }}
+    >
+      {refreshing ? 'Actualizando…' : 'Refrescar'}
+    </button>
         <h2 style={{ color: bordo, border: `3px solid ${bordo}`, padding: 8, margin: 0 }}>
           PORTONES
         </h2>

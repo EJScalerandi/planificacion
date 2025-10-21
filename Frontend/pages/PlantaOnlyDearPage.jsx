@@ -1,16 +1,16 @@
 import { useMemo, useState } from 'react';
-import usePortones from '../hooks/usePortones';
+import usePortones from '../src/hooks/usePortones';
 
 const STAGES = [
   { key: 'diseno',                 label: 'Diseño' },
-  //{ key: 'laser',                  label: 'Laser' },
-  //{ key: 'guillotina',             label: 'Corte' },
-  //{ key: 'plegadora',              label: 'Plegado' },
-  //{ key: 'armado_piernas',         label: 'Armado Piernas' },
-  //{ key: 'armado_marco_piernas',   label: 'Armado Marco Piernas' }, // 👈 NUEVA
- // { key: 'armado_hojas',           label: 'Armado Hojas' },
+  { key: 'laser',                  label: 'Laser' },
+  { key: 'guillotina',             label: 'Corte' },
+  { key: 'plegadora',              label: 'Plegado' },
+  { key: 'armado_piernas',         label: 'Armado Piernas' },
+  { key: 'armado_marco_piernas',   label: 'Armado Marco Piernas' },
+  { key: 'armado_hojas',           label: 'Armado Hojas' },
   { key: 'armado_primario',        label: 'Armado Primario' },
-  //{ key: 'inyeccion',              label: 'Inyección' },
+  { key: 'inyeccion',              label: 'Inyección' },
   { key: 'revestimiento',          label: 'Revestimiento' },
   { key: 'pintura',                label: 'Pintura' },
   { key: 'armado_final',           label: 'Armado Final' },
@@ -18,9 +18,9 @@ const STAGES = [
 ];
 
 const COLORS = {
-  'finalizado': '#32a852',
-  'en proceso': '#e6c229',
-  'pendiente':  '#f7b1b1',
+  'finalizado': '#32a852',  // verde
+  'en proceso': '#e6c229',  // amarillo
+  'pendiente':  '#f7b1b1',  // rojo suave
   'default':    '#eee'
 };
 
@@ -28,6 +28,7 @@ const NV_COL_W   = 150;
 const GRID_GAP   = 6;
 const CELL_PAD   = 8;
 const CELL_MIN_H = 60;
+const bordo      = '#008241ff';
 
 function fmt(dt) {
   if (!dt) return '';
@@ -38,9 +39,35 @@ function cellBg(status) {
   const s = (status || '').toLowerCase();
   return COLORS[s] || COLORS.default;
 }
+function isSistema(porton) {
+  return (porton.inyeccion || '').toLowerCase() === 'finalizado' &&
+         (porton.revestimiento || '').toLowerCase() === 'finalizado';
+}
 
-export default function StatusGatePage() {
+export default function PlantaReadOnlyPage() {
   const { data, loading, err, refresh, refreshing } = usePortones({ pollMs: 300000 });
+
+  // ====== Métricas ======
+  const terminadosEnPlanta = useMemo(() => {
+    if (!Array.isArray(data)) return 0;
+    return data.filter(p =>
+      (p.armado_final || '').toLowerCase() === 'finalizado' &&
+      (p.despacho     || '').toLowerCase() === 'pendiente'
+    ).length;
+  }, [data]);
+
+  const FAB_KEYS = useMemo(
+    () => STAGES.filter(s => s.key !== 'despacho').map(s => s.key),
+    []
+  );
+  const enProcesoFabricacion = useMemo(() => {
+    if (!Array.isArray(data)) return 0;
+    return data.filter(p =>
+      FAB_KEYS.some(k => (p[k] || '').toLowerCase() === 'en proceso')
+    ).length;
+  }, [data, FAB_KEYS]);
+
+  // ====== Buscador (opcional, solo lectura) ======
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState(null);
 
@@ -52,21 +79,58 @@ export default function StatusGatePage() {
     return data.filter(p => p.nv === n || p.nlista === n);
   }, [data, filter]);
 
-  const bordo = '#82000f';
-  const cols = `${NV_COL_W}px repeat(${STAGES.length}, 1fr)`;
-
-  const cellBase   = { border: `2px solid ${bordo}`, padding: CELL_PAD, boxSizing: 'border-box' };
-  const headerCell = { ...cellBase, background: '#fafafa', fontWeight: 700, textAlign: 'center' };
-  const nvCell     = { ...cellBase, background: '#fff', minHeight: CELL_MIN_H, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 2 };
+  const cols        = `${NV_COL_W}px repeat(${STAGES.length}, 1fr)`;
+  const cellBase    = { border: `2px solid ${bordo}`, padding: CELL_PAD, boxSizing: 'border-box' };
+  const headerCell  = { ...cellBase, background: '#fafafa', fontWeight: 700, textAlign: 'center' };
+  const nvCell      = { ...cellBase, background: '#fff', minHeight: CELL_MIN_H, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexDirection: 'column' };
 
   return (
     <div style={{ padding: 16, fontFamily: 'system-ui, sans-serif' }}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:12 }}>
-    <h2 style={{ color: bordo, border: `3px solid ${bordo}`, padding: 8, margin: 0 }}>STATUS GATE</h2>
+      {/* Contadores a la IZQUIERDA */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+        {/* Métricas (izquierda) */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 360 }}>
+          <div
+            style={{
+              border: `3px solid ${bordo}`,
+              padding: '14px 16px',
+              borderRadius: 12,
+              fontWeight: 900,
+              fontSize: 22,
+              background: '#fff8f8',
+              textAlign: 'center'
+            }}
+            title="Armado Final = Finalizado y Despacho = Pendiente"
+          >
+            Portones terminados en planta: {terminadosEnPlanta}
+          </div>
+
+          <div
+            style={{
+              border: `3px solid ${bordo}`,
+              padding: '14px 16px',
+              borderRadius: 12,
+              fontWeight: 900,
+              fontSize: 22,
+              background: '#f7fff3',
+              textAlign: 'center'
+            }}
+            title="Al menos una etapa en 'En Proceso' (excepto Despacho)"
+          >
+            Portones en proceso de fabricación: {enProcesoFabricacion}
+          </div>
+        </div>
+
+        {/* Título + botón refresh */}
+  <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+    <h2 style={{ color: bordo, border: `3px solid ${bordo}`, padding: 8, margin: 0 }}>
+      PLANTA (Solo lectura)
+    </h2>
     <button onClick={refresh} disabled={refreshing} style={{ padding:'6px 10px', borderRadius:8 }}>
       {refreshing ? 'Actualizando…' : 'Refrescar'}
     </button>
- </div>
+  </div>
+      </div>
 
       {/* Buscador */}
       <form
@@ -90,7 +154,7 @@ export default function StatusGatePage() {
       {loading && <div>Cargando…</div>}
       {err && <div style={{ color: 'crimson' }}>Error: {err}</div>}
 
-      {/* UN SOLO GRID: header + filas */}
+      {/* Grilla SOLO LECTURA */}
       <div style={{ overflowX: 'auto' }}>
         <div
           style={{
@@ -103,9 +167,11 @@ export default function StatusGatePage() {
           }}
         >
           {/* Header */}
-          <div style={headerCell}>NV / Lista</div>
+          <div style={{ ...headerCell, textAlign: 'center' }}>NV / Lista</div>
           {STAGES.map(s => (
-            <div key={`h-${s.key}`} style={headerCell}>{s.label}</div>
+            <div key={`h-${s.key}`} style={{ ...headerCell, textAlign: 'center' }}>
+              {s.label}
+            </div>
           ))}
 
           {/* Filas */}
@@ -113,6 +179,17 @@ export default function StatusGatePage() {
             <div key={`nv-${p.id}`} style={nvCell}>
               <strong>NV {p.nv}</strong>
               <div style={{ fontSize: 12, opacity: 0.8 }}>Lista {p.nlista}</div>
+              {isSistema(p) && (
+                <div style={{
+                  fontSize: 11,
+                  background: '#eee',
+                  padding: '2px 8px',
+                  borderRadius: 999,
+                  border: '1px solid #ddd'
+                }}>
+                  Sistema
+                </div>
+              )}
             </div>,
             ...STAGES.map(s => {
               const st  = p[s.key];
@@ -127,7 +204,8 @@ export default function StatusGatePage() {
                     minHeight: CELL_MIN_H,
                     display: 'flex',
                     flexDirection: 'column',
-                    justifyContent: 'center'
+                    justifyContent: 'center',
+                    cursor: 'default'
                   }}
                   title={[
                     st ? `Estado: ${st}` : null,
