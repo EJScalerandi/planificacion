@@ -4,6 +4,7 @@ import usePortones from './hooks/usePortones';
 import { startStage, stopStage } from './api';
 import StageColumn from './components/StageColumn';
 import StatusGatePage from './components/StatusGatePage';
+import CreateGatePage from '../pages/CreateGatePage';
 
 const color = '#008241ff';
 
@@ -135,7 +136,9 @@ export default function App() {
 
         {/* Not found -> home */}
         <Route path="*" element={<Navigate to="/" replace />}
-         /><Route path="/statusGate" element={<StatusGatePage />} />
+         />
+         <Route path="/statusGate" element={<StatusGatePage />} />
+        <Route path="/createGate" element={<CreateGatePage />} />
       </Routes>
     </BrowserRouter>
   );

@@ -87,6 +87,12 @@ const STAGES = {
   laser:           { status: 'laser',           start: 'laser_inicio',           end: 'laser_fin',           next: 'guillotina' },
   guillotina:      { status: 'guillotina',      start: 'guillotina_inicio',      end: 'guillotina_fin',      next: 'plegadora' },
   plegadora:       { status: 'plegadora',       start: 'plegadora_inicio',       end: 'plegadora_fin',       next: 'armado_piernas' },
+  armado_marco_piernas: {
+    status: 'armado_marco_piernas',
+    start:  'armado_marco_piernas_inicio',
+    end:    'armado_marco_piernas_fin',
+    next:   'armado_primario'
+  },
   armado_piernas:  { status: 'armado_piernas',  start: 'armado_piernas_inicio',  end: 'armado_piernas_fin',  next: 'armado_primario' },
   armado_primario: { status: 'armado_primario', start: 'armado_primario_inicio', end: 'armado_primario_fin', next: 'armado_hojas' }, 
    armado_hojas:    { status: 'armado_hojas',    start: 'armado_hojas_inicio',    end: 'armado_hojas_fin',    next: 'inyeccion' },

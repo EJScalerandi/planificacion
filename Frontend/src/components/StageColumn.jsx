@@ -21,7 +21,7 @@ export default function StageColumn({ title, stageKey, items, onStart, onStop, d
   });
 
   return (
-    <div style={{ border: `3px solid ${bordo}`, padding: 12, minWidth: 260 }}>
+    <div style={{ border: `3px solid ${bordo}`, padding: 12, minWidth: 260, borderRadius: 8 }}>
       <div style={{ fontWeight: 700, color: bordo, marginBottom: 8 }}>{title}</div>
 
       {sorted.length === 0 ? (
@@ -41,21 +41,50 @@ export default function StageColumn({ title, stageKey, items, onStart, onStop, d
           const fin    = p[`${stageKey}_fin`];
 
           return (
-            <div key={p.id} style={{ border: `1px solid ${bordo}`, padding: 8, marginBottom: 8 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                <div title={[
+            <div
+              key={p.id}
+              style={{
+                border: `1px solid ${bordo}`,
+                padding: 10,
+                marginBottom: 8,
+                borderRadius: 8,
+                background: '#fff'
+              }}
+            >
+              <div
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}
+                title={[
+                  status ? `Estado: ${status}` : null,
                   inicio ? `Inicio: ${new Date(inicio).toLocaleString()}` : null,
                   fin    ? `Fin: ${new Date(fin).toLocaleString()}`       : null,
-                ].filter(Boolean).join('\n')}>
-                  <div><strong>NV:</strong> {p.nv}</div>
-                  <div style={{ fontSize: 12, color: bordo }}>{status}</div>
+                ].filter(Boolean).join('\n')}
+              >
+                {/* Identificación del portón: NLista grande + NV chico */}
+                <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.15 }}>
+                  <div style={{ fontSize: 20, fontWeight: 800 }}>
+                    N° Porton {p.nlista}
+                  </div>
+                  <div style={{ fontSize: 12, opacity: 0.8 }}>
+                    NV {p.nv}
+                  </div>
+                  <div style={{ fontSize: 12, color: bordo, marginTop: 4 }}>
+                    {status}
+                  </div>
                 </div>
 
+                {/* Acciones */}
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button
                     title="Iniciar (En Proceso)"
                     disabled={!canStart}
                     onClick={() => onStart(p.id, stageKey)}
+                    style={{
+                      padding: '6px 10px',
+                      borderRadius: 6,
+                      border: `1px solid ${canStart ? bordo : '#ddd'}`,
+                      cursor: canStart ? 'pointer' : 'not-allowed',
+                      background: canStart ? '#f8f0f1' : '#f6f6f6'
+                    }}
                   >
                     ▶️
                   </button>
@@ -64,6 +93,13 @@ export default function StageColumn({ title, stageKey, items, onStart, onStop, d
                     title="Finalizar"
                     disabled={!canStop}
                     onClick={() => onStop(p.id, stageKey)}
+                    style={{
+                      padding: '6px 10px',
+                      borderRadius: 6,
+                      border: `1px solid ${canStop ? bordo : '#ddd'}`,
+                      cursor: canStop ? 'pointer' : 'not-allowed',
+                      background: canStop ? '#f8f0f1' : '#f6f6f6'
+                    }}
                   >
                     ⏹️
                   </button>

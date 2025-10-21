@@ -10,5 +10,8 @@ export const startStage = (id, stage) =>
   api.post(`/portones/${id}/stage`, { stage, action: 'start' });
 export const stopStage = (id, stage) =>
   api.post(`/portones/${id}/stage`, { stage, action: 'stop' });
+// ...
+export const createPorton = (payload) => api.post('/portones', payload);
+
 
 export default api;

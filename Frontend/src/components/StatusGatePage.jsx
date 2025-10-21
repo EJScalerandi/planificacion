@@ -4,11 +4,11 @@ import usePortones from '../hooks/usePortones';
 const STAGES = [
   { key: 'diseno',          label: 'Diseño' },
   { key: 'laser',           label: 'Laser' },
-  { key: 'guillotina',      label: 'Guillotina' },
+  { key: 'guillotina',      label: 'Corte' },
   { key: 'plegadora',       label: 'Plegado' },
-  { key: 'armado_primario', label: 'Ensamble Primario' },
+  { key: 'armado_piernas',  label: 'Armado Piernas' },
+  { key: 'armado_primario', label: 'Armado Primario' },
   { key: 'armado_hojas',    label: 'Armado Hojas' },
-  { key: 'armado_piernas',  label: 'Prefabricado' },
   { key: 'inyeccion',       label: 'Inyección' },
   { key: 'revestimiento',   label: 'Revestimiento' },
   { key: 'pintura',         label: 'Pintura' },
@@ -23,16 +23,15 @@ const COLORS = {
   'default':    '#eee'
 };
 
-const NV_COL_W   = 120;
+const NV_COL_W   = 150;
 const GRID_GAP   = 6;
 const CELL_PAD   = 8;
 const CELL_MIN_H = 60;
 
 function fmt(dt) {
   if (!dt) return '';
-  try {
-    return new Date(dt).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' });
-  } catch { return ''; }
+  try { return new Date(dt).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }); }
+  catch { return ''; }
 }
 function cellBg(status) {
   const s = (status || '').toLowerCase();
@@ -55,19 +54,18 @@ export default function StatusGatePage() {
   const bordo = '#82000f';
   const cols = `${NV_COL_W}px repeat(${STAGES.length}, 1fr)`;
 
-  // estilos reutilizables (mismo boxSizing para todo)
-  const cellBase = { border: `2px solid ${bordo}`, padding: CELL_PAD, boxSizing: 'border-box' };
+  const cellBase   = { border: `2px solid ${bordo}`, padding: CELL_PAD, boxSizing: 'border-box' };
   const headerCell = { ...cellBase, background: '#fafafa', fontWeight: 700, textAlign: 'center' };
-  const nvCell     = { ...cellBase, background: '#fff', minHeight: CELL_MIN_H, display: 'flex', alignItems: 'center', justifyContent: 'center' };
+  const nvCell     = { ...cellBase, background: '#fff', minHeight: CELL_MIN_H, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 2 };
 
   return (
     <div style={{ padding: 16, fontFamily: 'system-ui, sans-serif' }}>
-      <h2 style={{ color: bordo, border: `3px solid ${bordo}`, padding: 8, maxWidth: 1000 }}>STATUS GATE</h2>
+      <h2 style={{ color: bordo, border: `3px solid ${bordo}`, padding: 8, maxWidth: 1100 }}>STATUS GATE</h2>
 
       {/* Buscador */}
       <form
         onSubmit={(e) => { e.preventDefault(); setFilter(q.trim()); }}
-        style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '12px 0' }}
+        style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '12px 0', flexWrap: 'wrap' }}
       >
         <input
           type="text"
@@ -86,7 +84,7 @@ export default function StatusGatePage() {
       {loading && <div>Cargando…</div>}
       {err && <div style={{ color: 'crimson' }}>Error: {err}</div>}
 
-      {/* UN SOLO GRID: header + todas las filas */}
+      {/* UN SOLO GRID: header + filas */}
       <div style={{ overflowX: 'auto' }}>
         <div
           style={{
@@ -95,18 +93,21 @@ export default function StatusGatePage() {
             columnGap: GRID_GAP,
             rowGap: GRID_GAP,
             alignItems: 'stretch',
-            width: 'max-content' // evita que el grid “salte” por ajuste de ancho
+            width: 'max-content'
           }}
         >
-          {/* Header row */}
-          <div style={headerCell}>NV</div>
+          {/* Header */}
+          <div style={headerCell}>NV / Lista</div>
           {STAGES.map(s => (
             <div key={`h-${s.key}`} style={headerCell}>{s.label}</div>
           ))}
 
-          {/* Data rows (cada portón agrega N+1 celdas al MISMO grid) */}
+          {/* Filas */}
           {list.map(p => ([
-            <div key={`nv-${p.id}`} style={nvCell}><strong>{p.nv}</strong></div>,
+            <div key={`nv-${p.id}`} style={nvCell}>
+              <strong>NV {p.nv}</strong>
+              <div style={{ fontSize: 12, opacity: 0.8 }}>Lista {p.nlista}</div>
+            </div>,
             ...STAGES.map(s => {
               const st  = p[s.key];
               const ini = p[`${s.key}_inicio`];
@@ -135,11 +136,11 @@ export default function StatusGatePage() {
               );
             })
           ]))}
-        </div>
 
-        {!loading && list.length === 0 && (
-          <div style={{ marginTop: 12, opacity: 0.7 }}>Sin resultados.</div>
-        )}
+          {!loading && list.length === 0 && (
+            <div style={{ gridColumn: `1 / span ${STAGES.length + 1}`, marginTop: 12, opacity: 0.7 }}>Sin resultados.</div>
+          )}
+        </div>
       </div>
     </div>
   );
