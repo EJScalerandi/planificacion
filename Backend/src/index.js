@@ -146,3 +146,33 @@ app.post('/portones/:id/stage', async (req, res) => {
     client.release();
   }
 });
+// Crear portón: { nv, nlista }
+app.post('/portones', async (req, res) => {
+  try {
+    const { nv, nlista } = req.body || {};
+    if (!Number.isInteger(nv) || !Number.isInteger(nlista)) {
+      return res.status(400).json({ error: 'nv y nlista deben ser enteros' });
+    }
+
+    // Evitar duplicados (por nv + nlista)
+    const { rowCount: exists } = await pool.query(
+      'select 1 from public.portones where nv = $1 and nlista = $2 limit 1;',
+      [nv, nlista]
+    );
+    if (exists) {
+      return res.status(409).json({ error: 'Ya existe un portón con ese NV y NLista' });
+    }
+
+    const { rows } = await pool.query(
+      `insert into public.portones (nv, nlista)
+       values ($1, $2)
+       returning *;`,
+      [nv, nlista]
+    );
+
+    return res.status(201).json(rows[0]);
+  } catch (err) {
+    console.error('create porton error:', err);
+    return res.status(500).json({ error: 'Error creando portón', detail: err.message });
+  }
+});
