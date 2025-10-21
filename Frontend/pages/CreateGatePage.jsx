@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import usePortones from '../src/hooks/usePortones';
 import { createPorton, startStage, stopStage } from '../src/api';
+import { isAuthed, login, logout } from '../src/auth/createGateAuth';
 
 const STAGES = [
   { key: 'diseno',                 label: 'Diseño' },
@@ -8,7 +9,7 @@ const STAGES = [
   { key: 'guillotina',             label: 'Corte' },
   { key: 'plegadora',              label: 'Plegado' },
   { key: 'armado_piernas',         label: 'Armado Piernas' },
-  { key: 'armado_marco_piernas',   label: 'Armado Marco Piernas' }, // 👈 NUEVA
+  { key: 'armado_marco_piernas',   label: 'Armado Marco Piernas' },
   { key: 'armado_hojas',           label: 'Armado Hojas' },
   { key: 'armado_primario',        label: 'Armado Primario' },
   { key: 'inyeccion',              label: 'Inyección' },
@@ -29,7 +30,7 @@ const NV_COL_W   = 150;
 const GRID_GAP   = 6;
 const CELL_PAD   = 8;
 const CELL_MIN_H = 60;
-const bordo      = '#82000f';
+const bordo      = '#008241ff';
 
 function fmt(dt) {
   if (!dt) return '';
@@ -46,9 +47,65 @@ function isSistema(porton) {
 }
 
 export default function CreateGatePage() {
+  // ------- Login simple -------
+  const [authed, setAuthed] = useState(isAuthed());
+  const [user, setUser] = useState('');
+  const [pass, setPass] = useState('');
+  const [authErr, setAuthErr] = useState('');
+
+  if (!authed) {
+    return (
+      <div style={{ height: '100vh', display: 'grid', placeItems: 'center', background: '#f7fff3', fontFamily: 'system-ui, sans-serif' }}>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (login(user.trim(), pass)) {
+              setAuthed(true);
+              setAuthErr('');
+              setPass('');
+            } else {
+              setAuthErr('Usuario o contraseña inválidos');
+            }
+          }}
+          style={{
+            width: 340,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 10,
+            border: `3px solid ${bordo}`,
+            borderRadius: 12,
+            padding: 18,
+            background: 'white',
+          }}
+        >
+          <h3 style={{ margin: 0, color: bordo, textAlign: 'center' }}>Acceso CreateGate</h3>
+          <input
+            placeholder="Usuario"
+            value={user}
+            onChange={(e) => setUser(e.target.value)}
+            autoFocus
+            style={{ padding: '10px 12px', border: '1px solid #ccc', borderRadius: 8 }}
+          />
+          <input
+            type="password"
+            placeholder="Contraseña"
+            value={pass}
+            onChange={(e) => setPass(e.target.value)}
+            style={{ padding: '10px 12px', border: '1px solid #ccc', borderRadius: 8 }}
+          />
+          {authErr && <div style={{ color: 'crimson', fontSize: 13 }}>{authErr}</div>}
+          <button type="submit" style={{ padding: '10px 12px', borderRadius: 8, fontWeight: 700 }}>
+            Entrar
+          </button>
+        </form>
+      </div>
+    );
+  }
+
+  // ------- Página CreateGate (tu contenido previo) -------
   const { data, loading, err, replaceItem, refresh } = usePortones();
 
-  // ====== métrica: Portones terminados en planta ======
+  // Métricas
   const terminadosEnPlanta = useMemo(() => {
     if (!Array.isArray(data)) return 0;
     return data.filter(p =>
@@ -57,12 +114,23 @@ export default function CreateGatePage() {
     ).length;
   }, [data]);
 
-  // form crear
+  const FAB_KEYS = useMemo(
+    () => STAGES.filter(s => s.key !== 'despacho').map(s => s.key),
+    []
+  );
+  const enProcesoFabricacion = useMemo(() => {
+    if (!Array.isArray(data)) return 0;
+    return data.filter(p =>
+      FAB_KEYS.some(k => (p[k] || '').toLowerCase() === 'en proceso')
+    ).length;
+  }, [data, FAB_KEYS]);
+
+  // Form crear
   const [nv, setNv] = useState('');
   const [nlista, setNlista] = useState('');
   const [sistemaOnCreate, setSistemaOnCreate] = useState(false);
 
-  // buscador
+  // Buscador
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState(null);
 
@@ -105,7 +173,7 @@ export default function CreateGatePage() {
         alert(`Portón creado: NV ${created.nv} (lista ${created.nlista})`);
       }
       setNv(''); setNlista(''); setSistemaOnCreate(false);
-      await refresh(); // no tocamos el filtro
+      await refresh();
     } catch (e) {
       alert(e?.response?.data?.error || e.message);
     }
@@ -148,24 +216,48 @@ export default function CreateGatePage() {
 
   return (
     <div style={{ padding: 16, fontFamily: 'system-ui, sans-serif' }}>
-      {/* Título + métrica a la derecha */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
+      {/* Título + métricas + botón salir */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
         <h2 style={{ color: bordo, border: `3px solid ${bordo}`, padding: 8, margin: 0 }}>
           PORTONES
         </h2>
-        <div
-          style={{
-            border: `3px solid ${bordo}`,
-            padding: '8px 12px',
-            borderRadius: 10,
-            fontWeight: 800,
-            background: '#fff8f8',
-            minWidth: 280,
-            textAlign: 'center'
-          }}
-          title="Cantidad de portones con Armado Final = Finalizado y Despacho = Pendiente"
-        >
-          Portones terminados en planta: {terminadosEnPlanta}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 280 }}>
+          <div
+            style={{
+              border: `3px solid ${bordo}`,
+              padding: '8px 12px',
+              borderRadius: 10,
+              fontWeight: 800,
+              background: '#fff8f8',
+              textAlign: 'center'
+            }}
+            title="Armado Final = Finalizado y Despacho = Pendiente"
+          >
+            Portones terminados en planta: {terminadosEnPlanta}
+          </div>
+
+          <div
+            style={{
+              border: `3px solid ${bordo}`,
+              padding: '8px 12px',
+              borderRadius: 10,
+              fontWeight: 800,
+              background: '#f7fff3',
+              textAlign: 'center'
+            }}
+            title="Al menos una etapa en 'En Proceso' (excepto Despacho)"
+          >
+            Portones en proceso de fabricación: {enProcesoFabricacion}
+          </div>
+
+          <button
+            onClick={() => { logout(); setAuthed(false); }}
+            style={{ marginTop: 4, padding: '6px 10px', borderRadius: 8 }}
+            title="Cerrar sesión de CreateGate"
+          >
+            Salir
+          </button>
         </div>
       </div>
 
@@ -218,12 +310,12 @@ export default function CreateGatePage() {
       {loading && <div>Cargando…</div>}
       {err && <div style={{ color: 'crimson' }}>Error: {err}</div>}
 
-      {/* UN SOLO GRID: header + filas */}
+      {/* Grid */}
       <div style={{ overflowX: 'auto' }}>
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: cols,
+            gridTemplateColumns: `${NV_COL_W}px repeat(${STAGES.length}, 1fr)`,
             columnGap: GRID_GAP,
             rowGap: GRID_GAP,
             alignItems: 'stretch',

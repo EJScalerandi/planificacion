@@ -83,23 +83,23 @@ const STATUS = {
 };
 
 const STAGES = {
-  diseno:          { status: 'diseno',          start: 'diseno_inicio',          end: 'diseno_fin',          next: 'laser' },
-  laser:           { status: 'laser',           start: 'laser_inicio',           end: 'laser_fin',           next: 'guillotina' },
-  guillotina:      { status: 'guillotina',      start: 'guillotina_inicio',      end: 'guillotina_fin',      next: 'plegadora' },
-  plegadora:       { status: 'plegadora',       start: 'plegadora_inicio',       end: 'plegadora_fin',       next: 'armado_piernas' },
+  diseno:          { status: 'diseno',          start: 'diseno_inicio',          end: 'diseno_fin',          next: null },
+  laser:           { status: 'laser',           start: 'laser_inicio',           end: 'laser_fin',           next: null },
+  guillotina:      { status: 'guillotina',      start: 'guillotina_inicio',      end: 'guillotina_fin',      next: null },
+  plegadora:       { status: 'plegadora',       start: 'plegadora_inicio',       end: 'plegadora_fin',       next: null },
   armado_marco_piernas: {
     status: 'armado_marco_piernas',
     start:  'armado_marco_piernas_inicio',
     end:    'armado_marco_piernas_fin',
-    next:   'armado_primario'
+    next:   null
   },
-  armado_piernas:  { status: 'armado_piernas',  start: 'armado_piernas_inicio',  end: 'armado_piernas_fin',  next: 'armado_primario' },
-  armado_primario: { status: 'armado_primario', start: 'armado_primario_inicio', end: 'armado_primario_fin', next: 'armado_hojas' }, 
-   armado_hojas:    { status: 'armado_hojas',    start: 'armado_hojas_inicio',    end: 'armado_hojas_fin',    next: 'inyeccion' },
-  inyeccion:       { status: 'inyeccion',       start: 'inyeccion_inicio',       end: 'inyeccion_fin',       next: 'revestimiento' },
-  revestimiento:   { status: 'revestimiento',   start: 'revestimiento_inicio',   end: 'revestimiento_fin',   next: 'pintura' },
-  pintura:         { status: 'pintura',         start: 'pintura_inicio',         end: 'pintura_fin',         next: 'armado_final' },
-  armado_final:    { status: 'armado_final',    start: 'armado_final_inicio',    end: 'armado_final_fin',    next: 'despacho' },
+  armado_piernas:  { status: 'armado_piernas',  start: 'armado_piernas_inicio',  end: 'armado_piernas_fin',  next: null },
+  armado_primario: { status: 'armado_primario', start: 'armado_primario_inicio', end: 'armado_primario_fin', next: null }, 
+   armado_hojas:    { status: 'armado_hojas',    start: 'armado_hojas_inicio',    end: 'armado_hojas_fin',    next: null },
+  inyeccion:       { status: 'inyeccion',       start: 'inyeccion_inicio',       end: 'inyeccion_fin',       next: null },
+  revestimiento:   { status: 'revestimiento',   start: 'revestimiento_inicio',   end: 'revestimiento_fin',   next: null },
+  pintura:         { status: 'pintura',         start: 'pintura_inicio',         end: 'pintura_fin',         next: null },
+  armado_final:    { status: 'armado_final',    start: 'armado_final_inicio',    end: 'armado_final_fin',    next: null },
   despacho:        { status: 'despacho',        start: 'despacho_inicio',        end: 'despacho_fin',        next: null }
 };
 
