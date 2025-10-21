@@ -13,6 +13,7 @@ const STAGE_ORDER = [
   { key: 'plegadora',       label: 'Plegado' },
   { key: 'armado_piernas',  label: 'Armado Piernas' },
   { key: 'armado_primario', label: 'Armado Primario' },
+  { key: "armado_hojas" ,   label: "Armado Hojas" },
   { key: 'inyeccion',       label: 'Inyección' },
   { key: 'revestimiento',   label: 'Revestimiento' },
   { key: 'pintura',         label: 'Pintura' },

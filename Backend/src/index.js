@@ -88,13 +88,15 @@ const STAGES = {
   guillotina:      { status: 'guillotina',      start: 'guillotina_inicio',      end: 'guillotina_fin',      next: 'plegadora' },
   plegadora:       { status: 'plegadora',       start: 'plegadora_inicio',       end: 'plegadora_fin',       next: 'armado_piernas' },
   armado_piernas:  { status: 'armado_piernas',  start: 'armado_piernas_inicio',  end: 'armado_piernas_fin',  next: 'armado_primario' },
-  armado_primario: { status: 'armado_primario', start: 'armado_primario_inicio', end: 'armado_primario_fin', next: 'inyeccion' },
+  armado_primario: { status: 'armado_primario', start: 'armado_primario_inicio', end: 'armado_primario_fin', next: 'armado_hojas' }, 
+   armado_hojas:    { status: 'armado_hojas',    start: 'armado_hojas_inicio',    end: 'armado_hojas_fin',    next: 'inyeccion' },
   inyeccion:       { status: 'inyeccion',       start: 'inyeccion_inicio',       end: 'inyeccion_fin',       next: 'revestimiento' },
   revestimiento:   { status: 'revestimiento',   start: 'revestimiento_inicio',   end: 'revestimiento_fin',   next: 'pintura' },
   pintura:         { status: 'pintura',         start: 'pintura_inicio',         end: 'pintura_fin',         next: 'armado_final' },
   armado_final:    { status: 'armado_final',    start: 'armado_final_inicio',    end: 'armado_final_fin',    next: 'despacho' },
   despacho:        { status: 'despacho',        start: 'despacho_inicio',        end: 'despacho_fin',        next: null }
 };
+
 
 // POST /portones/:id/stage  body: { stage: 'diseno', action: 'start' | 'stop' }
 app.post('/portones/:id/stage', async (req, res) => {
