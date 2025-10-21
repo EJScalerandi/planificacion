@@ -3,24 +3,25 @@ import usePortones from '../src/hooks/usePortones';
 import { createPorton, startStage, stopStage } from '../src/api';
 
 const STAGES = [
-  { key: 'diseno',          label: 'Diseño' },
-  { key: 'laser',           label: 'Laser' },
-  { key: 'guillotina',      label: 'Corte' },
-  { key: 'plegadora',       label: 'Plegado' },
-  { key: 'armado_piernas',  label: 'Armado Piernas' },
-  { key: 'armado_hojas',    label: 'Armado Hojas' },
-  { key: 'armado_primario', label: 'Armado Primario' },
-  { key: 'inyeccion',       label: 'Inyección' },
-  { key: 'revestimiento',   label: 'Revestimiento' },
-  { key: 'pintura',         label: 'Pintura' },
-  { key: 'armado_final',    label: 'Armado Final' },
-  { key: 'despacho',        label: 'Despacho' },
+  { key: 'diseno',                 label: 'Diseño' },
+  { key: 'laser',                  label: 'Laser' },
+  { key: 'guillotina',             label: 'Corte' },
+  { key: 'plegadora',              label: 'Plegado' },
+  { key: 'armado_piernas',         label: 'Armado Piernas' },
+  { key: 'armado_marco_piernas',   label: 'Armado Marco Piernas' }, // 👈 NUEVA
+  { key: 'armado_hojas',           label: 'Armado Hojas' },
+  { key: 'armado_primario',        label: 'Armado Primario' },
+  { key: 'inyeccion',              label: 'Inyección' },
+  { key: 'revestimiento',          label: 'Revestimiento' },
+  { key: 'pintura',                label: 'Pintura' },
+  { key: 'armado_final',           label: 'Armado Final' },
+  { key: 'despacho',               label: 'Despacho' },
 ];
 
 const COLORS = {
-  'finalizado': '#32a852',  // verde
-  'en proceso': '#e6c229',  // amarillo
-  'pendiente':  '#f7b1b1',  // rojo suave
+  'finalizado': '#32a852',
+  'en proceso': '#e6c229',
+  'pendiente':  '#f7b1b1',
   'default':    '#eee'
 };
 
@@ -47,6 +48,15 @@ function isSistema(porton) {
 export default function CreateGatePage() {
   const { data, loading, err, replaceItem, refresh } = usePortones();
 
+  // ====== métrica: Portones terminados en planta ======
+  const terminadosEnPlanta = useMemo(() => {
+    if (!Array.isArray(data)) return 0;
+    return data.filter(p =>
+      (p.armado_final || '').toLowerCase() === 'finalizado' &&
+      (p.despacho     || '').toLowerCase() === 'pendiente'
+    ).length;
+  }, [data]);
+
   // form crear
   const [nv, setNv] = useState('');
   const [nlista, setNlista] = useState('');
@@ -64,16 +74,14 @@ export default function CreateGatePage() {
     return data.filter(p => p.nv === n || p.nlista === n);
   }, [data, filter]);
 
-  const cols = `${NV_COL_W}px repeat(${STAGES.length}, 1fr)`;
-  const cellBase   = { border: `2px solid ${bordo}`, padding: CELL_PAD, boxSizing: 'border-box' };
-  const headerCell = { ...cellBase, background: '#fafafa', fontWeight: 700, textAlign: 'center' };
-  const nvCell     = { ...cellBase, background: '#fff', minHeight: CELL_MIN_H, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingLeft: 10, paddingRight: 10 };
+  const cols        = `${NV_COL_W}px repeat(${STAGES.length}, 1fr)`;
+  const cellBase    = { border: `2px solid ${bordo}`, padding: CELL_PAD, boxSizing: 'border-box' };
+  const headerCell  = { ...cellBase, background: '#fafafa', fontWeight: 700, textAlign: 'center' };
+  const nvCell      = { ...cellBase, background: '#fff', minHeight: CELL_MIN_H, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingLeft: 10, paddingRight: 10 };
 
   async function finalizeSistema(id) {
-    // Finalizamos Inyección y Revestimiento
     let updated = null;
-    const stages = ['inyeccion', 'revestimiento'];
-    for (const st of stages) {
+    for (const st of ['inyeccion', 'revestimiento']) {
       const { data } = await stopStage(id, st);
       updated = data;
     }
@@ -96,9 +104,8 @@ export default function CreateGatePage() {
       } else {
         alert(`Portón creado: NV ${created.nv} (lista ${created.nlista})`);
       }
-      // limpiar form y refrescar (sin tocar el filtro)
       setNv(''); setNlista(''); setSistemaOnCreate(false);
-      await refresh();
+      await refresh(); // no tocamos el filtro
     } catch (e) {
       alert(e?.response?.data?.error || e.message);
     }
@@ -141,9 +148,26 @@ export default function CreateGatePage() {
 
   return (
     <div style={{ padding: 16, fontFamily: 'system-ui, sans-serif' }}>
-      <h2 style={{ color: bordo, border: `3px solid ${bordo}`, padding: 8, maxWidth: 1100 }}>
-        CREAR / EDITAR PORTONES
-      </h2>
+      {/* Título + métrica a la derecha */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
+        <h2 style={{ color: bordo, border: `3px solid ${bordo}`, padding: 8, margin: 0 }}>
+          PORTONES
+        </h2>
+        <div
+          style={{
+            border: `3px solid ${bordo}`,
+            padding: '8px 12px',
+            borderRadius: 10,
+            fontWeight: 800,
+            background: '#fff8f8',
+            minWidth: 280,
+            textAlign: 'center'
+          }}
+          title="Cantidad de portones con Armado Final = Finalizado y Despacho = Pendiente"
+        >
+          Portones terminados en planta: {terminadosEnPlanta}
+        </div>
+      </div>
 
       {/* Form crear */}
       <form onSubmit={handleCreate} style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '12px 0', flexWrap: 'wrap' }}>
@@ -207,11 +231,11 @@ export default function CreateGatePage() {
           }}
         >
           {/* Header */}
-          <div style={{ ...cellBase, background: '#fafafa', fontWeight: 700, textAlign: 'center' }}>
+          <div style={{ ...headerCell, textAlign: 'center' }}>
             NV / Lista / Sistema
           </div>
           {STAGES.map(s => (
-            <div key={`h-${s.key}`} style={{ ...cellBase, background: '#fafafa', fontWeight: 700, textAlign: 'center' }}>
+            <div key={`h-${s.key}`} style={{ ...headerCell, textAlign: 'center' }}>
               {s.label}
             </div>
           ))}

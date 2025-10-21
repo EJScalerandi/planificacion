@@ -2,24 +2,25 @@ import { useMemo, useState } from 'react';
 import usePortones from '../hooks/usePortones';
 
 const STAGES = [
-  { key: 'diseno',          label: 'Diseño' },
-  { key: 'laser',           label: 'Laser' },
-  { key: 'guillotina',      label: 'Corte' },
-  { key: 'plegadora',       label: 'Plegado' },
-  { key: 'armado_piernas',  label: 'Armado Piernas' },
-  { key: 'armado_primario', label: 'Armado Primario' },
-  { key: 'armado_hojas',    label: 'Armado Hojas' },
-  { key: 'inyeccion',       label: 'Inyección' },
-  { key: 'revestimiento',   label: 'Revestimiento' },
-  { key: 'pintura',         label: 'Pintura' },
-  { key: 'armado_final',    label: 'Armado Final' },
-  { key: 'despacho',        label: 'Despacho' },
+  { key: 'diseno',                 label: 'Diseño' },
+  { key: 'laser',                  label: 'Laser' },
+  { key: 'guillotina',             label: 'Corte' },
+  { key: 'plegadora',              label: 'Plegado' },
+  { key: 'armado_piernas',         label: 'Armado Piernas' },
+  { key: 'armado_marco_piernas',   label: 'Armado Marco Piernas' }, // 👈 NUEVA
+  { key: 'armado_hojas',           label: 'Armado Hojas' },
+  { key: 'armado_primario',        label: 'Armado Primario' },
+  { key: 'inyeccion',              label: 'Inyección' },
+  { key: 'revestimiento',          label: 'Revestimiento' },
+  { key: 'pintura',                label: 'Pintura' },
+  { key: 'armado_final',           label: 'Armado Final' },
+  { key: 'despacho',               label: 'Despacho' },
 ];
 
 const COLORS = {
-  'finalizado': '#32a852',  // verde
-  'en proceso': '#e6c229',  // amarillo
-  'pendiente':  '#f7b1b1',  // rojo suave
+  'finalizado': '#32a852',
+  'en proceso': '#e6c229',
+  'pendiente':  '#f7b1b1',
   'default':    '#eee'
 };
 
