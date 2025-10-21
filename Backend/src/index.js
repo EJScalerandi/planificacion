@@ -8,7 +8,7 @@ const { Pool } = require('pg');
 const app = express();
 
 const PORT = process.env.PORT || 4000;
-const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'http://localhost:5173';
+const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'http://localhost:5174';
 
 // Pool de Postgres (Supabase requiere SSL)
 const pool = new Pool({
