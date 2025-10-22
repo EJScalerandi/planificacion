@@ -25,13 +25,16 @@ const CELL_MIN_H = 60;
 const bordo      = '#008241ff';
 
 const fmt = dt => (dt ? new Date(dt).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) : '');
+
+/** ⇩⇩⇩  AHORA usa variables CSS para soportar modo oscuro  */
 const cellBg = st => {
   const s = (st || '').toLowerCase();
-  if (s === 'finalizado') return '#c9f2d7';
-  if (s === 'en proceso') return '#ffe58a';
-  if (s === 'pendiente')  return '#f7b1b1';
-  return '#eee';
+  if (s === 'finalizado') return 'var(--state-done)';
+  if (s === 'en proceso') return 'var(--state-process)';
+  if (s === 'pendiente')  return 'var(--state-pending)';
+  return 'var(--surface)';
 };
+
 const isSistema = p =>
   (p.inyeccion || '').toLowerCase() === 'finalizado' &&
   (p.revestimiento || '').toLowerCase() === 'finalizado';
@@ -51,11 +54,11 @@ export default function CreateGatePage() {
       <div style={{ height:'100vh', display:'grid', placeItems:'center', background:'#f7fff3', fontFamily:'system-ui,sans-serif' }}>
         <form
           onSubmit={(e) => { e.preventDefault(); if (login(user.trim(), pass)) { setAuthed(true); setAuthErr(''); setPass(''); } else setAuthErr('Usuario o contraseña inválidos'); }}
-          style={{ width:340, display:'flex', flexDirection:'column', gap:10, border:`3px solid ${bordo}`, borderRadius:12, padding:18, background:'white' }}
+          style={{ width:340, display:'flex', flexDirection:'column', gap:10, border:`3px solid ${bordo}`, borderRadius:12, padding:18, background:'var(--surface)' }}
         >
           <h3 style={{ margin:0, color:bordo, textAlign:'center' }}>Acceso CreateGate</h3>
-          <input placeholder="Usuario" value={user} onChange={e=>setUser(e.target.value)} autoFocus style={{ padding:'10px 12px', border:'1px solid #ccc', borderRadius:8 }} />
-          <input type="password" placeholder="Contraseña" value={pass} onChange={e=>setPass(e.target.value)} style={{ padding:'10px 12px', border:'1px solid #ccc', borderRadius:8 }} />
+          <input placeholder="Usuario" value={user} onChange={e=>setUser(e.target.value)} autoFocus className="btn" />
+          <input type="password" placeholder="Contraseña" value={pass} onChange={e=>setPass(e.target.value)} className="btn" />
           {authErr && <div style={{ color:'crimson', fontSize:13 }}>{authErr}</div>}
           <button type="submit" className="btn btn--brand" style={{ fontWeight:700, borderRadius:8 }}>Entrar</button>
         </form>
@@ -97,12 +100,12 @@ export default function CreateGatePage() {
     const hasFilter = filter !== null && filter !== '';
     if (hasFilter) {
       const n = Number(filter);
-      if (!Number.isNaN(n)) return data.filter(p => p.nv === n || p.nlista === n /* o p.partida === n si querés seguir buscándolo */);
+      if (!Number.isNaN(n)) return data.filter(p => p.nv === n || p.nlista === n /* o p.partida === n */);
     }
     return data.filter(p => !isFullyFinished(p));
   }, [data, filter]);
 
-  // Orden por lista -> nv (seguimos sin mostrar partida)
+  // Orden por lista -> nv
   const list = useMemo(() => {
     const arr = [...baseList];
     arr.sort((a, b) =>
@@ -112,7 +115,7 @@ export default function CreateGatePage() {
     return arr;
   }, [baseList]);
 
-  // Contadores por etapa (sobre lo que se muestra)
+  // Contadores por etapa
   const stageStats = useMemo(() => {
     const stats = {};
     STAGES.forEach(s => (stats[s.key] = { pend: 0, proc: 0 }));
@@ -172,8 +175,9 @@ export default function CreateGatePage() {
 
   // ---- Render ----
   const cellBase   = { border: `2px solid ${bordo}`, padding: 8, borderRadius: 12, boxSizing: 'border-box' };
-  const headerCell = { ...cellBase, background:'#fafafa', fontWeight:700, textAlign:'center' };
-  const nvCell     = { ...cellBase, background:'#fff', minHeight:CELL_MIN_H, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, paddingLeft:10, paddingRight:10 };
+  /** ⇩⇩⇩  header y NV ahora usan var(--surface) (se ve bien en dark) */
+  const headerCell = { ...cellBase, background:'var(--surface)', fontWeight:700, textAlign:'center' };
+  const nvCell     = { ...cellBase, background:'var(--surface)', minHeight:CELL_MIN_H, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, paddingLeft:10, paddingRight:10 };
 
   return (
     <div style={{ padding:16, fontFamily:'system-ui,sans-serif' }}>
