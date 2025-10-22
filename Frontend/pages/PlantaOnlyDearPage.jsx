@@ -167,8 +167,8 @@ export default function PlantaReadOnlyPage() {
           {/* filas */}
           {list.map(p => ([
             <div key={`nv-${p.id}`} style={nvCell}>
+              <strong>N° Portón {p.nlista}</strong>
               <strong>NV {p.nv}</strong>
-              <div style={{ fontSize:12, opacity:.8 }}>Lista {p.nlista}</div>
             </div>,
             ...STAGES.map(s => {
               const st  = p[s.key];

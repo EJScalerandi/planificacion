@@ -3,14 +3,14 @@ import usePortones from '../hooks/usePortones';
 
 const STAGES = [
   { key: 'diseno',               label: 'Diseño' },
-  { key: 'laser',                label: 'Laser' },
-  { key: 'guillotina',           label: 'Corte' },
-  { key: 'plegadora',            label: 'Plegado' },
-  { key: 'armado_piernas',       label: 'Armado Piernas' },
-  { key: 'armado_marco_piernas', label: 'Armado Marco Piernas' },
-  { key: 'armado_hojas',         label: 'Armado Hojas' },
+  // { key: 'laser',                label: 'Laser' },
+  // { key: 'guillotina',           label: 'Corte' },
+  // { key: 'plegadora',            label: 'Plegado' },
+  // { key: 'armado_piernas',       label: 'Armado Piernas' },
+  // { key: 'armado_marco_piernas', label: 'Armado Marco Piernas' },
+  // { key: 'armado_hojas',         label: 'Armado Hojas' },
   { key: 'armado_primario',      label: 'Armado Primario' },
-  { key: 'inyeccion',            label: 'Inyección' },
+  // { key: 'inyeccion',            label: 'Inyección' },
   { key: 'revestimiento',        label: 'Revestimiento' },
   { key: 'pintura',              label: 'Pintura' },
   { key: 'armado_final',         label: 'Armado Final' },
@@ -63,7 +63,7 @@ export default function StatusGatePage() {
   const cols = `${NV_COL_W}px repeat(${STAGES.length}, 1fr)`;
 
   return (
-    <div className="container">
+    <div className="container-fluid">{/* 👈 ancho completo */}
       <div className="header-row">
         <h2 className="h1">STATUS GATE</h2>
         <button className="btn btn--brand" onClick={refresh} disabled={refreshing}>
@@ -119,7 +119,7 @@ export default function StatusGatePage() {
           {list.map(p => ([
             <div key={`nv-${p.id}`} className="cell" style={{ background:'var(--surface)', display:'flex', gap:6, flexDirection:'column', justifyContent:'center' }}>
               <strong>NV {p.nv}</strong>
-              <div style={{ fontSize:12, color:'var(--muted)' }}>Lista {p.nlista}</div>
+              <div style={{ fontSize:12, color:'var(--muted)' }}>N° Portón {p.nlista}</div>
               {isSistema(p) && (
                 <div style={{
                   fontSize:11, background:'#eee', padding:'2px 8px',

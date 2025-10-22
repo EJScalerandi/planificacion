@@ -37,7 +37,7 @@ function Board({ stages }) {
   return (
     <div className="container">
       <div className="header-row">
-        <h2 className="h1">FILTROS POR SECTOR</h2>
+        <h2 className="h1">DE GRANDIS PORTONES</h2>
         <button className="btn btn--brand" onClick={refresh} disabled={refreshing}>
           {refreshing ? 'Actualizando…' : 'Refrescar'}
         </button>
