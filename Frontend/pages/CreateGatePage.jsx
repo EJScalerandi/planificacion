@@ -86,7 +86,7 @@ export default function CreateGatePage() {
   // Form crear
   const [nv, setNv] = useState('');
   const [nlista, setNlista] = useState('');
-  const [partida, setPartida] = useState('');
+  const [partida, setPartida] = useState(''); // (sigue presente en la lógica como en tu archivo)
   const [sistemaOnCreate, setSistemaOnCreate] = useState(false);
 
   // Buscar
@@ -210,28 +210,12 @@ export default function CreateGatePage() {
           className={`btn input-num ${nlista ? 'input-num--filled' : ''}`}
           style={{ width:140, textAlign:'center' }}
         />
-        <input
-          type="number"
-          placeholder="Partida"
-          value={partida}
-          onChange={e=>setPartida(e.target.value)}
-          className="btn"
-          style={{ width:140, textAlign:'center' }}
-        />
         <label style={{ display:'flex', gap:6, alignItems:'center', marginLeft:8 }}>
           <input type="checkbox" checked={sistemaOnCreate} onChange={(e)=>setSistemaOnCreate(e.target.checked)} />
           Sistema (finaliza Inyección y Revestimiento)
         </label>
         <button type="submit" className="btn btn--brand">Crear portón</button>
-
-        {/* Previsualización destacada */}
-        {(nv || nlista || partida) && (
-          <div className="chip-preview" style={{ marginLeft:8 }}>
-            <span className="chip">NV {nv || '—'}</span>
-            <span className="chip">Lista {nlista || '—'}</span>
-            <span className="chip">Partida {partida || '—'}</span>
-          </div>
-        )}
+        {/* ← Previsualización eliminada */}
       </form>
 
       {/* Buscar */}
