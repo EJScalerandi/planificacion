@@ -17,43 +17,28 @@ const STAGES = [
   { key: 'despacho',             label: 'Despacho' },
 ];
 
-const COLORS = {
-  'finalizado': '#32a852',
-  'en proceso': '#e6c229',
-  'pendiente':  '#f7b1b1',
-  'default':    '#eee'
-};
-
-const NV_COL_W   = 150;
-const GRID_GAP   = 6;
-const CELL_PAD   = 8;
-const CELL_MIN_H = 60;
-const bordo      = '#008241ff';
-
 function fmt(dt) {
   if (!dt) return '';
   try { return new Date(dt).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }); }
   catch { return ''; }
 }
-function cellBg(status) {
-  const s = (status || '').toLowerCase();
-  return COLORS[s] || COLORS.default;
+function classForStatus(s) {
+  const v = (s || '').toLowerCase();
+  if (v === 'finalizado') return 'cell cell--done';
+  if (v === 'en proceso') return 'cell cell--process';
+  return 'cell cell--pending';
 }
-function isSistema(porton) {
-  return (porton.inyeccion || '').toLowerCase() === 'finalizado' &&
-         (porton.revestimiento || '').toLowerCase() === 'finalizado';
+function isSistema(p) {
+  return (p.inyeccion || '').toLowerCase() === 'finalizado' &&
+         (p.revestimiento || '').toLowerCase() === 'finalizado';
 }
-
-// 👉 helper: todas las etapas finalizadas (incluye despacho)
-const STAGE_KEYS = STAGES.map(s => s.key);
-function isAllDone(p) {
-  return STAGE_KEYS.every(k => (p[k] || '').toLowerCase() === 'finalizado');
+function isFullyDone(p) {
+  return STAGES.every(st => (p[st.key] || '').toLowerCase() === 'finalizado');
 }
 
 export default function PlantaReadOnlyPage() {
   const { data, loading, err, refresh, refreshing } = usePortones({ pollMs: 300000 });
 
-  // Métricas
   const terminadosEnPlanta = useMemo(() => {
     if (!Array.isArray(data)) return 0;
     return data.filter(p =>
@@ -76,99 +61,94 @@ export default function PlantaReadOnlyPage() {
   // Buscador
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState(null);
+  const hasQuery = !!(filter && String(filter).trim() !== '');
 
-  // 👉 Si NO hay filtro, oculto los completamente finalizados; si HAY filtro, muestro todo y filtro por NV/NLista.
+  const NV_COL_W = 150;
+  const cols     = `${NV_COL_W}px repeat(${STAGES.length}, 1fr)`;
+
   const list = useMemo(() => {
-    const src = Array.isArray(data)
-      ? ((filter === null || filter === '') ? data.filter(p => !isAllDone(p)) : data)
-      : [];
-    if (filter === null || filter === '') return src;
+    if (!Array.isArray(data)) return [];
+    if (!hasQuery) {
+      // ocultar totalmente finalizados si no hay búsqueda
+      return data.filter(p => !isFullyDone(p));
+    }
     const n = Number(filter);
-    if (Number.isNaN(n)) return src;
-    return src.filter(p => p.nv === n || p.nlista === n);
-  }, [data, filter]);
-
-  const cols        = `${NV_COL_W}px repeat(${STAGES.length}, 1fr)`;
-  const cellBase    = { border: `2px solid ${bordo}`, padding: CELL_PAD, boxSizing: 'border-box' };
-  const headerCell  = { ...cellBase, background: '#fafafa', fontWeight: 700, textAlign: 'center' };
-  const nvCell      = { ...cellBase, background: '#fff', minHeight: CELL_MIN_H, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexDirection: 'column' };
+    if (Number.isNaN(n)) return data;
+    return data.filter(p => p.nv === n || p.nlista === n);
+  }, [data, filter, hasQuery]);
 
   return (
-    <div style={{ padding: 16, fontFamily: 'system-ui, sans-serif' }}>
-      {/* Contadores a la izquierda + botón refrescar */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 360 }}>
-          <div
-            style={{ border: `3px solid ${bordo}`, padding: '14px 16px', borderRadius: 12, fontWeight: 900, fontSize: 22, background: '#fff8f8', textAlign: 'center' }}
-            title="Armado Final = Finalizado y Despacho = Pendiente"
-          >
+    <div className="container">
+      {/* Contadores a la izquierda + Título + Refresh */}
+      <div className="header-row" style={{ alignItems:'flex-start', gap:16 }}>
+        <div style={{ display:'flex', flexDirection:'column', gap:10, minWidth:320 }}>
+          <div className="metric metric--ok" title="Armado Final = Finalizado y Despacho = Pendiente">
             Portones terminados en planta: {terminadosEnPlanta}
           </div>
-          <div
-            style={{ border: `3px solid ${bordo}`, padding: '14px 16px', borderRadius: 12, fontWeight: 900, fontSize: 22, background: '#f7fff3', textAlign: 'center' }}
-            title="Al menos una etapa en 'En Proceso' (excepto Despacho)"
-          >
+          <div className="metric metric--warn" title="Al menos una etapa en 'En Proceso' (excepto Despacho)">
             Portones en proceso de fabricación: {enProcesoFabricacion}
           </div>
-          <button onClick={refresh} disabled={refreshing} style={{ padding:'6px 10px', borderRadius:8 }}>
-            {refreshing ? 'Actualizando…' : 'Refrescar'}
-          </button>
         </div>
 
-        <h2 style={{ color: bordo, border: `3px solid ${bordo}`, padding: 8, margin: 0 }}>
-          PLANTA (Solo lectura)
-        </h2>
+        <h2 className="h1">PLANTA (Solo lectura)</h2>
+
+        <button className="btn btn--brand" onClick={refresh} disabled={refreshing}>
+          {refreshing ? 'Actualizando…' : 'Refrescar'}
+        </button>
       </div>
 
       {/* Buscador */}
       <form
         onSubmit={(e) => { e.preventDefault(); setFilter(q.trim()); }}
-        style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '12px 0', flexWrap: 'wrap' }}
+        style={{ display:'flex', gap:8, alignItems:'center', margin:'12px 0', flexWrap:'wrap' }}
       >
         <input
           type="text"
           placeholder="Buscar por NV o NLista (número)"
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          style={{ padding: '8px 10px', border: `1px solid ${bordo}`, borderRadius: 8, minWidth: 260 }}
+          style={{ padding:'8px 10px', border:'1px solid var(--border)', borderRadius:10, minWidth:260 }}
           inputMode="numeric"
         />
-        <button type="submit" style={{ padding: '8px 12px' }}>Buscar</button>
-        <button type="button" onClick={() => { setQ(''); setFilter(null); }} style={{ padding: '8px 12px' }}>
+        <button className="btn btn--brand" type="submit">Buscar</button>
+        <button className="btn" type="button" onClick={() => { setQ(''); setFilter(null); }}>
           Limpiar
         </button>
       </form>
 
       {loading && <div>Cargando…</div>}
-      {err && <div style={{ color: 'crimson' }}>Error: {err}</div>}
+      {err && <div style={{ color:'crimson' }}>Error: {err}</div>}
 
-      {/* Grilla solo lectura */}
-      <div style={{ overflowX: 'auto' }}>
+      {/* Grid */}
+      <div style={{ overflowX:'auto' }}>
         <div
           style={{
-            display: 'grid',
+            display:'grid',
             gridTemplateColumns: cols,
-            columnGap: GRID_GAP,
-            rowGap: GRID_GAP,
-            alignItems: 'stretch',
-            width: 'max-content'
+            columnGap:6,
+            rowGap:6,
+            alignItems:'stretch',
+            width:'max-content'
           }}
         >
-          {/* Header */}
-          <div style={{ ...headerCell, textAlign: 'center' }}>NV / Lista</div>
+          <div className="cell" style={{ background:'var(--surface)', textAlign:'center', fontWeight:700 }}>
+            NV / Lista
+          </div>
           {STAGES.map(s => (
-            <div key={`h-${s.key}`} style={{ ...headerCell, textAlign: 'center' }}>
+            <div key={`h-${s.key}`} className="cell" style={{ background:'var(--surface)', textAlign:'center', fontWeight:700 }}>
               {s.label}
             </div>
           ))}
 
-          {/* Filas */}
           {list.map(p => ([
-            <div key={`nv-${p.id}`} style={nvCell}>
+            <div key={`nv-${p.id}`} className="cell" style={{ background:'var(--surface)', display:'flex', gap:6, flexDirection:'column', justifyContent:'center' }}>
               <strong>NV {p.nv}</strong>
-              <div style={{ fontSize: 12, opacity: 0.8 }}>Lista {p.nlista}</div>
+              <div style={{ fontSize:12, color:'var(--muted)' }}>Lista {p.nlista}</div>
               {isSistema(p) && (
-                <div style={{ fontSize: 11, background: '#eee', padding: '2px 8px', borderRadius: 999, border: '1px solid #ddd' }}>
+                <div style={{
+                  fontSize:11, background:'#eee', padding:'2px 8px',
+                  borderRadius:999, border:'1px solid #ddd', alignSelf:'center'
+                }}>
                   Sistema
                 </div>
               )}
@@ -180,31 +160,23 @@ export default function PlantaReadOnlyPage() {
               return (
                 <div
                   key={`${p.id}-${s.key}`}
-                  style={{
-                    ...cellBase,
-                    background: cellBg(st),
-                    minHeight: CELL_MIN_H,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'center',
-                    cursor: 'default'
-                  }}
+                  className={classForStatus(st)}
                   title={[
                     st ? `Estado: ${st}` : null,
                     ini ? `Inicio: ${fmt(ini)}` : null,
                     fin ? `Fin: ${fmt(fin)}` : null
                   ].filter(Boolean).join('\n')}
                 >
-                  <div style={{ fontSize: 12, fontWeight: 700 }}>{st || ''}</div>
-                  <div style={{ fontSize: 11 }}>{ini ? `Inicio: ${fmt(ini)}` : ''}</div>
-                  <div style={{ fontSize: 11 }}>{fin ? `Fin: ${fmt(fin)}` : ''}</div>
+                  <div style={{ fontSize:12, fontWeight:700 }}>{st || ''}</div>
+                  <div style={{ fontSize:11 }}>{ini ? `Inicio: ${fmt(ini)}` : ''}</div>
+                  <div style={{ fontSize:11 }}>{fin ? `Fin: ${fmt(fin)}` : ''}</div>
                 </div>
               );
             })
           ]))}
 
           {!loading && list.length === 0 && (
-            <div style={{ gridColumn: `1 / span ${STAGES.length + 1}`, marginTop: 12, opacity: 0.7 }}>
+            <div style={{ gridColumn:`1 / span ${STAGES.length + 1}`, marginTop:12, opacity:.7 }}>
               Sin resultados.
             </div>
           )}

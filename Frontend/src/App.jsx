@@ -7,56 +7,43 @@ import StatusGatePage from '../src/components/StatusGatePage';
 import CreateGatePage from '../pages/CreateGatePage';
 import PlantaReadOnlyPage from '../pages/PlantaOnlyDearPage';
 
-const color = '#008241ff';
 
-/** Tablero reutilizable: usa tu hook y StageColumn */
+// ...imports iguales
+const color = 'var(--brand)';
+
 function Board({ stages }) {
   const { data, loading, err, replaceItem, refresh, refreshing } = usePortones({ pollMs: 300000 });
   const [busyId, setBusyId] = useState(null);
 
   const handleStart = async (id, stage) => {
-    try {
-      setBusyId(id);
+    try { setBusyId(id);
       const { data: updated } = await startStage(id, stage);
       replaceItem(updated);
-    } catch (e) {
-      alert(e?.response?.data?.error || e.message);
-    } finally {
-      setBusyId(null);
-    }
+    } catch (e) { alert(e?.response?.data?.error || e.message); }
+    finally { setBusyId(null); }
   };
 
   const handleStop = async (id, stage) => {
-    try {
-      setBusyId(id);
+    try { setBusyId(id);
       const { data: updated } = await stopStage(id, stage);
       replaceItem(updated);
-    } catch (e) {
-      alert(e?.response?.data?.error || e.message);
-    } finally {
-      setBusyId(null);
-    }
+    } catch (e) { alert(e?.response?.data?.error || e.message); }
+    finally { setBusyId(null); }
   };
 
-  if (loading) return <div style={{ padding: 16 }}>Cargando…</div>;
-  if (err)      return <div style={{ padding: 16, color: 'crimson' }}>Error: {err}</div>;
+  if (loading) return <div className="container">Cargando…</div>;
+  if (err)      return <div className="container" style={{color:'crimson'}}>Error: {err}</div>;
 
   return (
-   <div style={{ padding: 16, fontFamily: 'system-ui, sans-serif' }}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:12 }}>
-      <h2 style={{ color, border: `3px solid ${color}`, padding: 8, margin: 0 }}>
-         FILTROS POR SECTOR
-       </h2>
-       <button onClick={refresh} disabled={refreshing} style={{ padding:'6px 10px', borderRadius:8 }}>
-         {refreshing ? 'Actualizando…' : 'Refrescar'}
+    <div className="container">
+      <div className="header-row">
+        <h2 className="h1">FILTROS POR SECTOR</h2>
+        <button className="btn btn--brand" onClick={refresh} disabled={refreshing}>
+          {refreshing ? 'Actualizando…' : 'Refrescar'}
         </button>
       </div>
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-        gap: 12,
-        marginTop: 10
-      }}>
+
+      <div className="stage-grid">
         {stages.map(s => (
           <StageColumn
             key={s.key}
@@ -72,6 +59,7 @@ function Board({ stages }) {
     </div>
   );
 }
+
 
 /** Helper para rutas de una sola etapa */
 const ONE = (key, label) => [{ key, label }];
