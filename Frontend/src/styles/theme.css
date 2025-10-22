@@ -117,7 +117,13 @@ body {
 
 /* Botoneras */
 .actions { display:flex; gap: 8px; }
-.actions .btn { min-width: 36px; }
+.actions .btn{
+  min-width: 56px;   /* antes 36px */
+  min-height: 48px;  /* asegura “hit area” cómoda */
+  padding: 10px 14px;
+  font-size: 22px;   /* agranda el ícono/emoji ▶ ⏹ */
+  border-radius: 12px;
+}
 
 /* Badges/estados por celda grande (tableros tipo status gate) */
 .cell {
