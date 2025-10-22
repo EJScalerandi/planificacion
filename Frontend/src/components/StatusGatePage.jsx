@@ -2,19 +2,12 @@ import { useMemo, useState } from 'react';
 import usePortones from '../hooks/usePortones';
 
 const STAGES = [
-  { key: 'diseno',                 label: 'Diseño' },
-  //{ key: 'laser',                  label: 'Laser' },
-  //{ key: 'guillotina',             label: 'Corte' },
-  //{ key: 'plegadora',              label: 'Plegado' },
-  //{ key: 'armado_piernas',         label: 'Armado Piernas' },
-  //{ key: 'armado_marco_piernas',   label: 'Armado Marco Piernas' }, // 👈 NUEVA
- // { key: 'armado_hojas',           label: 'Armado Hojas' },
-  { key: 'armado_primario',        label: 'Armado Primario' },
-  //{ key: 'inyeccion',              label: 'Inyección' },
-  { key: 'revestimiento',          label: 'Revestimiento' },
-  { key: 'pintura',                label: 'Pintura' },
-  { key: 'armado_final',           label: 'Armado Final' },
-  { key: 'despacho',               label: 'Despacho' },
+  { key: 'diseno',          label: 'Diseño' },
+  { key: 'armado_primario', label: 'Armado Primario' },
+  { key: 'revestimiento',   label: 'Revestimiento' },
+  { key: 'pintura',         label: 'Pintura' },
+  { key: 'armado_final',    label: 'Armado Final' },
+  { key: 'despacho',        label: 'Despacho' },
 ];
 
 const COLORS = {
@@ -39,18 +32,16 @@ function cellBg(status) {
   return COLORS[s] || COLORS.default;
 }
 
+// 👉 helper: ¿todas las etapas en Finalizado?
+const STAGE_KEYS = STAGES.map(s => s.key);
+function isAllDone(p) {
+  return STAGE_KEYS.every(k => (p[k] || '').toLowerCase() === 'finalizado');
+}
+
 export default function StatusGatePage() {
   const { data, loading, err, refresh, refreshing } = usePortones({ pollMs: 300000 });
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState(null);
-
-  const list = useMemo(() => {
-    if (!Array.isArray(data)) return [];
-    if (filter === null || filter === '') return data;
-    const n = Number(filter);
-    if (Number.isNaN(n)) return data;
-    return data.filter(p => p.nv === n || p.nlista === n);
-  }, [data, filter]);
 
   const bordo = '#82000f';
   const cols = `${NV_COL_W}px repeat(${STAGES.length}, 1fr)`;
@@ -59,14 +50,27 @@ export default function StatusGatePage() {
   const headerCell = { ...cellBase, background: '#fafafa', fontWeight: 700, textAlign: 'center' };
   const nvCell     = { ...cellBase, background: '#fff', minHeight: CELL_MIN_H, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 2 };
 
+  // 👉 Si NO hay filtro, oculto los "todo finalizado". Si HAY filtro, muestro todo y luego aplico la búsqueda.
+  const list = useMemo(() => {
+    const src = Array.isArray(data)
+      ? ((filter === null || filter === '') ? data.filter(p => !isAllDone(p)) : data)
+      : [];
+    if (filter === null || filter === '') return src;
+    const n = Number(filter);
+    if (Number.isNaN(n)) return src;
+    return src.filter(p => p.nv === n || p.nlista === n);
+  }, [data, filter]);
+
   return (
     <div style={{ padding: 16, fontFamily: 'system-ui, sans-serif' }}>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:12 }}>
-    <h2 style={{ color: bordo, border: `3px solid ${bordo}`, padding: 8, margin: 0 }}>STATUS GATE</h2>
-    <button onClick={refresh} disabled={refreshing} style={{ padding:'6px 10px', borderRadius:8 }}>
-      {refreshing ? 'Actualizando…' : 'Refrescar'}
-    </button>
- </div>
+        <h2 style={{ color: bordo, border: `3px solid ${bordo}`, padding: 8, margin: 0 }}>
+          STATUS GATE
+        </h2>
+        <button onClick={refresh} disabled={refreshing} style={{ padding:'6px 10px', borderRadius:8 }}>
+          {refreshing ? 'Actualizando…' : 'Refrescar'}
+        </button>
+      </div>
 
       {/* Buscador */}
       <form
@@ -90,7 +94,7 @@ export default function StatusGatePage() {
       {loading && <div>Cargando…</div>}
       {err && <div style={{ color: 'crimson' }}>Error: {err}</div>}
 
-      {/* UN SOLO GRID: header + filas */}
+      {/* Grid */}
       <div style={{ overflowX: 'auto' }}>
         <div
           style={{
@@ -144,7 +148,9 @@ export default function StatusGatePage() {
           ]))}
 
           {!loading && list.length === 0 && (
-            <div style={{ gridColumn: `1 / span ${STAGES.length + 1}`, marginTop: 12, opacity: 0.7 }}>Sin resultados.</div>
+            <div style={{ gridColumn: `1 / span ${STAGES.length + 1}`, marginTop: 12, opacity: 0.7 }}>
+              Sin resultados.
+            </div>
           )}
         </div>
       </div>

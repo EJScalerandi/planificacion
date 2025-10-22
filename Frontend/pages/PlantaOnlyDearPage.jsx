@@ -2,25 +2,25 @@ import { useMemo, useState } from 'react';
 import usePortones from '../src/hooks/usePortones';
 
 const STAGES = [
-  { key: 'diseno',                 label: 'Diseño' },
-  { key: 'laser',                  label: 'Laser' },
-  { key: 'guillotina',             label: 'Corte' },
-  { key: 'plegadora',              label: 'Plegado' },
-  { key: 'armado_piernas',         label: 'Armado Piernas' },
-  { key: 'armado_marco_piernas',   label: 'Armado Marco Piernas' },
-  { key: 'armado_hojas',           label: 'Armado Hojas' },
-  { key: 'armado_primario',        label: 'Armado Primario' },
-  { key: 'inyeccion',              label: 'Inyección' },
-  { key: 'revestimiento',          label: 'Revestimiento' },
-  { key: 'pintura',                label: 'Pintura' },
-  { key: 'armado_final',           label: 'Armado Final' },
-  { key: 'despacho',               label: 'Despacho' },
+  { key: 'diseno',               label: 'Diseño' },
+  { key: 'laser',                label: 'Laser' },
+  { key: 'guillotina',           label: 'Corte' },
+  { key: 'plegadora',            label: 'Plegado' },
+  { key: 'armado_piernas',       label: 'Armado Piernas' },
+  { key: 'armado_marco_piernas', label: 'Armado Marco Piernas' },
+  { key: 'armado_hojas',         label: 'Armado Hojas' },
+  { key: 'armado_primario',      label: 'Armado Primario' },
+  { key: 'inyeccion',            label: 'Inyección' },
+  { key: 'revestimiento',        label: 'Revestimiento' },
+  { key: 'pintura',              label: 'Pintura' },
+  { key: 'armado_final',         label: 'Armado Final' },
+  { key: 'despacho',             label: 'Despacho' },
 ];
 
 const COLORS = {
-  'finalizado': '#32a852',  // verde
-  'en proceso': '#e6c229',  // amarillo
-  'pendiente':  '#f7b1b1',  // rojo suave
+  'finalizado': '#32a852',
+  'en proceso': '#e6c229',
+  'pendiente':  '#f7b1b1',
   'default':    '#eee'
 };
 
@@ -44,10 +44,16 @@ function isSistema(porton) {
          (porton.revestimiento || '').toLowerCase() === 'finalizado';
 }
 
+// 👉 helper: todas las etapas finalizadas (incluye despacho)
+const STAGE_KEYS = STAGES.map(s => s.key);
+function isAllDone(p) {
+  return STAGE_KEYS.every(k => (p[k] || '').toLowerCase() === 'finalizado');
+}
+
 export default function PlantaReadOnlyPage() {
   const { data, loading, err, refresh, refreshing } = usePortones({ pollMs: 300000 });
 
-  // ====== Métricas ======
+  // Métricas
   const terminadosEnPlanta = useMemo(() => {
     if (!Array.isArray(data)) return 0;
     return data.filter(p =>
@@ -67,16 +73,19 @@ export default function PlantaReadOnlyPage() {
     ).length;
   }, [data, FAB_KEYS]);
 
-  // ====== Buscador (opcional, solo lectura) ======
+  // Buscador
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState(null);
 
+  // 👉 Si NO hay filtro, oculto los completamente finalizados; si HAY filtro, muestro todo y filtro por NV/NLista.
   const list = useMemo(() => {
-    if (!Array.isArray(data)) return [];
-    if (filter === null || filter === '') return data;
+    const src = Array.isArray(data)
+      ? ((filter === null || filter === '') ? data.filter(p => !isAllDone(p)) : data)
+      : [];
+    if (filter === null || filter === '') return src;
     const n = Number(filter);
-    if (Number.isNaN(n)) return data;
-    return data.filter(p => p.nv === n || p.nlista === n);
+    if (Number.isNaN(n)) return src;
+    return src.filter(p => p.nv === n || p.nlista === n);
   }, [data, filter]);
 
   const cols        = `${NV_COL_W}px repeat(${STAGES.length}, 1fr)`;
@@ -86,50 +95,29 @@ export default function PlantaReadOnlyPage() {
 
   return (
     <div style={{ padding: 16, fontFamily: 'system-ui, sans-serif' }}>
-      {/* Contadores a la IZQUIERDA */}
+      {/* Contadores a la izquierda + botón refrescar */}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
-        {/* Métricas (izquierda) */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 360 }}>
           <div
-            style={{
-              border: `3px solid ${bordo}`,
-              padding: '14px 16px',
-              borderRadius: 12,
-              fontWeight: 900,
-              fontSize: 22,
-              background: '#fff8f8',
-              textAlign: 'center'
-            }}
+            style={{ border: `3px solid ${bordo}`, padding: '14px 16px', borderRadius: 12, fontWeight: 900, fontSize: 22, background: '#fff8f8', textAlign: 'center' }}
             title="Armado Final = Finalizado y Despacho = Pendiente"
           >
             Portones terminados en planta: {terminadosEnPlanta}
           </div>
-
           <div
-            style={{
-              border: `3px solid ${bordo}`,
-              padding: '14px 16px',
-              borderRadius: 12,
-              fontWeight: 900,
-              fontSize: 22,
-              background: '#f7fff3',
-              textAlign: 'center'
-            }}
+            style={{ border: `3px solid ${bordo}`, padding: '14px 16px', borderRadius: 12, fontWeight: 900, fontSize: 22, background: '#f7fff3', textAlign: 'center' }}
             title="Al menos una etapa en 'En Proceso' (excepto Despacho)"
           >
             Portones en proceso de fabricación: {enProcesoFabricacion}
           </div>
+          <button onClick={refresh} disabled={refreshing} style={{ padding:'6px 10px', borderRadius:8 }}>
+            {refreshing ? 'Actualizando…' : 'Refrescar'}
+          </button>
         </div>
 
-        {/* Título + botón refresh */}
-  <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-    <h2 style={{ color: bordo, border: `3px solid ${bordo}`, padding: 8, margin: 0 }}>
-      PLANTA (Solo lectura)
-    </h2>
-    <button onClick={refresh} disabled={refreshing} style={{ padding:'6px 10px', borderRadius:8 }}>
-      {refreshing ? 'Actualizando…' : 'Refrescar'}
-    </button>
-  </div>
+        <h2 style={{ color: bordo, border: `3px solid ${bordo}`, padding: 8, margin: 0 }}>
+          PLANTA (Solo lectura)
+        </h2>
       </div>
 
       {/* Buscador */}
@@ -154,7 +142,7 @@ export default function PlantaReadOnlyPage() {
       {loading && <div>Cargando…</div>}
       {err && <div style={{ color: 'crimson' }}>Error: {err}</div>}
 
-      {/* Grilla SOLO LECTURA */}
+      {/* Grilla solo lectura */}
       <div style={{ overflowX: 'auto' }}>
         <div
           style={{
@@ -180,13 +168,7 @@ export default function PlantaReadOnlyPage() {
               <strong>NV {p.nv}</strong>
               <div style={{ fontSize: 12, opacity: 0.8 }}>Lista {p.nlista}</div>
               {isSistema(p) && (
-                <div style={{
-                  fontSize: 11,
-                  background: '#eee',
-                  padding: '2px 8px',
-                  borderRadius: 999,
-                  border: '1px solid #ddd'
-                }}>
+                <div style={{ fontSize: 11, background: '#eee', padding: '2px 8px', borderRadius: 999, border: '1px solid #ddd' }}>
                   Sistema
                 </div>
               )}
@@ -222,7 +204,9 @@ export default function PlantaReadOnlyPage() {
           ]))}
 
           {!loading && list.length === 0 && (
-            <div style={{ gridColumn: `1 / span ${STAGES.length + 1}`, marginTop: 12, opacity: 0.7 }}>Sin resultados.</div>
+            <div style={{ gridColumn: `1 / span ${STAGES.length + 1}`, marginTop: 12, opacity: 0.7 }}>
+              Sin resultados.
+            </div>
           )}
         </div>
       </div>

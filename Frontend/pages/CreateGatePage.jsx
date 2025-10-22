@@ -22,8 +22,8 @@ const STAGES = [
 const COLORS = {
   'finalizado': '#32a852',
   'en proceso': '#e6c229',
-  'pendiente':  '#f7b1b1',
-  'default':    '#eee'
+  'pendiente' : '#f7b1b1',
+  'default'   : '#eee'
 };
 
 const NV_COL_W   = 150;
@@ -44,6 +44,12 @@ function cellBg(status) {
 function isSistema(porton) {
   return (porton.inyeccion || '').toLowerCase() === 'finalizado' &&
          (porton.revestimiento || '').toLowerCase() === 'finalizado';
+}
+
+// 👇 helper para detectar “completamente finalizado” (incluye Despacho)
+const STAGE_KEYS = STAGES.map(s => s.key);
+function isAllDone(p) {
+  return STAGE_KEYS.every(k => (p[k] || '').toLowerCase() === 'finalizado');
 }
 
 export default function CreateGatePage() {
@@ -68,14 +74,8 @@ export default function CreateGatePage() {
             }
           }}
           style={{
-            width: 340,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 10,
-            border: `3px solid ${bordo}`,
-            borderRadius: 12,
-            padding: 18,
-            background: 'white',
+            width: 340, display: 'flex', flexDirection: 'column', gap: 10,
+            border: `3px solid ${bordo}`, borderRadius: 12, padding: 18, background: 'white',
           }}
         >
           <h3 style={{ margin: 0, color: bordo, textAlign: 'center' }}>Acceso CreateGate</h3>
@@ -102,7 +102,7 @@ export default function CreateGatePage() {
     );
   }
 
-  // ------- Página CreateGate (tu contenido previo) -------
+  // ------- Página CreateGate -------
   const { data, loading, err, replaceItem, refresh, refreshing } = usePortones({ pollMs: 300000 });
 
   // Métricas
@@ -134,12 +134,26 @@ export default function CreateGatePage() {
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState(null);
 
+  // 👇 Aquí el cambio: ordenamos dejando los “all done” al final
   const list = useMemo(() => {
     if (!Array.isArray(data)) return [];
-    if (filter === null || filter === '') return data;
-    const n = Number(filter);
-    if (Number.isNaN(n)) return data;
-    return data.filter(p => p.nv === n || p.nlista === n);
+    // aplicar filtro si existe
+    let arr = data;
+    if (filter !== null && filter !== '') {
+      const n = Number(filter);
+      if (!Number.isNaN(n)) {
+        arr = arr.filter(p => p.nv === n || p.nlista === n);
+      }
+    }
+    // ordenar: primero NO finalizados, luego finalizados; dentro de cada grupo por NV y NLista
+    return arr
+      .slice()
+      .sort((a, b) => {
+        const ad = isAllDone(a);
+        const bd = isAllDone(b);
+        if (ad !== bd) return ad ? 1 : -1;             // finalizados al fondo
+        return (a.nv || 0) - (b.nv || 0) || (a.nlista || 0) - (b.nlista || 0);
+      });
   }, [data, filter]);
 
   const cols        = `${NV_COL_W}px repeat(${STAGES.length}, 1fr)`;
@@ -219,45 +233,29 @@ export default function CreateGatePage() {
       {/* Título + métricas + botón salir */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
         <button
-     onClick={refresh}
-      disabled={refreshing}
-      style={{ padding: '6px 10px', borderRadius: 8 }}
-    >
-      {refreshing ? 'Actualizando…' : 'Refrescar'}
-    </button>
+          onClick={refresh}
+          disabled={refreshing}
+          style={{ padding: '6px 10px', borderRadius: 8 }}
+        >
+          {refreshing ? 'Actualizando…' : 'Refrescar'}
+        </button>
         <h2 style={{ color: bordo, border: `3px solid ${bordo}`, padding: 8, margin: 0 }}>
           PORTONES
         </h2>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 280 }}>
           <div
-            style={{
-              border: `3px solid ${bordo}`,
-              padding: '8px 12px',
-              borderRadius: 10,
-              fontWeight: 800,
-              background: '#fff8f8',
-              textAlign: 'center'
-            }}
+            style={{ border: `3px solid ${bordo}`, padding: '8px 12px', borderRadius: 10, fontWeight: 800, background: '#fff8f8', textAlign: 'center' }}
             title="Armado Final = Finalizado y Despacho = Pendiente"
           >
             Portones terminados en planta: {terminadosEnPlanta}
           </div>
-
           <div
-            style={{
-              border: `3px solid ${bordo}`,
-              padding: '8px 12px',
-              borderRadius: 10,
-              fontWeight: 800,
-              background: '#f7fff3',
-              textAlign: 'center'
-            }}
+            style={{ border: `3px solid ${bordo}`, padding: '8px 12px', borderRadius: 10, fontWeight: 800, background: '#f7fff3', textAlign: 'center' }}
             title="Al menos una etapa en 'En Proceso' (excepto Despacho)"
           >
             Portones en proceso de fabricación: {enProcesoFabricacion}
           </div>
-
           <button
             onClick={() => { logout(); setAuthed(false); }}
             style={{ marginTop: 4, padding: '6px 10px', borderRadius: 8 }}
@@ -396,7 +394,9 @@ export default function CreateGatePage() {
           ]))}
 
           {!loading && list.length === 0 && (
-            <div style={{ gridColumn: `1 / span ${STAGES.length + 1}`, marginTop: 12, opacity: 0.7 }}>Sin resultados.</div>
+            <div style={{ gridColumn: `1 / span ${STAGES.length + 1}`, marginTop: 12, opacity: 0.7 }}>
+              Sin resultados.
+            </div>
           )}
         </div>
       </div>
