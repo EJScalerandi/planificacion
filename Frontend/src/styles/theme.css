@@ -143,3 +143,35 @@ body {
   .stage-grid { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
   .cell { min-height: 64px; }
 }
+/* Inputs numéricos destacados */
+.input-num{
+  font-weight: 900;
+  font-size: clamp(18px, 2vw, 22px);
+  letter-spacing: .5px;
+  text-align: center;
+}
+
+.input-num--filled{
+  background: var(--brand-100);
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(0,130,65,.15);
+  color: var(--text);
+}
+
+/* Chips de previsualización NV / Lista / Partida */
+.chip-preview{
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.chip{
+  border: 2px solid var(--brand);
+  border-radius: 12px;
+  padding: 6px 10px;
+  font-weight: 900;
+  background: var(--brand-100);
+  color: var(--text);
+  line-height: 1;
+}

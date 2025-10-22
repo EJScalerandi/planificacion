@@ -26,7 +26,6 @@ const bordo      = '#008241ff';
 
 const fmt = dt => (dt ? new Date(dt).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) : '');
 
-/** ⇩⇩⇩  AHORA usa variables CSS para soportar modo oscuro  */
 const cellBg = st => {
   const s = (st || '').toLowerCase();
   if (s === 'finalizado') return 'var(--state-done)';
@@ -175,7 +174,6 @@ export default function CreateGatePage() {
 
   // ---- Render ----
   const cellBase   = { border: `2px solid ${bordo}`, padding: 8, borderRadius: 12, boxSizing: 'border-box' };
-  /** ⇩⇩⇩  header y NV ahora usan var(--surface) (se ve bien en dark) */
   const headerCell = { ...cellBase, background:'var(--surface)', fontWeight:700, textAlign:'center' };
   const nvCell     = { ...cellBase, background:'var(--surface)', minHeight:CELL_MIN_H, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, paddingLeft:10, paddingRight:10 };
 
@@ -196,14 +194,44 @@ export default function CreateGatePage() {
 
       {/* Crear */}
       <form onSubmit={handleCreate} style={{ display:'flex', gap:8, alignItems:'center', margin:'12px 0', flexWrap:'wrap' }}>
-        <input type="number" placeholder="NV" value={nv} onChange={e=>setNv(e.target.value)} className="btn" style={{ width:120 }} />
-        <input type="number" placeholder="NLista" value={nlista} onChange={e=>setNlista(e.target.value)} className="btn" style={{ width:120 }} />
-        <input type="number" placeholder="Partida" value={partida} onChange={e=>setPartida(e.target.value)} className="btn" style={{ width:120 }} />
+        <input
+          type="number"
+          placeholder="NV"
+          value={nv}
+          onChange={e=>setNv(e.target.value)}
+          className={`btn input-num ${nv ? 'input-num--filled' : ''}`}
+          style={{ width:140, textAlign:'center' }}
+        />
+        <input
+          type="number"
+          placeholder="NLista"
+          value={nlista}
+          onChange={e=>setNlista(e.target.value)}
+          className={`btn input-num ${nlista ? 'input-num--filled' : ''}`}
+          style={{ width:140, textAlign:'center' }}
+        />
+        <input
+          type="number"
+          placeholder="Partida"
+          value={partida}
+          onChange={e=>setPartida(e.target.value)}
+          className="btn"
+          style={{ width:140, textAlign:'center' }}
+        />
         <label style={{ display:'flex', gap:6, alignItems:'center', marginLeft:8 }}>
           <input type="checkbox" checked={sistemaOnCreate} onChange={(e)=>setSistemaOnCreate(e.target.checked)} />
           Sistema (finaliza Inyección y Revestimiento)
         </label>
         <button type="submit" className="btn btn--brand">Crear portón</button>
+
+        {/* Previsualización destacada */}
+        {(nv || nlista || partida) && (
+          <div className="chip-preview" style={{ marginLeft:8 }}>
+            <span className="chip">NV {nv || '—'}</span>
+            <span className="chip">Lista {nlista || '—'}</span>
+            <span className="chip">Partida {partida || '—'}</span>
+          </div>
+        )}
       </form>
 
       {/* Buscar */}
@@ -254,7 +282,6 @@ export default function CreateGatePage() {
                 <strong>NV {p.nv}</strong>
                 <span style={{ fontSize:12, opacity:.8 }}>Lista {p.nlista}</span>
               </div>
-              {/* Sin “Sistema” ni Partida a la vista */}
               <span style={{ display:'none' }}>
                 <input type="checkbox" checked={isSistema(p)} readOnly /> Sistema
               </span>
