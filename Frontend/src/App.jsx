@@ -97,7 +97,7 @@ const ROUTES = [
     label: 'Armado Primario',
     stages: [
       { key: 'armado_primario', label: 'Armado Primario' },
-      { key: 'armado_piernas',  label: 'Armado Piernas' },
+      { key: 'armado_marco_piernas',  label: 'Armado Marco Piernas' },
       { key: 'armado_hojas',    label: 'Armado Hojas' },
     ]
   },
