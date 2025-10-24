@@ -72,9 +72,9 @@ const ROUTES = [
     stages: [
       { key: 'diseno',                label: 'Diseño' },
       { key: 'laser',                 label: 'Laser' },
-      { key: 'guillotina',            label: 'Corte' },
+      { key: 'guillotina',            label: 'Corte Guillotina' },
       { key: 'plegadora',             label: 'Plegado' },
-      { key: 'armado_piernas',        label: 'Armado Piernas' },
+      { key: 'armado_piernas',        label: 'Armado Piernas - Prefabricados' },
       { key: 'armado_marco_piernas',  label: 'Armado Marco Piernas' }, // NUEVA
       { key: 'armado_hojas',          label: 'Armado Hojas' },
       { key: 'armado_primario',       label: 'Armado Primario' },
