@@ -89,7 +89,7 @@ const ROUTES = [
   { path: '/laser',                  label: 'Laser',                    stages: ONE('laser','Laser') },
   { path: '/corte',                  label: 'Corte',                    stages: ONE('guillotina','Corte') },
   { path: '/plegado',                label: 'Plegado',                  stages: ONE('plegadora','Plegado') },
-  { path: '/armado-piernas',         label: 'Armado Piernas',           stages: ONE('armado_piernas','Armado Piernas') },
+  { path: '/armado-piernas',         label: 'Armado Piernas - Prefabricados',           stages: ONE('armado_piernas','Armado Piernas') },
   { path: '/armado-marco-piernas',   label: 'Armado Marco Piernas',     stages: ONE('armado_marco_piernas','Armado Marco Piernas') }, // NUEVA RUTA
   // EXCEPCIÓN: Armado Primario muestra 3 columnas (primario + piernas + hojas)
   {
