@@ -87,7 +87,7 @@ const ROUTES = [
   },
   { path: '/diseno',                 label: 'Diseño',                   stages: ONE('diseno','Diseño') },
   { path: '/laser',                  label: 'Laser',                    stages: ONE('laser','Laser') },
-  { path: '/corte',                  label: 'Corte',                    stages: ONE('guillotina','Corte') },
+  { path: '/corte',                  label: 'Corte - Guillotina',                    stages: ONE('guillotina','Corte') },
   { path: '/plegado',                label: 'Plegado',                  stages: ONE('plegadora','Plegado') },
   { path: '/armado-piernas',         label: 'Armado Piernas - Prefabricados',           stages: ONE('armado_piernas','Armado Piernas') },
   { path: '/armado-marco-piernas',   label: 'Armado Marco Piernas',     stages: ONE('armado_marco_piernas','Armado Marco Piernas') }, // NUEVA RUTA
