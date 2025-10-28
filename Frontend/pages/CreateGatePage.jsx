@@ -75,6 +75,9 @@ export default function CreateGatePage() {
   // ---- Data ----
   const { data, loading, err, replaceItem, refresh, refreshing } = usePortones({ pollMs: 300000 });
 
+  // Claves de fabricación (excluye despacho)
+  const fabKeys = useMemo(() => STAGES.filter(s => s.key !== 'despacho').map(s => s.key), []);
+
   // Métricas
   const terminadosEnPlanta = useMemo(() => {
     if (!Array.isArray(data)) return 0;
@@ -84,10 +87,20 @@ export default function CreateGatePage() {
     ).length;
   }, [data]);
 
-  const fabKeys = useMemo(() => STAGES.filter(s => s.key !== 'despacho').map(s => s.key), []);
   const enProcesoFabricacion = useMemo(() => {
     if (!Array.isArray(data)) return 0;
     return data.filter(p => fabKeys.some(k => (p[k] || '').toLowerCase() === 'en proceso')).length;
+  }, [data, fabKeys]);
+
+  // NUEVO: en cola (ninguna etapa en proceso ni finalizada)
+  const enColaFabricacion = useMemo(() => {
+    if (!Array.isArray(data)) return 0;
+    return data.filter(p =>
+      fabKeys.every(k => {
+        const st = (p[k] || '').toLowerCase();
+        return st === '' || st === 'pendiente';
+      })
+    ).length;
   }, [data, fabKeys]);
 
   // Form crear
@@ -195,6 +208,10 @@ export default function CreateGatePage() {
         <div style={{ display:'flex', flexDirection:'column', gap:8, minWidth:280 }}>
           <div className="metric metric--warn">Portones terminados en planta: {terminadosEnPlanta}</div>
           <div className="metric metric--ok">Portones en proceso de fabricación: {enProcesoFabricacion}</div>
+          {/* NUEVO: cola de fabricación */}
+          <div className="metric" style={{ background: 'rgba(239,68,68,0.15)' }}>
+            Portones en cola de fabricación: {enColaFabricacion}
+          </div>
           <button onClick={()=>{ logout(); setAuthed(false); }} className="btn">Salir</button>
         </div>
       </div>
@@ -220,7 +237,7 @@ export default function CreateGatePage() {
       {loading && <div className="page__header">Cargando…</div>}
       {err && <div className="page__header" style={{ color:'crimson' }}>Error: {err}</div>}
 
-      {/* GRILLA: contenedor con scroll SIEMPRE visible (vertical/horizontal) */}
+      {/* GRILLA */}
       <div className="grid-scroll">
         <div
           style={{
