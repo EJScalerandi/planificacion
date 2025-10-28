@@ -23,22 +23,32 @@ const CELL_MIN_H = 60;
 const bordo      = '#008241ff';
 
 const fmt = dt => (dt ? new Date(dt).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) : '');
+
 const cellBg = st => {
   const s = (st || '').toLowerCase();
-  if (s === 'finalizado') return '#c9f2d7';
-  if (s === 'en proceso') return '#ffe58a';
-  if (s === 'pendiente')  return '#f7b1b1';
-  return '#eee';
+  if (s === 'finalizado') return 'var(--state-done)';
+  if (s === 'en proceso') return 'var(--state-process)';
+  if (s === 'pendiente')  return 'var(--state-pending)';
+  return 'var(--surface-muted)';
+};
+const cellInk = st => {
+  const s = (st || '').toLowerCase();
+  if (s === 'finalizado') return 'var(--state-done-ink)';
+  if (s === 'en proceso') return 'var(--state-process-ink)';
+  if (s === 'pendiente')  return 'var(--state-pending-ink)';
+  return 'var(--ink)';
 };
 
 const isFullyFinished = p =>
   STAGES.every(s => (p[s.key] || '').toLowerCase() === 'finalizado');
 
 export default function PlantaReadOnlyPage() {
-  // datos (auto-refresh cada 5 min)
   const { data, loading, err, refresh, refreshing } = usePortones({ pollMs: 300000 });
 
-  // métricas globales
+  // claves de etapas de fabricación (excluye despacho)
+  const fabKeys = useMemo(() => STAGES.filter(s => s.key !== 'despacho').map(s => s.key), []);
+
+  // métricas
   const terminadosEnPlanta = useMemo(() => {
     if (!Array.isArray(data)) return 0;
     return data.filter(p =>
@@ -47,20 +57,27 @@ export default function PlantaReadOnlyPage() {
     ).length;
   }, [data]);
 
-  const fabKeys = useMemo(
-    () => STAGES.filter(s => s.key !== 'despacho').map(s => s.key),
-    []
-  );
   const enProcesoFabricacion = useMemo(() => {
     if (!Array.isArray(data)) return 0;
     return data.filter(p => fabKeys.some(k => (p[k] || '').toLowerCase() === 'en proceso')).length;
+  }, [data, fabKeys]);
+
+  // NUEVO: en cola de fabricación (ninguna etapa en proceso ni finalizada)
+  const enColaFabricacion = useMemo(() => {
+    if (!Array.isArray(data)) return 0;
+    return data.filter(p =>
+      fabKeys.every(k => {
+        const st = (p[k] || '').toLowerCase();
+        return st === '' || st === 'pendiente';
+      })
+    ).length;
   }, [data, fabKeys]);
 
   // buscador
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState(null);
 
-  // filtrar / ocultar totalmente finalizados si no hay filtro
+  // base (oculta totalmente finalizados si no hay filtro)
   const baseList = useMemo(() => {
     if (!Array.isArray(data)) return [];
     const hasFilter = filter !== null && filter !== '';
@@ -83,7 +100,7 @@ export default function PlantaReadOnlyPage() {
     return arr;
   }, [baseList]);
 
-  // contadores por etapa (para los encabezados)
+  // contadores por etapa (encabezados)
   const stageStats = useMemo(() => {
     const stats = {};
     STAGES.forEach(s => (stats[s.key] = { pend: 0, proc: 0 }));
@@ -103,46 +120,35 @@ export default function PlantaReadOnlyPage() {
   const nvCell     = { ...cellBase, background:'#fff', minHeight:CELL_MIN_H, display:'flex', alignItems:'center', justifyContent:'center', gap:4, flexDirection:'column' };
 
   return (
-    <div style={{ padding:16, fontFamily:'system-ui,sans-serif' }}>
-      {/* header + refrescar */}
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:16, flexWrap:'wrap' }}>
+    <div className="screen page" style={{ fontFamily:'system-ui,sans-serif' }}>
+      <div className="page__header" style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:16, flexWrap:'wrap' }}>
         <h2 className="h1" style={{ border:`3px solid ${bordo}` }}>PLANTA (Solo lectura)</h2>
         <button onClick={refresh} disabled={refreshing} className="btn">
           {refreshing ? 'Actualizando…' : 'Refrescar'}
         </button>
-
-        {/* métricas globales */}
         <div style={{ display:'flex', flexDirection:'column', gap:8, minWidth:280 }}>
           <div className="metric metric--warn">Portones terminados en planta: {terminadosEnPlanta}</div>
           <div className="metric metric--ok">Portones en proceso de fabricación: {enProcesoFabricacion}</div>
+          {/* NUEVO contador */}
+          <div className="metric" style={{ background: 'rgba(239,68,68,0.15)' /* rojo suave */ }}>
+            Portones en cola de fabricación: {enColaFabricacion}
+          </div>
         </div>
       </div>
 
-      {/* buscador */}
       <form
         onSubmit={(e)=>{ e.preventDefault(); setFilter(q.trim()); }}
-        style={{ display:'flex', gap:8, alignItems:'center', margin:'12px 0', flexWrap:'wrap' }}
+        className="page__header" style={{ display:'flex', gap:8, alignItems:'center', marginTop:-8, flexWrap:'wrap', paddingTop:0 }}
       >
-        <input
-          type="text"
-          placeholder="Buscar por NV o NLista (número)"
-          value={q}
-          onChange={(e)=>setQ(e.target.value)}
-          className="btn"
-          style={{ minWidth:260 }}
-          inputMode="numeric"
-        />
+        <input type="text" placeholder="Buscar por NV o NLista (número)" value={q} onChange={(e)=>setQ(e.target.value)} className="btn" style={{ minWidth:260 }} inputMode="numeric" />
         <button type="submit" className="btn">Buscar</button>
-        <button type="button" className="btn" onClick={()=>{ setQ(''); setFilter(null); }}>
-          Limpiar
-        </button>
+        <button type="button" className="btn" onClick={()=>{ setQ(''); setFilter(null); }}>Limpiar</button>
       </form>
 
-      {loading && <div>Cargando…</div>}
-      {err && <div style={{ color:'crimson' }}>Error: {err}</div>}
+      {loading && <div className="page__header">Cargando…</div>}
+      {err && <div className="page__header" style={{ color:'crimson' }}>Error: {err}</div>}
 
-      {/* grilla SOLO LECTURA */}
-      <div style={{ overflowX:'auto' }}>
+      <div className="grid-scroll">
         <div
           style={{
             display:'grid',
@@ -150,10 +156,10 @@ export default function PlantaReadOnlyPage() {
             columnGap: GRID_GAP,
             rowGap: GRID_GAP,
             alignItems:'stretch',
-            width:'max-content'
+            width:'max-content',
+            padding:16
           }}
         >
-          {/* encabezado */}
           <div style={{ ...headerCell, textAlign:'center' }}>NV / Lista</div>
           {STAGES.map(s => (
             <div key={`h-${s.key}`} style={{ ...headerCell, textAlign:'center' }}>
@@ -164,7 +170,6 @@ export default function PlantaReadOnlyPage() {
             </div>
           ))}
 
-          {/* filas */}
           {list.map(p => ([
             <div key={`nv-${p.id}`} style={nvCell}>
               <strong>N° Portón {p.nlista}</strong>
@@ -180,11 +185,12 @@ export default function PlantaReadOnlyPage() {
                   style={{
                     ...cellBase,
                     background: cellBg(st),
+                    color: cellInk(st),
                     minHeight: CELL_MIN_H,
                     display:'flex',
                     flexDirection:'column',
                     justifyContent:'center',
-                    cursor:'default'        // ← sin edición
+                    cursor:'default'
                   }}
                   title={[
                     st ? `Estado: ${st}` : null,

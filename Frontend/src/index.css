@@ -1,68 +1,85 @@
+/* ===== Paleta y variables ===== */
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+  --bg: #0e1113;
+  --surface: #ffffff;
+  --surface-muted: #f3f4f6;
+  --ink: #0f172a;
+  --ink-weak: #334155;
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+  --state-done:    #10b981;  /* verde brillante */
+  --state-process: #ffd43b;  /* amarillo vivo */
+  --state-pending: #ef4444;  /* rojo fuerte */
 
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
+  --state-done-ink:    #083026;
+  --state-process-ink: #3a2a00;
+  --state-pending-ink: #3b0a0a;
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
-}
-
-body {
-  margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
-}
-
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
-}
-
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
-  cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+  --brand: #008241;
 }
 
 @media (prefers-color-scheme: light) {
   :root {
-    color: #213547;
-    background-color: #ffffff;
+    --bg: #ffffff;
+    --surface: #ffffff;
+    --surface-muted: #f3f4f6;
+    --ink: #111827;
+    --ink-weak: #374151;
   }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
-  }
+}
+
+/* ===== Reset layout: ocupa pantalla y permite scroll ===== */
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  display: block;                /* <- no centrado global */
+  color: var(--ink);
+  background: var(--bg);
+  min-width: 320px;
+  min-height: 100dvh;
+  overflow-y: auto;              /* vertical visible */
+  scrollbar-gutter: stable both-edges;
+}
+
+/* Contenedor de página (usa esto en cada componente raíz) */
+.screen.page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  background: var(--surface);
+}
+
+/* Header flexible y contenido scrollable */
+.page__header { padding: 16px; }
+.grid-scroll {
+  flex: 1;                       /* ocupa el alto restante del viewport */
+  min-height: 0;                 /* permite que aparezcan los scrollbars */
+  overflow: auto;                /* SIEMPRE muestra scroll si hace falta */
+  scrollbar-gutter: stable both-edges;
+}
+
+/* TV mode (aprox. 1080p+) */
+@media (min-width: 1600px) and (min-height: 900px) and (min-aspect-ratio: 16/9) {
+  body { overflow-y: hidden; }   /* sin scroll vertical en TV */
+  .grid-scroll { overflow-y: hidden; } /* la grilla no scrollea vertical en TV */
+}
+
+/* Scrollbars (WebKit) */
+::-webkit-scrollbar { width: 12px; height: 12px; }
+::-webkit-scrollbar-thumb { background: rgba(0,0,0,.35); border-radius: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* Utilidades que ya usás */
+.h1 { font-size: clamp(20px, 2.6vw, 32px); margin: 0; padding: 6px 10px; border-radius: 10px; }
+.btn { background:#f9fafb; border:1px solid #e5e7eb; border-radius:10px; padding:.6em 1em; cursor: pointer; }
+.btn--brand { background: var(--brand); color:#fff; border-color: var(--brand); }
+.metric { padding:8px 10px; border-radius:10px; font-weight:700; }
+.metric--ok   { background: color-mix(in srgb, var(--state-done) 20%, #fff); }
+.metric--warn { background: color-mix(in srgb, var(--state-process) 25%, #fff); }
+
+/* StageColumn móvil */
+.stage-card__title { font-size: clamp(18px, 4.8vw, 22px); line-height: 1.1; }
+.stage-card__sub   { font-size: clamp(12px, 3.6vw, 14px); opacity:.75; }
+.stage-card__grid  { display: grid; grid-template-columns: 1fr minmax(88px, auto); gap: 8px; align-items: center; }
+@media (max-width: 420px) {
+  .stage-card__grid { grid-template-columns: 1fr; row-gap: 8px; }
 }

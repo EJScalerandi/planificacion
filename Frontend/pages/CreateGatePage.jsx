@@ -33,6 +33,13 @@ const cellBg = st => {
   if (s === 'pendiente')  return 'var(--state-pending)';
   return 'var(--surface)';
 };
+const cellInk = st => {
+  const s = (st || '').toLowerCase();
+  if (s === 'finalizado') return 'var(--state-done-ink)';
+  if (s === 'en proceso') return 'var(--state-process-ink)';
+  if (s === 'pendiente')  return 'var(--state-pending-ink)';
+  return 'var(--ink)';
+};
 
 const isSistema = p =>
   (p.inyeccion || '').toLowerCase() === 'finalizado' &&
@@ -50,7 +57,7 @@ export default function CreateGatePage() {
 
   if (!authed) {
     return (
-      <div style={{ height:'100vh', display:'grid', placeItems:'center', background:'#f7fff3', fontFamily:'system-ui,sans-serif' }}>
+      <div className="screen page" style={{ display:'grid', placeItems:'center', background:'#f7fff3', fontFamily:'system-ui,sans-serif' }}>
         <form
           onSubmit={(e) => { e.preventDefault(); if (login(user.trim(), pass)) { setAuthed(true); setAuthErr(''); setPass(''); } else setAuthErr('Usuario o contraseña inválidos'); }}
           style={{ width:340, display:'flex', flexDirection:'column', gap:10, border:`3px solid ${bordo}`, borderRadius:12, padding:18, background:'var(--surface)' }}
@@ -86,7 +93,7 @@ export default function CreateGatePage() {
   // Form crear
   const [nv, setNv] = useState('');
   const [nlista, setNlista] = useState('');
-  const [partida, setPartida] = useState(''); // (sigue presente en la lógica como en tu archivo)
+  const [partida, setPartida] = useState('');
   const [sistemaOnCreate, setSistemaOnCreate] = useState(false);
 
   // Buscar
@@ -99,7 +106,7 @@ export default function CreateGatePage() {
     const hasFilter = filter !== null && filter !== '';
     if (hasFilter) {
       const n = Number(filter);
-      if (!Number.isNaN(n)) return data.filter(p => p.nv === n || p.nlista === n /* o p.partida === n */);
+      if (!Number.isNaN(n)) return data.filter(p => p.nv === n || p.nlista === n);
     }
     return data.filter(p => !isFullyFinished(p));
   }, [data, filter]);
@@ -178,9 +185,9 @@ export default function CreateGatePage() {
   const nvCell     = { ...cellBase, background:'var(--surface)', minHeight:CELL_MIN_H, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, paddingLeft:10, paddingRight:10 };
 
   return (
-    <div style={{ padding:16, fontFamily:'system-ui,sans-serif' }}>
+    <div className="screen page" style={{ fontFamily:'system-ui,sans-serif' }}>
       {/* Header + métricas + refresh */}
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:16, flexWrap:'wrap' }}>
+      <div className="page__header" style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:16, flexWrap:'wrap' }}>
         <button onClick={refresh} disabled={refreshing} className="btn">
           {refreshing ? 'Actualizando…' : 'Refrescar'}
         </button>
@@ -193,51 +200,28 @@ export default function CreateGatePage() {
       </div>
 
       {/* Crear */}
-      <form onSubmit={handleCreate} style={{ display:'flex', gap:8, alignItems:'center', margin:'12px 0', flexWrap:'wrap' }}>
-        <input
-          type="number"
-          placeholder="NV"
-          value={nv}
-          onChange={e=>setNv(e.target.value)}
-          className={`btn input-num ${nv ? 'input-num--filled' : ''}`}
-          style={{ width:140, textAlign:'center' }}
-        />
-        <input
-          type="number"
-          placeholder="NLista"
-          value={nlista}
-          onChange={e=>setNlista(e.target.value)}
-          className={`btn input-num ${nlista ? 'input-num--filled' : ''}`}
-          style={{ width:140, textAlign:'center' }}
-        />
+      <form onSubmit={handleCreate} className="page__header" style={{ display:'flex', gap:8, alignItems:'center', marginTop:-8, flexWrap:'wrap', paddingTop:0 }}>
+        <input type="number" placeholder="NV" value={nv} onChange={e=>setNv(e.target.value)} className={`btn input-num ${nv ? 'input-num--filled' : ''}`} style={{ width:140, textAlign:'center' }} />
+        <input type="number" placeholder="NLista" value={nlista} onChange={e=>setNlista(e.target.value)} className={`btn input-num ${nlista ? 'input-num--filled' : ''}`} style={{ width:140, textAlign:'center' }} />
         <label style={{ display:'flex', gap:6, alignItems:'center', marginLeft:8 }}>
           <input type="checkbox" checked={sistemaOnCreate} onChange={(e)=>setSistemaOnCreate(e.target.checked)} />
           Sistema (finaliza Inyección y Revestimiento)
         </label>
         <button type="submit" className="btn btn--brand">Crear portón</button>
-        {/* ← Previsualización eliminada */}
       </form>
 
       {/* Buscar */}
-      <form onSubmit={(e)=>{ e.preventDefault(); setFilter(q.trim()); }} style={{ display:'flex', gap:8, alignItems:'center', margin:'6px 0 16px', flexWrap:'wrap' }}>
-        <input
-          type="text"
-          placeholder="Buscar por NV o NLista (número)"
-          value={q}
-          onChange={(e)=>setQ(e.target.value)}
-          className="btn"
-          style={{ minWidth:260 }}
-          inputMode="numeric"
-        />
+      <form onSubmit={(e)=>{ e.preventDefault(); setFilter(q.trim()); }} className="page__header" style={{ display:'flex', gap:8, alignItems:'center', marginTop:-8, flexWrap:'wrap', paddingTop:0 }}>
+        <input type="text" placeholder="Buscar por NV o NLista (número)" value={q} onChange={(e)=>setQ(e.target.value)} className="btn" style={{ minWidth:260 }} inputMode="numeric" />
         <button type="submit" className="btn">Buscar</button>
         <button type="button" className="btn" onClick={()=>{ setQ(''); setFilter(null); }}>Limpiar</button>
       </form>
 
-      {loading && <div>Cargando…</div>}
-      {err && <div style={{ color:'crimson' }}>Error: {err}</div>}
+      {loading && <div className="page__header">Cargando…</div>}
+      {err && <div className="page__header" style={{ color:'crimson' }}>Error: {err}</div>}
 
-      {/* GRILLA */}
-      <div style={{ overflowX:'auto' }}>
+      {/* GRILLA: contenedor con scroll SIEMPRE visible (vertical/horizontal) */}
+      <div className="grid-scroll">
         <div
           style={{
             display:'grid',
@@ -245,7 +229,8 @@ export default function CreateGatePage() {
             columnGap: GRID_GAP,
             rowGap: GRID_GAP,
             alignItems:'stretch',
-            width:'max-content'
+            width:'max-content',
+            padding:16
           }}
         >
           {/* Header */}
@@ -283,6 +268,7 @@ export default function CreateGatePage() {
                   style={{
                     ...cellBase,
                     background: cellBg(st),
+                    color: cellInk(st),
                     minHeight: CELL_MIN_H,
                     display:'flex',
                     flexDirection:'column',
