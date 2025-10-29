@@ -163,15 +163,13 @@ export default function CreateGatePage() {
     const nNv = Number(nv), nNl = Number(nlista), nPa = Number(partida);
     if (![nNv, nNl, nPa].every(Number.isInteger)) { alert('Ingresá NV, NLista y NPartida como enteros.'); return; }
     try {
-      // Enviamos partida al servidor (requiere backend actualizado)
+      // Enviamos partida al servidor
       const { data: created } = await createPorton({ nv: nNv, nlista: nNl, partida: nPa });
 
       // Si NO requiere inyección → finalizar inyección inmediatamente (con timestamps)
       if (!requiresInjection) {
         await stopStage(created.id, 'inyeccion');
       }
-      // Si requiere inyección → lo dejamos como está (se asume "Pendiente" por defecto en DB)
-
       // Si se marcó "Sistema" → finalizar inyección y revestimiento
       if (sistemaOnCreate) {
         await finalizeSistema(created.id);
@@ -243,6 +241,11 @@ export default function CreateGatePage() {
     XLSX.writeFile(wb, fname);
   }
 
+  // ---- Sticky helpers ----
+  const stickyTop    = { position: 'sticky', top: 0, zIndex: 5, background: 'var(--surface)' };
+  const stickyLeft   = { position: 'sticky', left: 0, zIndex: 4, background: 'var(--surface)', boxShadow: '1px 0 0 rgba(0,0,0,.08)' };
+  const stickyCorner = { position: 'sticky', top: 0, left: 0, zIndex: 6, background: 'var(--surface)' };
+
   // ---- Render ----
   const cellBase   = { border: `2px solid ${bordo}`, padding: 8, borderRadius: 12, boxSizing: 'border-box' };
   const headerCell = { ...cellBase, background:'var(--surface)', fontWeight:700, textAlign:'center' };
@@ -298,7 +301,6 @@ export default function CreateGatePage() {
           className={`btn input-num ${nlista ? 'input-num--filled' : ''}`}
           style={{ width:140, textAlign:'center' }}
         />
-        {/* NUEVO: NPartida */}
         <input
           type="number"
           placeholder="NPartida"
@@ -317,7 +319,6 @@ export default function CreateGatePage() {
           Sistema (finaliza Inyección y Revestimiento)
         </label>
 
-        {/* NUEVO: Inyección (requiere inyección) */}
         <label style={{ display:'flex', gap:6, alignItems:'center' }}>
           <input
             type="checkbox"
@@ -358,9 +359,9 @@ export default function CreateGatePage() {
           }}
         >
           {/* Header */}
-          <div style={{ ...headerCell, textAlign:'center' }}>NV / Lista / Partida</div>
+          <div style={{ ...headerCell, ...stickyCorner, textAlign:'center' }}>NV / Lista / Partida</div>
           {STAGES.map(s => (
-            <div key={`h-${s.key}`} style={{ ...headerCell, textAlign:'center' }}>
+            <div key={`h-${s.key}`} style={{ ...headerCell, ...stickyTop, textAlign:'center' }}>
               <div>{s.label}</div>
               <div style={{ fontSize:12, opacity:.75 }}>
                 Pendientes: {stageStats[s.key].pend} · En Proceso: {stageStats[s.key].proc}
@@ -370,13 +371,12 @@ export default function CreateGatePage() {
 
           {/* Filas */}
           {list.map(p => ([
-            <div key={`nv-${p.id}`} style={nvCell}>
+            <div key={`nv-${p.id}`} style={{ ...nvCell, ...stickyLeft }}>
               <div style={{ display:'flex', flexDirection:'column', lineHeight:1.15 }}>
                 <strong>NV {p.nv}</strong>
                 <strong>N° Partida {p.partida}</strong>
                 <span style={{ fontSize:12, opacity:.8 }}>Lista {p.nlista}</span>
               </div>
-              {/* Sin “Sistema” visible aquí */}
               <span style={{ display:'none' }}>
                 <input type="checkbox" checked={isSistema(p)} readOnly /> Sistema
               </span>
