@@ -92,7 +92,6 @@ export default function CreateGatePage() {
     return data.filter(p => fabKeys.some(k => (p[k] || '').toLowerCase() === 'en proceso')).length;
   }, [data, fabKeys]);
 
-  // NUEVO: en cola (ninguna etapa en proceso ni finalizada)
   const enColaFabricacion = useMemo(() => {
     if (!Array.isArray(data)) return 0;
     return data.filter(p =>
@@ -108,6 +107,7 @@ export default function CreateGatePage() {
   const [nlista, setNlista] = useState('');
   const [partida, setPartida] = useState('');
   const [sistemaOnCreate, setSistemaOnCreate] = useState(false);
+  const [requiresInjection, setRequiresInjection] = useState(false); // ← NUEVO
 
   // Buscar
   const [q, setQ] = useState('');
@@ -161,11 +161,23 @@ export default function CreateGatePage() {
   async function handleCreate(e) {
     e.preventDefault();
     const nNv = Number(nv), nNl = Number(nlista), nPa = Number(partida);
-    if (![nNv, nNl, nPa].every(Number.isInteger)) { alert('Ingresá NV, NLista y Partida como enteros.'); return; }
+    if (![nNv, nNl, nPa].every(Number.isInteger)) { alert('Ingresá NV, NLista y NPartida como enteros.'); return; }
     try {
+      // Enviamos partida al servidor (requiere backend actualizado)
       const { data: created } = await createPorton({ nv: nNv, nlista: nNl, partida: nPa });
-      if (sistemaOnCreate) await finalizeSistema(created.id);
-      setNv(''); setNlista(''); setPartida(''); setSistemaOnCreate(false);
+
+      // Si NO requiere inyección → finalizar inyección inmediatamente (con timestamps)
+      if (!requiresInjection) {
+        await stopStage(created.id, 'inyeccion');
+      }
+      // Si requiere inyección → lo dejamos como está (se asume "Pendiente" por defecto en DB)
+
+      // Si se marcó "Sistema" → finalizar inyección y revestimiento
+      if (sistemaOnCreate) {
+        await finalizeSistema(created.id);
+      }
+
+      setNv(''); setNlista(''); setPartida(''); setSistemaOnCreate(false); setRequiresInjection(false);
       await refresh();
     } catch (e) { alert(e?.response?.data?.error || e.message); }
   }
@@ -192,21 +204,20 @@ export default function CreateGatePage() {
     catch (e) { alert(e?.response?.data?.error || e.message); }
   }
 
-  // ---- Exportar a XLSX (usa las filas actualmente visibles en 'list') ----
+  // ---- Exportar a XLSX ----
   async function handleExportXlsx() {
-    // import dinámico para evitar cargar la lib en SSR/bundle inicial
     const xlsxMod = await import('xlsx');
     const XLSX = xlsxMod.default || xlsxMod;
 
     const header = [
-      'NV', 'Lista',
+      'NV', 'Lista', 'Partida',
       ...STAGES.flatMap(s => [
         `${s.label} - Estado`, `${s.label} - Inicio`, `${s.label} - Fin`
       ])
     ];
 
     const rows = list.map(p => {
-      const fila = [p.nv ?? '', p.nlista ?? ''];
+      const fila = [p.nv ?? '', p.nlista ?? '', p.partida ?? ''];
       for (const s of STAGES) {
         const st  = p[s.key] || '';
         const ini = p[`${s.key}_inicio`] ? fmt(p[`${s.key}_inicio`]) : '';
@@ -218,16 +229,12 @@ export default function CreateGatePage() {
 
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
-
-    // Opcional: ancho de columnas y congelar cabecera/primeras columnas
     ws['!cols'] = [
       { wch: 8 },  // NV
       { wch: 10 }, // Lista
+      { wch: 10 }, // Partida
       ...STAGES.flatMap(() => [{ wch: 16 }, { wch: 20 }, { wch: 20 }])
     ];
-    // Algunas versiones soportan '!freeze'; si no, se ignora
-    // ws['!freeze'] = { xSplit: 2, ySplit: 1 };
-
     XLSX.utils.book_append_sheet(wb, ws, 'Portones');
 
     const pad = n => String(n).padStart(2, '0');
@@ -262,7 +269,6 @@ export default function CreateGatePage() {
         <div style={{ display:'flex', flexDirection:'column', gap:8, minWidth:280 }}>
           <div className="metric metric--warn">Portones terminados en planta: {terminadosEnPlanta}</div>
           <div className="metric metric--ok">Portones en proceso de fabricación: {enProcesoFabricacion}</div>
-          {/* NUEVO: cola de fabricación */}
           <div className="metric" style={{ background: 'rgba(239,68,68,0.15)' }}>
             Portones en cola de fabricación: {enColaFabricacion}
           </div>
@@ -271,18 +277,65 @@ export default function CreateGatePage() {
       </div>
 
       {/* Crear */}
-      <form onSubmit={handleCreate} className="page__header" style={{ display:'flex', gap:8, alignItems:'center', marginTop:-8, flexWrap:'wrap', paddingTop:0 }}>
-        <input type="number" placeholder="NV" value={nv} onChange={e=>setNv(e.target.value)} className={`btn input-num ${nv ? 'input-num--filled' : ''}`} style={{ width:140, textAlign:'center' }} />
-        <input type="number" placeholder="NLista" value={nlista} onChange={e=>setNlista(e.target.value)} className={`btn input-num ${nlista ? 'input-num--filled' : ''}`} style={{ width:140, textAlign:'center' }} />
+      <form
+        onSubmit={handleCreate}
+        className="page__header"
+        style={{ display:'flex', gap:8, alignItems:'center', marginTop:-8, flexWrap:'wrap', paddingTop:0 }}
+      >
+        <input
+          type="number"
+          placeholder="NV"
+          value={nv}
+          onChange={e=>setNv(e.target.value)}
+          className={`btn input-num ${nv ? 'input-num--filled' : ''}`}
+          style={{ width:140, textAlign:'center' }}
+        />
+        <input
+          type="number"
+          placeholder="NLista"
+          value={nlista}
+          onChange={e=>setNlista(e.target.value)}
+          className={`btn input-num ${nlista ? 'input-num--filled' : ''}`}
+          style={{ width:140, textAlign:'center' }}
+        />
+        {/* NUEVO: NPartida */}
+        <input
+          type="number"
+          placeholder="NPartida"
+          value={partida}
+          onChange={e=>setPartida(e.target.value)}
+          className={`btn input-num ${partida ? 'input-num--filled' : ''}`}
+          style={{ width:140, textAlign:'center' }}
+        />
+
         <label style={{ display:'flex', gap:6, alignItems:'center', marginLeft:8 }}>
-          <input type="checkbox" checked={sistemaOnCreate} onChange={(e)=>setSistemaOnCreate(e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={sistemaOnCreate}
+            onChange={(e)=>setSistemaOnCreate(e.target.checked)}
+          />
           Sistema (finaliza Inyección y Revestimiento)
         </label>
+
+        {/* NUEVO: Inyección (requiere inyección) */}
+        <label style={{ display:'flex', gap:6, alignItems:'center' }}>
+          <input
+            type="checkbox"
+            checked={requiresInjection}
+            onChange={(e)=>setRequiresInjection(e.target.checked)}
+          />
+          Inyección (requiere inyección)
+        </label>
+
         <button type="submit" className="btn btn--brand">Crear portón</button>
       </form>
 
       {/* Buscar */}
-      <form onSubmit={(e)=>{ e.preventDefault(); setFilter(q.trim()); }} className="page__header" style={{ display:'flex', gap:8, alignItems:'center', marginTop:-8, flexWrap:'wrap', paddingTop:0 }}>
+      <form
+        onSubmit={(e)=>{ e.preventDefault(); setFilter(q.trim()); }}
+        className="page__header"
+        style={{ display:'flex', gap:8, alignItems:'center', marginTop:-8, flexWrap:'wrap', paddingTop:0 }}
+      >
         <input type="text" placeholder="Buscar por NV o NLista (número)" value={q} onChange={(e)=>setQ(e.target.value)} className="btn" style={{ minWidth:260 }} inputMode="numeric" />
         <button type="submit" className="btn">Buscar</button>
         <button type="button" className="btn" onClick={()=>{ setQ(''); setFilter(null); }}>Limpiar</button>
@@ -305,7 +358,7 @@ export default function CreateGatePage() {
           }}
         >
           {/* Header */}
-          <div style={{ ...headerCell, textAlign:'center' }}>NV / Lista</div>
+          <div style={{ ...headerCell, textAlign:'center' }}>NV / Lista / Partida</div>
           {STAGES.map(s => (
             <div key={`h-${s.key}`} style={{ ...headerCell, textAlign:'center' }}>
               <div>{s.label}</div>
@@ -320,8 +373,10 @@ export default function CreateGatePage() {
             <div key={`nv-${p.id}`} style={nvCell}>
               <div style={{ display:'flex', flexDirection:'column', lineHeight:1.15 }}>
                 <strong>NV {p.nv}</strong>
+                <strong>N° Partida {p.partida}</strong>
                 <span style={{ fontSize:12, opacity:.8 }}>Lista {p.nlista}</span>
               </div>
+              {/* Sin “Sistema” visible aquí */}
               <span style={{ display:'none' }}>
                 <input type="checkbox" checked={isSistema(p)} readOnly /> Sistema
               </span>

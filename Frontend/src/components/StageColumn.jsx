@@ -75,6 +75,7 @@ export default function StageColumn({
             >
               <div>
                 <div className="stage-card__title" style={{ fontWeight: 900 }}>N° Portón {p.nlista}</div>
+                <div className="stage-card__title">Partida {p.Partida}</div>
                 <div className="stage-card__sub">NV {p.nv}</div>
                 <div style={{ fontSize: 12, opacity: .75 }}>Estado: {p[stageKey] || ''}</div>
                 {p[`${stageKey}_inicio`] && <div style={{ fontSize: 12 }}>Inicio: {fmt(p[`${stageKey}_inicio`])}</div>}

@@ -9,7 +9,7 @@ const app = express();
 
 const PORT = process.env.PORT || 4000;
 
-// ✅ Lista de orígenes permitidos, separados por coma (sin slash final)
+// ✅ Orígenes permitidos
 const allowedOrigins = (process.env.FRONTEND_ORIGINS ||
   'http://localhost:5173,http://localhost:5174,https://planificacion-pi.vercel.app'
 )
@@ -26,24 +26,15 @@ const pool = new Pool({
 // Para que caches/CDN varíen por Origin
 app.use((req, res, next) => { res.header('Vary', 'Origin'); next(); });
 
-// ✅ CORS dinámico por origin
+// ✅ CORS dinámico
 app.use(cors({
   origin(origin, cb) {
-    // Permite requests sin Origin (curl/healthchecks)
     if (!origin) return cb(null, true);
-
     const clean = origin.replace(/\/$/, '');
     if (allowedOrigins.includes(clean)) return cb(null, true);
-
-    // (Opcional) Permitir todos los previews de Vercel:
-    // if (clean.endsWith('.vercel.app')) return cb(null, true);
-
     return cb(new Error(`CORS bloqueado para: ${origin}`));
   },
-  // credentials: true, // habilitar si vas a usar cookies/sesión entre dominios
 }));
-
-// (Opcional) responder preflights explícitamente:
 app.options('*', cors());
 
 app.use(express.json());
@@ -54,24 +45,16 @@ app.get('/', (_req, res) => {
   res.json({ ok: true, service: 'portones-backend' });
 });
 
-// Healthcheck: devuelve texto simple según estado
 app.get('/healtz', async (_req, res) => {
   try {
     await pool.query('select 1;');
-    return res
-      .status(200)
-      .type('text/plain; charset=utf-8')
-      .send('El servidor está Online');
+    return res.status(200).type('text/plain; charset=utf-8').send('El servidor está Online');
   } catch (err) {
     console.error('Healthcheck error:', err);
-    return res
-      .status(500)
-      .type('text/plain; charset=utf-8')
-      .send('El servidor tiene errores');
+    return res.status(500).type('text/plain; charset=utf-8').send('El servidor tiene errores');
   }
 });
 
-// alias sin la z
 app.get('/healt', async (_req, res) => {
   try {
     await pool.query('select 1;');
@@ -121,28 +104,34 @@ app.get('/portones', async (_req, res) => {
   }
 });
 
-// POST: crear portón { nv, nlista }
+// POST: crear portón { nv, nlista, partida | npartida }
 app.post('/portones', async (req, res) => {
   try {
-    const { nv, nlista } = req.body || {};
-    if (!Number.isInteger(nv) || !Number.isInteger(nlista)) {
-      return res.status(400).json({ error: 'nv y nlista deben ser enteros' });
+    const { nv, nlista, partida: bodyPartida, npartida } = req.body || {};
+
+    // Acepta 'partida' o 'npartida' y los convierte a entero
+    const nNv  = Number(nv);
+    const nNl  = Number(nlista);
+    const nPa  = Number(bodyPartida ?? npartida);
+
+    if (![nNv, nNl, nPa].every(Number.isInteger)) {
+      return res.status(400).json({ error: 'nv, nlista y partida/npartida deben ser enteros' });
     }
 
     // Evitar duplicados (por nv + nlista)
     const { rowCount: exists } = await pool.query(
       'select 1 from public.portones where nv = $1 and nlista = $2 limit 1;',
-      [nv, nlista]
+      [nNv, nNl]
     );
     if (exists) {
       return res.status(409).json({ error: 'Ya existe un portón con ese NV y NLista' });
     }
 
     const { rows } = await pool.query(
-      `insert into public.portones (nv, nlista)
-       values ($1, $2)
+      `insert into public.portones (nv, nlista, partida)
+       values ($1, $2, $3)
        returning *;`,
-      [nv, nlista]
+      [nNv, nNl, nPa]
     );
 
     return res.status(201).json(rows[0]);
@@ -167,7 +156,6 @@ app.post('/portones/:id/stage', async (req, res) => {
     await client.query('begin');
 
     if (action === 'start') {
-      // ▶️ En Proceso + setear inicio (si estaba null)
       await client.query(
         `
         UPDATE public.portones
@@ -178,7 +166,6 @@ app.post('/portones/:id/stage', async (req, res) => {
         [id, STATUS.EN_PROCESO]
       );
     } else {
-      // ⏹ Finalizado + setear fin (si estaba null) + próxima etapa (si la definís) -> Pendiente
       const nextSet = cfg.next ? `, ${cfg.next} = $3` : '';
       const params  = cfg.next
         ? [id, STATUS.FINALIZADO, STATUS.PENDIENTE]
