@@ -57,12 +57,7 @@ export default function PlantaReadOnlyPage() {
     ).length;
   }, [data]);
 
-  const enProcesoFabricacion = useMemo(() => {
-    if (!Array.isArray(data)) return 0;
-    return data.filter(p => fabKeys.some(k => (p[k] || '').toLowerCase() === 'en proceso')).length;
-  }, [data, fabKeys]);
-
-  // NUEVO: en cola de fabricación (ninguna etapa en proceso ni finalizada)
+  // en cola de fabricación (ninguna etapa en proceso ni finalizada)
   const enColaFabricacion = useMemo(() => {
     if (!Array.isArray(data)) return 0;
     return data.filter(p =>
@@ -73,7 +68,14 @@ export default function PlantaReadOnlyPage() {
     ).length;
   }, [data, fabKeys]);
 
-  // NUEVO: Partidas con al menos una etapa "En Proceso"
+  // en proceso = total cargados − terminados en planta − en cola
+  const enProcesoFabricacion = useMemo(() => {
+    if (!Array.isArray(data)) return 0;
+    const total = data.length;
+    return Math.max(0, total - terminadosEnPlanta - enColaFabricacion);
+  }, [data, terminadosEnPlanta, enColaFabricacion]);
+
+  // Partidas con al menos una etapa "En Proceso"
   const partidasEnProceso = useMemo(() => {
     if (!Array.isArray(data)) return [];
     const set = new Set();
