@@ -192,6 +192,50 @@ export default function CreateGatePage() {
     catch (e) { alert(e?.response?.data?.error || e.message); }
   }
 
+  // ---- Exportar a XLSX (usa las filas actualmente visibles en 'list') ----
+  async function handleExportXlsx() {
+    // import dinámico para evitar cargar la lib en SSR/bundle inicial
+    const xlsxMod = await import('xlsx');
+    const XLSX = xlsxMod.default || xlsxMod;
+
+    const header = [
+      'NV', 'Lista',
+      ...STAGES.flatMap(s => [
+        `${s.label} - Estado`, `${s.label} - Inicio`, `${s.label} - Fin`
+      ])
+    ];
+
+    const rows = list.map(p => {
+      const fila = [p.nv ?? '', p.nlista ?? ''];
+      for (const s of STAGES) {
+        const st  = p[s.key] || '';
+        const ini = p[`${s.key}_inicio`] ? fmt(p[`${s.key}_inicio`]) : '';
+        const fin = p[`${s.key}_fin`]    ? fmt(p[`${s.key}_fin`])    : '';
+        fila.push(st, ini, fin);
+      }
+      return fila;
+    });
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+
+    // Opcional: ancho de columnas y congelar cabecera/primeras columnas
+    ws['!cols'] = [
+      { wch: 8 },  // NV
+      { wch: 10 }, // Lista
+      ...STAGES.flatMap(() => [{ wch: 16 }, { wch: 20 }, { wch: 20 }])
+    ];
+    // Algunas versiones soportan '!freeze'; si no, se ignora
+    // ws['!freeze'] = { xSplit: 2, ySplit: 1 };
+
+    XLSX.utils.book_append_sheet(wb, ws, 'Portones');
+
+    const pad = n => String(n).padStart(2, '0');
+    const now = new Date();
+    const fname = `portones_${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}.xlsx`;
+    XLSX.writeFile(wb, fname);
+  }
+
   // ---- Render ----
   const cellBase   = { border: `2px solid ${bordo}`, padding: 8, borderRadius: 12, boxSizing: 'border-box' };
   const headerCell = { ...cellBase, background:'var(--surface)', fontWeight:700, textAlign:'center' };
@@ -201,9 +245,19 @@ export default function CreateGatePage() {
     <div className="screen page" style={{ fontFamily:'system-ui,sans-serif' }}>
       {/* Header + métricas + refresh */}
       <div className="page__header" style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:16, flexWrap:'wrap' }}>
-        <button onClick={refresh} disabled={refreshing} className="btn">
-          {refreshing ? 'Actualizando…' : 'Refrescar'}
-        </button>
+        <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+          <button onClick={refresh} disabled={refreshing} className="btn">
+            {refreshing ? 'Actualizando…' : 'Refrescar'}
+          </button>
+          <button
+            onClick={handleExportXlsx}
+            disabled={loading || (list?.length ?? 0) === 0}
+            className="btn"
+            title="Exporta lo visible en la grilla"
+          >
+            Exportar XLSX
+          </button>
+        </div>
         <h2 className="h1" style={{ border:`3px solid ${bordo}` }}>PORTONES</h2>
         <div style={{ display:'flex', flexDirection:'column', gap:8, minWidth:280 }}>
           <div className="metric metric--warn">Portones terminados en planta: {terminadosEnPlanta}</div>
