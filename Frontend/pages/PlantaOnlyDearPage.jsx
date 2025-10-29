@@ -140,7 +140,7 @@ export default function PlantaReadOnlyPage() {
     display:'inline-flex', alignItems:'center', gap:6,
     padding:'6px 10px', borderRadius:999,
     background:'var(--surface-muted)', color:'var(--ink)',
-    border:'1px solid #e5e7eb', fontWeight:800, fontSize:13
+    border:'1px solid #e5e7eb', fontWeight:800, fontSize:40
   };
 
   return (
