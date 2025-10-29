@@ -173,7 +173,7 @@ export default function PlantaReadOnlyPage() {
           {list.map(p => ([
             <div key={`nv-${p.id}`} style={nvCell}>
               <strong>N° Portón {p.nlista}</strong>
-              <strong>N° Partida {p.Partida}</strong>
+              <strong>N° Partida {p.partida}</strong>
               <strong>NV {p.nv}</strong>
             </div>,
             ...STAGES.map(s => {
