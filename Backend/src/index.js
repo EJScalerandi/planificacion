@@ -65,7 +65,7 @@ app.get('/healt', async (_req, res) => {
   }
 });
 
-// --------------------- Lógica Portones ---------------------
+// --------------------- Estados & Etapas ---------------------
 const STATUS = {
   PENDIENTE:  'Pendiente',
   EN_PROCESO: 'En Proceso',
@@ -93,6 +93,15 @@ const STAGES = {
   despacho:        { status: 'despacho',        start: 'despacho_inicio',        end: 'despacho_fin',        next: null }
 };
 
+// iPanel: solo 4 etapas
+const IPANEL_STAGES = {
+  guillotina: { status: 'guillotina', start: 'guillotina_inicio', end: 'guillotina_fin' },
+  plegado:    { status: 'plegado',    start: 'plegado_inicio',    end: 'plegado_fin'    },
+  pintura:    { status: 'pintura',    start: 'pintura_inicio',    end: 'pintura_fin'    },
+  inyeccion:  { status: 'inyeccion',  start: 'inyeccion_inicio',  end: 'inyeccion_fin'  },
+};
+
+// --------------------- Lógica Portones ---------------------
 // GET: todos los portones
 app.get('/portones', async (_req, res) => {
   try {
@@ -164,20 +173,14 @@ app.post('/portones/:id/stage', async (req, res) => {
         [id, STATUS.EN_PROCESO]
       );
     } else {
-      const nextSet = cfg.next ? `, ${cfg.next} = $3` : '';
-      const params  = cfg.next
-        ? [id, STATUS.FINALIZADO, STATUS.PENDIENTE]
-        : [id, STATUS.FINALIZADO];
-
       await client.query(
         `
         UPDATE public.portones
         SET ${cfg.status} = $2,
             ${cfg.end}    = COALESCE(${cfg.end}, now())
-            ${nextSet}
         WHERE id = $1;
         `,
-        params
+        [id, STATUS.FINALIZADO]
       );
     }
 
@@ -193,9 +196,7 @@ app.post('/portones/:id/stage', async (req, res) => {
   }
 });
 
-
-// --------------------- Lógica IPANEL (NUEVO) ---------------------
-
+// --------------------- Lógica IPANEL ---------------------
 // GET: todos los ipanel
 app.get('/ipanel', async (_req, res) => {
   try {
@@ -210,29 +211,80 @@ app.get('/ipanel', async (_req, res) => {
   }
 });
 
-// POST: crear ipanel { partida | npartida, nv? }
+// POST: crear ipanel { nv (obligatorio), partida|npartida (opcional) }
 app.post('/ipanel', async (req, res) => {
   try {
     const { partida: bodyPartida, npartida, nv } = req.body || {};
+    const nNv = Number(nv);
+    const hasPartida = (bodyPartida ?? npartida) != null;
+    const nPa = hasPartida ? Number(bodyPartida ?? npartida) : null;
 
-    const nPa = Number(bodyPartida ?? npartida);
-    const nNv = nv == null ? null : Number(nv);
-
-    if (!Number.isInteger(nPa) || (nv != null && !Number.isInteger(nNv))) {
-      return res.status(400).json({ error: 'partida/npartida debe ser entero; nv entero o null' });
+    if (!Number.isInteger(nNv)) {
+      return res.status(400).json({ error: 'nv debe ser entero' });
+    }
+    if (hasPartida && !Number.isInteger(nPa)) {
+      return res.status(400).json({ error: 'partida/npartida debe ser entero si se envía' });
     }
 
     const { rows } = await pool.query(
-      `INSERT INTO public.ipanel (partida, nv)
+      `INSERT INTO public.ipanel (nv, partida)
        VALUES ($1, $2)
        RETURNING *;`,
-      [nPa, nNv]
+      [nNv, nPa]
     );
 
     return res.status(201).json(rows[0]);
   } catch (err) {
     console.error('create ipanel error:', err);
     return res.status(500).json({ error: 'Error creando ipanel', detail: err.message });
+  }
+});
+
+// POST: avanzar etapa iPanel { stage, action: 'start' | 'stop' }
+app.post('/ipanel/:id/stage', async (req, res) => {
+  const { id } = req.params;
+  const { stage, action } = req.body || {};
+  const cfg = IPANEL_STAGES[stage];
+
+  if (!cfg || !['start','stop'].includes(action)) {
+    return res.status(400).json({ error: 'Parámetros inválidos' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+
+    if (action === 'start') {
+      await client.query(
+        `
+        UPDATE public.ipanel
+        SET ${cfg.status} = $2,
+            ${cfg.start}  = COALESCE(${cfg.start}, now())
+        WHERE id = $1;
+        `,
+        [id, STATUS.EN_PROCESO]
+      );
+    } else {
+      await client.query(
+        `
+        UPDATE public.ipanel
+        SET ${cfg.status} = $2,
+            ${cfg.end}    = COALESCE(${cfg.end}, now())
+        WHERE id = $1;
+        `,
+        [id, STATUS.FINALIZADO]
+      );
+    }
+
+    const { rows } = await client.query('SELECT * FROM public.ipanel WHERE id = $1;', [id]);
+    await client.query('commit');
+    return res.json(rows[0]);
+  } catch (err) {
+    await client.query('rollback');
+    console.error('ipanel stage error:', err);
+    return res.status(500).json({ error: 'Error al actualizar etapa de ipanel', detail: err.message });
+  } finally {
+    client.release();
   }
 });
 

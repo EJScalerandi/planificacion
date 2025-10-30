@@ -6,7 +6,7 @@ import StageColumn from './components/StageColumn';
 import StatusGatePage from '../src/components/StatusGatePage';
 import CreateGatePage from '../pages/CreateGatePage';
 import PlantaReadOnlyPage from '../pages/PlantaOnlyDearPage';
-
+import IpanelReadOnlyPage from '../pages/IpanelReadOnlyPage';
 const color = 'var(--brand)';
 
 function Board({ stages }) {
@@ -169,10 +169,10 @@ export default function App() {
         {ROUTES.filter(r => r.path !== '/').map(r => (
           <Route key={r.path} path={r.path} element={<Board stages={r.stages} />} />
         ))}
-
+<Route path="/ipanel" element={<IpanelReadOnlyPage />} />
         {/* Alias con acento para Diseño */}
         <Route path="/Diseño" element={<Board stages={ONE('diseno','Diseño')} />} />
-
+        
         {/* Tableros especiales */}
         <Route path="/statusGate" element={<StatusGatePage />} />
         <Route path="/createGate" element={<CreateGatePage />} />
