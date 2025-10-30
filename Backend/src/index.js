@@ -93,7 +93,7 @@ const STAGES = {
   despacho:        { status: 'despacho',        start: 'despacho_inicio',        end: 'despacho_fin',        next: null }
 };
 
-// GET: todos
+// GET: todos los portones
 app.get('/portones', async (_req, res) => {
   try {
     const { rows } = await pool.query('select * from public.portones order by nv asc;');
@@ -109,7 +109,6 @@ app.post('/portones', async (req, res) => {
   try {
     const { nv, nlista, partida: bodyPartida, npartida } = req.body || {};
 
-    // Acepta 'partida' o 'npartida' y los convierte a entero
     const nNv  = Number(nv);
     const nNl  = Number(nlista);
     const nPa  = Number(bodyPartida ?? npartida);
@@ -118,7 +117,6 @@ app.post('/portones', async (req, res) => {
       return res.status(400).json({ error: 'nv, nlista y partida/npartida deben ser enteros' });
     }
 
-    // Evitar duplicados (por nv + nlista)
     const { rowCount: exists } = await pool.query(
       'select 1 from public.portones where nv = $1 and nlista = $2 limit 1;',
       [nNv, nNl]
@@ -192,6 +190,49 @@ app.post('/portones/:id/stage', async (req, res) => {
     return res.status(500).json({ error: 'Error al actualizar etapa', detail: err.message });
   } finally {
     client.release();
+  }
+});
+
+
+// --------------------- Lógica IPANEL (NUEVO) ---------------------
+
+// GET: todos los ipanel
+app.get('/ipanel', async (_req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT * FROM public.ipanel
+       ORDER BY COALESCE(partida, 0) ASC, COALESCE(nv, 0) ASC, id ASC;`
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error leyendo ipanel', detail: err.message });
+  }
+});
+
+// POST: crear ipanel { partida | npartida, nv? }
+app.post('/ipanel', async (req, res) => {
+  try {
+    const { partida: bodyPartida, npartida, nv } = req.body || {};
+
+    const nPa = Number(bodyPartida ?? npartida);
+    const nNv = nv == null ? null : Number(nv);
+
+    if (!Number.isInteger(nPa) || (nv != null && !Number.isInteger(nNv))) {
+      return res.status(400).json({ error: 'partida/npartida debe ser entero; nv entero o null' });
+    }
+
+    const { rows } = await pool.query(
+      `INSERT INTO public.ipanel (partida, nv)
+       VALUES ($1, $2)
+       RETURNING *;`,
+      [nPa, nNv]
+    );
+
+    return res.status(201).json(rows[0]);
+  } catch (err) {
+    console.error('create ipanel error:', err);
+    return res.status(500).json({ error: 'Error creando ipanel', detail: err.message });
   }
 });
 
