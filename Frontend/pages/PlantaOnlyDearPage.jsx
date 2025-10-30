@@ -69,11 +69,21 @@ export default function PlantaReadOnlyPage() {
   }, [data, fabKeys]);
 
   // en proceso = total cargados − terminados en planta − en cola
-  const enProcesoFabricacion = useMemo(() => {
-    if (!Array.isArray(data)) return 0;
-    const total = data.length;
-    return Math.max(0, total - terminadosEnPlanta - enColaFabricacion);
-  }, [data, terminadosEnPlanta, enColaFabricacion]);
+const enProcesoFabricacion = useMemo(() => {
+  if (!Array.isArray(data)) return 0;
+  const low = (v) => (v || '').toLowerCase();
+
+  return data.filter(p => {
+    const af   = low(p.armado_final);
+    const dis  = low(p.diseno);
+
+    const afOk  = af === 'pendiente' || af === 'en proceso';
+    const disOk = dis === 'en proceso' || dis === 'finalizado';
+
+    return afOk && disOk;
+  }).length;
+}, [data]);
+
 
   // Partidas con al menos una etapa "En Proceso"
   const partidasEnProceso = useMemo(() => {

@@ -123,16 +123,20 @@ export default function CreateGatePage() {
     return Math.max(0, total - terminadosEnPlanta - enColaFabricacion);
   }, [dataP, terminadosEnPlanta, enColaFabricacion]);
 
-  // Partidas en proceso (Portones)
+  // Partidas en proceso (Portones) — (se usan en visualizador, lo dejamos calculado)
   const partidasEnProcesoP = useMemo(() => {
     if (!Array.isArray(dataP)) return [];
+    const low = v => (v || '').toLowerCase();
     const set = new Set();
     for (const p of dataP) {
-      const anyProc = fabKeysPorton.some(k => (p[k] || '').toLowerCase() === 'en proceso');
-      if (anyProc && p.partida != null) set.add(p.partida);
+      const af  = low(p.armado_final);
+      const dis = low(p.diseno);
+      const afOk  = af === 'pendiente' || af === 'en proceso';
+      const disOk = dis === 'en proceso' || dis === 'finalizado';
+      if (afOk && disOk && p.partida != null) set.add(p.partida);
     }
-    return Array.from(set).sort((a,b) => Number(a) - Number(b));
-  }, [dataP, fabKeysPorton]);
+    return Array.from(set).sort((a, b) => Number(a) - Number(b));
+  }, [dataP]);
 
   // ---- Métricas iPanels ----
   const ipTerm = useMemo(() => {
@@ -217,9 +221,7 @@ export default function CreateGatePage() {
   // ---- Listas (iPanels) ----
   const listIpanels = useMemo(() => {
     if (!Array.isArray(dataI)) return [];
-    // Mostramos todos los que no estén completamente finalizados (igual criterio)
     const base = dataI.filter(i => !isFullyFinishedIpanel(i));
-    // orden: por partida -> nv
     base.sort((a, b) =>
       (Number(a.partida) || 0) - (Number(b.partida) || 0) ||
       (a.nv || 0) - (b.nv || 0)
@@ -266,11 +268,9 @@ export default function CreateGatePage() {
 
     const { data: created } = await createPorton(payload);
 
-    // Si NO requiere inyección → finalizar inyección inmediatamente (con timestamps)
     if (!requiresInjection) {
       await stopStage(created.id, 'inyeccion');
     }
-    // Si se marcó "Sistema" → finalizar inyección y revestimiento
     if (sistemaOnCreate) {
       await finalizeSistema(created.id);
     }
@@ -388,7 +388,7 @@ export default function CreateGatePage() {
   const headerCell = { ...cellBase, background:'var(--surface)', fontWeight:700, textAlign:'center' };
   const nvCell     = { ...cellBase, background:'var(--surface)', minHeight:CELL_MIN_H, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, paddingLeft:10, paddingRight:10 };
 
-  // chips
+  // chips (ya no se usan, pero queda por si reactivás el visor)
   const chip = {
     display:'inline-flex', alignItems:'center', gap:6,
     padding:'6px 10px', borderRadius:999,
@@ -398,7 +398,7 @@ export default function CreateGatePage() {
 
   return (
     <div className="screen page" style={{ fontFamily:'system-ui,sans-serif' }}>
-      {/* ===== Header: controles izquierda + tarjetas (Portones | iPanels) lado a lado ===== */}
+      {/* ===== Header: controles izquierda + (visualizadores ocultos) ===== */}
       <div className="page__header page__header--split">
         {/* Izquierda */}
         <div className="left-stack">
@@ -422,22 +422,17 @@ export default function CreateGatePage() {
               Salir
             </button>
           </div>
-
-
-
         </div>
 
-        {/* Derecha: tarjetas en grid 2 columnas */}
+        {/* Derecha (visualizadores) */}
+        {/* ===== VISUALIZADORES OCULTOS =====
         <div className="duo-cards" style={{ maxWidth: 1100, marginInline: 'auto' }}>
-          {/* Card Portones */}
           <div className="card">
             <div className="metric metric--warn">Portones terminados en planta: {terminadosEnPlanta}</div>
             <div className="metric metric--ok">Portones en proceso de fabricación: {enProcesoFabricacion}</div>
             <div className="metric" style={{ background: 'rgba(239,68,68,0.15)' }}>
               Portones en cola de fabricación: {enColaFabricacion}
             </div>
-
-            {/* Visor Partidas en Proceso (Portones) */}
             <div style={{
               display:'flex', alignItems:'center', gap:8, flexWrap:'wrap',
               padding:'6px 8px', background:'var(--surface)', border:'1px dashed #e5e7eb', borderRadius:10, marginTop:8
@@ -450,15 +445,12 @@ export default function CreateGatePage() {
             </div>
           </div>
 
-          {/* Card iPanels */}
           <div className="card">
             <div className="metric metric--warn">iPanels terminados en planta: {ipTerm}</div>
             <div className="metric metric--ok">iPanels en proceso de fabricación: {ipProc}</div>
             <div className="metric" style={{ background: 'rgba(239,68,68,0.15)' }}>
               iPanels en cola de fabricación: {ipCola}
             </div>
-
-            {/* Visor Partidas en Proceso (iPanels) */}
             <div style={{
               display:'flex', alignItems:'center', gap:8, flexWrap:'wrap',
               padding:'6px 8px', background:'var(--surface)', border:'1px dashed #e5e7eb', borderRadius:10, marginTop:8
@@ -471,16 +463,18 @@ export default function CreateGatePage() {
             </div>
           </div>
         </div>
+        ===== FIN VISUALIZADORES OCULTOS ===== */}
       </div>
-              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                <label style={{ display:'flex', alignItems:'center', gap:6 }}>
-                  <input
-                    type="checkbox"
-                    checked={onlyIpanels}
-                    onChange={e => setOnlyIpanels(e.target.checked)}
-                  />
-                  Ver solo iPanels
-                </label>
+ <br></br>
+      <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+        <label style={{ display:'flex', alignItems:'center', gap:6 }}>
+          <input
+            type="checkbox"
+            checked={onlyIpanels}
+            onChange={e => setOnlyIpanels(e.target.checked)}
+          />
+          Ver solo iPanels
+        </label>
         <label style={{ display:'flex', gap:6, alignItems:'center', marginRight:12 }}>
           <input
             type="checkbox"
@@ -489,16 +483,14 @@ export default function CreateGatePage() {
           />
           Crear iPanel
         </label>
-              </div>
-
+      </div>
+ <br></br>
       {/* ===== Crear ===== */}
       <form
         onSubmit={handleCreate}
         className="page__header"
         style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap', paddingTop:0 }}
       >
-        {/* Modo de creación */}
-
         <input
           type="number"
           placeholder="NV"
@@ -555,13 +547,12 @@ export default function CreateGatePage() {
         </button>
       </form>
         <br></br>
-         <br></br>
       {/* ===== Buscar (Portones) ===== */}
       {!onlyIpanels && (
         <form
           onSubmit={(e)=>{ e.preventDefault(); setFilter(q.trim()); }}
           className="page__header"
-          style={{ display:'flex', gap:10, alignItems:'center', marginTop:-8, flexWrap:'wrap', paddingTop:0 }}
+          style={{ display:'flex', gap:8, alignItems:'center', marginTop:-8, flexWrap:'wrap', paddingTop:0 }}
         >
           <input type="text" placeholder="Buscar por NV o NLista (número)" value={q} onChange={(e)=>setQ(e.target.value)} className="btn" style={{ minWidth:260 }} inputMode="numeric" />
           <button type="submit" className="btn">Buscar</button>
@@ -593,9 +584,11 @@ export default function CreateGatePage() {
               {STAGES.map(s => (
                 <div key={`h-${s.key}`} style={{ ...headerCell, ...stickyTop, textAlign:'center' }}>
                   <div>{s.label}</div>
+                  {/* VISUALIZADOR DE ESTADO POR ETAPA (OCULTO)
                   <div style={{ fontSize:12, opacity:.75 }}>
                     Pendientes: {stageStats[s.key].pend} · En Proceso: {stageStats[s.key].proc}
                   </div>
+                  */}
                 </div>
               ))}
 
@@ -672,9 +665,11 @@ export default function CreateGatePage() {
               {IP_STAGES.map(s => (
                 <div key={`ip-h-${s.key}`} style={{ ...headerCell, ...stickyTop, textAlign:'center' }}>
                   <div>{s.label}</div>
+                  {/* VISUALIZADOR DE ESTADO POR ETAPA (OCULTO)
                   <div style={{ fontSize:12, opacity:.75 }}>
                     Pendientes: {stageStatsI[s.key]?.pend ?? 0} · En Proceso: {stageStatsI[s.key]?.proc ?? 0}
                   </div>
+                  */}
                 </div>
               ))}
 
