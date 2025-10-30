@@ -168,3 +168,18 @@ body {
 @media (max-width: 420px) {
   .stage-card__grid { grid-template-columns: 1fr; row-gap: 8px; }
 }
+/* Limita el ancho total de la sección de tarjetas y céntrala */
+.duo-cards {
+  max-width: 1100px;         /* <- ajustá este número a gusto */
+  margin-inline: auto;
+}
+
+/* (Opcional) Cap para cada card si querés que no se estiren demasiado */
+.card {
+  max-width: 520px;          /* <- ajustá este número o quitalo si no lo querés */
+}
+
+/* (Opcional) Si querés que las métricas no vayan de punta a punta dentro de la card */
+.card .metric {
+  width: fit-content;        /* la cajita se ajusta al contenido */
+}

@@ -418,29 +418,17 @@ export default function CreateGatePage() {
             >
               Exportar XLSX
             </button>
-          </div>
-
-          <h2 className="h1" style={{ border:`3px solid ${bordo}`, width:'max-content' }}>
-            PORTONES / iPANELS
-          </h2>
-
-          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-            <label style={{ display:'flex', alignItems:'center', gap:6 }}>
-              <input
-                type="checkbox"
-                checked={onlyIpanels}
-                onChange={e => setOnlyIpanels(e.target.checked)}
-              />
-              Ver solo iPanels
-            </label>
             <button onClick={()=>{ logout(); setAuthed(false); }} className="btn">
               Salir
             </button>
           </div>
+
+
+
         </div>
 
         {/* Derecha: tarjetas en grid 2 columnas */}
-        <div className="duo-cards">
+        <div className="duo-cards" style={{ maxWidth: 1100, marginInline: 'auto' }}>
           {/* Card Portones */}
           <div className="card">
             <div className="metric metric--warn">Portones terminados en planta: {terminadosEnPlanta}</div>
@@ -484,14 +472,15 @@ export default function CreateGatePage() {
           </div>
         </div>
       </div>
-
-      {/* ===== Crear ===== */}
-      <form
-        onSubmit={handleCreate}
-        className="page__header"
-        style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap', paddingTop:0 }}
-      >
-        {/* Modo de creación */}
+              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                <label style={{ display:'flex', alignItems:'center', gap:6 }}>
+                  <input
+                    type="checkbox"
+                    checked={onlyIpanels}
+                    onChange={e => setOnlyIpanels(e.target.checked)}
+                  />
+                  Ver solo iPanels
+                </label>
         <label style={{ display:'flex', gap:6, alignItems:'center', marginRight:12 }}>
           <input
             type="checkbox"
@@ -500,6 +489,15 @@ export default function CreateGatePage() {
           />
           Crear iPanel
         </label>
+              </div>
+
+      {/* ===== Crear ===== */}
+      <form
+        onSubmit={handleCreate}
+        className="page__header"
+        style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap', paddingTop:0 }}
+      >
+        {/* Modo de creación */}
 
         <input
           type="number"
@@ -556,13 +554,14 @@ export default function CreateGatePage() {
           {createModeIpanel ? 'Crear iPanel' : 'Crear portón'}
         </button>
       </form>
-
+        <br></br>
+         <br></br>
       {/* ===== Buscar (Portones) ===== */}
       {!onlyIpanels && (
         <form
           onSubmit={(e)=>{ e.preventDefault(); setFilter(q.trim()); }}
           className="page__header"
-          style={{ display:'flex', gap:8, alignItems:'center', marginTop:-8, flexWrap:'wrap', paddingTop:0 }}
+          style={{ display:'flex', gap:10, alignItems:'center', marginTop:-8, flexWrap:'wrap', paddingTop:0 }}
         >
           <input type="text" placeholder="Buscar por NV o NLista (número)" value={q} onChange={(e)=>setQ(e.target.value)} className="btn" style={{ minWidth:260 }} inputMode="numeric" />
           <button type="submit" className="btn">Buscar</button>
