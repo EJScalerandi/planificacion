@@ -50,7 +50,7 @@ function getPlanIndicator(p) {
   const d = daysUntil(fecha);
   if (apFinished) return { color: '#16a34a', label: 'OK', days: d, title: `Entrega planificada ${fecha} · Armado Primario finalizado` };
   if (d !== null && d <= 7) return { color: '#ef4444', label: 'Urgente', days: d, title: `Faltan ${d} día(s) · Armado Primario no finalizado` };
-  if (d !== null && d <= 10 && d >= 8) return { color: '#eab308', label: 'Atento', days: d, title: `Faltan ${d} día(s) · Armado Primario no finalizado` };
+  if (d !== null && d <= 15 && d >= 8) return { color: '#eab308', label: 'Atento', days: d, title: `Faltan ${d} día(s) · Armado Primario no finalizado` };
   return { color: '#16a34a', label: 'OK', days: d, title: `Faltan ${d} día(s) para ${fecha}` };
 }
 
