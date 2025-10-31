@@ -79,9 +79,9 @@ const STAGES = {
   plegadora:       { status: 'plegadora',       start: 'plegadora_inicio',       end: 'plegadora_fin',       next: null },
   armado_marco_piernas: {
     status: 'armado_marco_piernas',
-    start:  'armado_marco_piernas_inicio',
-    end:    'armado_marco_piernas_fin',
-    next:   null
+    start: 'armado_marco_piernas_inicio',
+    end:   'armado_marco_piernas_fin',
+    next:  null
   },
   armado_piernas:  { status: 'armado_piernas',  start: 'armado_piernas_inicio',  end: 'armado_piernas_fin',  next: null },
   armado_primario: { status: 'armado_primario', start: 'armado_primario_inicio', end: 'armado_primario_fin', next: null },
@@ -196,6 +196,43 @@ app.post('/portones/:id/stage', async (req, res) => {
   }
 });
 
+// POST: asignar/actualizar fecha planificada del portón
+// Body: { fecha_plan: 'YYYY-MM-DD' }  // puede ser null para limpiar
+app.post('/portones/:id/fecha-plan', async (req, res) => {
+  const { id } = req.params;
+  let { fecha_plan } = req.body || {};
+
+  try {
+    // Permitir limpiar la fecha con null/undefined
+    if (fecha_plan !== null && fecha_plan !== undefined) {
+      if (typeof fecha_plan !== 'string') {
+        return res.status(400).json({ error: 'fecha_plan debe ser string con formato YYYY-MM-DD o null' });
+      }
+      // Si viene con hora (ISO), nos quedamos con la parte de fecha
+      fecha_plan = fecha_plan.slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha_plan)) {
+        return res.status(400).json({ error: 'fecha_plan inválida. Use formato YYYY-MM-DD' });
+      }
+    }
+
+    const { rows } = await pool.query(
+      `UPDATE public.portones
+       SET fecha_plan = $2
+       WHERE id = $1
+       RETURNING *;`,
+      [id, fecha_plan ?? null]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ error: 'Portón no encontrado' });
+    }
+    return res.json(rows[0]);
+  } catch (err) {
+    console.error('set fecha_plan error:', err);
+    return res.status(500).json({ error: 'Error al actualizar fecha planificada', detail: err.message });
+  }
+});
+
 // --------------------- Lógica IPANEL ---------------------
 // GET: todos los ipanel
 app.get('/ipanel', async (_req, res) => {
@@ -217,22 +254,17 @@ app.post('/ipanel', async (req, res) => {
     const { partida: bodyPartida, npartida, nv } = req.body || {};
     const nNv = Number(nv);
     const hasPartida = (bodyPartida ?? npartida) != null;
-    const nPa = hasPartida ? Number(bodyPartida ?? npartida) : null;
 
     if (!Number.isInteger(nNv)) {
       return res.status(400).json({ error: 'nv debe ser entero' });
     }
-    if (hasPartida && !Number.isInteger(nPa)) {
-      return res.status(400).json({ error: 'partida/npartida debe ser entero si se envía' });
-    }
 
-    const { rows } = await pool.query(
-      `INSERT INTO public.ipanel (nv, partida)
-       VALUES ($1, $2)
-       RETURNING *;`,
-      [nNv, nPa]
-    );
+    let query = `INSERT INTO public.ipanel (nv${hasPartida ? ', partida' : ''})
+                 VALUES ($1${hasPartida ? ', $2' : ''})
+                 RETURNING *;`;
+    let params = hasPartida ? [nNv, Number(bodyPartida ?? npartida)] : [nNv];
 
+    const { rows } = await pool.query(query, params);
     return res.status(201).json(rows[0]);
   } catch (err) {
     console.error('create ipanel error:', err);
