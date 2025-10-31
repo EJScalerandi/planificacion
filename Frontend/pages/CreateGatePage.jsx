@@ -4,7 +4,7 @@ import useIpanels from '../src/hooks/useIpanels';
 import {
   createPorton, startStage, stopStage,
   createIpanel, startIpanelStage, stopIpanelStage,
-  setFechaPlan, // ⬅️ NUEVO
+  setFechaPlan,
 } from '../src/api';
 import { isAuthed, login, logout } from '../src/auth/createGateAuth';
 
@@ -31,14 +31,15 @@ const IP_STAGES = [
   { key: 'inyeccion',  label: 'Inyección' },
 ];
 
-const NV_COL_W     = 150;
-const FECHA_COL_W  = 190;   // ⬅️ NUEVO: ancho de columna fecha
-const GRID_GAP     = 6;
-const CELL_MIN_H   = 60;
-const bordo        = '#008241ff';
+const SEL_COL_W   = 44;   // columna de selección (checkbox)
+const NV_COL_W    = 150;
+const FECHA_COL_W = 190;  // columna fecha
+const GRID_GAP    = 6;
+const CELL_MIN_H  = 60;
+const bordo       = '#008241ff';
 
 const fmt = dt => (dt ? new Date(dt).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) : '');
-const dateOnly = v => (v ? String(v).slice(0, 10) : ''); // ⬅️ normaliza a YYYY-MM-DD
+const dateOnly = v => (v ? String(v).slice(0, 10) : '');
 
 const cellBg = st => {
   const s = (st || '').toLowerCase();
@@ -124,6 +125,16 @@ export default function CreateGatePage() {
     } catch (e) {
       alert(e?.response?.data?.error || e.message);
     }
+  };
+
+  // ---- Selección de filas (portones) ----
+  const [selected, setSelected] = useState(new Set());
+  const toggleSel = (id) => {
+    setSelected(prev => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
   };
 
   // ---- Métricas Portones ----
@@ -367,22 +378,67 @@ export default function CreateGatePage() {
     } catch (e) { alert(e?.response?.data?.error || e.message); }
   }
 
+  // ---- Exportar XLSX (todo/seleccionados) ----
+  async function handleExportXlsxAll(rows) {
+    const xlsxMod = await import('xlsx');
+    const XLSX = xlsxMod.default || xlsxMod;
+
+    const header = [
+      'NV', 'Lista', 'Partida', 'Fecha planificada',
+      ...STAGES.flatMap(s => [
+        `${s.label} - Estado`, `${s.label} - Inicio`, `${s.label} - Fin`
+      ])
+    ];
+
+    const dataRows = rows.map(p => {
+      const fila = [
+        p.nv ?? '',
+        p.nlista ?? '',
+        p.partida ?? '',
+        dateOnly(p.fecha_plan) || '' // ⬅️ NUEVO
+      ];
+      for (const s of STAGES) {
+        const st  = p[s.key] || '';
+        const ini = p[`${s.key}_inicio`] ? fmt(p[`${s.key}_inicio`]) : '';
+        const fin = p[`${s.key}_fin`]    ? fmt(p[`${s.key}_fin`])    : '';
+        fila.push(st, ini, fin);
+      }
+      return fila;
+    });
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet([header, ...dataRows]);
+    ws['!cols'] = [
+      { wch: 8 },   // NV
+      { wch: 10 },  // Lista
+      { wch: 10 },  // Partida
+      { wch: 14 },  // Fecha planificada
+      ...STAGES.flatMap(() => [{ wch: 16 }, { wch: 20 }, { wch: 20 }])
+    ];
+    XLSX.utils.book_append_sheet(wb, ws, 'Portones');
+
+    const pad = n => String(n).padStart(2, '0');
+    const now = new Date();
+    const fname = `portones_${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}.xlsx`;
+    XLSX.writeFile(wb, fname);
+  }
+
+  // ---- Exportar seleccionados ----
+  async function handleExportSelected() {
+    const rows = listPortones.filter(p => selected.has(p.id));
+    if (rows.length === 0) return;
+    await handleExportXlsxAll(rows);
+  }
+
   // ---- Sticky helpers ----
-  const stickyTop    = { position: 'sticky', top: 0, zIndex: 5, background: 'var(--surface)' };
-  const stickyLeft   = { position: 'sticky', left: 0, zIndex: 4, background: 'var(--surface)', boxShadow: '1px 0 0 rgba(0,0,0,.08)' };
-  const stickyCorner = { position: 'sticky', top: 0, left: 0, zIndex: 6, background: 'var(--surface)' };
+  const stickyTop     = { position: 'sticky', top: 0, zIndex: 5, background: 'var(--surface)' };
+  const stickyLeft0   = { position: 'sticky', left: 0, zIndex: 4, background: 'var(--surface)', boxShadow: '1px 0 0 rgba(0,0,0,.08)' };         // selección
+  const stickyLeftNV  = { position: 'sticky', left: SEL_COL_W, zIndex: 4, background: 'var(--surface)', boxShadow: '1px 0 0 rgba(0,0,0,.08)' };   // NV después de selección
 
   // ---- Render ----
   const cellBase   = { border: `2px solid ${bordo}`, padding: 8, borderRadius: 12, boxSizing: 'border-box' };
   const headerCell = { ...cellBase, background:'var(--surface)', fontWeight:700, textAlign:'center' };
   const nvCell     = { ...cellBase, background:'var(--surface)', minHeight:CELL_MIN_H, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, paddingLeft:10, paddingRight:10 };
-
-  const chip = {
-    display:'inline-flex', alignItems:'center', gap:6,
-    padding:'6px 10px', borderRadius:999,
-    background:'var(--surface-muted)', color:'var(--ink)',
-    border:'1px solid #e5e7eb', fontWeight:800
-  };
 
   return (
     <div className="screen page" style={{ fontFamily:'system-ui,sans-serif' }}>
@@ -397,46 +453,25 @@ export default function CreateGatePage() {
             >
               {(refreshing || refreshingI) ? 'Actualizando…' : 'Refrescar'}
             </button>
+
             <button
-              onClick={async () => {
-                const xlsxMod = await import('xlsx');
-                const XLSX = xlsxMod.default || xlsxMod;
-                const header = [
-                  'NV', 'Lista', 'Partida',
-                  ...STAGES.flatMap(s => [
-                    `${s.label} - Estado`, `${s.label} - Inicio`, `${s.label} - Fin`
-                  ])
-                ];
-                const rows = listPortones.map(p => {
-                  const fila = [p.nv ?? '', p.nlista ?? '', p.partida ?? ''];
-                  for (const s of STAGES) {
-                    const st  = p[s.key] || '';
-                    const ini = p[`${s.key}_inicio`] ? fmt(p[`${s.key}_inicio`]) : '';
-                    const fin = p[`${s.key}_fin`]    ? fmt(p[`${s.key}_fin`])    : '';
-                    fila.push(st, ini, fin);
-                  }
-                  return fila;
-                });
-                const wb = XLSX.utils.book_new();
-                const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
-                ws['!cols'] = [
-                  { wch: 8 },  // NV
-                  { wch: 10 }, // Lista
-                  { wch: 10 }, // Partida
-                  ...STAGES.flatMap(() => [{ wch: 16 }, { wch: 20 }, { wch: 20 }])
-                ];
-                XLSX.utils.book_append_sheet(wb, ws, 'Portones');
-                const pad = n => String(n).padStart(2, '0');
-                const now = new Date();
-                const fname = `portones_${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}.xlsx`;
-                XLSX.writeFile(wb, fname);
-              }}
+              onClick={() => handleExportXlsxAll(listPortones)}
               disabled={loading || (listPortones?.length ?? 0) === 0}
               className="btn"
               title="Exporta Portones visibles en la grilla"
             >
               Exportar XLSX
             </button>
+
+            <button
+              onClick={handleExportSelected}
+              disabled={loading || selected.size === 0}
+              className="btn"
+              title="Exporta solo los portones seleccionados"
+            >
+              Exportar seleccionados {selected.size > 0 ? `(${selected.size})` : ''}
+            </button>
+
             <button onClick={()=>{ logout(); setAuthed(false); }} className="btn">
               Salir
             </button>
@@ -555,7 +590,7 @@ export default function CreateGatePage() {
             <div
               style={{
                 display:'grid',
-                gridTemplateColumns: `${NV_COL_W}px ${FECHA_COL_W}px repeat(${STAGES.length}, 1fr)`, // ⬅️ columna fecha antes de “Diseño”
+                gridTemplateColumns: `${SEL_COL_W}px ${NV_COL_W}px ${FECHA_COL_W}px repeat(${STAGES.length}, 1fr)`, // selección + NV + fecha + etapas
                 columnGap: GRID_GAP,
                 rowGap: GRID_GAP,
                 alignItems:'stretch',
@@ -563,18 +598,24 @@ export default function CreateGatePage() {
                 padding:16
               }}
             >
-              {/* Header */}
-              <div style={{ ...headerCell, ...stickyCorner, textAlign:'center' }}>NV / Lista / Partida</div>
+              {/* Header selección (esquina) */}
+              <div style={{ ...headerCell, position:'sticky', top:0, left:0, zIndex:6, background:'var(--surface)', textAlign:'center' }}>
+                Sel
+              </div>
+
+              {/* Header NV */}
+              <div style={{ ...headerCell, position:'sticky', top:0, left:SEL_COL_W, zIndex:5, textAlign:'center', background:'var(--surface)' }}>
+                NV / Lista / Partida
+              </div>
 
               {/* Header fecha planificada */}
-              <div style={{ ...headerCell, ...stickyTop, textAlign:'center' }}>
+              <div style={{ ...headerCell, ...{ position:'sticky', top:0, zIndex:5, background:'var(--surface)' }, textAlign:'center' }}>
                 Entrega planificada
               </div>
 
               {STAGES.map(s => (
-                <div key={`h-${s.key}`} style={{ ...headerCell, ...stickyTop, textAlign:'center' }}>
+                <div key={`h-${s.key}`} style={{ ...headerCell, position:'sticky', top:0, zIndex:5, background:'var(--surface)', textAlign:'center' }}>
                   <div>{s.label}</div>
-                  {/* visor etapa (oculto) */}
                 </div>
               ))}
 
@@ -584,8 +625,19 @@ export default function CreateGatePage() {
                 const val = fechaLocal[p.id] ?? current;
 
                 return ([
+                  // Columna selección
+                  <div key={`sel-${p.id}`} style={{ ...cellBase, ...stickyLeft0, minHeight:CELL_MIN_H, display:'grid', placeItems:'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={selected.has(p.id)}
+                      onChange={() => toggleSel(p.id)}
+                      aria-label={`Seleccionar NV ${p.nv}`}
+                      style={{ width:18, height:18 }}
+                    />
+                  </div>,
+
                   // NV / Lista / Partida
-                  <div key={`nv-${p.id}`} style={{ ...nvCell, ...stickyLeft }}>
+                  <div key={`nv-${p.id}`} style={{ ...nvCell, ...stickyLeftNV }}>
                     <div style={{ display:'flex', flexDirection:'column', lineHeight:1.15 }}>
                       <strong>NV {p.nv}</strong>
                       <strong>N° Partida {p.partida ?? ''}</strong>
@@ -666,7 +718,7 @@ export default function CreateGatePage() {
               })}
 
               {listPortones.length === 0 && (
-                <div style={{ gridColumn:`1 / span ${STAGES.length + 2}`, marginTop:12, opacity:.7 }}>
+                <div style={{ gridColumn:`1 / span ${STAGES.length + 3}`, marginTop:12, opacity:.7 }}>
                   Sin resultados.
                 </div>
               )}
@@ -689,16 +741,16 @@ export default function CreateGatePage() {
               }}
             >
               {/* Header iPanels */}
-              <div style={{ ...headerCell, ...stickyCorner, textAlign:'center' }}>NV / Partida</div>
+              <div style={{ ...headerCell, position:'sticky', top:0, left:0, zIndex:6, background:'var(--surface)', textAlign:'center' }}>NV / Partida</div>
               {IP_STAGES.map(s => (
-                <div key={`ip-h-${s.key}`} style={{ ...headerCell, ...stickyTop, textAlign:'center' }}>
+                <div key={`ip-h-${s.key}`} style={{ ...headerCell, position:'sticky', top:0, zIndex:5, background:'var(--surface)', textAlign:'center' }}>
                   <div>{s.label}</div>
                 </div>
               ))}
 
               {/* Filas iPanels */}
               {listIpanels.map(i => ([
-                <div key={`ip-nv-${i.id}`} style={{ ...nvCell, ...stickyLeft }}>
+                <div key={`ip-nv-${i.id}`} style={{ ...nvCell, position:'sticky', left:0, zIndex:4, background:'var(--surface)', boxShadow:'1px 0 0 rgba(0,0,0,.08)' }}>
                   <div style={{ display:'flex', flexDirection:'column', lineHeight:1.15 }}>
                     <strong>NV {i.nv}</strong>
                     <strong>N° Partida {i.partida ?? ''}</strong>
