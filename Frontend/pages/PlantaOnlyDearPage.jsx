@@ -159,14 +159,39 @@ export default function PlantaReadOnlyPage() {
   }, [data, filter]);
 
   // ordenar por nlista -> nv
-  const list = useMemo(() => {
-    const arr = [...baseList];
-    arr.sort((a, b) =>
+// ordenar: primero los que tienen fecha (más urgentes arriba), luego resto por nlista -> nv
+const list = useMemo(() => {
+  const arr = [...baseList];
+
+  arr.sort((a, b) => {
+    const aHas = !!dateOnly(a.fecha_plan);
+    const bHas = !!dateOnly(b.fecha_plan);
+
+    // 1) Con fecha primero
+    if (aHas !== bHas) return aHas ? -1 : 1;
+
+    // 2) Si ambos tienen fecha: ordenar por días que faltan (menor primero = vencidos/urgentes arriba)
+    if (aHas && bHas) {
+      const da = daysUntil(dateOnly(a.fecha_plan)); // puede ser negativo si vencido
+      const db = daysUntil(dateOnly(b.fecha_plan));
+
+      // valores null (por rarezas) van al final
+      const na = da === null ? Number.POSITIVE_INFINITY : da;
+      const nb = db === null ? Number.POSITIVE_INFINITY : db;
+
+      if (na !== nb) return na - nb;
+    }
+
+    // 3) Desempate como antes: nlista -> nv
+    return (
       (a.nlista || 0) - (b.nlista || 0) ||
       (a.nv     || 0) - (b.nv     || 0)
     );
-    return arr;
-  }, [baseList]);
+  });
+
+  return arr;
+}, [baseList]);
+
 
   // contadores por etapa (encabezados)
   const stageStats = useMemo(() => {

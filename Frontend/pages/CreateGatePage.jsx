@@ -538,7 +538,7 @@ export default function CreateGatePage() {
           className="page__header"
           style={{ display:'flex', gap:8, alignItems:'center', marginTop:-8, flexWrap:'wrap', paddingTop:0 }}
         >
-          <input type="text" placeholder="Buscar por NV o NLista (número)" value={q} onChange={(e)=>setQ(e.target.value)} className="btn" style={{ minWidth:260 }} inputMode="numeric" />
+          <input type="text" placeholder="Buscar por NV o NPortón (número)" value={q} onChange={(e)=>setQ(e.target.value)} className="btn" style={{ minWidth:260 }} inputMode="numeric" />
           <button type="submit" className="btn">Buscar</button>
           <button type="button" className="btn" onClick={()=>{ setQ(''); setFilter(null); }}>Limpiar</button>
         </form>
@@ -589,7 +589,7 @@ export default function CreateGatePage() {
                     <div style={{ display:'flex', flexDirection:'column', lineHeight:1.15 }}>
                       <strong>NV {p.nv}</strong>
                       <strong>N° Partida {p.partida ?? ''}</strong>
-                      <span style={{ fontSize:12, opacity:.8 }}>Lista {p.nlista}</span>
+                      <span style={{ fontSize:12, opacity:.8 }}>N° Portón {p.nlista}</span>
                     </div>
                   </div>,
 
