@@ -32,23 +32,36 @@ export default function StageColumn({
     return true;
   });
 
-  // Orden: primero En Proceso, luego Pendiente; luego por inicio, luego por (nlista|partida) y NV
+  // ORDEN:
+  // 1) Iniciados (en proceso) primero
+  // 2) No iniciados (pendiente) ordenados por número de partida
+  //    - sin partida al final
+  // Desempates:
+  // - iniciados: por fecha de inicio asc (más antiguos arriba)
+  // - pendientes: por nv, luego nlista
   const ordered = filtered.sort((a, b) => {
-    const rank = s => (s === 'en proceso' ? 0 : s === 'pendiente' ? 1 : 2);
-    const ra = rank(low(a[effKey]));
-    const rb = rank(low(b[effKey]));
-    if (ra !== rb) return ra - rb;
+    const aStarted = low(a[effKey]) === 'en proceso';
+    const bStarted = low(b[effKey]) === 'en proceso';
+    if (aStarted !== bStarted) return aStarted ? -1 : 1;
 
-    const ia = a[`${effKey}_inicio`] ? new Date(a[`${effKey}_inicio`]).getTime() : Infinity;
-    const ib = b[`${effKey}_inicio`] ? new Date(b[`${effKey}_inicio`]).getTime() : Infinity;
-    if (ia !== ib) return ia - ib;
+    if (aStarted && bStarted) {
+      const ia = a[`${effKey}_inicio`] ? new Date(a[`${effKey}_inicio`]).getTime() : 0;
+      const ib = b[`${effKey}_inicio`] ? new Date(b[`${effKey}_inicio`]).getTime() : 0;
+      if (ia !== ib) return ia - ib;
+      // fallback por partida para mantener cierta coherencia visual
+      const pa = a.partida != null ? Number(a.partida) : Infinity;
+      const pb = b.partida != null ? Number(b.partida) : Infinity;
+      if (pa !== pb) return pa - pb;
+      return (a.nv || 0) - (b.nv || 0);
+    }
 
-    // Portón: nlista -> nv ; iPanel: partida -> nv
-    const aPrim = mode === 'porton' ? (a.nlista || 0) : (a.partida || 0);
-    const bPrim = mode === 'porton' ? (b.nlista || 0) : (b.partida || 0);
-    if (aPrim !== bPrim) return aPrim - bPrim;
+    // Ambos pendientes
+    const pa = a.partida != null ? Number(a.partida) : Infinity;
+    const pb = b.partida != null ? Number(b.partida) : Infinity;
+    if (pa !== pb) return pa - pb;
 
-    return (a.nv || 0) - (b.nv || 0);
+    if ((a.nv || 0) !== (b.nv || 0)) return (a.nv || 0) - (b.nv || 0);
+    return (a.nlista || 0) - (b.nlista || 0);
   });
 
   const fmt = dt =>

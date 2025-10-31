@@ -12,6 +12,7 @@ import StatusGatePage from '../src/components/StatusGatePage';
 import CreateGatePage from '../pages/CreateGatePage';
 import PlantaReadOnlyPage from '../pages/PlantaOnlyDearPage';
 import IpanelReadOnlyPage from '../pages/IpanelReadOnlyPage';
+import PlantaReadOnlySimplePage from '../pages/PlantaReadyOnlySimplePage';
 
 const color = 'var(--brand)';
 
@@ -272,6 +273,7 @@ export default function App() {
         <Route path="/statusGate" element={<StatusGatePage />} />
         <Route path="/createGate" element={<CreateGatePage />} />
         <Route path="/planta" element={<PlantaReadOnlyPage />} />
+        <Route path="/plantasimple" element= {<PlantaReadOnlySimplePage />} />
 
         {/* Not found -> home */}
         <Route path="*" element={<Navigate to="/" replace />} />
