@@ -79,7 +79,7 @@ function getPlanIndicator(p) {
   }
 
   // ✅ AMARILLO: entre 10 y 8 días (inclusive)
-  if (d !== null && d <= 10 && d >= 8) {
+  if (d !== null && d <= 15 && d >= 8) {
     return { color: '#eab308', label: 'Atento', days: d, title: `Faltan ${d} día(s) · Armado Primario no finalizado` };
   }
 
