@@ -17,6 +17,10 @@ export const startStage = (id, stage) =>
 export const stopStage = (id, stage) =>
   api.post(`/portones/${id}/stage`, { stage, action: 'stop' });
 
+// ⬇️ NUEVO: asignar/limpiar fecha planificada (YYYY-MM-DD o null)
+export const setFechaPlan = (id, fechaOrNull) =>
+  api.post(`/portones/${id}/fecha-plan`, { fecha_plan: fechaOrNull });
+
 
 /* ========= iPanels ========= */
 // GET todos los iPanels

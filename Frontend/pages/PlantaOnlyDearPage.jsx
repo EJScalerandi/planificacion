@@ -17,12 +17,14 @@ const STAGES = [
   { key: 'despacho',             label: 'Despacho' },
 ];
 
-const NV_COL_W   = 150;
-const GRID_GAP   = 6;
-const CELL_MIN_H = 60;
-const bordo      = '#008241ff';
+const NV_COL_W     = 150;
+const FECHA_COL_W  = 190;     // ⬅️ nueva columna “Entrega planificada”
+const GRID_GAP     = 6;
+const CELL_MIN_H   = 60;
+const bordo        = '#008241ff';
 
 const fmt = dt => (dt ? new Date(dt).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) : '');
+const dateOnly = v => (v ? String(v).slice(0, 10) : '');
 
 const cellBg = st => {
   const s = (st || '').toLowerCase();
@@ -41,6 +43,50 @@ const cellInk = st => {
 
 const isFullyFinished = p =>
   STAGES.every(s => (p[s.key] || '').toLowerCase() === 'finalizado');
+
+// ===== Helpers semáforo =====
+const startOfToday = () => {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
+
+const daysUntil = (ymd) => {
+  if (!ymd) return null;
+  const target = new Date(`${dateOnly(ymd)}T00:00:00`);
+  const today0 = startOfToday();
+  const diffMs = target.getTime() - today0.getTime();
+  return Math.ceil(diffMs / 86400000); // días que faltan (negativo si vencido)
+};
+
+function getPlanIndicator(p) {
+  const fecha = dateOnly(p.fecha_plan);
+  if (!fecha) {
+    return { color: '#d1d5db', label: 'Sin fecha', days: null, title: 'Sin fecha planificada' }; // gris
+  }
+
+  const apFinished = (p.armado_primario || '').toLowerCase() === 'finalizado';
+  const d = daysUntil(fecha);
+
+  // Si Armado Primario está finalizado -> siempre verde
+  if (apFinished) {
+    return { color: '#16a34a', label: 'OK', days: d, title: `Entrega planificada ${fecha} · Armado Primario finalizado` };
+  }
+
+  // ✅ ROJO: 7 días o menos (incluye vencidos)
+  if (d !== null && d <= 7) {
+    return { color: '#ef4444', label: 'Urgente', days: d, title: `Faltan ${d} día(s) · Armado Primario no finalizado` };
+  }
+
+  // ✅ AMARILLO: entre 10 y 8 días (inclusive)
+  if (d !== null && d <= 10 && d >= 8) {
+    return { color: '#eab308', label: 'Atento', days: d, title: `Faltan ${d} día(s) · Armado Primario no finalizado` };
+  }
+
+  // VERDE: resto de los casos (fecha asignada y >10 días)
+  return { color: '#16a34a', label: 'OK', days: d, title: `Faltan ${d} día(s) para ${fecha}` };
+}
+
 
 export default function PlantaReadOnlyPage() {
   const { data, loading, err, refresh, refreshing } = usePortones({ pollMs: 300000 });
@@ -68,22 +114,21 @@ export default function PlantaReadOnlyPage() {
     ).length;
   }, [data, fabKeys]);
 
-  // en proceso = total cargados − terminados en planta − en cola
-const enProcesoFabricacion = useMemo(() => {
-  if (!Array.isArray(data)) return 0;
-  const low = (v) => (v || '').toLowerCase();
+  // en proceso (según lógica original)
+  const enProcesoFabricacion = useMemo(() => {
+    if (!Array.isArray(data)) return 0;
+    const low = (v) => (v || '').toLowerCase();
 
-  return data.filter(p => {
-    const af   = low(p.armado_final);
-    const dis  = low(p.diseno);
+    return data.filter(p => {
+      const af   = low(p.armado_final);
+      const dis  = low(p.diseno);
 
-    const afOk  = af === 'pendiente' || af === 'en proceso';
-    const disOk = dis === 'en proceso' || dis === 'finalizado';
+      const afOk  = af === 'pendiente' || af === 'en proceso';
+      const disOk = dis === 'en proceso' || dis === 'finalizado';
 
-    return afOk && disOk;
-  }).length;
-}, [data]);
-
+      return afOk && disOk;
+    }).length;
+  }, [data]);
 
   // Partidas con al menos una etapa "En Proceso"
   const partidasEnProceso = useMemo(() => {
@@ -185,12 +230,12 @@ const enProcesoFabricacion = useMemo(() => {
         <div style={{ display:'flex', flexDirection:'column', gap:8, minWidth:280 }}>
           <div className="metric metric--warn">Portones terminados en planta: {terminadosEnPlanta}</div>
           <div className="metric metric--ok">Portones en proceso de fabricación: {enProcesoFabricacion}</div>
-          <div className="metric" style={{ background: 'rgba(239,68,68,0.15)' /* rojo suave */ }}>
+          <div className="metric" style={{ background: 'rgba(239,68,68,0.15)' }}>
             Portones en cola de fabricación: {enColaFabricacion}
           </div>
         </div>
       </div>
-
+            <br></br>
       <form
         onSubmit={(e)=>{ e.preventDefault(); setFilter(q.trim()); }}
         className="page__header" style={{ display:'flex', gap:8, alignItems:'center', marginTop:-8, flexWrap:'wrap', paddingTop:0 }}
@@ -207,7 +252,8 @@ const enProcesoFabricacion = useMemo(() => {
         <div
           style={{
             display:'grid',
-            gridTemplateColumns: `${NV_COL_W}px repeat(${STAGES.length}, 1fr)`,
+            // ⬇️ agregamos la nueva columna de fecha antes de todas las etapas
+            gridTemplateColumns: `${NV_COL_W}px ${FECHA_COL_W}px repeat(${STAGES.length}, 1fr)`,
             columnGap: GRID_GAP,
             rowGap: GRID_GAP,
             alignItems:'stretch',
@@ -215,7 +261,15 @@ const enProcesoFabricacion = useMemo(() => {
             padding:16
           }}
         >
-          <div style={{ ...headerCell, ...stickyCorner, textAlign:'center' }}>NV / Lista / Partida</div>
+          {/* Encabezados */}
+          <div style={{ ...headerCell, ...stickyCorner, textAlign:'center' }}>
+            NV / Lista / Partida
+          </div>
+
+          <div style={{ ...headerCell, ...stickyTop, textAlign:'center' }}>
+            Entrega planificada
+          </div>
+
           {STAGES.map(s => (
             <div key={`h-${s.key}`} style={{ ...headerCell, ...stickyTop, textAlign:'center' }}>
               <div>{s.label}</div>
@@ -225,45 +279,78 @@ const enProcesoFabricacion = useMemo(() => {
             </div>
           ))}
 
-          {list.map(p => ([
-            <div key={`nv-${p.id}`} style={{ ...nvCell, ...stickyLeft }}>
-              <strong>N° Portón {p.nlista}</strong>
-              <strong>N° Partida {p.partida}</strong>
-              <strong>NV {p.nv}</strong>
-            </div>,
-            ...STAGES.map(s => {
-              const st  = p[s.key];
-              const ini = p[`${s.key}_inicio`];
-              const fin = p[`${s.key}_fin`];
-              return (
-                <div
-                  key={`${p.id}-${s.key}`}
-                  style={{
-                    ...cellBase,
-                    background: cellBg(st),
-                    color: cellInk(st),
-                    minHeight: CELL_MIN_H,
-                    display:'flex',
-                    flexDirection:'column',
-                    justifyContent:'center',
-                    cursor:'default'
-                  }}
-                  title={[
-                    st ? `Estado: ${st}` : null,
-                    ini ? `Inicio: ${fmt(ini)}` : null,
-                    fin ? `Fin: ${fmt(fin)}` : null
-                  ].filter(Boolean).join('\n')}
-                >
-                  <div style={{ fontSize:12, fontWeight:700 }}>{st || ''}</div>
-                  <div style={{ fontSize:11 }}>{ini ? `Inicio: ${fmt(ini)}` : ''}</div>
-                  <div style={{ fontSize:11 }}>{fin ? `Fin: ${fmt(fin)}` : ''}</div>
+          {/* Filas */}
+          {list.map(p => {
+            const plan = getPlanIndicator(p);
+            const fechaTxt = dateOnly(p.fecha_plan)
+              ? new Date(`${dateOnly(p.fecha_plan)}T00:00:00`).toLocaleDateString('es-AR')
+              : '—';
+
+            return ([
+              <div key={`nv-${p.id}`} style={{ ...nvCell, ...stickyLeft }}>
+                <strong>N° Portón {p.nlista}</strong>
+                <strong>N° Partida {p.partida}</strong>
+                <strong>NV {p.nv}</strong>
+              </div>,
+
+              // Celda: fecha + semáforo
+              <div key={`fecha-${p.id}`} style={{ ...cellBase, minHeight: CELL_MIN_H, display:'flex', alignItems:'center', justifyContent:'space-between', gap:10 }}>
+                <div title={plan.title} style={{ display:'flex', alignItems:'center', gap:10 }}>
+                  <span
+                    aria-label={`Indicador ${plan.label}`}
+                    title={plan.title}
+                    style={{
+                      width:18, height:18, minWidth:18,
+                      borderRadius:999,
+                      background: plan.color,
+                      boxShadow:'0 0 0 2px rgba(0,0,0,.08) inset'
+                    }}
+                  />
+                  <strong>{fechaTxt}</strong>
                 </div>
-              );
-            })
-          ]))}
+                {/* opcional: muestra días restantes si hay fecha */}
+                {plan.days !== null && (
+                  <span style={{ fontSize:12, opacity:.75 }}>
+                    {plan.days >= 0 ? `Faltan ${plan.days} días` : `${Math.abs(plan.days)} d vencido`}
+                  </span>
+                )}
+              </div>,
+
+              // Celdas de etapas (solo lectura)
+              ...STAGES.map(s => {
+                const st  = p[s.key];
+                const ini = p[`${s.key}_inicio`];
+                const fin = p[`${s.key}_fin`];
+                return (
+                  <div
+                    key={`${p.id}-${s.key}`}
+                    style={{
+                      ...cellBase,
+                      background: cellBg(st),
+                      color: cellInk(st),
+                      minHeight: CELL_MIN_H,
+                      display:'flex',
+                      flexDirection:'column',
+                      justifyContent:'center',
+                      cursor:'default'
+                    }}
+                    title={[
+                      st ? `Estado: ${st}` : null,
+                      ini ? `Inicio: ${fmt(ini)}` : null,
+                      fin ? `Fin: ${fmt(fin)}` : null
+                    ].filter(Boolean).join('\n')}
+                  >
+                    <div style={{ fontSize:12, fontWeight:700 }}>{st || ''}</div>
+                    <div style={{ fontSize:11 }}>{ini ? `Inicio: ${fmt(ini)}` : ''}</div>
+                    <div style={{ fontSize:11 }}>{fin ? `Fin: ${fmt(fin)}` : ''}</div>
+                  </div>
+                );
+              })
+            ]);
+          })}
 
           {!loading && list.length === 0 && (
-            <div style={{ gridColumn:`1 / span ${STAGES.length + 1}`, marginTop:12, opacity:.7 }}>
+            <div style={{ gridColumn:`1 / span ${STAGES.length + 2}`, marginTop:12, opacity:.7 }}>
               Sin resultados.
             </div>
           )}

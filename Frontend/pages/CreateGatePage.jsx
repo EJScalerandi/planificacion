@@ -3,7 +3,8 @@ import usePortones from '../src/hooks/usePortones';
 import useIpanels from '../src/hooks/useIpanels';
 import {
   createPorton, startStage, stopStage,
-  createIpanel, startIpanelStage, stopIpanelStage
+  createIpanel, startIpanelStage, stopIpanelStage,
+  setFechaPlan, // ⬅️ NUEVO
 } from '../src/api';
 import { isAuthed, login, logout } from '../src/auth/createGateAuth';
 
@@ -30,12 +31,14 @@ const IP_STAGES = [
   { key: 'inyeccion',  label: 'Inyección' },
 ];
 
-const NV_COL_W   = 150;
-const GRID_GAP   = 6;
-const CELL_MIN_H = 60;
-const bordo      = '#008241ff';
+const NV_COL_W     = 150;
+const FECHA_COL_W  = 190;   // ⬅️ NUEVO: ancho de columna fecha
+const GRID_GAP     = 6;
+const CELL_MIN_H   = 60;
+const bordo        = '#008241ff';
 
 const fmt = dt => (dt ? new Date(dt).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) : '');
+const dateOnly = v => (v ? String(v).slice(0, 10) : ''); // ⬅️ normaliza a YYYY-MM-DD
 
 const cellBg = st => {
   const s = (st || '').toLowerCase();
@@ -96,6 +99,33 @@ export default function CreateGatePage() {
     refresh: refreshI, refreshing: refreshingI
   } = useIpanels({ pollMs: 300000 });
 
+  // ---- Estado local para fechas por fila ----
+  const [fechaLocal, setFechaLocal] = useState({}); // { [id]: 'YYYY-MM-DD' }
+  const setLocalFecha = (id, ymd) => setFechaLocal(prev => ({ ...prev, [id]: ymd }));
+
+  const guardarFecha = async (p) => {
+    const current = dateOnly(p.fecha_plan);
+    const val = fechaLocal[p.id] ?? current;
+    const ymd = val && /^\d{4}-\d{2}-\d{2}$/.test(val) ? val : null;
+    try {
+      const { data: upd } = await setFechaPlan(p.id, ymd);
+      replaceItem(upd);
+      setLocalFecha(p.id, dateOnly(upd.fecha_plan));
+    } catch (e) {
+      alert(e?.response?.data?.error || e.message);
+    }
+  };
+
+  const limpiarFecha = async (p) => {
+    try {
+      const { data: upd } = await setFechaPlan(p.id, null);
+      replaceItem(upd);
+      setLocalFecha(p.id, '');
+    } catch (e) {
+      alert(e?.response?.data?.error || e.message);
+    }
+  };
+
   // ---- Métricas Portones ----
   const fabKeysPorton = useMemo(() => STAGES.filter(s => s.key !== 'despacho').map(s => s.key), []);
   const terminadosEnPlanta = useMemo(() => {
@@ -106,7 +136,6 @@ export default function CreateGatePage() {
     ).length;
   }, [dataP]);
 
-  // cola: ninguna etapa en proceso ni finalizada
   const enColaFabricacion = useMemo(() => {
     if (!Array.isArray(dataP)) return 0;
     return dataP.filter(p =>
@@ -123,7 +152,6 @@ export default function CreateGatePage() {
     return Math.max(0, total - terminadosEnPlanta - enColaFabricacion);
   }, [dataP, terminadosEnPlanta, enColaFabricacion]);
 
-  // Partidas en proceso (Portones) — (se usan en visualizador, lo dejamos calculado)
   const partidasEnProcesoP = useMemo(() => {
     if (!Array.isArray(dataP)) return [];
     const low = v => (v || '').toLowerCase();
@@ -339,45 +367,6 @@ export default function CreateGatePage() {
     } catch (e) { alert(e?.response?.data?.error || e.message); }
   }
 
-  // ---- Exportar a XLSX (solo Portones visibles) ----
-  async function handleExportXlsx() {
-    const xlsxMod = await import('xlsx');
-    const XLSX = xlsxMod.default || xlsxMod;
-
-    const header = [
-      'NV', 'Lista', 'Partida',
-      ...STAGES.flatMap(s => [
-        `${s.label} - Estado`, `${s.label} - Inicio`, `${s.label} - Fin`
-      ])
-    ];
-
-    const rows = listPortones.map(p => {
-      const fila = [p.nv ?? '', p.nlista ?? '', p.partida ?? ''];
-      for (const s of STAGES) {
-        const st  = p[s.key] || '';
-        const ini = p[`${s.key}_inicio`] ? fmt(p[`${s.key}_inicio`]) : '';
-        const fin = p[`${s.key}_fin`]    ? fmt(p[`${s.key}_fin`])    : '';
-        fila.push(st, ini, fin);
-      }
-      return fila;
-    });
-
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
-    ws['!cols'] = [
-      { wch: 8 },  // NV
-      { wch: 10 }, // Lista
-      { wch: 10 }, // Partida
-      ...STAGES.flatMap(() => [{ wch: 16 }, { wch: 20 }, { wch: 20 }])
-    ];
-    XLSX.utils.book_append_sheet(wb, ws, 'Portones');
-
-    const pad = n => String(n).padStart(2, '0');
-    const now = new Date();
-    const fname = `portones_${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}.xlsx`;
-    XLSX.writeFile(wb, fname);
-  }
-
   // ---- Sticky helpers ----
   const stickyTop    = { position: 'sticky', top: 0, zIndex: 5, background: 'var(--surface)' };
   const stickyLeft   = { position: 'sticky', left: 0, zIndex: 4, background: 'var(--surface)', boxShadow: '1px 0 0 rgba(0,0,0,.08)' };
@@ -388,7 +377,6 @@ export default function CreateGatePage() {
   const headerCell = { ...cellBase, background:'var(--surface)', fontWeight:700, textAlign:'center' };
   const nvCell     = { ...cellBase, background:'var(--surface)', minHeight:CELL_MIN_H, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, paddingLeft:10, paddingRight:10 };
 
-  // chips (ya no se usan, pero queda por si reactivás el visor)
   const chip = {
     display:'inline-flex', alignItems:'center', gap:6,
     padding:'6px 10px', borderRadius:999,
@@ -398,9 +386,8 @@ export default function CreateGatePage() {
 
   return (
     <div className="screen page" style={{ fontFamily:'system-ui,sans-serif' }}>
-      {/* ===== Header: controles izquierda + (visualizadores ocultos) ===== */}
+      {/* ===== Header: controles ===== */}
       <div className="page__header page__header--split">
-        {/* Izquierda */}
         <div className="left-stack">
           <div style={{ display:'flex', gap:8, alignItems:'center' }}>
             <button
@@ -411,7 +398,39 @@ export default function CreateGatePage() {
               {(refreshing || refreshingI) ? 'Actualizando…' : 'Refrescar'}
             </button>
             <button
-              onClick={handleExportXlsx}
+              onClick={async () => {
+                const xlsxMod = await import('xlsx');
+                const XLSX = xlsxMod.default || xlsxMod;
+                const header = [
+                  'NV', 'Lista', 'Partida',
+                  ...STAGES.flatMap(s => [
+                    `${s.label} - Estado`, `${s.label} - Inicio`, `${s.label} - Fin`
+                  ])
+                ];
+                const rows = listPortones.map(p => {
+                  const fila = [p.nv ?? '', p.nlista ?? '', p.partida ?? ''];
+                  for (const s of STAGES) {
+                    const st  = p[s.key] || '';
+                    const ini = p[`${s.key}_inicio`] ? fmt(p[`${s.key}_inicio`]) : '';
+                    const fin = p[`${s.key}_fin`]    ? fmt(p[`${s.key}_fin`])    : '';
+                    fila.push(st, ini, fin);
+                  }
+                  return fila;
+                });
+                const wb = XLSX.utils.book_new();
+                const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+                ws['!cols'] = [
+                  { wch: 8 },  // NV
+                  { wch: 10 }, // Lista
+                  { wch: 10 }, // Partida
+                  ...STAGES.flatMap(() => [{ wch: 16 }, { wch: 20 }, { wch: 20 }])
+                ];
+                XLSX.utils.book_append_sheet(wb, ws, 'Portones');
+                const pad = n => String(n).padStart(2, '0');
+                const now = new Date();
+                const fname = `portones_${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}.xlsx`;
+                XLSX.writeFile(wb, fname);
+              }}
               disabled={loading || (listPortones?.length ?? 0) === 0}
               className="btn"
               title="Exporta Portones visibles en la grilla"
@@ -423,49 +442,10 @@ export default function CreateGatePage() {
             </button>
           </div>
         </div>
-
-        {/* Derecha (visualizadores) */}
-        {/* ===== VISUALIZADORES OCULTOS =====
-        <div className="duo-cards" style={{ maxWidth: 1100, marginInline: 'auto' }}>
-          <div className="card">
-            <div className="metric metric--warn">Portones terminados en planta: {terminadosEnPlanta}</div>
-            <div className="metric metric--ok">Portones en proceso de fabricación: {enProcesoFabricacion}</div>
-            <div className="metric" style={{ background: 'rgba(239,68,68,0.15)' }}>
-              Portones en cola de fabricación: {enColaFabricacion}
-            </div>
-            <div style={{
-              display:'flex', alignItems:'center', gap:8, flexWrap:'wrap',
-              padding:'6px 8px', background:'var(--surface)', border:'1px dashed #e5e7eb', borderRadius:10, marginTop:8
-            }}>
-              <span style={{ fontWeight:800 }}>Partidas en proceso:</span>
-              {partidasEnProcesoP.length === 0
-                ? <span style={{ ...chip, opacity:.7 }}>—</span>
-                : partidasEnProcesoP.map(n => <span key={n} style={chip}>{n}</span>)
-              }
-            </div>
-          </div>
-
-          <div className="card">
-            <div className="metric metric--warn">iPanels terminados en planta: {ipTerm}</div>
-            <div className="metric metric--ok">iPanels en proceso de fabricación: {ipProc}</div>
-            <div className="metric" style={{ background: 'rgba(239,68,68,0.15)' }}>
-              iPanels en cola de fabricación: {ipCola}
-            </div>
-            <div style={{
-              display:'flex', alignItems:'center', gap:8, flexWrap:'wrap',
-              padding:'6px 8px', background:'var(--surface)', border:'1px dashed #e5e7eb', borderRadius:10, marginTop:8
-            }}>
-              <span style={{ fontWeight:800 }}>Partidas en proceso (iPanel):</span>
-              {ipPartidasEnProceso.length === 0
-                ? <span style={{ ...chip, opacity:.7 }}>—</span>
-                : ipPartidasEnProceso.map(n => <span key={n} style={chip}>{n}</span>)
-              }
-            </div>
-          </div>
-        </div>
-        ===== FIN VISUALIZADORES OCULTOS ===== */}
       </div>
- <br></br>
+
+      <br />
+
       <div style={{ display:'flex', alignItems:'center', gap:10 }}>
         <label style={{ display:'flex', alignItems:'center', gap:6 }}>
           <input
@@ -484,7 +464,9 @@ export default function CreateGatePage() {
           Crear iPanel
         </label>
       </div>
- <br></br>
+
+      <br />
+
       {/* ===== Crear ===== */}
       <form
         onSubmit={handleCreate}
@@ -546,7 +528,9 @@ export default function CreateGatePage() {
           {createModeIpanel ? 'Crear iPanel' : 'Crear portón'}
         </button>
       </form>
-        <br></br>
+
+      <br />
+
       {/* ===== Buscar (Portones) ===== */}
       {!onlyIpanels && (
         <form
@@ -571,7 +555,7 @@ export default function CreateGatePage() {
             <div
               style={{
                 display:'grid',
-                gridTemplateColumns: `${NV_COL_W}px repeat(${STAGES.length}, 1fr)`,
+                gridTemplateColumns: `${NV_COL_W}px ${FECHA_COL_W}px repeat(${STAGES.length}, 1fr)`, // ⬅️ columna fecha antes de “Diseño”
                 columnGap: GRID_GAP,
                 rowGap: GRID_GAP,
                 alignItems:'stretch',
@@ -581,64 +565,108 @@ export default function CreateGatePage() {
             >
               {/* Header */}
               <div style={{ ...headerCell, ...stickyCorner, textAlign:'center' }}>NV / Lista / Partida</div>
+
+              {/* Header fecha planificada */}
+              <div style={{ ...headerCell, ...stickyTop, textAlign:'center' }}>
+                Entrega planificada
+              </div>
+
               {STAGES.map(s => (
                 <div key={`h-${s.key}`} style={{ ...headerCell, ...stickyTop, textAlign:'center' }}>
                   <div>{s.label}</div>
-                  {/* VISUALIZADOR DE ESTADO POR ETAPA (OCULTO)
-                  <div style={{ fontSize:12, opacity:.75 }}>
-                    Pendientes: {stageStats[s.key].pend} · En Proceso: {stageStats[s.key].proc}
-                  </div>
-                  */}
+                  {/* visor etapa (oculto) */}
                 </div>
               ))}
 
               {/* Filas */}
-              {listPortones.map(p => ([
-                <div key={`nv-${p.id}`} style={{ ...nvCell, ...stickyLeft }}>
-                  <div style={{ display:'flex', flexDirection:'column', lineHeight:1.15 }}>
-                    <strong>NV {p.nv}</strong>
-                    <strong>N° Partida {p.partida ?? ''}</strong>
-                    <span style={{ fontSize:12, opacity:.8 }}>Lista {p.nlista}</span>
-                  </div>
-                </div>,
-                ...STAGES.map(s => {
-                  const st  = p[s.key];
-                  const ini = p[`${s.key}_inicio`];
-                  const fin = p[`${s.key}_fin`];
-                  const lower = (st || '').toLowerCase();
-                  const clickable = lower === 'pendiente' || lower === 'en proceso';
-                  return (
-                    <div
-                      key={`${p.id}-${s.key}`}
-                      onClick={() => clickable && handleCellClickPorton(p, s)}
-                      style={{
-                        ...cellBase,
-                        background: cellBg(st),
-                        color: cellInk(st),
-                        minHeight: CELL_MIN_H,
-                        display:'flex',
-                        flexDirection:'column',
-                        justifyContent:'center',
-                        cursor: clickable ? 'pointer' : 'default',
-                        outline: clickable ? '2px dashed rgba(0,0,0,.12)' : 'none'
-                      }}
-                      title={[
-                        `Estado: ${st || ''}`,
-                        ini ? `Inicio: ${fmt(ini)}` : null,
-                        fin ? `Fin: ${fmt(fin)}` : null,
-                        clickable ? (lower === 'pendiente' ? 'Click: Iniciar' : 'Click: Finalizar') : 'Finalizado'
-                      ].filter(Boolean).join('\n')}
-                    >
-                      <div style={{ fontSize:12, fontWeight:700 }}>{st || ''}</div>
-                      <div style={{ fontSize:11 }}>{ini ? `Inicio: ${fmt(ini)}` : ''}</div>
-                      <div style={{ fontSize:11 }}>{fin ? `Fin: ${fmt(fin)}` : ''}</div>
+              {listPortones.map(p => {
+                const current = dateOnly(p.fecha_plan);
+                const val = fechaLocal[p.id] ?? current;
+
+                return ([
+                  // NV / Lista / Partida
+                  <div key={`nv-${p.id}`} style={{ ...nvCell, ...stickyLeft }}>
+                    <div style={{ display:'flex', flexDirection:'column', lineHeight:1.15 }}>
+                      <strong>NV {p.nv}</strong>
+                      <strong>N° Partida {p.partida ?? ''}</strong>
+                      <span style={{ fontSize:12, opacity:.8 }}>Lista {p.nlista}</span>
                     </div>
-                  );
-                })
-              ]))}
+                  </div>,
+
+                  // Celda fecha planificada (editable)
+                  <div key={`fecha-${p.id}`} style={{ ...cellBase, minHeight:CELL_MIN_H }}>
+                    <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                      <input
+                        type="date"
+                        value={val}
+                        onChange={e => setLocalFecha(p.id, e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') guardarFecha(p); }}
+                        className="btn"
+                        style={{ height:34 }}
+                      />
+                      <div style={{ display:'flex', gap:6 }}>
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => guardarFecha(p)}
+                          disabled={(val || '') === (current || '')}
+                          title="Guardar fecha planificada"
+                        >
+                          Guardar
+                        </button>
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => limpiarFecha(p)}
+                          disabled={!current}
+                          title="Quitar fecha planificada"
+                        >
+                          Quitar
+                        </button>
+                      </div>
+                    </div>
+                  </div>,
+
+                  // Etapas
+                  ...STAGES.map(s => {
+                    const st  = p[s.key];
+                    const ini = p[`${s.key}_inicio`];
+                    const fin = p[`${s.key}_fin`];
+                    const lower = (st || '').toLowerCase();
+                    const clickable = lower === 'pendiente' || lower === 'en proceso';
+                    return (
+                      <div
+                        key={`${p.id}-${s.key}`}
+                        onClick={() => clickable && handleCellClickPorton(p, s)}
+                        style={{
+                          ...cellBase,
+                          background: cellBg(st),
+                          color: cellInk(st),
+                          minHeight: CELL_MIN_H,
+                          display:'flex',
+                          flexDirection:'column',
+                          justifyContent:'center',
+                          cursor: clickable ? 'pointer' : 'default',
+                          outline: clickable ? '2px dashed rgba(0,0,0,.12)' : 'none'
+                        }}
+                        title={[
+                          `Estado: ${st || ''}`,
+                          ini ? `Inicio: ${fmt(ini)}` : null,
+                          fin ? `Fin: ${fmt(fin)}` : null,
+                          clickable ? (lower === 'pendiente' ? 'Click: Iniciar' : 'Click: Finalizar') : 'Finalizado'
+                        ].filter(Boolean).join('\n')}
+                      >
+                        <div style={{ fontSize:12, fontWeight:700 }}>{st || ''}</div>
+                        <div style={{ fontSize:11 }}>{ini ? `Inicio: ${fmt(ini)}` : ''}</div>
+                        <div style={{ fontSize:11 }}>{fin ? `Fin: ${fmt(fin)}` : ''}</div>
+                      </div>
+                    );
+                  })
+                ]);
+              })}
 
               {listPortones.length === 0 && (
-                <div style={{ gridColumn:`1 / span ${STAGES.length + 1}`, marginTop:12, opacity:.7 }}>
+                <div style={{ gridColumn:`1 / span ${STAGES.length + 2}`, marginTop:12, opacity:.7 }}>
                   Sin resultados.
                 </div>
               )}
@@ -665,11 +693,6 @@ export default function CreateGatePage() {
               {IP_STAGES.map(s => (
                 <div key={`ip-h-${s.key}`} style={{ ...headerCell, ...stickyTop, textAlign:'center' }}>
                   <div>{s.label}</div>
-                  {/* VISUALIZADOR DE ESTADO POR ETAPA (OCULTO)
-                  <div style={{ fontSize:12, opacity:.75 }}>
-                    Pendientes: {stageStatsI[s.key]?.pend ?? 0} · En Proceso: {stageStatsI[s.key]?.proc ?? 0}
-                  </div>
-                  */}
                 </div>
               ))}
 
