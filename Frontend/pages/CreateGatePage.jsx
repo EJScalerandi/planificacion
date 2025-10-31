@@ -235,14 +235,34 @@ export default function CreateGatePage() {
     return dataP.filter(p => !isFullyFinishedPorton(p));
   }, [dataP, filter]);
 
-  const listPortones = useMemo(() => {
-    const arr = [...baseListPortones];
-    arr.sort((a, b) =>
-      (a.nlista || 0) - (b.nlista || 0) ||
-      (a.nv     || 0) - (b.nv     || 0)
-    );
-    return arr;
-  }, [baseListPortones]);
+const listPortones = useMemo(() => {
+  const arr = [...baseListPortones];
+
+  arr.sort((a, b) => {
+    const da = dateOnly(a.fecha_plan);
+    const db = dateOnly(b.fecha_plan);
+    const hasA = !!da;
+    const hasB = !!db;
+
+    // 1) Con fecha arriba
+    if (hasA && !hasB) return -1;
+    if (!hasA && hasB) return 1;
+
+    // 2) Si ambos tienen fecha, ordenar por fecha ascendente
+    if (hasA && hasB) {
+      const tA = new Date(`${da}T00:00:00`).getTime();
+      const tB = new Date(`${db}T00:00:00`).getTime();
+      if (tA !== tB) return tA - tB;
+    }
+
+    // 3) Fallback: nlista -> nv
+    return ((a.nlista || 0) - (b.nlista || 0)) ||
+           ((a.nv || 0) - (b.nv || 0));
+  });
+
+  return arr;
+}, [baseListPortones]);
+
 
   const stageStats = useMemo(() => {
     const stats = {};
