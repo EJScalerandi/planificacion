@@ -23,6 +23,19 @@ function fmt(dt) {
   catch { return ''; }
 }
 
+const dateOnly = (v) => {
+  if (!v) return '';
+  try {
+    const d = new Date(v);
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    return `${dd}-${mm}-${yyyy}`;
+  } catch {
+    return '';
+  }
+};
+
 function classForStatus(s) {
   const v = (s || '').toLowerCase();
   if (v === 'finalizado') return 'cell cell--done';
@@ -59,8 +72,10 @@ export default function StatusGatePage() {
     return data.filter(p => p.nv === n || p.nlista === n);
   }, [data, filter, hasQuery]);
 
-  const NV_COL_W = 150;
-  const cols = `${NV_COL_W}px repeat(${STAGES.length}, 1fr)`;
+  const NV_COL_W       = 150;
+  const CONTACT_COL_W  = 88;   // semáforo
+  const FECHA_COL_W    = 190;  // fecha despacho
+  const cols = `${NV_COL_W}px ${CONTACT_COL_W}px ${FECHA_COL_W}px repeat(${STAGES.length}, 1fr)`;
 
   return (
     <div className="container-fluid">{/* 👈 ancho completo */}
@@ -109,6 +124,12 @@ export default function StatusGatePage() {
           <div className="cell" style={{ background:'var(--surface)', textAlign:'center', fontWeight:700 }}>
             NV / Lista
           </div>
+          <div className="cell" style={{ background:'var(--surface)', textAlign:'center', fontWeight:700 }}>
+            Contacto cliente
+          </div>
+          <div className="cell" style={{ background:'var(--surface)', textAlign:'center', fontWeight:700 }}>
+            Fecha despacho
+          </div>
           {STAGES.map(s => (
             <div key={`h-${s.key}`} className="cell" style={{ background:'var(--surface)', textAlign:'center', fontWeight:700 }}>
               {s.label}
@@ -116,43 +137,78 @@ export default function StatusGatePage() {
           ))}
 
           {/* Filas */}
-          {list.map(p => ([
-            <div key={`nv-${p.id}`} className="cell" style={{ background:'var(--surface)', display:'flex', gap:6, flexDirection:'column', justifyContent:'center' }}>
-              <strong>NV {p.nv}</strong>
-              <div style={{ fontSize:12, color:'var(--muted)' }}>N° Portón {p.nlista}</div>
-              {isSistema(p) && (
-                <div style={{
-                  fontSize:11, background:'#eee', padding:'2px 8px',
-                  borderRadius:999, border:'1px solid #ddd', alignSelf:'center'
-                }}>
-                  Sistema
-                </div>
-              )}
-            </div>,
-            ...STAGES.map(s => {
-              const st  = p[s.key];
-              const ini = p[`${s.key}_inicio`];
-              const fin = p[`${s.key}_fin`];
-              return (
-                <div
-                  key={`${p.id}-${s.key}`}
-                  className={classForStatus(st)}
-                  title={[
-                    st ? `Estado: ${st}` : null,
-                    ini ? `Inicio: ${fmt(ini)}` : null,
-                    fin ? `Fin: ${fmt(fin)}` : null
-                  ].filter(Boolean).join('\n')}
-                >
-                  <div style={{ fontSize:12, fontWeight:700 }}>{st || ''}</div>
-                  <div style={{ fontSize:11 }}>{ini ? `Inicio: ${fmt(ini)}` : ''}</div>
-                  <div style={{ fontSize:11 }}>{fin ? `Fin: ${fmt(fin)}` : ''}</div>
-                </div>
-              );
-            })
-          ]))}
+          {list.map(p => {
+            const hasFecha = !!dateOnly(p.fecha_plan);
+            return ([
+              <div key={`nv-${p.id}`} className="cell" style={{ background:'var(--surface)', display:'flex', gap:6, flexDirection:'column', justifyContent:'center' }}>
+                <strong>NV {p.nv}</strong>
+                <div style={{ fontSize:12, color:'var(--muted)' }}>N° Portón {p.nlista}</div>
+                {isSistema(p) && (
+                  <div style={{
+                    fontSize:11, background:'#eee', padding:'2px 8px',
+                    borderRadius:999, border:'1px solid #ddd', alignSelf:'center'
+                  }}>
+                    Sistema
+                  </div>
+                )}
+              </div>,
+
+// Semáforo contacto cliente
+<div
+  key={`contacto-${p.id}`}
+  className="cell"
+  style={{ background:'var(--surface)', display:'grid', placeItems:'center' }}
+  title={hasFecha ? 'Contacto realizado' : 'Sin contacto asignado'}
+  aria-label={hasFecha ? 'Contacto realizado' : 'Sin contacto asignado'}
+>
+  <div
+    style={{
+      width:16, height:16, borderRadius:999,
+      background: hasFecha ? '#10b981' : '#ef4444',                // ✅ verde si hay fecha, rojo si no
+      boxShadow: hasFecha
+        ? '0 0 0 2px rgba(16,185,129,.3)'
+        : '0 0 0 2px rgba(239,68,68,.3)'
+    }}
+  />
+</div>
+,
+
+              // Fecha de despacho asignada
+              <div
+                key={`fecha-${p.id}`}
+                className="cell"
+                style={{ background:'var(--surface)', display:'grid', placeItems:'center', fontWeight:600 }}
+                title={p.fecha_plan ? `Fecha: ${fmt(p.fecha_plan)}` : 'Sin fecha asignada'}
+              >
+                {dateOnly(p.fecha_plan)}
+              </div>,
+
+              // Etapas
+              ...STAGES.map(s => {
+                const st  = p[s.key];
+                const ini = p[`${s.key}_inicio`];
+                const fin = p[`${s.key}_fin`];
+                return (
+                  <div
+                    key={`${p.id}-${s.key}`}
+                    className={classForStatus(st)}
+                    title={[
+                      st ? `Estado: ${st}` : null,
+                      ini ? `Inicio: ${fmt(ini)}` : null,
+                      fin ? `Fin: ${fmt(fin)}` : null
+                    ].filter(Boolean).join('\n')}
+                  >
+                    <div style={{ fontSize:12, fontWeight:700 }}>{st || ''}</div>
+                    <div style={{ fontSize:11 }}>{ini ? `Inicio: ${fmt(ini)}` : ''}</div>
+                    <div style={{ fontSize:11 }}>{fin ? `Fin: ${fmt(fin)}` : ''}</div>
+                  </div>
+                );
+              })
+            ]);
+          })}
 
           {!loading && list.length === 0 && (
-            <div style={{ gridColumn:`1 / span ${STAGES.length + 1}`, marginTop:12, opacity:.7 }}>
+            <div style={{ gridColumn:`1 / span ${STAGES.length + 3}`, marginTop:12, opacity:.7 }}>
               Sin resultados.
             </div>
           )}
