@@ -19,17 +19,13 @@ export default function StageColumn({
     ? 'plegado'
     : stageKey;
 
-  // Sólo aplica para portones (iPanel no tiene armado_final)
-  function readyForArmadoFinal(p) {
-    return low(p.pintura) === 'finalizado' && low(p.revestimiento) === 'finalizado';
-  }
+  // 🔥 Se elimina la validación de prerequisitos para armado_final
+  // (antes se chequeaba pintura y revestimiento == 'finalizado')
 
-  // Filtrado: mostrar Pendiente/En Proceso; si es armado_final validar prereqs
+  // Filtrado: mostrar Pendiente/En Proceso para cualquier etapa
   const filtered = (items || []).filter(p => {
     const st = low(p[effKey]);
-    if (!(st === 'pendiente' || st === 'en proceso')) return false;
-    if (effKey === 'armado_final' && mode === 'porton') return readyForArmadoFinal(p);
-    return true;
+    return st === 'pendiente' || st === 'en proceso';
   });
 
   // ORDEN:
@@ -164,9 +160,8 @@ export default function StageColumn({
 
         {ordered.length === 0 && (
           <div style={{ opacity: .6, fontSize: 13 }}>
-            {effKey === 'armado_final' && mode === 'porton'
-              ? 'Sin elementos. Esperando Pintura y Revestimiento finalizados.'
-              : 'Sin elementos.'}
+            {/* Mensaje genérico */}
+            Sin elementos.
           </div>
         )}
       </div>
