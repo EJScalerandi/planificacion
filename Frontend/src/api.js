@@ -1,7 +1,8 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:4000',
+  // Intentá unificar con lo que usa el hook (VITE_API_BASE). Dejo ambos por compatibilidad.
+  baseURL: import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE || 'https://planificacion-6sk9.onrender.com',
   timeout: 15000
 });
 
@@ -17,25 +18,24 @@ export const startStage = (id, stage) =>
 export const stopStage = (id, stage) =>
   api.post(`/portones/${id}/stage`, { stage, action: 'stop' });
 
-// ⬇️ NUEVO: asignar/limpiar fecha planificada (YYYY-MM-DD o null)
+// Fecha de entrega planificada (YYYY-MM-DD o null)
 export const setFechaPlan = (id, fechaOrNull) =>
   api.post(`/portones/${id}/fecha-plan`, { fecha_plan: fechaOrNull });
 
+// ⬇️ NUEVO: Fecha de inicio de producción (YYYY-MM-DD o null)
+export const setFechaProd = (id, fechaOrNull) =>
+  api.post(`/portones/${id}/fecha-prod`, { fecha_prod: fechaOrNull });
 
 /* ========= iPanels ========= */
-// GET todos los iPanels
 export const fetchIpanels = () =>
   api.get('/ipanel');
 
-// Crear iPanel: { nv, partida? }
 export const createIpanel = (payload) =>
   api.post('/ipanel', payload);
 
-// Iniciar etapa de iPanel: stage ∈ {'guillotina','plegado','pintura','inyeccion'}
 export const startIpanelStage = (id, stage) =>
   api.post(`/ipanel/${id}/stage`, { stage, action: 'start' });
 
-// Finalizar etapa de iPanel
 export const stopIpanelStage = (id, stage) =>
   api.post(`/ipanel/${id}/stage`, { stage, action: 'stop' });
 

@@ -1,10 +1,11 @@
+// src/pages/CreateGatePage.jsx
 import { useMemo, useState } from 'react';
 import usePortones from '../src/hooks/usePortones';
 import useIpanels from '../src/hooks/useIpanels';
 import {
   createPorton, startStage, stopStage,
   createIpanel, startIpanelStage, stopIpanelStage,
-  setFechaPlan,
+  setFechaPlan, setFechaProd,             // ⬅️ NUEVO import
 } from '../src/api';
 import { isAuthed, login, logout } from '../src/auth/createGateAuth';
 
@@ -31,12 +32,13 @@ const IP_STAGES = [
   { key: 'inyeccion',  label: 'Inyección' },
 ];
 
-const SEL_COL_W   = 44;   // columna de selección (checkbox)
-const NV_COL_W    = 150;
-const FECHA_COL_W = 190;  // columna fecha
-const GRID_GAP    = 6;
-const CELL_MIN_H  = 60;
-const bordo       = '#008241ff';
+const SEL_COL_W       = 44;   // selección
+const NV_COL_W        = 150;
+const FECHA_PROD_COL_W= 170;  // ⬅️ NUEVA columna Producción (inicio)
+const FECHA_COL_W     = 190;  // Entrega planificada
+const GRID_GAP        = 6;
+const CELL_MIN_H      = 60;
+const bordo           = '#008241ff';
 
 const fmt = dt => (dt ? new Date(dt).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) : '');
 const dateOnly = v => (v ? String(v).slice(0, 10) : '');
@@ -100,9 +102,19 @@ export default function CreateGatePage() {
     refresh: refreshI, refreshing: refreshingI
   } = useIpanels({ pollMs: 300000 });
 
+  // ⬇️ Solo para render: si está tildado “ver solo iPanels”, agrego la columna Despacho
+  const [onlyIpanels, setOnlyIpanels] = useState(false);
+  const IP_STAGES_RENDER = useMemo(
+    () => (onlyIpanels ? [...IP_STAGES, { key: 'despacho', label: 'Despacho' }] : IP_STAGES),
+    [onlyIpanels]
+  );
+
   // ---- Estado local para fechas por fila ----
-  const [fechaLocal, setFechaLocal] = useState({}); // { [id]: 'YYYY-MM-DD' }
+  const [fechaLocal, setFechaLocal] = useState({});        // { [id]: 'YYYY-MM-DD' }  -> fecha_plan
+  const [fechaProdLocal, setFechaProdLocal] = useState({});// { [id]: 'YYYY-MM-DD' }  -> fecha_prod
+
   const setLocalFecha = (id, ymd) => setFechaLocal(prev => ({ ...prev, [id]: ymd }));
+  const setLocalFechaProd = (id, ymd) => setFechaProdLocal(prev => ({ ...prev, [id]: ymd }));
 
   const guardarFecha = async (p) => {
     const current = dateOnly(p.fecha_plan);
@@ -122,6 +134,30 @@ export default function CreateGatePage() {
       const { data: upd } = await setFechaPlan(p.id, null);
       replaceItem(upd);
       setLocalFecha(p.id, '');
+    } catch (e) {
+      alert(e?.response?.data?.error || e.message);
+    }
+  };
+
+  // ⬇️ NUEVOS handlers para fecha de PRODUCCIÓN (inicio)
+  const guardarFechaProd = async (p) => {
+    const current = dateOnly(p.fecha_prod);
+    const val = fechaProdLocal[p.id] ?? current;
+    const ymd = val && /^\d{4}-\d{2}-\d{2}$/.test(val) ? val : null;
+    try {
+      const { data: upd } = await setFechaProd(p.id, ymd);
+      replaceItem(upd);
+      setLocalFechaProd(p.id, dateOnly(upd.fecha_prod));
+    } catch (e) {
+      alert(e?.response?.data?.error || e.message);
+    }
+  };
+
+  const limpiarFechaProd = async (p) => {
+    try {
+      const { data: upd } = await setFechaProd(p.id, null);
+      replaceItem(upd);
+      setLocalFechaProd(p.id, '');
     } catch (e) {
       alert(e?.response?.data?.error || e.message);
     }
@@ -210,15 +246,12 @@ export default function CreateGatePage() {
   }, [dataI]);
 
   // ---- Form crear (modo) ----
-  const [createModeIpanel, setCreateModeIpanel] = useState(false); // false = Portón, true = iPanel
+  const [createModeIpanel, setCreateModeIpanel] = useState(false);
   const [nv, setNv] = useState('');
   const [nlista, setNlista] = useState('');
   const [partida, setPartida] = useState('');
   const [sistemaOnCreate, setSistemaOnCreate] = useState(false);
   const [requiresInjection, setRequiresInjection] = useState(false);
-
-  // ---- Filtro “ver solo iPanels” ----
-  const [onlyIpanels, setOnlyIpanels] = useState(false);
 
   // ---- Buscar (Portones) ----
   const [q, setQ] = useState('');
@@ -235,34 +268,33 @@ export default function CreateGatePage() {
     return dataP.filter(p => !isFullyFinishedPorton(p));
   }, [dataP, filter]);
 
-const listPortones = useMemo(() => {
-  const arr = [...baseListPortones];
+  const listPortones = useMemo(() => {
+    const arr = [...baseListPortones];
 
-  arr.sort((a, b) => {
-    const da = dateOnly(a.fecha_plan);
-    const db = dateOnly(b.fecha_plan);
-    const hasA = !!da;
-    const hasB = !!db;
+    arr.sort((a, b) => {
+      const da = dateOnly(a.fecha_plan);
+      const db = dateOnly(b.fecha_plan);
+      const hasA = !!da;
+      const hasB = !!db;
 
-    // 1) Con fecha arriba
-    if (hasA && !hasB) return -1;
-    if (!hasA && hasB) return 1;
+      // 1) Con fecha arriba
+      if (hasA && !hasB) return -1;
+      if (!hasA && hasB) return 1;
 
-    // 2) Si ambos tienen fecha, ordenar por fecha ascendente
-    if (hasA && hasB) {
-      const tA = new Date(`${da}T00:00:00`).getTime();
-      const tB = new Date(`${db}T00:00:00`).getTime();
-      if (tA !== tB) return tA - tB;
-    }
+      // 2) Si ambos tienen fecha, ordenar por fecha ascendente
+      if (hasA && hasB) {
+        const tA = new Date(`${da}T00:00:00`).getTime();
+        const tB = new Date(`${db}T00:00:00`).getTime();
+        if (tA !== tB) return tA - tB;
+      }
 
-    // 3) Fallback: nlista -> nv
-    return ((a.nlista || 0) - (b.nlista || 0)) ||
-           ((a.nv || 0) - (b.nv || 0));
-  });
+      // 3) Fallback: nlista -> nv
+      return ((a.nlista || 0) - (b.nlista || 0)) ||
+             ((a.nv || 0) - (b.nv || 0));
+    });
 
-  return arr;
-}, [baseListPortones]);
-
+    return arr;
+  }, [baseListPortones]);
 
   const stageStats = useMemo(() => {
     const stats = {};
@@ -301,7 +333,7 @@ const listPortones = useMemo(() => {
     return st;
   }, [listIpanels]);
 
-  // ---- Acciones Portones ----
+  // ---- Acciones Portones/Ipanels ----
   async function finalizeSistema(id) {
     let updated = null;
     for (const st of ['inyeccion', 'revestimiento']) {
@@ -338,7 +370,6 @@ const listPortones = useMemo(() => {
     await refresh();
   }
 
-  // ---- Acciones iPanels ----
   async function handleCreateIpanel() {
     const nNv = Number(nv);
     const nPa = partida === '' ? null : Number(partida);
@@ -398,7 +429,7 @@ const listPortones = useMemo(() => {
     } catch (e) { alert(e?.response?.data?.error || e.message); }
   }
 
-  // ---- Exportar XLSX (todo/seleccionados) ----
+  // ---- Exportar XLSX (queda igual; si querés agrego fecha_prod luego) ----
   async function handleExportXlsxAll(rows) {
     const xlsxMod = await import('xlsx');
     const XLSX = xlsxMod.default || xlsxMod;
@@ -415,7 +446,7 @@ const listPortones = useMemo(() => {
         p.nv ?? '',
         p.nlista ?? '',
         p.partida ?? '',
-        dateOnly(p.fecha_plan) || '' // ⬅️ NUEVO
+        dateOnly(p.fecha_plan) || ''
       ];
       for (const s of STAGES) {
         const st  = p[s.key] || '';
@@ -429,10 +460,7 @@ const listPortones = useMemo(() => {
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet([header, ...dataRows]);
     ws['!cols'] = [
-      { wch: 8 },   // NV
-      { wch: 10 },  // Lista
-      { wch: 10 },  // Partida
-      { wch: 14 },  // Fecha planificada
+      { wch: 8 }, { wch: 10 }, { wch: 10 }, { wch: 14 },
       ...STAGES.flatMap(() => [{ wch: 16 }, { wch: 20 }, { wch: 20 }])
     ];
     XLSX.utils.book_append_sheet(wb, ws, 'Portones');
@@ -443,7 +471,6 @@ const listPortones = useMemo(() => {
     XLSX.writeFile(wb, fname);
   }
 
-  // ---- Exportar seleccionados ----
   async function handleExportSelected() {
     const rows = listPortones.filter(p => selected.has(p.id));
     if (rows.length === 0) return;
@@ -452,8 +479,8 @@ const listPortones = useMemo(() => {
 
   // ---- Sticky helpers ----
   const stickyTop     = { position: 'sticky', top: 0, zIndex: 5, background: 'var(--surface)' };
-  const stickyLeft0   = { position: 'sticky', left: 0, zIndex: 4, background: 'var(--surface)', boxShadow: '1px 0 0 rgba(0,0,0,.08)' };         // selección
-  const stickyLeftNV  = { position: 'sticky', left: SEL_COL_W, zIndex: 4, background: 'var(--surface)', boxShadow: '1px 0 0 rgba(0,0,0,.08)' };   // NV después de selección
+  const stickyLeft0   = { position: 'sticky', left: 0, zIndex: 4, background: 'var(--surface)', boxShadow: '1px 0 0 rgba(0,0,0,.08)' };
+  const stickyLeftNV  = { position: 'sticky', left: SEL_COL_W, zIndex: 4, background: 'var(--surface)', boxShadow: '1px 0 0 rgba(0,0,0,.08)' };
 
   // ---- Render ----
   const cellBase   = { border: `2px solid ${bordo}`, padding: 8, borderRadius: 12, boxSizing: 'border-box' };
@@ -610,7 +637,8 @@ const listPortones = useMemo(() => {
             <div
               style={{
                 display:'grid',
-                gridTemplateColumns: `${SEL_COL_W}px ${NV_COL_W}px ${FECHA_COL_W}px repeat(${STAGES.length}, 1fr)`, // selección + NV + fecha + etapas
+                // ⬇️ ahora: Sel | NV | Producción (inicio) | Entrega planificada | etapas
+                gridTemplateColumns: `${SEL_COL_W}px ${NV_COL_W}px ${FECHA_PROD_COL_W}px ${FECHA_COL_W}px repeat(${STAGES.length}, 1fr)`,
                 columnGap: GRID_GAP,
                 rowGap: GRID_GAP,
                 alignItems:'stretch',
@@ -628,7 +656,12 @@ const listPortones = useMemo(() => {
                 NV / Lista / Partida
               </div>
 
-              {/* Header fecha planificada */}
+              {/* Header Producción (inicio) */}
+              <div style={{ ...headerCell, ...{ position:'sticky', top:0, zIndex:5, background:'var(--surface)' }, textAlign:'center' }}>
+                Producción (inicio)
+              </div>
+
+              {/* Header Entrega planificada */}
               <div style={{ ...headerCell, ...{ position:'sticky', top:0, zIndex:5, background:'var(--surface)' }, textAlign:'center' }}>
                 Entrega planificada
               </div>
@@ -641,8 +674,11 @@ const listPortones = useMemo(() => {
 
               {/* Filas */}
               {listPortones.map(p => {
-                const current = dateOnly(p.fecha_plan);
-                const val = fechaLocal[p.id] ?? current;
+                const currentPlan = dateOnly(p.fecha_plan);
+                const valPlan = fechaLocal[p.id] ?? currentPlan;
+
+                const currentProd = dateOnly(p.fecha_prod);
+                const valProd = fechaProdLocal[p.id] ?? currentProd;
 
                 return ([
                   // Columna selección
@@ -665,12 +701,46 @@ const listPortones = useMemo(() => {
                     </div>
                   </div>,
 
-                  // Celda fecha planificada (editable)
-                  <div key={`fecha-${p.id}`} style={{ ...cellBase, minHeight:CELL_MIN_H }}>
+                  // ⬇️ Celda fecha de PRODUCCIÓN (inicio)
+                  <div key={`fprod-${p.id}`} style={{ ...cellBase, minHeight:CELL_MIN_H }}>
                     <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
                       <input
                         type="date"
-                        value={val}
+                        value={valProd || ''}
+                        onChange={e => setLocalFechaProd(p.id, e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') guardarFechaProd(p); }}
+                        className="btn"
+                        style={{ height:34 }}
+                      />
+                      <div style={{ display:'flex', gap:6 }}>
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => guardarFechaProd(p)}
+                          disabled={(valProd || '') === (currentProd || '')}
+                          title="Guardar fecha de inicio de producción"
+                        >
+                          Guardar
+                        </button>
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => limpiarFechaProd(p)}
+                          disabled={!currentProd}
+                          title="Quitar fecha de inicio de producción"
+                        >
+                          Quitar
+                        </button>
+                      </div>
+                    </div>
+                  </div>,
+
+                  // Celda fecha PLANIFICADA (entrega)
+                  <div key={`fplan-${p.id}`} style={{ ...cellBase, minHeight:CELL_MIN_H }}>
+                    <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                      <input
+                        type="date"
+                        value={valPlan || ''}
                         onChange={e => setLocalFecha(p.id, e.target.value)}
                         onKeyDown={(e) => { if (e.key === 'Enter') guardarFecha(p); }}
                         className="btn"
@@ -681,7 +751,7 @@ const listPortones = useMemo(() => {
                           type="button"
                           className="btn"
                           onClick={() => guardarFecha(p)}
-                          disabled={(val || '') === (current || '')}
+                          disabled={(valPlan || '') === (currentPlan || '')}
                           title="Guardar fecha planificada"
                         >
                           Guardar
@@ -690,7 +760,7 @@ const listPortones = useMemo(() => {
                           type="button"
                           className="btn"
                           onClick={() => limpiarFecha(p)}
-                          disabled={!current}
+                          disabled={!currentPlan}
                           title="Quitar fecha planificada"
                         >
                           Quitar
@@ -738,7 +808,7 @@ const listPortones = useMemo(() => {
               })}
 
               {listPortones.length === 0 && (
-                <div style={{ gridColumn:`1 / span ${STAGES.length + 3}`, marginTop:12, opacity:.7 }}>
+                <div style={{ gridColumn:`1 / span ${STAGES.length + 4}`, marginTop:12, opacity:.7 }}>
                   Sin resultados.
                 </div>
               )}
@@ -746,13 +816,13 @@ const listPortones = useMemo(() => {
           </div>
         )}
 
-        {/* --- iPanels Grid --- */}
+        {/* --- iPanels Grid (agrega Despacho cuando "Ver solo iPanels" está tildado) --- */}
         {onlyIpanels && (
           <div>
             <div
               style={{
                 display:'grid',
-                gridTemplateColumns: `${NV_COL_W}px repeat(${IP_STAGES.length}, 1fr)`,
+                gridTemplateColumns: `${NV_COL_W}px repeat(${IP_STAGES_RENDER.length}, 1fr)`,
                 columnGap: GRID_GAP,
                 rowGap: GRID_GAP,
                 alignItems:'stretch',
@@ -762,7 +832,7 @@ const listPortones = useMemo(() => {
             >
               {/* Header iPanels */}
               <div style={{ ...headerCell, position:'sticky', top:0, left:0, zIndex:6, background:'var(--surface)', textAlign:'center' }}>NV / Partida</div>
-              {IP_STAGES.map(s => (
+              {IP_STAGES_RENDER.map(s => (
                 <div key={`ip-h-${s.key}`} style={{ ...headerCell, position:'sticky', top:0, zIndex:5, background:'var(--surface)', textAlign:'center' }}>
                   <div>{s.label}</div>
                 </div>
@@ -776,7 +846,7 @@ const listPortones = useMemo(() => {
                     <strong>N° Partida {i.partida ?? ''}</strong>
                   </div>
                 </div>,
-                ...IP_STAGES.map(s => {
+                ...IP_STAGES_RENDER.map(s => {
                   const st  = i[s.key];
                   const ini = i[`${s.key}_inicio`];
                   const fin = i[`${s.key}_fin`];
@@ -813,7 +883,7 @@ const listPortones = useMemo(() => {
               ]))}
 
               {listIpanels.length === 0 && (
-                <div style={{ gridColumn:`1 / span ${IP_STAGES.length + 1}`, marginTop:12, opacity:.7 }}>
+                <div style={{ gridColumn:`1 / span ${IP_STAGES_RENDER.length + 1}`, marginTop:12, opacity:.7 }}>
                   Sin resultados.
                 </div>
               )}
