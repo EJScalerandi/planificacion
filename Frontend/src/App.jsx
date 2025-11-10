@@ -139,7 +139,7 @@ function Board({ stages }) {
           const isIpanel = s.mode === 'ipanel';
           return (
             <StageColumn
-              key={`${s.mode || 'porton'}-${s.key}`}
+              key={`${s.mode || 'porton'}-${s.key}-${s.label}`}
               title={s.label}
               stageKey={s.key}
               mode={s.mode || 'porton'}
@@ -186,7 +186,9 @@ const ROUTES = [
       // Resto Portones
       { key: 'revestimiento',         label: 'Revestimiento',            mode: 'porton' },
       { key: 'armado_final',          label: 'Armado Final',             mode: 'porton' },
-      { key: 'despacho',              label: 'Despacho',                 mode: 'porton' },
+      // 👇👇 Aca se agregan las DOS columnas de Despacho
+      { key: 'despacho',              label: 'Despacho (Portones)',      mode: 'porton' },
+      { key: 'despacho',              label: 'Despacho (iPanel)',        mode: 'ipanel'  },
     ]
   },
 
@@ -249,7 +251,16 @@ const ROUTES = [
 
   { path: '/revestimiento',  label: 'Revestimiento',  stages: ONE('revestimiento','Revestimiento') },
   { path: '/armado-final',   label: 'Armado Final',   stages: ONE('armado_final','Armado Final') },
-  { path: '/despacho',       label: 'Despacho',       stages: ONE('despacho','Despacho') },
+
+  // Despacho: AHORA también en dos columnas
+  {
+    path: '/despacho',
+    label: 'Despacho',
+    stages: [
+      { key: 'despacho', label: 'Despacho (Portones)', mode: 'porton' },
+      { key: 'despacho', label: 'Despacho (iPanel)',   mode: 'ipanel' },
+    ]
+  },
 ];
 
 export default function App() {

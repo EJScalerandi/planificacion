@@ -7,14 +7,18 @@ const STAGES = [
   { key: 'plegado',    label: 'Plegado' },
   { key: 'pintura',    label: 'Pintura' },
   { key: 'inyeccion',  label: 'Inyección' },
+  { key: "despacho", label: "despacho"},
 ];
 
-const NV_COL_W   = 150;
-const GRID_GAP   = 6;
-const CELL_MIN_H = 60;
-const bordo      = '#008241ff';
+const NV_COL_W        = 150;
+const FECHA_PROD_W   = 170;   // ⬅️ nueva columna “Producción”
+const FECHA_PLAN_W   = 190;   // ⬅️ nueva columna “Entrega planificada”
+const GRID_GAP       = 6;
+const CELL_MIN_H     = 60;
+const bordo          = '#008241ff';
 
 const fmt = dt => (dt ? new Date(dt).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) : '');
+const dateOnly = v => (v ? String(v).slice(0, 10) : '');
 
 const cellBg = st => {
   const s = (st || '').toLowerCase();
@@ -33,6 +37,21 @@ const cellInk = st => {
 
 const isFullyFinished = row =>
   STAGES.every(s => (row[s.key] || '').toLowerCase() === 'finalizado');
+
+// ===== Helpers de fechas para “Entrega planificada” (sin semáforo) =====
+const startOfToday = () => {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
+
+const daysUntil = (ymd) => {
+  if (!ymd) return null;
+  const target = new Date(`${dateOnly(ymd)}T00:00:00`);
+  const today0 = startOfToday();
+  const diffMs = target.getTime() - today0.getTime();
+  return Math.ceil(diffMs / 86400000); // días que faltan (negativo si vencido)
+};
 
 export default function IpanelReadOnlyPage() {
   const { data, loading, err, refresh, refreshing } = useIpanels({ pollMs: 300000 });
@@ -192,7 +211,8 @@ export default function IpanelReadOnlyPage() {
         <div
           style={{
             display:'grid',
-            gridTemplateColumns: `${NV_COL_W}px repeat(${STAGES.length}, 1fr)`,
+            // ⬇️ agregamos 2 columnas: Producción y Entrega planificada
+            gridTemplateColumns: `${NV_COL_W}px ${FECHA_PROD_W}px ${FECHA_PLAN_W}px repeat(${STAGES.length}, 1fr)`,
             columnGap: GRID_GAP,
             rowGap: GRID_GAP,
             alignItems:'stretch',
@@ -202,6 +222,15 @@ export default function IpanelReadOnlyPage() {
         >
           {/* Encabezado */}
           <div style={{ ...headerCell, ...stickyCorner, textAlign:'center' }}>NV / Partida</div>
+
+          <div style={{ ...headerCell, ...stickyTop, textAlign:'center' }}>
+            Producción
+          </div>
+
+          <div style={{ ...headerCell, ...stickyTop, textAlign:'center' }}>
+            Entrega planificada
+          </div>
+
           {STAGES.map(s => (
             <div key={`h-${s.key}`} style={{ ...headerCell, ...stickyTop, textAlign:'center' }}>
               <div>{s.label}</div>
@@ -212,44 +241,74 @@ export default function IpanelReadOnlyPage() {
           ))}
 
           {/* Filas */}
-          {list.map(p => ([
-            <div key={`nv-${p.id}`} style={{ ...nvCell, ...stickyLeft }}>
-              <strong>NV {p.nv ?? '—'}</strong>
-              <strong>N° Partida {p.partida ?? '—'}</strong>
-            </div>,
-            ...STAGES.map(s => {
-              const st  = p[s.key];
-              const ini = p[`${s.key}_inicio`];
-              const fin = p[`${s.key}_fin`];
-              return (
-                <div
-                  key={`${p.id}-${s.key}`}
-                  style={{
-                    ...cellBase,
-                    background: cellBg(st),
-                    color: cellInk(st),
-                    minHeight: CELL_MIN_H,
-                    display:'flex',
-                    flexDirection:'column',
-                    justifyContent:'center',
-                    cursor:'default'
-                  }}
-                  title={[
-                    st ? `Estado: ${st}` : null,
-                    ini ? `Inicio: ${fmt(ini)}` : null,
-                    fin ? `Fin: ${fmt(fin)}` : null
-                  ].filter(Boolean).join('\n')}
-                >
-                  <div style={{ fontSize:12, fontWeight:700 }}>{st || ''}</div>
-                  <div style={{ fontSize:11 }}>{ini ? `Inicio: ${fmt(ini)}` : ''}</div>
-                  <div style={{ fontSize:11 }}>{fin ? `Fin: ${fmt(fin)}` : ''}</div>
+          {list.map(p => {
+            const prodYmd  = dateOnly(p.fecha_prod);
+            const planYmd  = dateOnly(p.fecha_plan); // puede no existir en iPanel → muestra “—”
+            const prodTxt  = prodYmd ? new Date(`${prodYmd}T00:00:00`).toLocaleDateString('es-AR') : '—';
+            const planTxt  = planYmd ? new Date(`${planYmd}T00:00:00`).toLocaleDateString('es-AR') : '—';
+            const planDays = daysUntil(planYmd); // null si no hay fecha
+
+            return ([
+              <div key={`nv-${p.id}`} style={{ ...nvCell, ...stickyLeft }}>
+                <strong>NV {p.nv ?? '—'}</strong>
+                <strong>N° Partida {p.partida ?? '—'}</strong>
+              </div>,
+
+              // Celda Producción (fecha_prod)
+              <div key={`prod-${p.id}`} style={{ ...cellBase, minHeight: CELL_MIN_H, display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column', gap:4 }}>
+                <strong>{prodTxt}</strong>
+                <div style={{ fontSize:11, opacity:.7 }}>
+                  {prodYmd ? `(${prodYmd})` : 'Sin fecha de producción'}
                 </div>
-              );
-            })
-          ]))}
+              </div>,
+
+              // Celda Entrega planificada (fecha_plan) + cálculo de días (sin semáforo)
+              <div key={`plan-${p.id}`} style={{ ...cellBase, minHeight: CELL_MIN_H, display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column', gap:4 }}>
+                <strong>{planTxt}</strong>
+                <div style={{ fontSize:11, opacity:.7 }}>
+                  {planYmd
+                    ? (planDays >= 0
+                        ? `Faltan ${planDays} día${planDays === 1 ? '' : 's'}`
+                        : `Vencido hace ${Math.abs(planDays)} día${Math.abs(planDays) === 1 ? '' : 's'}`)
+                    : 'Sin fecha planificada'}
+                </div>
+              </div>,
+
+              // Celdas de etapas (solo lectura)
+              ...STAGES.map(s => {
+                const st  = p[s.key];
+                const ini = p[`${s.key}_inicio`];
+                const fin = p[`${s.key}_fin`];
+                return (
+                  <div
+                    key={`${p.id}-${s.key}`}
+                    style={{
+                      ...cellBase,
+                      background: cellBg(st),
+                      color: cellInk(st),
+                      minHeight: CELL_MIN_H,
+                      display:'flex',
+                      flexDirection:'column',
+                      justifyContent:'center',
+                      cursor:'default'
+                    }}
+                    title={[
+                      st ? `Estado: ${st}` : null,
+                      ini ? `Inicio: ${fmt(ini)}` : null,
+                      fin ? `Fin: ${fmt(fin)}` : null
+                    ].filter(Boolean).join('\n')}
+                  >
+                    <div style={{ fontSize:12, fontWeight:700 }}>{st || ''}</div>
+                    <div style={{ fontSize:11 }}>{ini ? `Inicio: ${fmt(ini)}` : ''}</div>
+                    <div style={{ fontSize:11 }}>{fin ? `Fin: ${fmt(fin)}` : ''}</div>
+                  </div>
+                );
+              })
+            ]);
+          })}
 
           {!loading && list.length === 0 && (
-            <div style={{ gridColumn:`1 / span ${STAGES.length + 1}`, marginTop:12, opacity:.7 }}>
+            <div style={{ gridColumn:`1 / span ${STAGES.length + 3}`, marginTop:12, opacity:.7 }}>
               Sin resultados.
             </div>
           )}
