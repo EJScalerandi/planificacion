@@ -93,12 +93,13 @@ const STAGES = {
   despacho:        { status: 'despacho',        start: 'despacho_inicio',        end: 'despacho_fin',        next: null }
 };
 
-// iPanel: solo 4 etapas
+// iPanel: ahora incluye Despacho
 const IPANEL_STAGES = {
   guillotina: { status: 'guillotina', start: 'guillotina_inicio', end: 'guillotina_fin' },
   plegado:    { status: 'plegado',    start: 'plegado_inicio',    end: 'plegado_fin'    },
   pintura:    { status: 'pintura',    start: 'pintura_inicio',    end: 'pintura_fin'    },
   inyeccion:  { status: 'inyeccion',  start: 'inyeccion_inicio',  end: 'inyeccion_fin'  },
+  despacho:   { status: 'despacho',   start: 'despacho_inicio',   end: 'despacho_fin'   }, // ⬅️ agregado
 };
 
 // --------------------- Lógica Portones ---------------------
@@ -233,6 +234,41 @@ app.post('/portones/:id/fecha-plan', async (req, res) => {
   }
 });
 
+// POST: asignar/actualizar fecha de producción del portón
+// Body: { fecha_prod: 'YYYY-MM-DD' }  // puede ser null para limpiar
+app.post('/portones/:id/fecha-prod', async (req, res) => {
+  const { id } = req.params;
+  let { fecha_prod } = req.body || {};
+
+  try {
+    if (fecha_prod !== null && fecha_prod !== undefined) {
+      if (typeof fecha_prod !== 'string') {
+        return res.status(400).json({ error: 'fecha_prod debe ser string con formato YYYY-MM-DD o null' });
+      }
+      fecha_prod = fecha_prod.slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha_prod)) {
+        return res.status(400).json({ error: 'fecha_prod inválida. Use formato YYYY-MM-DD' });
+      }
+    }
+
+    const { rows } = await pool.query(
+      `UPDATE public.portones
+       SET fecha_prod = $2
+       WHERE id = $1
+       RETURNING *;`,
+      [id, fecha_prod ?? null]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ error: 'Portón no encontrado' });
+    }
+    return res.json(rows[0]);
+  } catch (err) {
+    console.error('set fecha_prod error:', err);
+    return res.status(500).json({ error: 'Error al actualizar fecha de producción', detail: err.message });
+  }
+});
+
 // --------------------- Lógica IPANEL ---------------------
 // GET: todos los ipanel
 app.get('/ipanel', async (_req, res) => {
@@ -317,6 +353,41 @@ app.post('/ipanel/:id/stage', async (req, res) => {
     return res.status(500).json({ error: 'Error al actualizar etapa de ipanel', detail: err.message });
   } finally {
     client.release();
+  }
+});
+
+// POST: asignar/actualizar fecha de producción de iPanel
+// Body: { fecha_prod: 'YYYY-MM-DD' }  // puede ser null para limpiar
+app.post('/ipanel/:id/fecha-prod', async (req, res) => {
+  const { id } = req.params;
+  let { fecha_prod } = req.body || {};
+
+  try {
+    if (fecha_prod !== null && fecha_prod !== undefined) {
+      if (typeof fecha_prod !== 'string') {
+        return res.status(400).json({ error: 'fecha_prod debe ser string con formato YYYY-MM-DD o null' });
+      }
+      fecha_prod = fecha_prod.slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha_prod)) {
+        return res.status(400).json({ error: 'fecha_prod inválida. Use formato YYYY-MM-DD' });
+      }
+    }
+
+    const { rows } = await pool.query(
+      `UPDATE public.ipanel
+       SET fecha_prod = $2
+       WHERE id = $1
+       RETURNING *;`,
+      [id, fecha_prod ?? null]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ error: 'iPanel no encontrado' });
+    }
+    return res.json(rows[0]);
+  } catch (err) {
+    console.error('set ipanel fecha_prod error:', err);
+    return res.status(500).json({ error: 'Error al actualizar fecha de producción de iPanel', detail: err.message });
   }
 });
 
