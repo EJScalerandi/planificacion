@@ -10,25 +10,22 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-/* ---- Tokens (ajustá los colores a tu guía) ---- */
+/* ---- Tokens ---- */
 :root{
   --bg: #f6f7f9;
   --surface: #ffffff;
   --text: #101418;
   --muted: #6b7280;
 
-  /* Marca */
-  --brand: #008241;         /* primario (tu “verde”) */
-  --brand-700: #0a6a33;     /* variante oscura */
-  --brand-100: #e8f6ee;     /* muy suave */
+  --brand: #008241;
+  --brand-700: #0a6a33;
+  --brand-100: #e8f6ee;
   --border: #dfe3e8;
 
-  /* Estados */
-  --state-pending: #f7b1b1;   /* rojo suave */
-  --state-process: #ffe58a;   /* amarillo */
-  --state-done: #c9f2d7;      /* verde suave */
+  --state-pending: #f7b1b1;
+  --state-process: #ffe58a;
+  --state-done: #c9f2d7;
 
-  /* UI */
   --radius: 14px;
   --shadow: 0 6px 18px rgba(0,0,0,.06);
 }
@@ -64,7 +61,7 @@ body {
 .btn--brand { background: var(--brand); color:#fff; border-color: var(--brand); }
 .btn--ghost { background: transparent; }
 
-/* Tarjetas métricas */
+/* Métricas */
 .metric {
   border: 3px solid var(--brand);
   border-radius: 12px;
@@ -118,14 +115,14 @@ body {
 /* Botoneras */
 .actions { display:flex; gap: 8px; }
 .actions .btn{
-  min-width: 56px;   /* antes 36px */
-  min-height: 48px;  /* asegura “hit area” cómoda */
+  min-width: 56px;
+  min-height: 48px;
   padding: 10px 14px;
-  font-size: 22px;   /* agranda el ícono/emoji ▶ ⏹ */
+  font-size: 22px;
   border-radius: 12px;
 }
 
-/* Badges/estados por celda grande (tableros tipo status gate) */
+/* Badges/estados (status gate) */
 .cell {
   border: 2px solid var(--brand);
   border-radius: 12px;
@@ -137,20 +134,20 @@ body {
 .cell--process  { background: var(--state-process);  }
 .cell--done     { background: var(--state-done);     }
 
-/* Responsivo para 1280x800 (y menores) */
+/* Responsivo */
 @media (max-width: 1280px){
   .container { padding: 12px; }
   .stage-grid { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
   .cell { min-height: 64px; }
 }
-/* Inputs numéricos destacados */
+
+/* Inputs numéricos */
 .input-num{
   font-weight: 900;
   font-size: clamp(18px, 2vw, 22px);
   letter-spacing: .5px;
   text-align: center;
 }
-
 .input-num--filled{
   background: var(--brand-100);
   border-color: var(--brand);
@@ -158,14 +155,8 @@ body {
   color: var(--text);
 }
 
-/* Chips de previsualización NV / Lista / Partida */
-.chip-preview{
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
+/* Chips */
+.chip-preview{ display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .chip{
   border: 2px solid var(--brand);
   border-radius: 12px;
@@ -175,3 +166,8 @@ body {
   color: var(--text);
   line-height: 1;
 }
+
+/* ===== FIX contraste StageColumn ===== */
+/* Obliga a que las cards usen los tokens del tema */
+.stage-card__grid { background: var(--surface); }
+.stage-card__info { color: var(--text); }

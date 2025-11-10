@@ -27,20 +27,31 @@
   }
 }
 
+/* ===== Base / Fix móviles ===== */
+html {
+  color-scheme: light;               /* evita auto-dark/translate que lava colores */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+* {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
 /* ===== Reset layout: ocupa pantalla y permite scroll ===== */
 html, body, #root { height: 100%; }
 body {
   margin: 0;
-  display: block;                /* <- no centrado global */
+  display: block;
   color: var(--ink);
   background: var(--bg);
   min-width: 320px;
   min-height: 100dvh;
-  overflow-y: auto;              /* vertical visible */
+  overflow-y: auto;
   scrollbar-gutter: stable both-edges;
 }
 
-/* Contenedor de página (usa esto en cada componente raíz) */
+/* Contenedor de página */
 .screen.page {
   display: flex;
   flex-direction: column;
@@ -51,16 +62,16 @@ body {
 /* Header flexible y contenido scrollable */
 .page__header { padding: 16px; }
 .grid-scroll {
-  flex: 1;                       /* ocupa el alto restante del viewport */
-  min-height: 0;                 /* permite que aparezcan los scrollbars */
-  overflow: auto;                /* SIEMPRE muestra scroll si hace falta */
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
   scrollbar-gutter: stable both-edges;
 }
 
-/* TV mode (aprox. 1080p+) */
+/* TV mode */
 @media (min-width: 1600px) and (min-height: 900px) and (min-aspect-ratio: 16/9) {
-  body { overflow-y: hidden; }   /* sin scroll vertical en TV */
-  .grid-scroll { overflow-y: hidden; } /* la grilla no scrollea vertical en TV */
+  body { overflow-y: hidden; }
+  .grid-scroll { overflow-y: hidden; }
 }
 
 /* Scrollbars (WebKit) */
@@ -68,7 +79,7 @@ body {
 ::-webkit-scrollbar-thumb { background: rgba(0,0,0,.35); border-radius: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 
-/* Utilidades que ya usás */
+/* Utilidades */
 .h1 { font-size: clamp(20px, 2.6vw, 32px); margin: 0; padding: 6px 10px; border-radius: 10px; }
 .btn { background:#f9fafb; border:1px solid #e5e7eb; border-radius:10px; padding:.6em 1em; cursor: pointer; }
 .btn--brand { background: var(--brand); color:#fff; border-color: var(--brand); }
@@ -77,109 +88,19 @@ body {
 .metric--warn { background: color-mix(in srgb, var(--state-process) 25%, #fff); }
 
 /* StageColumn móvil */
-.stage-card__title { font-size: clamp(18px, 4.8vw, 22px); line-height: 1.1; }
+.stage-card__title { font-size: clamp(18px, 4.8vw, 22px); line-height: 1.1; font-feature-settings: "tnum" 1; }
 .stage-card__sub   { font-size: clamp(12px, 3.6vw, 14px); opacity:.75; }
-.stage-card__grid  { display: grid; grid-template-columns: 1fr minmax(88px, auto); gap: 8px; align-items: center; }
+.stage-card__grid  { display: grid; grid-template-columns: 1fr minmax(88px, auto); gap: 8px; align-items: center; background:#fff; }
 @media (max-width: 420px) {
   .stage-card__grid { grid-template-columns: 1fr; row-gap: 8px; }
-}
-/* ===== Paleta y variables ===== */
-:root {
-  --bg: #0e1113;
-  --surface: #ffffff;
-  --surface-muted: #f3f4f6;
-  --ink: #0f172a;
-  --ink-weak: #334155;
-
-  --state-done:    #10b981;  /* verde brillante */
-  --state-process: #ffd43b;  /* amarillo vivo */
-  --state-pending: #ef4444;  /* rojo fuerte */
-
-  --state-done-ink:    #083026;
-  --state-process-ink: #3a2a00;
-  --state-pending-ink: #3b0a0a;
-
-  --brand: #008241;
+  .stage-card__sub  { opacity: .9; }           /* mejora legibilidad en pantallas chicas */
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    --bg: #ffffff;
-    --surface: #ffffff;
-    --surface-muted: #f3f4f6;
-    --ink: #111827;
-    --ink-weak: #374151;
-  }
-}
+/* 💡 Fijamos el color dentro del bloque de info para evitar “lavado” */
+.stage-card__info { color: var(--ink, #0f172a); }
+.stage-card__info * { color: inherit; opacity: 1 !important; }
 
-/* ===== Reset layout: ocupa pantalla y permite scroll ===== */
-html, body, #root { height: 100%; }
-body {
-  margin: 0;
-  display: block;                /* <- no centrado global */
-  color: var(--ink);
-  background: var(--bg);
-  min-width: 320px;
-  min-height: 100dvh;
-  overflow-y: auto;              /* vertical visible */
-  scrollbar-gutter: stable both-edges;
-}
-
-/* Contenedor de página (usa esto en cada componente raíz) */
-.screen.page {
-  display: flex;
-  flex-direction: column;
-  min-height: 100dvh;
-  background: var(--surface);
-}
-
-/* Header flexible y contenido scrollable */
-.page__header { padding: 16px; }
-.grid-scroll {
-  flex: 1;                       /* ocupa el alto restante del viewport */
-  min-height: 0;                 /* permite que aparezcan los scrollbars */
-  overflow: auto;                /* SIEMPRE muestra scroll si hace falta */
-  scrollbar-gutter: stable both-edges;
-}
-
-/* TV mode (aprox. 1080p+) */
-@media (min-width: 1600px) and (min-height: 900px) and (min-aspect-ratio: 16/9) {
-  body { overflow-y: hidden; }   /* sin scroll vertical en TV */
-  .grid-scroll { overflow-y: hidden; } /* la grilla no scrollea vertical en TV */
-}
-
-/* Scrollbars (WebKit) */
-::-webkit-scrollbar { width: 12px; height: 12px; }
-::-webkit-scrollbar-thumb { background: rgba(0,0,0,.35); border-radius: 8px; }
-::-webkit-scrollbar-track { background: transparent; }
-
-/* Utilidades que ya usás */
-.h1 { font-size: clamp(20px, 2.6vw, 32px); margin: 0; padding: 6px 10px; border-radius: 10px; }
-.btn { background:#f9fafb; border:1px solid #e5e7eb; border-radius:10px; padding:.6em 1em; cursor: pointer; }
-.btn--brand { background: var(--brand); color:#fff; border-color: var(--brand); }
-.metric { padding:8px 10px; border-radius:10px; font-weight:700; }
-.metric--ok   { background: color-mix(in srgb, var(--state-done) 20%, #fff); }
-.metric--warn { background: color-mix(in srgb, var(--state-process) 25%, #fff); }
-
-/* StageColumn móvil */
-.stage-card__title { font-size: clamp(18px, 4.8vw, 22px); line-height: 1.1; }
-.stage-card__sub   { font-size: clamp(12px, 3.6vw, 14px); opacity:.75; }
-.stage-card__grid  { display: grid; grid-template-columns: 1fr minmax(88px, auto); gap: 8px; align-items: center; }
-@media (max-width: 420px) {
-  .stage-card__grid { grid-template-columns: 1fr; row-gap: 8px; }
-}
-/* Limita el ancho total de la sección de tarjetas y céntrala */
-.duo-cards {
-  max-width: 1100px;         /* <- ajustá este número a gusto */
-  margin-inline: auto;
-}
-
-/* (Opcional) Cap para cada card si querés que no se estiren demasiado */
-.card {
-  max-width: 520px;          /* <- ajustá este número o quitalo si no lo querés */
-}
-
-/* (Opcional) Si querés que las métricas no vayan de punta a punta dentro de la card */
-.card .metric {
-  width: fit-content;        /* la cajita se ajusta al contenido */
-}
+/* Layout opcional que ya usabas (si aplica) */
+.duo-cards { max-width: 1100px; margin-inline: auto; }
+.card { max-width: 520px; }
+.card .metric { width: fit-content; }

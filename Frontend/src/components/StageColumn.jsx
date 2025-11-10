@@ -1,11 +1,10 @@
-// src/components/StageColumn.jsx
 import React from 'react';
 
 const bordo = '#008241ff';
 
 export default function StageColumn({
   title,
-  stageKey,              // p.ej. 'guillotina', 'plegadora', 'pintura', 'inyeccion'
+  stageKey,              // 'guillotina', 'plegadora', 'pintura', 'inyeccion'
   mode = 'porton',       // 'porton' | 'ipanel'
   items = [],
   onStart,
@@ -19,22 +18,15 @@ export default function StageColumn({
     ? 'plegado'
     : stageKey;
 
-  // 🔥 Se elimina la validación de prerequisitos para armado_final
-  // (antes se chequeaba pintura y revestimiento == 'finalizado')
-
-  // Filtrado: mostrar Pendiente/En Proceso para cualquier etapa
+  // Mostrar Pendiente / En Proceso
   const filtered = (items || []).filter(p => {
     const st = low(p[effKey]);
     return st === 'pendiente' || st === 'en proceso';
   });
 
-  // ORDEN:
-  // 1) Iniciados (en proceso) primero
-  // 2) No iniciados (pendiente) ordenados por número de partida
-  //    - sin partida al final
-  // Desempates:
-  // - iniciados: por fecha de inicio asc (más antiguos arriba)
-  // - pendientes: por nv, luego nlista
+  // Orden:
+  // 1) En proceso primero (más antiguos arriba)
+  // 2) Pendientes por partida (vacías al final), luego nv, luego nlista
   const ordered = filtered.sort((a, b) => {
     const aStarted = low(a[effKey]) === 'en proceso';
     const bStarted = low(b[effKey]) === 'en proceso';
@@ -44,14 +36,12 @@ export default function StageColumn({
       const ia = a[`${effKey}_inicio`] ? new Date(a[`${effKey}_inicio`]).getTime() : 0;
       const ib = b[`${effKey}_inicio`] ? new Date(b[`${effKey}_inicio`]).getTime() : 0;
       if (ia !== ib) return ia - ib;
-      // fallback por partida para mantener cierta coherencia visual
       const pa = a.partida != null ? Number(a.partida) : Infinity;
       const pb = b.partida != null ? Number(b.partida) : Infinity;
       if (pa !== pb) return pa - pb;
       return (a.nv || 0) - (b.nv || 0);
     }
 
-    // Ambos pendientes
     const pa = a.partida != null ? Number(a.partida) : Infinity;
     const pb = b.partida != null ? Number(b.partida) : Infinity;
     if (pa !== pb) return pa - pb;
@@ -68,7 +58,7 @@ export default function StageColumn({
       border: `2px solid ${bordo}`,
       borderRadius: 12,
       overflow: 'hidden',
-      background: '#fff',
+      background: 'var(--surface)',          // ⬅️ usa token (no #fff)
       display: 'flex',
       flexDirection: 'column',
       minHeight: 320
@@ -93,14 +83,14 @@ export default function StageColumn({
               key={`${mode}-${p.id}`}
               className="stage-card__grid"
               style={{
-                border: '1px solid #e5e7eb',
+                border: '1px solid var(--border)',
                 borderRadius: 12,
                 padding: '10px 12px',
-                background: '#fff'
+                background: 'var(--surface)'      // ⬅️ usa token (no #fff)
               }}
             >
-              <div>
-                {/* Cabecera según tipo */}
+              {/* Bloque de info: hereda color del tema */}
+              <div className="stage-card__info" style={{ color: 'var(--text)' }}>
                 {mode === 'porton' ? (
                   <>
                     <div className="stage-card__title" style={{ fontWeight: 900 }}>
@@ -160,7 +150,6 @@ export default function StageColumn({
 
         {ordered.length === 0 && (
           <div style={{ opacity: .6, fontSize: 13 }}>
-            {/* Mensaje genérico */}
             Sin elementos.
           </div>
         )}
