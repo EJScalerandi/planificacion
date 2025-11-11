@@ -5,22 +5,34 @@ import useIpanels from '../src/hooks/useIpanels';
 import {
   createPorton, startStage, stopStage,
   createIpanel, startIpanelStage, stopIpanelStage,
-  setFechaPlan, setFechaProd,             // ⬅️ NUEVO import
+  setFechaPlan, setFechaProd,
+  setFechaNV, setFechaMed,            // ⬅️ NUEVOS imports
 } from '../src/api';
 import { isAuthed, login, logout } from '../src/auth/createGateAuth';
 
 const STAGES = [
   { key: 'diseno',               label: 'Diseño' },
   { key: 'laser',                label: 'Laser' },
-  { key: 'guillotina',           label: 'Corte' },
-  { key: 'plegadora',            label: 'Plegado' },
+
+  // Corte
+  { key: 'guillotina',           label: 'Corte (Piernas)' },
+  { key: 'corte_revest',         label: 'Corte (Revestimiento)' },
+
+  // Plegado
+  { key: 'plegadora',            label: 'Plegado (Piernas)' },
+  { key: 'plegado_revest',       label: 'Plegado (Revestimiento)' },
+
+  // Prefabricados / Armados
   { key: 'armado_piernas',       label: 'Armado Piernas' },
   { key: 'armado_marco_piernas', label: 'Armado Marco Piernas' },
   { key: 'armado_hojas',         label: 'Armado Hojas' },
   { key: 'armado_primario',      label: 'Armado Primario' },
+
+  // Sistema / pintura
   { key: 'inyeccion',            label: 'Inyección' },
   { key: 'revestimiento',        label: 'Revestimiento' },
   { key: 'pintura',              label: 'Pintura' },
+
   { key: 'armado_final',         label: 'Armado Final' },
   { key: 'despacho',             label: 'Despacho' },
 ];
@@ -32,13 +44,17 @@ const IP_STAGES = [
   { key: 'inyeccion',  label: 'Inyección' },
 ];
 
-const SEL_COL_W       = 44;   // selección
-const NV_COL_W        = 150;
-const FECHA_PROD_COL_W= 170;  // ⬅️ NUEVA columna Producción (inicio)
-const FECHA_COL_W     = 190;  // Entrega planificada
-const GRID_GAP        = 6;
-const CELL_MIN_H      = 60;
-const bordo           = '#008241ff';
+const SEL_COL_W        = 44;   // selección
+const NV_COL_W         = 150;
+// ⬇️ nuevas columnas de fechas
+const FECHA_NV_COL_W   = 170;  // Venta (NV)
+const FECHA_MED_COL_W  = 170;  // Medición
+const FECHA_PROD_COL_W = 170;  // Producción (inicio)
+const FECHA_COL_W      = 190;  // Entrega planificada
+
+const GRID_GAP   = 6;
+const CELL_MIN_H = 60;
+const bordo      = '#008241ff';
 
 const fmt = dt => (dt ? new Date(dt).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) : '');
 const dateOnly = v => (v ? String(v).slice(0, 10) : '');
@@ -102,7 +118,7 @@ export default function CreateGatePage() {
     refresh: refreshI, refreshing: refreshingI
   } = useIpanels({ pollMs: 300000 });
 
-  // ⬇️ Solo para render: si está tildado “ver solo iPanels”, agrego la columna Despacho
+  // iPanels: mostrar Despacho cuando "ver solo iPanels"
   const [onlyIpanels, setOnlyIpanels] = useState(false);
   const IP_STAGES_RENDER = useMemo(
     () => (onlyIpanels ? [...IP_STAGES, { key: 'despacho', label: 'Despacho' }] : IP_STAGES),
@@ -110,12 +126,20 @@ export default function CreateGatePage() {
   );
 
   // ---- Estado local para fechas por fila ----
-  const [fechaLocal, setFechaLocal] = useState({});        // { [id]: 'YYYY-MM-DD' }  -> fecha_plan
-  const [fechaProdLocal, setFechaProdLocal] = useState({});// { [id]: 'YYYY-MM-DD' }  -> fecha_prod
+  // Plan
+  const [fechaLocal, setFechaLocal] = useState({});              // { [id]: 'YYYY-MM-DD' }  -> fecha_plan
+  // Producción
+  const [fechaProdLocal, setFechaProdLocal] = useState({});      // { [id]: 'YYYY-MM-DD' }  -> fecha_prod
+  // ⬇️ Nuevas: Venta (NV) y Medición
+  const [fechaNVLocal, setFechaNVLocal]   = useState({});        // { [id]: 'YYYY-MM-DD' }  -> fecha_nv
+  const [fechaMedLocal, setFechaMedLocal] = useState({});        // { [id]: 'YYYY-MM-DD' }  -> fecha_med
 
-  const setLocalFecha = (id, ymd) => setFechaLocal(prev => ({ ...prev, [id]: ymd }));
-  const setLocalFechaProd = (id, ymd) => setFechaProdLocal(prev => ({ ...prev, [id]: ymd }));
+  const setLocalFecha     = (id, ymd) => setFechaLocal(prev    => ({ ...prev, [id]: ymd }));
+  const setLocalFechaProd = (id, ymd) => setFechaProdLocal(prev=> ({ ...prev, [id]: ymd }));
+  const setLocalFechaNV   = (id, ymd) => setFechaNVLocal(prev  => ({ ...prev, [id]: ymd }));
+  const setLocalFechaMed  = (id, ymd) => setFechaMedLocal(prev => ({ ...prev, [id]: ymd }));
 
+  // Guardar/Quitar: Plan
   const guardarFecha = async (p) => {
     const current = dateOnly(p.fecha_plan);
     const val = fechaLocal[p.id] ?? current;
@@ -128,7 +152,6 @@ export default function CreateGatePage() {
       alert(e?.response?.data?.error || e.message);
     }
   };
-
   const limpiarFecha = async (p) => {
     try {
       const { data: upd } = await setFechaPlan(p.id, null);
@@ -139,7 +162,7 @@ export default function CreateGatePage() {
     }
   };
 
-  // ⬇️ NUEVOS handlers para fecha de PRODUCCIÓN (inicio)
+  // Guardar/Quitar: Producción
   const guardarFechaProd = async (p) => {
     const current = dateOnly(p.fecha_prod);
     const val = fechaProdLocal[p.id] ?? current;
@@ -152,12 +175,57 @@ export default function CreateGatePage() {
       alert(e?.response?.data?.error || e.message);
     }
   };
-
   const limpiarFechaProd = async (p) => {
     try {
       const { data: upd } = await setFechaProd(p.id, null);
       replaceItem(upd);
       setLocalFechaProd(p.id, '');
+    } catch (e) {
+      alert(e?.response?.data?.error || e.message);
+    }
+  };
+
+  // ⬇️ Guardar/Quitar: Venta (NV)
+  const guardarFechaNV = async (p) => {
+    const current = dateOnly(p.fecha_nv);
+    const val = fechaNVLocal[p.id] ?? current;
+    const ymd = val && /^\d{4}-\d{2}-\d{2}$/.test(val) ? val : null;
+    try {
+      const { data: upd } = await setFechaNV(p.id, ymd);
+      replaceItem(upd);
+      setLocalFechaNV(p.id, dateOnly(upd.fecha_nv));
+    } catch (e) {
+      alert(e?.response?.data?.error || e.message);
+    }
+  };
+  const limpiarFechaNV = async (p) => {
+    try {
+      const { data: upd } = await setFechaNV(p.id, null);
+      replaceItem(upd);
+      setLocalFechaNV(p.id, '');
+    } catch (e) {
+      alert(e?.response?.data?.error || e.message);
+    }
+  };
+
+  // ⬇️ Guardar/Quitar: Medición
+  const guardarFechaMed = async (p) => {
+    const current = dateOnly(p.fecha_med);
+    const val = fechaMedLocal[p.id] ?? current;
+    const ymd = val && /^\d{4}-\d{2}-\d{2}$/.test(val) ? val : null;
+    try {
+      const { data: upd } = await setFechaMed(p.id, ymd);
+      replaceItem(upd);
+      setLocalFechaMed(p.id, dateOnly(upd.fecha_med));
+    } catch (e) {
+      alert(e?.response?.data?.error || e.message);
+    }
+  };
+  const limpiarFechaMed = async (p) => {
+    try {
+      const { data: upd } = await setFechaMed(p.id, null);
+      replaceItem(upd);
+      setLocalFechaMed(p.id, '');
     } catch (e) {
       alert(e?.response?.data?.error || e.message);
     }
@@ -429,47 +497,57 @@ export default function CreateGatePage() {
     } catch (e) { alert(e?.response?.data?.error || e.message); }
   }
 
-  // ---- Exportar XLSX (queda igual; si querés agrego fecha_prod luego) ----
-  async function handleExportXlsxAll(rows) {
-    const xlsxMod = await import('xlsx');
-    const XLSX = xlsxMod.default || xlsxMod;
+  // ---- Exportar XLSX (sin cambios para no romper nada) ----
+async function handleExportXlsxAll(rows) {
+  const xlsxMod = await import('xlsx');
+  const XLSX = xlsxMod.default || xlsxMod;
 
-    const header = [
-      'NV', 'Lista', 'Partida', 'Fecha planificada',
-      ...STAGES.flatMap(s => [
-        `${s.label} - Estado`, `${s.label} - Inicio`, `${s.label} - Fin`
-      ])
+  const header = [
+    'NV', 'Lista', 'Partida',
+    'Fecha venta (NV)',       // ⬅️ NUEVO
+    'Fecha medición',         // ⬅️ NUEVO
+    'Fecha planificada',
+    ...STAGES.flatMap(s => [
+      `${s.label} - Estado`, `${s.label} - Inicio`, `${s.label} - Fin`
+    ])
+  ];
+
+  const dataRows = rows.map(p => {
+    const fila = [
+      p.nv ?? '',
+      p.nlista ?? '',
+      p.partida ?? '',
+      (p.fecha_nv  ? String(p.fecha_nv).slice(0,10)  : ''),  // ⬅️ NUEVO
+      (p.fecha_med ? String(p.fecha_med).slice(0,10) : ''),  // ⬅️ NUEVO
+      (p.fecha_plan ? String(p.fecha_plan).slice(0,10) : '')
     ];
+    for (const s of STAGES) {
+      const st  = p[s.key] || '';
+      const ini = p[`${s.key}_inicio`] ? fmt(p[`${s.key}_inicio`]) : '';
+      const fin = p[`${s.key}_fin`]    ? fmt(p[`${s.key}_fin`])    : '';
+      fila.push(st, ini, fin);
+    }
+    return fila;
+  });
 
-    const dataRows = rows.map(p => {
-      const fila = [
-        p.nv ?? '',
-        p.nlista ?? '',
-        p.partida ?? '',
-        dateOnly(p.fecha_plan) || ''
-      ];
-      for (const s of STAGES) {
-        const st  = p[s.key] || '';
-        const ini = p[`${s.key}_inicio`] ? fmt(p[`${s.key}_inicio`]) : '';
-        const fin = p[`${s.key}_fin`]    ? fmt(p[`${s.key}_fin`])    : '';
-        fila.push(st, ini, fin);
-      }
-      return fila;
-    });
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet([header, ...dataRows]);
+  ws['!cols'] = [
+    { wch: 8 },   // NV
+    { wch: 10 },  // Lista
+    { wch: 10 },  // Partida
+    { wch: 14 },  // Fecha venta (NV)
+    { wch: 14 },  // Fecha medición
+    { wch: 14 },  // Fecha planificada
+    ...STAGES.flatMap(() => [{ wch: 16 }, { wch: 20 }, { wch: 20 }])
+  ];
+  XLSX.utils.book_append_sheet(wb, ws, 'Portones');
 
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.aoa_to_sheet([header, ...dataRows]);
-    ws['!cols'] = [
-      { wch: 8 }, { wch: 10 }, { wch: 10 }, { wch: 14 },
-      ...STAGES.flatMap(() => [{ wch: 16 }, { wch: 20 }, { wch: 20 }])
-    ];
-    XLSX.utils.book_append_sheet(wb, ws, 'Portones');
-
-    const pad = n => String(n).padStart(2, '0');
-    const now = new Date();
-    const fname = `portones_${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}.xlsx`;
-    XLSX.writeFile(wb, fname);
-  }
+  const pad = n => String(n).padStart(2, '0');
+  const now = new Date();
+  const fname = `portones_${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}.xlsx`;
+  XLSX.writeFile(wb, fname);
+}
 
   async function handleExportSelected() {
     const rows = listPortones.filter(p => selected.has(p.id));
@@ -637,8 +715,8 @@ export default function CreateGatePage() {
             <div
               style={{
                 display:'grid',
-                // ⬇️ ahora: Sel | NV | Producción (inicio) | Entrega planificada | etapas
-                gridTemplateColumns: `${SEL_COL_W}px ${NV_COL_W}px ${FECHA_PROD_COL_W}px ${FECHA_COL_W}px repeat(${STAGES.length}, 1fr)`,
+                // Sel | NV | Venta | Medición | Producción | Entrega planificada | etapas
+                gridTemplateColumns: `${SEL_COL_W}px ${NV_COL_W}px ${FECHA_NV_COL_W}px ${FECHA_MED_COL_W}px ${FECHA_PROD_COL_W}px ${FECHA_COL_W}px repeat(${STAGES.length}, 1fr)`,
                 columnGap: GRID_GAP,
                 rowGap: GRID_GAP,
                 alignItems:'stretch',
@@ -654,6 +732,16 @@ export default function CreateGatePage() {
               {/* Header NV */}
               <div style={{ ...headerCell, position:'sticky', top:0, left:SEL_COL_W, zIndex:5, textAlign:'center', background:'var(--surface)' }}>
                 NV / Lista / Partida
+              </div>
+
+              {/* Header Venta (NV) */}
+              <div style={{ ...headerCell, ...{ position:'sticky', top:0, zIndex:5, background:'var(--surface)' }, textAlign:'center' }}>
+                Venta (NV)
+              </div>
+
+              {/* Header Medición */}
+              <div style={{ ...headerCell, ...{ position:'sticky', top:0, zIndex:5, background:'var(--surface)' }, textAlign:'center' }}>
+                Medición
               </div>
 
               {/* Header Producción (inicio) */}
@@ -680,6 +768,12 @@ export default function CreateGatePage() {
                 const currentProd = dateOnly(p.fecha_prod);
                 const valProd = fechaProdLocal[p.id] ?? currentProd;
 
+                const currentNV = dateOnly(p.fecha_nv);
+                const valNV = fechaNVLocal[p.id] ?? currentNV;
+
+                const currentMed = dateOnly(p.fecha_med);
+                const valMed = fechaMedLocal[p.id] ?? currentMed;
+
                 return ([
                   // Columna selección
                   <div key={`sel-${p.id}`} style={{ ...cellBase, ...stickyLeft0, minHeight:CELL_MIN_H, display:'grid', placeItems:'center' }}>
@@ -701,7 +795,75 @@ export default function CreateGatePage() {
                     </div>
                   </div>,
 
-                  // ⬇️ Celda fecha de PRODUCCIÓN (inicio)
+                  // Fecha de VENTA (NV)
+                  <div key={`fnv-${p.id}`} style={{ ...cellBase, minHeight:CELL_MIN_H }}>
+                    <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                      <input
+                        type="date"
+                        value={valNV || ''}
+                        onChange={e => setLocalFechaNV(p.id, e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') guardarFechaNV(p); }}
+                        className="btn"
+                        style={{ height:34 }}
+                      />
+                      <div style={{ display:'flex', gap:6 }}>
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => guardarFechaNV(p)}
+                          disabled={(valNV || '') === (currentNV || '')}
+                          title="Guardar fecha de venta (NV)"
+                        >
+                          Guardar
+                        </button>
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => limpiarFechaNV(p)}
+                          disabled={!currentNV}
+                          title="Quitar fecha de venta (NV)"
+                        >
+                          Quitar
+                        </button>
+                      </div>
+                    </div>
+                  </div>,
+
+                  // Fecha de MEDICIÓN
+                  <div key={`fmed-${p.id}`} style={{ ...cellBase, minHeight:CELL_MIN_H }}>
+                    <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                      <input
+                        type="date"
+                        value={valMed || ''}
+                        onChange={e => setLocalFechaMed(p.id, e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') guardarFechaMed(p); }}
+                        className="btn"
+                        style={{ height:34 }}
+                      />
+                      <div style={{ display:'flex', gap:6 }}>
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => guardarFechaMed(p)}
+                          disabled={(valMed || '') === (currentMed || '')}
+                          title="Guardar fecha de medición"
+                        >
+                          Guardar
+                        </button>
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => limpiarFechaMed(p)}
+                          disabled={!currentMed}
+                          title="Quitar fecha de medición"
+                        >
+                          Quitar
+                        </button>
+                      </div>
+                    </div>
+                  </div>,
+
+                  // Fecha de PRODUCCIÓN (inicio)
                   <div key={`fprod-${p.id}`} style={{ ...cellBase, minHeight:CELL_MIN_H }}>
                     <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
                       <input
@@ -735,7 +897,7 @@ export default function CreateGatePage() {
                     </div>
                   </div>,
 
-                  // Celda fecha PLANIFICADA (entrega)
+                  // Fecha PLANIFICADA (entrega)
                   <div key={`fplan-${p.id}`} style={{ ...cellBase, minHeight:CELL_MIN_H }}>
                     <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
                       <input
@@ -808,7 +970,7 @@ export default function CreateGatePage() {
               })}
 
               {listPortones.length === 0 && (
-                <div style={{ gridColumn:`1 / span ${STAGES.length + 4}`, marginTop:12, opacity:.7 }}>
+                <div style={{ gridColumn:`1 / span ${STAGES.length + 6}`, marginTop:12, opacity:.7 }}>
                   Sin resultados.
                 </div>
               )}
@@ -816,7 +978,7 @@ export default function CreateGatePage() {
           </div>
         )}
 
-        {/* --- iPanels Grid (agrega Despacho cuando "Ver solo iPanels" está tildado) --- */}
+        {/* --- iPanels Grid --- */}
         {onlyIpanels && (
           <div>
             <div

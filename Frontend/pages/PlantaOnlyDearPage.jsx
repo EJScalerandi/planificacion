@@ -4,15 +4,26 @@ import usePortones from '../src/hooks/usePortones';
 const STAGES = [
   { key: 'diseno',               label: 'Diseño' },
   { key: 'laser',                label: 'Laser' },
-  { key: 'guillotina',           label: 'Corte' },
-  { key: 'plegadora',            label: 'Plegado' },
+
+  // Corte
+  { key: 'guillotina',           label: 'Corte (Piernas)' },
+  { key: 'corte_revest',         label: 'Corte (Revestimiento)' },
+
+  // Plegado
+  { key: 'plegadora',            label: 'Plegado (Piernas)' },
+  { key: 'plegado_revest',       label: 'Plegado (Revestimiento)' },
+
+  // Armados
   { key: 'armado_piernas',       label: 'Armado Piernas' },
   { key: 'armado_marco_piernas', label: 'Armado Marco Piernas' },
   { key: 'armado_hojas',         label: 'Armado Hojas' },
   { key: 'armado_primario',      label: 'Armado Primario' },
+
+  // Sistema / pintura
   { key: 'inyeccion',            label: 'Inyección' },
   { key: 'revestimiento',        label: 'Revestimiento' },
   { key: 'pintura',              label: 'Pintura' },
+
   { key: 'armado_final',         label: 'Armado Final' },
   { key: 'despacho',             label: 'Despacho' },
 ];
@@ -78,15 +89,14 @@ function getPlanIndicator(p) {
     return { color: '#ef4444', label: 'Urgente', days: d, title: `Faltan ${d} día(s) · Armado Primario no finalizado` };
   }
 
-  // ✅ AMARILLO: entre 10 y 8 días (inclusive)
+  // ✅ AMARILLO: entre 15 y 8 días (inclusive)
   if (d !== null && d <= 15 && d >= 8) {
     return { color: '#eab308', label: 'Atento', days: d, title: `Faltan ${d} día(s) · Armado Primario no finalizado` };
   }
 
-  // VERDE: resto de los casos (fecha asignada y >10 días)
+  // VERDE: resto de los casos (fecha asignada y >15 días)
   return { color: '#16a34a', label: 'OK', days: d, title: `Faltan ${d} día(s) para ${fecha}` };
 }
-
 
 export default function PlantaReadOnlyPage() {
   const { data, loading, err, refresh, refreshing } = usePortones({ pollMs: 300000 });
@@ -158,40 +168,34 @@ export default function PlantaReadOnlyPage() {
     return data.filter(p => !isFullyFinished(p));
   }, [data, filter]);
 
-  // ordenar por nlista -> nv
-// ordenar: primero los que tienen fecha (más urgentes arriba), luego resto por nlista -> nv
-const list = useMemo(() => {
-  const arr = [...baseList];
+  // ordenar: primero con fecha (más urgentes arriba), luego nlista -> nv
+  const list = useMemo(() => {
+    const arr = [...baseList];
 
-  arr.sort((a, b) => {
-    const aHas = !!dateOnly(a.fecha_plan);
-    const bHas = !!dateOnly(b.fecha_plan);
+    arr.sort((a, b) => {
+      const aHas = !!dateOnly(a.fecha_plan);
+      const bHas = !!dateOnly(b.fecha_plan);
 
-    // 1) Con fecha primero
-    if (aHas !== bHas) return aHas ? -1 : 1;
+      if (aHas !== bHas) return aHas ? -1 : 1;
 
-    // 2) Si ambos tienen fecha: ordenar por días que faltan (menor primero = vencidos/urgentes arriba)
-    if (aHas && bHas) {
-      const da = daysUntil(dateOnly(a.fecha_plan)); // puede ser negativo si vencido
-      const db = daysUntil(dateOnly(b.fecha_plan));
+      if (aHas && bHas) {
+        const da = daysUntil(dateOnly(a.fecha_plan));
+        const db = daysUntil(dateOnly(b.fecha_plan));
 
-      // valores null (por rarezas) van al final
-      const na = da === null ? Number.POSITIVE_INFINITY : da;
-      const nb = db === null ? Number.POSITIVE_INFINITY : db;
+        const na = da === null ? Number.POSITIVE_INFINITY : da;
+        const nb = db === null ? Number.POSITIVE_INFINITY : db;
 
-      if (na !== nb) return na - nb;
-    }
+        if (na !== nb) return na - nb;
+      }
 
-    // 3) Desempate como antes: nlista -> nv
-    return (
-      (a.nlista || 0) - (b.nlista || 0) ||
-      (a.nv     || 0) - (b.nv     || 0)
-    );
-  });
+      return (
+        (a.nlista || 0) - (b.nlista || 0) ||
+        (a.nv     || 0) - (b.nv     || 0)
+      );
+    });
 
-  return arr;
-}, [baseList]);
-
+    return arr;
+  }, [baseList]);
 
   // contadores por etapa (encabezados)
   const stageStats = useMemo(() => {

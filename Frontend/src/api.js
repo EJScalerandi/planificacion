@@ -40,3 +40,10 @@ export const stopIpanelStage = (id, stage) =>
   api.post(`/ipanel/${id}/stage`, { stage, action: 'stop' });
 
 export default api;
+// Fecha de venta (NV) (YYYY-MM-DD o null)
+export const setFechaNV = (id, fechaOrNull) =>
+  api.post(`/portones/${id}/fecha-nv`, { fecha_nv: fechaOrNull });
+
+// Fecha de medición (YYYY-MM-DD o null)
+export const setFechaMed = (id, fechaOrNull) =>
+  api.post(`/portones/${id}/fecha-med`, { fecha_med: fechaOrNull });

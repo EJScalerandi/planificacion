@@ -4,21 +4,36 @@ import usePortones from '../src/hooks/usePortones';
 const STAGES = [
   { key: 'diseno',               label: 'Diseño' },
   { key: 'laser',                label: 'Laser' },
-  { key: 'guillotina',           label: 'Corte' },
-  { key: 'plegadora',            label: 'Plegado' },
+
+  // Corte
+  { key: 'guillotina',           label: 'Corte (Piernas)' },
+  { key: 'corte_revest',         label: 'Corte (Revestimiento)' },
+
+  // Plegado
+  { key: 'plegadora',            label: 'Plegado (Piernas)' },
+  { key: 'plegado_revest',       label: 'Plegado (Revestimiento)' },
+
+  // Prefabricados / Armados
   { key: 'armado_piernas',       label: 'Armado Piernas' },
   { key: 'armado_marco_piernas', label: 'Armado Marco Piernas' },
   { key: 'armado_hojas',         label: 'Armado Hojas' },
   { key: 'armado_primario',      label: 'Armado Primario' },
+
+  // Sistema / Pintura
   { key: 'inyeccion',            label: 'Inyección' },
   { key: 'revestimiento',        label: 'Revestimiento' },
   { key: 'pintura',              label: 'Pintura' },
+
   { key: 'armado_final',         label: 'Armado Final' },
   { key: 'despacho',             label: 'Despacho' },
 ];
 
 const ABBR = {
-  diseno: 'Di', laser: 'La', guillotina: 'Co', plegadora: 'Pl',
+  diseno: 'Di', laser: 'La',
+  guillotina: 'COP',           // Corte (Piernas)
+  corte_revest: 'COR',         // Corte (Revestimiento)
+  plegadora: 'PLP',            // Plegado (Piernas)
+  plegado_revest: 'PLR',       // Plegado (Revestimiento)
   armado_piernas: 'AP', armado_marco_piernas: 'AMP', armado_hojas: 'AH',
   armado_primario: 'APr', inyeccion: 'In', revestimiento: 'Rv',
   pintura: 'Pi', armado_final: 'AF', despacho: 'De',
@@ -28,7 +43,6 @@ const NV_COL_W     = 120;
 const FECHA_COL_W  = 120;
 const GRID_GAP     = 3;
 const CELL_MIN_H   = 24;
-// ⬇️ Indicadores: un poco más largos y responsivos (ajustan con el ancho de pantalla)
 const RECT_W       = 'clamp(18px, 2.6vw, 36px)';
 const RECT_H       = 'clamp(14px, 1.6vw, 20px)';
 const bordo        = '#008241ff';
@@ -237,7 +251,6 @@ export default function PlantaReadOnlySimplePage() {
         <div
           style={{
             display:'grid',
-            // ⬇️ 100% de ancho + columnas de etapas que se estiran suavemente
             gridTemplateColumns: `${NV_COL_W}px ${FECHA_COL_W}px repeat(${STAGES.length}, minmax(54px, 1fr))`,
             columnGap: GRID_GAP, rowGap: GRID_GAP, alignItems:'stretch',
             width:'100%', padding:8

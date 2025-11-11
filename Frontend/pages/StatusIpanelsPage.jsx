@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import useIpanels from '../src/hooks/useIpanels';
 
 const IP_STAGES = [
+  { key: "diseno", label: "diseno"},
   { key: 'guillotina', label: 'Corte' },
   { key: 'plegado',    label: 'Plegado' },
   { key: 'pintura',    label: 'Pintura' },

@@ -165,55 +165,77 @@ const ROUTES = [
     path: '/',
     label: 'Inicio',
     stages: [
-      { key: 'diseno',                label: 'Diseño',                   mode: 'porton' },
-      { key: 'laser',                 label: 'Laser',                    mode: 'porton' },
+      // Diseño: también iPanel
+      { key: 'diseno',  label: 'Diseño (Portones)', mode: 'porton' },
+      { key: 'diseno',  label: 'Diseño (iPanel)',   mode: 'ipanel' },
+
+      { key: 'laser',   label: 'Laser',             mode: 'porton' },
+
       // Corte
-      { key: 'guillotina',            label: 'Corte (Portones)',         mode: 'porton' },
-      { key: 'guillotina',            label: 'Corte (iPanel)',           mode: 'ipanel'  },
+      { key: 'guillotina',   label: 'Corte (Piernas)',        mode: 'porton' },
+      { key: 'corte_revest', label: 'Corte (Revestimiento)',  mode: 'porton' },
+      { key: 'guillotina',   label: 'Corte (iPanel)',         mode: 'ipanel'  },
+
       // Plegado
-      { key: 'plegadora',             label: 'Plegado (Portones)',       mode: 'porton' },
-      { key: 'plegadora',             label: 'Plegado (iPanel)',         mode: 'ipanel'  },
+      { key: 'plegadora',      label: 'Plegado (Piernas)',       mode: 'porton' },
+      { key: 'plegado_revest', label: 'Plegado (Revestimiento)', mode: 'porton' },
+      { key: 'plegado',        label: 'Plegado (iPanel)',        mode: 'ipanel'  },
+
       // Prefabricados / Armados (solo Portones)
       { key: 'armado_piernas',        label: 'Armado Piernas - Prefabricados', mode: 'porton' },
-      { key: 'armado_marco_piernas',  label: 'Armado Marco Piernas',     mode: 'porton' },
-      { key: 'armado_hojas',          label: 'Armado Hojas',             mode: 'porton' },
-      { key: 'armado_primario',       label: 'Armado Primario',          mode: 'porton' },
+      { key: 'armado_marco_piernas',  label: 'Armado Marco Piernas',           mode: 'porton' },
+      { key: 'armado_hojas',          label: 'Armado Hojas',                   mode: 'porton' },
+      { key: 'armado_primario',       label: 'Armado Primario',                mode: 'porton' },
+
       // Pintura
-      { key: 'pintura',               label: 'Pintura (Portones)',       mode: 'porton' },
-      { key: 'pintura',               label: 'Pintura (iPanel)',         mode: 'ipanel'  },
+      { key: 'pintura', label: 'Pintura (Portones)', mode: 'porton' },
+      { key: 'pintura', label: 'Pintura (iPanel)',   mode: 'ipanel'  },
+
       // Inyección
-      { key: 'inyeccion',             label: 'Inyección (Portones)',     mode: 'porton' },
-      { key: 'inyeccion',             label: 'Inyección (iPanel)',       mode: 'ipanel'  },
+      { key: 'inyeccion', label: 'Inyección (Portones)', mode: 'porton' },
+      { key: 'inyeccion', label: 'Inyección (iPanel)',   mode: 'ipanel'  },
+
       // Resto Portones
-      { key: 'revestimiento',         label: 'Revestimiento',            mode: 'porton' },
-      { key: 'armado_final',          label: 'Armado Final',             mode: 'porton' },
-      // 👇👇 Aca se agregan las DOS columnas de Despacho
-      { key: 'despacho',              label: 'Despacho (Portones)',      mode: 'porton' },
-      { key: 'despacho',              label: 'Despacho (iPanel)',        mode: 'ipanel'  },
+      { key: 'revestimiento', label: 'Revestimiento',  mode: 'porton' },
+      { key: 'armado_final',  label: 'Armado Final',   mode: 'porton' },
+
+      // Despacho
+      { key: 'despacho', label: 'Despacho (Portones)', mode: 'porton' },
+      { key: 'despacho', label: 'Despacho (iPanel)',   mode: 'ipanel'  },
     ]
   },
 
   // Rutas por etapa
-  { path: '/diseno',         label: 'Diseño',            stages: ONE('diseno','Diseño') },
-  { path: '/laser',          label: 'Laser',             stages: ONE('laser','Laser') },
+  {
+    path: '/diseno',
+    label: 'Diseño',
+    stages: [
+      { key: 'diseno', label: 'Diseño (Portones)', mode: 'porton' },
+      { key: 'diseno', label: 'Diseño (iPanel)',   mode: 'ipanel'  },
+    ]
+  },
 
-  // Corte: dos columnas
+  { path: '/laser', label: 'Laser', stages: ONE('laser','Laser') },
+
+  // Corte
   {
     path: '/corte',
     label: 'Corte',
     stages: [
-      { key: 'guillotina', label: 'Corte (Portones)', mode: 'porton' },
-      { key: 'guillotina', label: 'Corte (iPanel)',   mode: 'ipanel' },
+      { key: 'guillotina',   label: 'Corte (Piernas)',        mode: 'porton' },
+      { key: 'corte_revest', label: 'Corte (Revestimiento)',  mode: 'porton' },
+      { key: 'guillotina',   label: 'Corte (iPanel)',         mode: 'ipanel' },
     ]
   },
 
-  // Plegado: dos columnas
+  // Plegado
   {
     path: '/plegado',
     label: 'Plegado',
     stages: [
-      { key: 'plegadora', label: 'Plegado (Portones)', mode: 'porton' },
-      { key: 'plegadora', label: 'Plegado (iPanel)',   mode: 'ipanel' },
+      { key: 'plegadora',      label: 'Plegado (Piernas)',       mode: 'porton' },
+      { key: 'plegado_revest', label: 'Plegado (Revestimiento)', mode: 'porton' },
+      { key: 'plegado',        label: 'Plegado (iPanel)',        mode: 'ipanel' },
     ]
   },
 
@@ -230,7 +252,7 @@ const ROUTES = [
 
   { path: '/armado-primario', label: 'Armado Primario', stages: ONE('armado_primario','Armado Primario') },
 
-  // Pintura: dos columnas
+  // Pintura
   {
     path: '/pintura',
     label: 'Pintura',
@@ -240,7 +262,7 @@ const ROUTES = [
     ]
   },
 
-  // Inyección: dos columnas
+  // Inyección
   {
     path: '/inyeccion',
     label: 'Inyección',
@@ -253,7 +275,7 @@ const ROUTES = [
   { path: '/revestimiento',  label: 'Revestimiento',  stages: ONE('revestimiento','Revestimiento') },
   { path: '/armado-final',   label: 'Armado Final',   stages: ONE('armado_final','Armado Final') },
 
-  // Despacho: AHORA también en dos columnas
+  // Despacho
   {
     path: '/despacho',
     label: 'Despacho',
@@ -281,11 +303,12 @@ export default function App() {
 
         {/* Tableros especiales */}
         <Route path="/ipanel" element={<IpanelReadOnlyPage />} />
-        <Route path="/Diseño" element={<Board stages={ONE('diseno','Diseño')} />} />
+        {/* Redirigimos /Diseño (con tilde) a /diseno para mostrar ambas columnas */}
+        <Route path="/Diseño" element={<Navigate to="/diseno" replace />} />
         <Route path="/statusGate" element={<StatusGatePage />} />
         <Route path="/createGate" element={<CreateGatePage />} />
         <Route path="/planta" element={<PlantaReadOnlyPage />} />
-        <Route path="/plantasimple" element= {<PlantaReadOnlySimplePage />} />
+        <Route path="/plantasimple" element={<PlantaReadOnlySimplePage />} />
         <Route path="/statusIpanels" element={<StatusIpanelsPage />} />
         {/* Not found -> home */}
         <Route path="*" element={<Navigate to="/" replace />} />

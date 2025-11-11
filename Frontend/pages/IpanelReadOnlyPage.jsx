@@ -3,11 +3,12 @@ import { useMemo, useState } from 'react';
 import useIpanels from '../src/hooks/useIpanels';
 
 const STAGES = [
+  { key: 'diseno',    label: 'Diseño' },
   { key: 'guillotina', label: 'Corte' },
   { key: 'plegado',    label: 'Plegado' },
   { key: 'pintura',    label: 'Pintura' },
   { key: 'inyeccion',  label: 'Inyección' },
-  { key: "despacho", label: "despacho"},
+  { key: 'despacho',   label: 'Despacho' },
 ];
 
 const NV_COL_W        = 150;
