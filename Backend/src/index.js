@@ -82,6 +82,17 @@ const STAGES = {
     start: 'armado_marco_piernas_inicio',
     end:   'armado_marco_piernas_fin',
     next:  null
+  },corte_revest: {
+    status: 'corte_revest',
+    start:  'corte_revest_inicio',
+    end:    'corte_revest_fin',
+    next:   null
+  },
+  plegado_revest: {
+    status: 'plegado_revest',
+    start:  'plegado_revest_inicio',
+    end:    'plegado_revest_fin',
+    next:   null
   },
   armado_piernas:  { status: 'armado_piernas',  start: 'armado_piernas_inicio',  end: 'armado_piernas_fin',  next: null },
   armado_primario: { status: 'armado_primario', start: 'armado_primario_inicio', end: 'armado_primario_fin', next: null },
@@ -95,11 +106,12 @@ const STAGES = {
 
 // iPanel: ahora incluye Despacho
 const IPANEL_STAGES = {
-  guillotina: { status: 'guillotina', start: 'guillotina_inicio', end: 'guillotina_fin' },
-  plegado:    { status: 'plegado',    start: 'plegado_inicio',    end: 'plegado_fin'    },
-  pintura:    { status: 'pintura',    start: 'pintura_inicio',    end: 'pintura_fin'    },
-  inyeccion:  { status: 'inyeccion',  start: 'inyeccion_inicio',  end: 'inyeccion_fin'  },
-  despacho:   { status: 'despacho',   start: 'despacho_inicio',   end: 'despacho_fin'   }, // ⬅️ agregado
+  diseno:    { status: 'diseno',    start: 'diseno_inicio',    end: 'diseno_fin'    }, // ⬅️ agregado
+  guillotina:{ status: 'guillotina',start: 'guillotina_inicio',end: 'guillotina_fin' },
+  plegado:   { status: 'plegado',   start: 'plegado_inicio',   end: 'plegado_fin'    },
+  pintura:   { status: 'pintura',   start: 'pintura_inicio',   end: 'pintura_fin'    },
+  inyeccion: { status: 'inyeccion', start: 'inyeccion_inicio', end: 'inyeccion_fin'  },
+  despacho:  { status: 'despacho',  start: 'despacho_inicio',  end: 'despacho_fin'   }, // ⬅️ agregado
 };
 
 // --------------------- Lógica Portones ---------------------
@@ -284,7 +296,7 @@ app.get('/ipanel', async (_req, res) => {
   }
 });
 
-// POST: crear ipanel { nv (obligatorio), partida|npartida (opcional) }
+// POST: crear ipanel { nv (obligatorio), partida|npartida (opcional)
 app.post('/ipanel', async (req, res) => {
   try {
     const { partida: bodyPartida, npartida, nv } = req.body || {};
@@ -390,6 +402,112 @@ app.post('/ipanel/:id/fecha-prod', async (req, res) => {
     return res.status(500).json({ error: 'Error al actualizar fecha de producción de iPanel', detail: err.message });
   }
 });
+
+// POST: asignar/actualizar fecha de Nota de Venta de iPanel
+// Body: { fecha_nv: 'YYYY-MM-DD' }  // puede ser null para limpiar
+app.post('/ipanel/:id/fecha-nv', async (req, res) => {
+  const { id } = req.params;
+  let { fecha_nv } = req.body || {};
+
+  try {
+    if (fecha_nv !== null && fecha_nv !== undefined) {
+      if (typeof fecha_nv !== 'string') {
+        return res.status(400).json({ error: 'fecha_nv debe ser string con formato YYYY-MM-DD o null' });
+      }
+      fecha_nv = fecha_nv.slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha_nv)) {
+        return res.status(400).json({ error: 'fecha_nv inválida. Use formato YYYY-MM-DD' });
+      }
+    }
+
+    const { rows } = await pool.query(
+      `UPDATE public.ipanel
+       SET fecha_nv = $2
+       WHERE id = $1
+       RETURNING *;`,
+      [id, fecha_nv ?? null]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ error: 'iPanel no encontrado' });
+    }
+    return res.json(rows[0]);
+  } catch (err) {
+    console.error('set ipanel fecha_nv error:', err);
+    return res.status(500).json({ error: 'Error al actualizar fecha de nota de venta de iPanel', detail: err.message });
+  }
+});
+
+// POST: asignar/actualizar fecha de Nota de Venta
+// Body: { fecha_nv: 'YYYY-MM-DD' }  // puede ser null para limpiar
+app.post('/portones/:id/fecha-nv', async (req, res) => {
+  const { id } = req.params;
+  let { fecha_nv } = req.body || {};
+
+  try {
+    if (fecha_nv !== null && fecha_nv !== undefined) {
+      if (typeof fecha_nv !== 'string') {
+        return res.status(400).json({ error: 'fecha_nv debe ser string con formato YYYY-MM-DD o null' });
+      }
+      fecha_nv = fecha_nv.slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha_nv)) {
+        return res.status(400).json({ error: 'fecha_nv inválida. Use formato YYYY-MM-DD' });
+      }
+    }
+
+    const { rows } = await pool.query(
+      `UPDATE public.portones
+       SET fecha_nv = $2
+       WHERE id = $1
+       RETURNING *;`,
+      [id, fecha_nv ?? null]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ error: 'Portón no encontrado' });
+    }
+    return res.json(rows[0]);
+  } catch (err) {
+    console.error('set fecha_nv error:', err);
+    return res.status(500).json({ error: 'Error al actualizar fecha de nota de venta', detail: err.message });
+  }
+});
+
+// POST: asignar/actualizar fecha de Medición
+// Body: { fecha_med: 'YYYY-MM-DD' }  // puede ser null para limpiar
+app.post('/portones/:id/fecha-med', async (req, res) => {
+  const { id } = req.params;
+  let { fecha_med } = req.body || {};
+
+  try {
+    if (fecha_med !== null && fecha_med !== undefined) {
+      if (typeof fecha_med !== 'string') {
+        return res.status(400).json({ error: 'fecha_med debe ser string con formato YYYY-MM-DD o null' });
+      }
+      fecha_med = fecha_med.slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha_med)) {
+        return res.status(400).json({ error: 'fecha_med inválida. Use formato YYYY-MM-DD' });
+      }
+    }
+
+    const { rows } = await pool.query(
+      `UPDATE public.portones
+       SET fecha_med = $2
+       WHERE id = $1
+       RETURNING *;`,
+      [id, fecha_med ?? null]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ error: 'Portón no encontrado' });
+    }
+    return res.json(rows[0]);
+  } catch (err) {
+    console.error('set fecha_med error:', err);
+    return res.status(500).json({ error: 'Error al actualizar fecha de medición', detail: err.message });
+  }
+});
+
 
 // --------------------- Cierre prolijo ---------------------
 process.on('SIGINT', async () => {
