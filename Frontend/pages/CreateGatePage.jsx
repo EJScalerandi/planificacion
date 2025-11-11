@@ -402,14 +402,25 @@ export default function CreateGatePage() {
   }, [listIpanels]);
 
   // ---- Acciones Portones/Ipanels ----
-  async function finalizeSistema(id) {
-    let updated = null;
-    for (const st of ['inyeccion', 'revestimiento']) {
+// ---- Acciones Portones/Ipanels ----
+// Antes: solo ['inyeccion','revestimiento']
+// Ahora: también 'corte_revest' y 'plegado_revest'
+const SISTEMA_STAGES = ['inyeccion', 'revestimiento', 'corte_revest', 'plegado_revest'];
+
+async function finalizeSistema(id) {
+  let updated = null;
+  for (const st of SISTEMA_STAGES) {
+    try {
       const { data } = await stopStage(id, st);
       updated = data;
+    } catch (e) {
+      // Si alguna ya estaba finalizada o la columna no aplica, seguimos con las demás
+      console.warn(`No se pudo finalizar ${st} para id=${id}:`, e?.response?.data || e.message);
     }
-    return updated;
   }
+  return updated;
+}
+
 
   async function handleCreatePorton() {
     const nNv = Number(nv), nNl = Number(nlista);
