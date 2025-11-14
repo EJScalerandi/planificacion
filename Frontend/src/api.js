@@ -84,3 +84,8 @@ export const setFechaPlanEntrega = (id, fechaOrNull) =>
 // Observaciones portón (string o null)
 export const setPortonObservaciones = (id, observaciones) =>
   api.put(`/portones/${id}/observaciones`, { observaciones });
+
+
+
+export const setIpanelObservaciones = (id, observaciones) =>
+  api.post(`/ipanel/${id}/observaciones`, { observaciones });
