@@ -522,3 +522,130 @@ process.on('SIGTERM', async () => {
 app.listen(PORT, () => {
   console.log(`Backend escuchando en http://localhost:${PORT}`);
 });
+
+// ===================== Observaciones PORTONES =====================
+
+// GET: obtener observaciones de un portón
+//  -> GET /portones/:id/observaciones
+app.get('/portones/:id/observaciones', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, observaciones
+       FROM public.portones
+       WHERE id = $1;`,
+      [id]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ error: 'Portón no encontrado' });
+    }
+
+    return res.json(rows[0]); // { id, observaciones }
+  } catch (err) {
+    console.error('get observaciones porton error:', err);
+    return res.status(500).json({ error: 'Error leyendo observaciones de portón', detail: err.message });
+  }
+});
+
+// Handler común para POST/PUT (setear / actualizar observaciones)
+async function upsertPortonObservaciones(req, res) {
+  const { id } = req.params;
+  let { observaciones } = req.body || {};
+
+  try {
+    if (observaciones !== null && observaciones !== undefined && typeof observaciones !== 'string') {
+      return res.status(400).json({ error: 'observaciones debe ser string o null' });
+    }
+
+    const { rows } = await pool.query(
+      `UPDATE public.portones
+       SET observaciones = $2
+       WHERE id = $1
+       RETURNING id, observaciones;`,
+      [id, observaciones ?? null]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ error: 'Portón no encontrado' });
+    }
+
+    return res.json(rows[0]);
+  } catch (err) {
+    console.error('set observaciones porton error:', err);
+    return res.status(500).json({ error: 'Error al actualizar observaciones de portón', detail: err.message });
+  }
+}
+
+// POST: crear/actualizar observaciones de un portón
+//  -> POST /portones/:id/observaciones { observaciones: '...' }
+app.post('/portones/:id/observaciones', upsertPortonObservaciones);
+
+// PUT: idem (idempotente)
+//  -> PUT /portones/:id/observaciones { observaciones: '...' }
+app.put('/portones/:id/observaciones', upsertPortonObservaciones);
+
+
+// ===================== Observaciones IPANEL =====================
+
+// GET: obtener observaciones de un ipanel
+//  -> GET /ipanel/:id/observaciones
+app.get('/ipanel/:id/observaciones', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, observaciones
+       FROM public.ipanel
+       WHERE id = $1;`,
+      [id]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ error: 'iPanel no encontrado' });
+    }
+
+    return res.json(rows[0]); // { id, observaciones }
+  } catch (err) {
+    console.error('get observaciones ipanel error:', err);
+    return res.status(500).json({ error: 'Error leyendo observaciones de iPanel', detail: err.message });
+  }
+});
+
+// Handler común para POST/PUT (setear / actualizar observaciones)
+async function upsertIpanelObservaciones(req, res) {
+  const { id } = req.params;
+  let { observaciones } = req.body || {};
+
+  try {
+    if (observaciones !== null && observaciones !== undefined && typeof observaciones !== 'string') {
+      return res.status(400).json({ error: 'observaciones debe ser string o null' });
+    }
+
+    const { rows } = await pool.query(
+      `UPDATE public.ipanel
+       SET observaciones = $2
+       WHERE id = $1
+       RETURNING id, observaciones;`,
+      [id, observaciones ?? null]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ error: 'iPanel no encontrado' });
+    }
+
+    return res.json(rows[0]);
+  } catch (err) {
+    console.error('set observaciones ipanel error:', err);
+    return res.status(500).json({ error: 'Error al actualizar observaciones de iPanel', detail: err.message });
+  }
+}
+
+// POST: crear/actualizar observaciones de un iPanel
+//  -> POST /ipanel/:id/observaciones { observaciones: '...' }
+app.post('/ipanel/:id/observaciones', upsertIpanelObservaciones);
+
+// PUT: idem (idempotente)
+//  -> PUT /ipanel/:id/observaciones { observaciones: '...' }
+app.put('/ipanel/:id/observaciones', upsertIpanelObservaciones);
