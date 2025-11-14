@@ -1,5 +1,5 @@
 // src/components/StatusGatePage.jsx
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import usePortones from '../hooks/usePortones';
 import { setPortonObservaciones } from '../api';
 
@@ -47,61 +47,141 @@ function isFullyDone(p) {
   return STAGES.every(st => (p[st.key] || '').toLowerCase() === 'finalizado');
 }
 
+/** ==== MODAL SOLO PARA OBSERVACIONES (local state, sin lag) ==== */
+function PortonObsModal({ open, target, onClose, onSave }) {
+  const [draft, setDraft] = useState(target?.observaciones || '');
+  const [saving, setSaving] = useState(false);
+
+  // cuando cambia el portón, reseteo el texto
+  useEffect(() => {
+    setDraft(target?.observaciones || '');
+  }, [target]);
+
+  if (!open || !target) return null;
+
+  const handleSaveClick = async () => {
+    try {
+      setSaving(true);
+      await onSave(draft);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        position:'fixed',
+        inset:0,
+        background:'rgba(0,0,0,.45)',
+        display:'grid',
+        placeItems:'center',
+        zIndex:9999
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          background:'var(--surface)',
+          padding:20,
+          borderRadius:12,
+          minWidth:320,
+          maxWidth:520,
+          boxShadow:'0 10px 30px rgba(0,0,0,.25)',
+          display:'flex',
+          flexDirection:'column',
+          gap:10
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        <h3 style={{ margin:0 }}>
+          Observaciones NV {target.nv}{target.nlista ? ` - Portón ${target.nlista}` : ''}
+        </h3>
+        {target.partida != null && (
+          <div style={{ fontSize:13, opacity:.8 }}>Partida: {target.partida}</div>
+        )}
+
+        <textarea
+          rows={6}
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          className="btn"
+          style={{ resize:'vertical', fontFamily:'inherit', lineHeight:1.3 }}
+          placeholder="Escribí notas internas, aclaraciones, etc."
+        />
+
+        <div style={{ display:'flex', justifyContent:'space-between', gap:8, marginTop:6 }}>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => setDraft('')}
+          >
+            Limpiar texto
+          </button>
+          <div style={{ display:'flex', gap:8 }}>
+            <button
+              type="button"
+              className="btn"
+              onClick={onClose}
+              disabled={saving}
+            >
+              Cerrar
+            </button>
+            <button
+              type="button"
+              className="btn btn--brand"
+              onClick={handleSaveClick}
+              disabled={saving}
+            >
+              {saving ? 'Guardando…' : 'Guardar'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** ==== PÁGINA PRINCIPAL ==== */
 export default function StatusGatePage() {
   const { data, loading, err, refresh, refreshing } = usePortones({ pollMs: 300000 });
 
-  // ===== Buscador =====
+  // Buscador
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState(null);
   const hasQuery = !!(filter && String(filter).trim() !== '');
 
   const list = useMemo(() => {
     if (!Array.isArray(data)) return [];
-    if (!hasQuery) {
-      // Sin búsqueda: ocultar completamente finalizados
-      return data.filter(p => !isFullyDone(p));
-    }
-    // Con búsqueda: mostrar coincidencias, aunque estén finalizados
+    if (!hasQuery) return data.filter(p => !isFullyDone(p));
     const n = Number(filter);
     if (Number.isNaN(n)) return data;
     return data.filter(p => p.nv === n || p.nlista === n);
   }, [data, filter, hasQuery]);
 
-  // ===== Popup observaciones (Portones) =====
+  // Estado solo de qué portón tiene el popup abierto
   const [obsOpen, setObsOpen] = useState(false);
   const [obsTarget, setObsTarget] = useState(null);
-  const [obsDraft, setObsDraft] = useState('');
-  const [obsSaving, setObsSaving] = useState(false);
 
   const openObsModal = (p) => {
     setObsTarget(p);
-    setObsDraft(p.observaciones || '');
     setObsOpen(true);
   };
-
   const closeObsModal = () => {
     setObsOpen(false);
     setObsTarget(null);
-    setObsDraft('');
   };
 
-  const handleSaveObs = async () => {
+  const handleSaveObs = async (texto) => {
     if (!obsTarget) return;
-    try {
-      setObsSaving(true);
-      await setPortonObservaciones(obsTarget.id, obsDraft);
-      await refresh();
-      closeObsModal();
-    } catch (e) {
-      alert(e?.response?.data?.error || e.message);
-    } finally {
-      setObsSaving(false);
-    }
+    await setPortonObservaciones(obsTarget.id, texto);
+    await refresh();
+    closeObsModal();
   };
 
   const NV_COL_W       = 150;
-  const CONTACT_COL_W  = 88;   // semáforo
-  const FECHA_COL_W    = 190;  // fecha despacho
+  const CONTACT_COL_W  = 88;
+  const FECHA_COL_W    = 190;
   const cols = `${NV_COL_W}px ${CONTACT_COL_W}px ${FECHA_COL_W}px repeat(${STAGES.length}, 1fr)`;
 
   return (
@@ -167,7 +247,6 @@ export default function StatusGatePage() {
           {list.map(p => {
             const hasFecha = !!dateOnly(p.fecha_plan);
             return ([
-              // NV / Lista / Partida (abre popup)
               <div
                 key={`nv-${p.id}`}
                 className="cell"
@@ -200,13 +279,11 @@ export default function StatusGatePage() {
                 )}
               </div>,
 
-              // Semáforo contacto cliente
               <div
                 key={`contacto-${p.id}`}
                 className="cell"
                 style={{ background:'var(--surface)', display:'grid', placeItems:'center' }}
                 title={hasFecha ? 'Contacto realizado' : 'Sin contacto asignado'}
-                aria-label={hasFecha ? 'Contacto realizado' : 'Sin contacto asignado'}
               >
                 <div
                   style={{
@@ -219,7 +296,6 @@ export default function StatusGatePage() {
                 />
               </div>,
 
-              // Fecha de despacho asignada
               <div
                 key={`fecha-${p.id}`}
                 className="cell"
@@ -229,7 +305,6 @@ export default function StatusGatePage() {
                 {dateOnly(p.fecha_plan)}
               </div>,
 
-              // Etapas
               ...STAGES.map(s => {
                 const st  = p[s.key];
                 const ini = p[`${s.key}_inicio`];
@@ -261,80 +336,13 @@ export default function StatusGatePage() {
         </div>
       </div>
 
-      {/* ==== MODAL OBSERVACIONES PORTÓN ==== */}
-      {obsOpen && (
-        <div
-          style={{
-            position:'fixed',
-            inset:0,
-            background:'rgba(0,0,0,.45)',
-            display:'grid',
-            placeItems:'center',
-            zIndex:9999
-          }}
-          onClick={closeObsModal}
-        >
-          <div
-            style={{
-              background:'var(--surface)',
-              padding:20,
-              borderRadius:12,
-              minWidth:320,
-              maxWidth:520,
-              boxShadow:'0 10px 30px rgba(0,0,0,.25)',
-              display:'flex',
-              flexDirection:'column',
-              gap:10
-            }}
-            onClick={e => e.stopPropagation()}
-          >
-            <h3 style={{ margin:0 }}>
-              Observaciones NV {obsTarget?.nv}
-              {obsTarget?.nlista ? ` - Portón ${obsTarget.nlista}` : ''}
-            </h3>
-            {obsTarget?.partida != null && (
-              <div style={{ fontSize:13, opacity:.8 }}>Partida: {obsTarget.partida}</div>
-            )}
-
-            <textarea
-              rows={6}
-              value={obsDraft}
-              onChange={e => setObsDraft(e.target.value)}
-              className="btn"
-              style={{ resize:'vertical', fontFamily:'inherit', lineHeight:1.3 }}
-              placeholder="Escribí notas internas, aclaraciones, etc."
-            />
-
-            <div style={{ display:'flex', justifyContent:'space-between', gap:8, marginTop:6 }}>
-              <button
-                type="button"
-                className="btn"
-                onClick={() => setObsDraft('')}
-              >
-                Limpiar texto
-              </button>
-              <div style={{ display:'flex', gap:8 }}>
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={closeObsModal}
-                  disabled={obsSaving}
-                >
-                  Cerrar
-                </button>
-                <button
-                  type="button"
-                  className="btn btn--brand"
-                  onClick={handleSaveObs}
-                  disabled={obsSaving}
-                >
-                  {obsSaving ? 'Guardando…' : 'Guardar'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Modal (usa estado local, no toca la grilla al tipear) */}
+      <PortonObsModal
+        open={obsOpen}
+        target={obsTarget}
+        onClose={closeObsModal}
+        onSave={handleSaveObs}
+      />
     </div>
   );
 }

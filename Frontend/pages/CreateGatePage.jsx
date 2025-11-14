@@ -1,5 +1,5 @@
 // src/pages/CreateGatePage.jsx
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import usePortones from '../src/hooks/usePortones';
 import useIpanels from '../src/hooks/useIpanels';
 import {
@@ -7,7 +7,6 @@ import {
   createIpanel, startIpanelStage, stopIpanelStage,
   setFechaPlan, setFechaProd,
   setFechaNV, setFechaMed,
-  // ⬇️ NUEVOS helpers para llegada y observaciones (ver api.js más abajo)
   setFechaPlanEntrega,
   setPortonObservaciones,
 } from '../src/api';
@@ -88,6 +87,101 @@ const isFullyFinishedPorton = p =>
 const isFullyFinishedIpanel = i =>
   IP_STAGES.every(s => (i[s.key] || '').toLowerCase() === 'finalizado');
 
+/* ==== MODAL DE OBSERVACIONES PORTÓN (estado local, sin lag) ==== */
+function PortonObsModal({ open, target, onClose, onSave }) {
+  const [draft, setDraft] = useState(target?.observaciones || '');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setDraft(target?.observaciones || '');
+  }, [target]);
+
+  if (!open || !target) return null;
+
+  const handleSaveClick = async () => {
+    try {
+      setSaving(true);
+      await onSave(draft);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        position:'fixed',
+        inset:0,
+        background:'rgba(0,0,0,.45)',
+        display:'grid',
+        placeItems:'center',
+        zIndex:9999
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          background:'var(--surface)',
+          padding:20,
+          borderRadius:12,
+          minWidth:320,
+          maxWidth:520,
+          boxShadow:'0 10px 30px rgba(0,0,0,.25)',
+          display:'flex',
+          flexDirection:'column',
+          gap:10
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        <h3 style={{ margin:0 }}>
+          Observaciones NV {target.nv}
+          {target.nlista ? ` - Portón ${target.nlista}` : ''}
+        </h3>
+        {target.partida != null && (
+          <div style={{ fontSize:13, opacity:.8 }}>Partida: {target.partida}</div>
+        )}
+
+        <textarea
+          rows={6}
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          className="btn"
+          style={{ resize:'vertical', fontFamily:'inherit', lineHeight:1.3 }}
+          placeholder="Escribí notas internas, aclaraciones, etc."
+        />
+
+        <div style={{ display:'flex', justifyContent:'space-between', gap:8, marginTop:6 }}>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => setDraft('')}
+          >
+            Limpiar texto
+          </button>
+          <div style={{ display:'flex', gap:8 }}>
+            <button
+              type="button"
+              className="btn"
+              onClick={onClose}
+              disabled={saving}
+            >
+              Cerrar
+            </button>
+            <button
+              type="button"
+              className="btn btn--brand"
+              onClick={handleSaveClick}
+              disabled={saving}
+            >
+              {saving ? 'Guardando…' : 'Guardar'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function CreateGatePage() {
   // ---- Login simple ----
   const [authed, setAuthed] = useState(isAuthed());
@@ -130,23 +224,19 @@ export default function CreateGatePage() {
   );
 
   // ---- Estado local para fechas por fila ----
-  // Plan salida (usa fecha_plan)
-  const [fechaLocal, setFechaLocal] = useState({});              // { [id]: 'YYYY-MM-DD' }
-  // Plan llegada (usa fecha_plan_entrega)
-  const [fechaLlegadaLocal, setFechaLlegadaLocal] = useState({}); // { [id]: 'YYYY-MM-DD' }
-  // Producción
-  const [fechaProdLocal, setFechaProdLocal] = useState({});      // { [id]: 'YYYY-MM-DD' }
-  // Venta (NV) y Medición
-  const [fechaNVLocal, setFechaNVLocal]   = useState({});        // { [id]: 'YYYY-MM-DD' }
-  const [fechaMedLocal, setFechaMedLocal] = useState({});        // { [id]: 'YYYY-MM-DD' }
+  const [fechaLocal, setFechaLocal] = useState({});
+  const [fechaLlegadaLocal, setFechaLlegadaLocal] = useState({});
+  const [fechaProdLocal, setFechaProdLocal] = useState({});
+  const [fechaNVLocal, setFechaNVLocal]   = useState({});
+  const [fechaMedLocal, setFechaMedLocal] = useState({});
 
   const setLocalFechaSalida   = (id, ymd) => setFechaLocal(prev          => ({ ...prev, [id]: ymd }));
-  const setLocalFechaLlegada  = (id, ymd) => setFechaLlegadaLocal(prev  => ({ ...prev, [id]: ymd }));
-  const setLocalFechaProd     = (id, ymd) => setFechaProdLocal(prev     => ({ ...prev, [id]: ymd }));
-  const setLocalFechaNV       = (id, ymd) => setFechaNVLocal(prev       => ({ ...prev, [id]: ymd }));
-  const setLocalFechaMed      = (id, ymd) => setFechaMedLocal(prev      => ({ ...prev, [id]: ymd }));
+  const setLocalFechaLlegada  = (id, ymd) => setFechaLlegadaLocal(prev   => ({ ...prev, [id]: ymd }));
+  const setLocalFechaProd     = (id, ymd) => setFechaProdLocal(prev      => ({ ...prev, [id]: ymd }));
+  const setLocalFechaNV       = (id, ymd) => setFechaNVLocal(prev        => ({ ...prev, [id]: ymd }));
+  const setLocalFechaMed      = (id, ymd) => setFechaMedLocal(prev       => ({ ...prev, [id]: ymd }));
 
-  // Guardar/Quitar: Plan SALIDA (fecha_plan)
+  // Guardar/Quitar: Plan SALIDA
   const guardarFechaSalida = async (p) => {
     const current = dateOnly(p.fecha_plan);
     const val = fechaLocal[p.id] ?? current;
@@ -169,14 +259,13 @@ export default function CreateGatePage() {
     }
   };
 
-  // Guardar/Quitar: Plan LLEGADA (fecha_plan_entrega)
+  // Guardar/Quitar: Plan LLEGADA
   const guardarFechaLlegada = async (p) => {
     const current = dateOnly(p.fecha_plan_entrega);
     const val = fechaLlegadaLocal[p.id] ?? current;
     const ymd = val && /^\d{4}-\d{2}-\d{2}$/.test(val) ? val : null;
     try {
       const { data: upd } = await setFechaPlanEntrega(p.id, ymd);
-      // asumo que upd trae fecha_plan_entrega
       replaceItem(upd);
       setLocalFechaLlegada(p.id, dateOnly(upd.fecha_plan_entrega));
     } catch (e) {
@@ -272,36 +361,28 @@ export default function CreateGatePage() {
     });
   };
 
-  // ---- Popup de observaciones ----
+  // ---- Popup de observaciones (solo target + abierto) ----
   const [obsOpen, setObsOpen] = useState(false);
-  const [obsTarget, setObsTarget] = useState(null); // portón seleccionado
-  const [obsDraft, setObsDraft] = useState('');
-  const [obsSaving, setObsSaving] = useState(false);
+  const [obsTarget, setObsTarget] = useState(null);
 
   const openObsModal = (p) => {
     setObsTarget(p);
-    setObsDraft(p.observaciones || '');
     setObsOpen(true);
   };
 
   const closeObsModal = () => {
     setObsOpen(false);
     setObsTarget(null);
-    setObsDraft('');
   };
 
-  const handleSaveObs = async () => {
+  const handleSaveObs = async (texto) => {
     if (!obsTarget) return;
     try {
-      setObsSaving(true);
-      await setPortonObservaciones(obsTarget.id, obsDraft);
-      // Para asegurarnos de tener todo el registro actualizado
+      await setPortonObservaciones(obsTarget.id, texto);
       await refresh();
       closeObsModal();
     } catch (e) {
       alert(e?.response?.data?.error || e.message);
-    } finally {
-      setObsSaving(false);
     }
   };
 
@@ -409,18 +490,15 @@ export default function CreateGatePage() {
       const hasA = !!da;
       const hasB = !!db;
 
-      // 1) Con fecha arriba
       if (hasA && !hasB) return -1;
       if (!hasA && hasB) return 1;
 
-      // 2) Si ambos tienen fecha, ordenar por fecha ascendente
       if (hasA && hasB) {
         const tA = new Date(`${da}T00:00:00`).getTime();
         const tB = new Date(`${db}T00:00:00`).getTime();
         if (tA !== tB) return tA - tB;
       }
 
-      // 3) Fallback: nlista -> nv
       return ((a.nlista || 0) - (b.nlista || 0)) ||
              ((a.nv || 0) - (b.nv || 0));
     });
@@ -787,7 +865,6 @@ export default function CreateGatePage() {
             <div
               style={{
                 display:'grid',
-                // Sel | NV | Venta | Medición | Producción | Salida | Llegada | etapas
                 gridTemplateColumns: `${SEL_COL_W}px ${NV_COL_W}px ${FECHA_NV_COL_W}px ${FECHA_MED_COL_W}px ${FECHA_PROD_COL_W}px ${FECHA_SAL_COL_W}px ${FECHA_LLEG_COL_W}px repeat(${STAGES.length}, 1fr)`,
                 columnGap: GRID_GAP,
                 rowGap: GRID_GAP,
@@ -1179,78 +1256,12 @@ export default function CreateGatePage() {
       </div>
 
       {/* ==== MODAL OBSERVACIONES ==== */}
-      {obsOpen && (
-        <div
-          style={{
-            position:'fixed',
-            inset:0,
-            background:'rgba(0,0,0,.45)',
-            display:'grid',
-            placeItems:'center',
-            zIndex:9999
-          }}
-          onClick={closeObsModal}
-        >
-          <div
-            style={{
-              background:'var(--surface)',
-              padding:20,
-              borderRadius:12,
-              minWidth:320,
-              maxWidth:520,
-              boxShadow:'0 10px 30px rgba(0,0,0,.25)',
-              display:'flex',
-              flexDirection:'column',
-              gap:10
-            }}
-            onClick={e => e.stopPropagation()}
-          >
-            <h3 style={{ margin:0 }}>
-              Observaciones NV {obsTarget?.nv} {obsTarget?.nlista ? `- Portón ${obsTarget.nlista}` : ''}
-            </h3>
-            {obsTarget?.partida != null && (
-              <div style={{ fontSize:13, opacity:.8 }}>Partida: {obsTarget.partida}</div>
-            )}
-
-            <textarea
-              rows={6}
-              value={obsDraft}
-              onChange={e => setObsDraft(e.target.value)}
-              className="btn"
-              style={{ resize:'vertical', fontFamily:'inherit', lineHeight:1.3 }}
-              placeholder="Escribí notas internas, aclaraciones, etc."
-            />
-
-            <div style={{ display:'flex', justifyContent:'space-between', gap:8, marginTop:6 }}>
-              <button
-                type="button"
-                className="btn"
-                onClick={() => setObsDraft('')}
-              >
-                Limpiar texto
-              </button>
-              <div style={{ display:'flex', gap:8 }}>
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={closeObsModal}
-                  disabled={obsSaving}
-                >
-                  Cerrar
-                </button>
-                <button
-                  type="button"
-                  className="btn btn--brand"
-                  onClick={handleSaveObs}
-                  disabled={obsSaving}
-                >
-                  {obsSaving ? 'Guardando…' : 'Guardar'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <PortonObsModal
+        open={obsOpen}
+        target={obsTarget}
+        onClose={closeObsModal}
+        onSave={handleSaveObs}
+      />
     </div>
   );
 }
