@@ -649,3 +649,47 @@ app.post('/ipanel/:id/observaciones', upsertIpanelObservaciones);
 // PUT: idem (idempotente)
 //  -> PUT /ipanel/:id/observaciones { observaciones: '...' }
 app.put('/ipanel/:id/observaciones', upsertIpanelObservaciones);
+
+// POST: asignar/actualizar fecha planificada de LLEGADA del portón
+// Body: { fecha_plan_entrega: 'YYYY-MM-DD' }  // puede ser null para limpiar
+app.post('/portones/:id/fecha-plan-entrega', async (req, res) => {
+  const { id } = req.params;
+  let { fecha_plan_entrega } = req.body || {};
+
+  try {
+    // Permitir limpiar la fecha con null/undefined
+    if (fecha_plan_entrega !== null && fecha_plan_entrega !== undefined) {
+      if (typeof fecha_plan_entrega !== 'string') {
+        return res.status(400).json({
+          error: 'fecha_plan_entrega debe ser string con formato YYYY-MM-DD o null'
+        });
+      }
+      // Si viene con hora (ISO), nos quedamos con la parte de fecha
+      fecha_plan_entrega = fecha_plan_entrega.slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha_plan_entrega)) {
+        return res.status(400).json({
+          error: 'fecha_plan_entrega inválida. Use formato YYYY-MM-DD'
+        });
+      }
+    }
+
+    const { rows } = await pool.query(
+      `UPDATE public.portones
+       SET fecha_plan_entrega = $2
+       WHERE id = $1
+       RETURNING *;`,
+      [id, fecha_plan_entrega ?? null]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ error: 'Portón no encontrado' });
+    }
+    return res.json(rows[0]);
+  } catch (err) {
+    console.error('set fecha_plan_entrega error:', err);
+    return res.status(500).json({
+      error: 'Error al actualizar fecha planificada de llegada',
+      detail: err.message
+    });
+  }
+});

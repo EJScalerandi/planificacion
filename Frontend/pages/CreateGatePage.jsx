@@ -6,7 +6,10 @@ import {
   createPorton, startStage, stopStage,
   createIpanel, startIpanelStage, stopIpanelStage,
   setFechaPlan, setFechaProd,
-  setFechaNV, setFechaMed,            // ⬅️ NUEVOS imports
+  setFechaNV, setFechaMed,
+  // ⬇️ NUEVOS helpers para llegada y observaciones (ver api.js más abajo)
+  setFechaPlanEntrega,
+  setPortonObservaciones,
 } from '../src/api';
 import { isAuthed, login, logout } from '../src/auth/createGateAuth';
 
@@ -46,11 +49,12 @@ const IP_STAGES = [
 
 const SEL_COL_W        = 44;   // selección
 const NV_COL_W         = 150;
-// ⬇️ nuevas columnas de fechas
+// Fechas
 const FECHA_NV_COL_W   = 170;  // Venta (NV)
 const FECHA_MED_COL_W  = 170;  // Medición
 const FECHA_PROD_COL_W = 170;  // Producción (inicio)
-const FECHA_COL_W      = 190;  // Entrega planificada
+const FECHA_SAL_COL_W  = 190;  // Fecha planificada salida (usa fecha_plan)
+const FECHA_LLEG_COL_W = 190;  // Fecha planificada llegada (usa fecha_plan_entrega)
 
 const GRID_GAP   = 6;
 const CELL_MIN_H = 60;
@@ -126,37 +130,64 @@ export default function CreateGatePage() {
   );
 
   // ---- Estado local para fechas por fila ----
-  // Plan
-  const [fechaLocal, setFechaLocal] = useState({});              // { [id]: 'YYYY-MM-DD' }  -> fecha_plan
+  // Plan salida (usa fecha_plan)
+  const [fechaLocal, setFechaLocal] = useState({});              // { [id]: 'YYYY-MM-DD' }
+  // Plan llegada (usa fecha_plan_entrega)
+  const [fechaLlegadaLocal, setFechaLlegadaLocal] = useState({}); // { [id]: 'YYYY-MM-DD' }
   // Producción
-  const [fechaProdLocal, setFechaProdLocal] = useState({});      // { [id]: 'YYYY-MM-DD' }  -> fecha_prod
-  // ⬇️ Nuevas: Venta (NV) y Medición
-  const [fechaNVLocal, setFechaNVLocal]   = useState({});        // { [id]: 'YYYY-MM-DD' }  -> fecha_nv
-  const [fechaMedLocal, setFechaMedLocal] = useState({});        // { [id]: 'YYYY-MM-DD' }  -> fecha_med
+  const [fechaProdLocal, setFechaProdLocal] = useState({});      // { [id]: 'YYYY-MM-DD' }
+  // Venta (NV) y Medición
+  const [fechaNVLocal, setFechaNVLocal]   = useState({});        // { [id]: 'YYYY-MM-DD' }
+  const [fechaMedLocal, setFechaMedLocal] = useState({});        // { [id]: 'YYYY-MM-DD' }
 
-  const setLocalFecha     = (id, ymd) => setFechaLocal(prev    => ({ ...prev, [id]: ymd }));
-  const setLocalFechaProd = (id, ymd) => setFechaProdLocal(prev=> ({ ...prev, [id]: ymd }));
-  const setLocalFechaNV   = (id, ymd) => setFechaNVLocal(prev  => ({ ...prev, [id]: ymd }));
-  const setLocalFechaMed  = (id, ymd) => setFechaMedLocal(prev => ({ ...prev, [id]: ymd }));
+  const setLocalFechaSalida   = (id, ymd) => setFechaLocal(prev          => ({ ...prev, [id]: ymd }));
+  const setLocalFechaLlegada  = (id, ymd) => setFechaLlegadaLocal(prev  => ({ ...prev, [id]: ymd }));
+  const setLocalFechaProd     = (id, ymd) => setFechaProdLocal(prev     => ({ ...prev, [id]: ymd }));
+  const setLocalFechaNV       = (id, ymd) => setFechaNVLocal(prev       => ({ ...prev, [id]: ymd }));
+  const setLocalFechaMed      = (id, ymd) => setFechaMedLocal(prev      => ({ ...prev, [id]: ymd }));
 
-  // Guardar/Quitar: Plan
-  const guardarFecha = async (p) => {
+  // Guardar/Quitar: Plan SALIDA (fecha_plan)
+  const guardarFechaSalida = async (p) => {
     const current = dateOnly(p.fecha_plan);
     const val = fechaLocal[p.id] ?? current;
     const ymd = val && /^\d{4}-\d{2}-\d{2}$/.test(val) ? val : null;
     try {
       const { data: upd } = await setFechaPlan(p.id, ymd);
       replaceItem(upd);
-      setLocalFecha(p.id, dateOnly(upd.fecha_plan));
+      setLocalFechaSalida(p.id, dateOnly(upd.fecha_plan));
     } catch (e) {
       alert(e?.response?.data?.error || e.message);
     }
   };
-  const limpiarFecha = async (p) => {
+  const limpiarFechaSalida = async (p) => {
     try {
       const { data: upd } = await setFechaPlan(p.id, null);
       replaceItem(upd);
-      setLocalFecha(p.id, '');
+      setLocalFechaSalida(p.id, '');
+    } catch (e) {
+      alert(e?.response?.data?.error || e.message);
+    }
+  };
+
+  // Guardar/Quitar: Plan LLEGADA (fecha_plan_entrega)
+  const guardarFechaLlegada = async (p) => {
+    const current = dateOnly(p.fecha_plan_entrega);
+    const val = fechaLlegadaLocal[p.id] ?? current;
+    const ymd = val && /^\d{4}-\d{2}-\d{2}$/.test(val) ? val : null;
+    try {
+      const { data: upd } = await setFechaPlanEntrega(p.id, ymd);
+      // asumo que upd trae fecha_plan_entrega
+      replaceItem(upd);
+      setLocalFechaLlegada(p.id, dateOnly(upd.fecha_plan_entrega));
+    } catch (e) {
+      alert(e?.response?.data?.error || e.message);
+    }
+  };
+  const limpiarFechaLlegada = async (p) => {
+    try {
+      const { data: upd } = await setFechaPlanEntrega(p.id, null);
+      replaceItem(upd);
+      setLocalFechaLlegada(p.id, '');
     } catch (e) {
       alert(e?.response?.data?.error || e.message);
     }
@@ -185,7 +216,7 @@ export default function CreateGatePage() {
     }
   };
 
-  // ⬇️ Guardar/Quitar: Venta (NV)
+  // Guardar/Quitar: Venta (NV)
   const guardarFechaNV = async (p) => {
     const current = dateOnly(p.fecha_nv);
     const val = fechaNVLocal[p.id] ?? current;
@@ -208,7 +239,7 @@ export default function CreateGatePage() {
     }
   };
 
-  // ⬇️ Guardar/Quitar: Medición
+  // Guardar/Quitar: Medición
   const guardarFechaMed = async (p) => {
     const current = dateOnly(p.fecha_med);
     const val = fechaMedLocal[p.id] ?? current;
@@ -239,6 +270,39 @@ export default function CreateGatePage() {
       if (n.has(id)) n.delete(id); else n.add(id);
       return n;
     });
+  };
+
+  // ---- Popup de observaciones ----
+  const [obsOpen, setObsOpen] = useState(false);
+  const [obsTarget, setObsTarget] = useState(null); // portón seleccionado
+  const [obsDraft, setObsDraft] = useState('');
+  const [obsSaving, setObsSaving] = useState(false);
+
+  const openObsModal = (p) => {
+    setObsTarget(p);
+    setObsDraft(p.observaciones || '');
+    setObsOpen(true);
+  };
+
+  const closeObsModal = () => {
+    setObsOpen(false);
+    setObsTarget(null);
+    setObsDraft('');
+  };
+
+  const handleSaveObs = async () => {
+    if (!obsTarget) return;
+    try {
+      setObsSaving(true);
+      await setPortonObservaciones(obsTarget.id, obsDraft);
+      // Para asegurarnos de tener todo el registro actualizado
+      await refresh();
+      closeObsModal();
+    } catch (e) {
+      alert(e?.response?.data?.error || e.message);
+    } finally {
+      setObsSaving(false);
+    }
   };
 
   // ---- Métricas Portones ----
@@ -402,25 +466,20 @@ export default function CreateGatePage() {
   }, [listIpanels]);
 
   // ---- Acciones Portones/Ipanels ----
-// ---- Acciones Portones/Ipanels ----
-// Antes: solo ['inyeccion','revestimiento']
-// Ahora: también 'corte_revest' y 'plegado_revest'
-const SISTEMA_STAGES = ['inyeccion', 'revestimiento', 'corte_revest', 'plegado_revest'];
+  const SISTEMA_STAGES = ['inyeccion', 'revestimiento', 'corte_revest', 'plegado_revest'];
 
-async function finalizeSistema(id) {
-  let updated = null;
-  for (const st of SISTEMA_STAGES) {
-    try {
-      const { data } = await stopStage(id, st);
-      updated = data;
-    } catch (e) {
-      // Si alguna ya estaba finalizada o la columna no aplica, seguimos con las demás
-      console.warn(`No se pudo finalizar ${st} para id=${id}:`, e?.response?.data || e.message);
+  async function finalizeSistema(id) {
+    let updated = null;
+    for (const st of SISTEMA_STAGES) {
+      try {
+        const { data } = await stopStage(id, st);
+        updated = data;
+      } catch (e) {
+        console.warn(`No se pudo finalizar ${st} para id=${id}:`, e?.response?.data || e.message);
+      }
     }
+    return updated;
   }
-  return updated;
-}
-
 
   async function handleCreatePorton() {
     const nNv = Number(nv), nNl = Number(nlista);
@@ -508,57 +567,60 @@ async function finalizeSistema(id) {
     } catch (e) { alert(e?.response?.data?.error || e.message); }
   }
 
-  // ---- Exportar XLSX (sin cambios para no romper nada) ----
-async function handleExportXlsxAll(rows) {
-  const xlsxMod = await import('xlsx');
-  const XLSX = xlsxMod.default || xlsxMod;
+  // ---- Exportar XLSX ----
+  async function handleExportXlsxAll(rows) {
+    const xlsxMod = await import('xlsx');
+    const XLSX = xlsxMod.default || xlsxMod;
 
-  const header = [
-    'NV', 'Lista', 'Partida',
-    'Fecha venta (NV)',       // ⬅️ NUEVO
-    'Fecha medición',         // ⬅️ NUEVO
-    'Fecha planificada',
-    ...STAGES.flatMap(s => [
-      `${s.label} - Estado`, `${s.label} - Inicio`, `${s.label} - Fin`
-    ])
-  ];
-
-  const dataRows = rows.map(p => {
-    const fila = [
-      p.nv ?? '',
-      p.nlista ?? '',
-      p.partida ?? '',
-      (p.fecha_nv  ? String(p.fecha_nv).slice(0,10)  : ''),  // ⬅️ NUEVO
-      (p.fecha_med ? String(p.fecha_med).slice(0,10) : ''),  // ⬅️ NUEVO
-      (p.fecha_plan ? String(p.fecha_plan).slice(0,10) : '')
+    const header = [
+      'NV', 'Lista', 'Partida',
+      'Fecha venta (NV)',
+      'Fecha medición',
+      'Fecha planificada salida',
+      'Fecha planificada llegada',
+      ...STAGES.flatMap(s => [
+        `${s.label} - Estado`, `${s.label} - Inicio`, `${s.label} - Fin`
+      ])
     ];
-    for (const s of STAGES) {
-      const st  = p[s.key] || '';
-      const ini = p[`${s.key}_inicio`] ? fmt(p[`${s.key}_inicio`]) : '';
-      const fin = p[`${s.key}_fin`]    ? fmt(p[`${s.key}_fin`])    : '';
-      fila.push(st, ini, fin);
-    }
-    return fila;
-  });
 
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet([header, ...dataRows]);
-  ws['!cols'] = [
-    { wch: 8 },   // NV
-    { wch: 10 },  // Lista
-    { wch: 10 },  // Partida
-    { wch: 14 },  // Fecha venta (NV)
-    { wch: 14 },  // Fecha medición
-    { wch: 14 },  // Fecha planificada
-    ...STAGES.flatMap(() => [{ wch: 16 }, { wch: 20 }, { wch: 20 }])
-  ];
-  XLSX.utils.book_append_sheet(wb, ws, 'Portones');
+    const dataRows = rows.map(p => {
+      const fila = [
+        p.nv ?? '',
+        p.nlista ?? '',
+        p.partida ?? '',
+        (p.fecha_nv           ? String(p.fecha_nv).slice(0,10)           : ''),
+        (p.fecha_med          ? String(p.fecha_med).slice(0,10)          : ''),
+        (p.fecha_plan         ? String(p.fecha_plan).slice(0,10)         : ''), // salida
+        (p.fecha_plan_entrega ? String(p.fecha_plan_entrega).slice(0,10) : ''), // llegada
+      ];
+      for (const s of STAGES) {
+        const st  = p[s.key] || '';
+        const ini = p[`${s.key}_inicio`] ? fmt(p[`${s.key}_inicio`]) : '';
+        const fin = p[`${s.key}_fin`]    ? fmt(p[`${s.key}_fin`])    : '';
+        fila.push(st, ini, fin);
+      }
+      return fila;
+    });
 
-  const pad = n => String(n).padStart(2, '0');
-  const now = new Date();
-  const fname = `portones_${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}.xlsx`;
-  XLSX.writeFile(wb, fname);
-}
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet([header, ...dataRows]);
+    ws['!cols'] = [
+      { wch: 8 },   // NV
+      { wch: 10 },  // Lista
+      { wch: 10 },  // Partida
+      { wch: 14 },  // Fecha venta (NV)
+      { wch: 14 },  // Fecha medición
+      { wch: 18 },  // Fecha planificada salida
+      { wch: 18 },  // Fecha planificada llegada
+      ...STAGES.flatMap(() => [{ wch: 16 }, { wch: 20 }, { wch: 20 }])
+    ];
+    XLSX.utils.book_append_sheet(wb, ws, 'Portones');
+
+    const pad = n => String(n).padStart(2, '0');
+    const now = new Date();
+    const fname = `portones_${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}.xlsx`;
+    XLSX.writeFile(wb, fname);
+  }
 
   async function handleExportSelected() {
     const rows = listPortones.filter(p => selected.has(p.id));
@@ -567,7 +629,6 @@ async function handleExportXlsxAll(rows) {
   }
 
   // ---- Sticky helpers ----
-  const stickyTop     = { position: 'sticky', top: 0, zIndex: 5, background: 'var(--surface)' };
   const stickyLeft0   = { position: 'sticky', left: 0, zIndex: 4, background: 'var(--surface)', boxShadow: '1px 0 0 rgba(0,0,0,.08)' };
   const stickyLeftNV  = { position: 'sticky', left: SEL_COL_W, zIndex: 4, background: 'var(--surface)', boxShadow: '1px 0 0 rgba(0,0,0,.08)' };
 
@@ -726,8 +787,8 @@ async function handleExportXlsxAll(rows) {
             <div
               style={{
                 display:'grid',
-                // Sel | NV | Venta | Medición | Producción | Entrega planificada | etapas
-                gridTemplateColumns: `${SEL_COL_W}px ${NV_COL_W}px ${FECHA_NV_COL_W}px ${FECHA_MED_COL_W}px ${FECHA_PROD_COL_W}px ${FECHA_COL_W}px repeat(${STAGES.length}, 1fr)`,
+                // Sel | NV | Venta | Medición | Producción | Salida | Llegada | etapas
+                gridTemplateColumns: `${SEL_COL_W}px ${NV_COL_W}px ${FECHA_NV_COL_W}px ${FECHA_MED_COL_W}px ${FECHA_PROD_COL_W}px ${FECHA_SAL_COL_W}px ${FECHA_LLEG_COL_W}px repeat(${STAGES.length}, 1fr)`,
                 columnGap: GRID_GAP,
                 rowGap: GRID_GAP,
                 alignItems:'stretch',
@@ -746,23 +807,28 @@ async function handleExportXlsxAll(rows) {
               </div>
 
               {/* Header Venta (NV) */}
-              <div style={{ ...headerCell, ...{ position:'sticky', top:0, zIndex:5, background:'var(--surface)' }, textAlign:'center' }}>
+              <div style={{ ...headerCell, position:'sticky', top:0, zIndex:5, background:'var(--surface)', textAlign:'center' }}>
                 Venta (NV)
               </div>
 
               {/* Header Medición */}
-              <div style={{ ...headerCell, ...{ position:'sticky', top:0, zIndex:5, background:'var(--surface)' }, textAlign:'center' }}>
+              <div style={{ ...headerCell, position:'sticky', top:0, zIndex:5, background:'var(--surface)', textAlign:'center' }}>
                 Medición
               </div>
 
               {/* Header Producción (inicio) */}
-              <div style={{ ...headerCell, ...{ position:'sticky', top:0, zIndex:5, background:'var(--surface)' }, textAlign:'center' }}>
+              <div style={{ ...headerCell, position:'sticky', top:0, zIndex:5, background:'var(--surface)', textAlign:'center' }}>
                 Producción (inicio)
               </div>
 
-              {/* Header Entrega planificada */}
-              <div style={{ ...headerCell, ...{ position:'sticky', top:0, zIndex:5, background:'var(--surface)' }, textAlign:'center' }}>
-                Entrega planificada
+              {/* Header Fecha planificada salida */}
+              <div style={{ ...headerCell, position:'sticky', top:0, zIndex:5, background:'var(--surface)', textAlign:'center' }}>
+                Fecha planificada salida
+              </div>
+
+              {/* Header Fecha planificada llegada */}
+              <div style={{ ...headerCell, position:'sticky', top:0, zIndex:5, background:'var(--surface)', textAlign:'center' }}>
+                Fecha planificada llegada
               </div>
 
               {STAGES.map(s => (
@@ -773,17 +839,20 @@ async function handleExportXlsxAll(rows) {
 
               {/* Filas */}
               {listPortones.map(p => {
-                const currentPlan = dateOnly(p.fecha_plan);
-                const valPlan = fechaLocal[p.id] ?? currentPlan;
+                const currentSalida  = dateOnly(p.fecha_plan);
+                const valSalida      = fechaLocal[p.id] ?? currentSalida;
+
+                const currentLlegada = dateOnly(p.fecha_plan_entrega);
+                const valLlegada     = fechaLlegadaLocal[p.id] ?? currentLlegada;
 
                 const currentProd = dateOnly(p.fecha_prod);
-                const valProd = fechaProdLocal[p.id] ?? currentProd;
+                const valProd     = fechaProdLocal[p.id] ?? currentProd;
 
-                const currentNV = dateOnly(p.fecha_nv);
-                const valNV = fechaNVLocal[p.id] ?? currentNV;
+                const currentNV   = dateOnly(p.fecha_nv);
+                const valNV       = fechaNVLocal[p.id] ?? currentNV;
 
-                const currentMed = dateOnly(p.fecha_med);
-                const valMed = fechaMedLocal[p.id] ?? currentMed;
+                const currentMed  = dateOnly(p.fecha_med);
+                const valMed      = fechaMedLocal[p.id] ?? currentMed;
 
                 return ([
                   // Columna selección
@@ -797,12 +866,22 @@ async function handleExportXlsxAll(rows) {
                     />
                   </div>,
 
-                  // NV / Lista / Partida
-                  <div key={`nv-${p.id}`} style={{ ...nvCell, ...stickyLeftNV }}>
+                  // NV / Lista / Partida (abre popup de observaciones)
+                  <div
+                    key={`nv-${p.id}`}
+                    style={{ ...nvCell, ...stickyLeftNV, cursor:'pointer' }}
+                    onClick={() => openObsModal(p)}
+                    title="Click para ver/editar observaciones"
+                  >
                     <div style={{ display:'flex', flexDirection:'column', lineHeight:1.15 }}>
                       <strong>NV {p.nv}</strong>
                       <strong>N° Partida {p.partida ?? ''}</strong>
                       <span style={{ fontSize:12, opacity:.8 }}>N° Portón {p.nlista}</span>
+                      {p.observaciones && (
+                        <span style={{ fontSize:11, marginTop:4, color:'#555' }}>
+                          📝 {p.observaciones.slice(0, 40)}{p.observaciones.length > 40 ? '…' : ''}
+                        </span>
+                      )}
                     </div>
                   </div>,
 
@@ -908,14 +987,14 @@ async function handleExportXlsxAll(rows) {
                     </div>
                   </div>,
 
-                  // Fecha PLANIFICADA (entrega)
-                  <div key={`fplan-${p.id}`} style={{ ...cellBase, minHeight:CELL_MIN_H }}>
+                  // Fecha PLANIFICADA SALIDA
+                  <div key={`fplan-salida-${p.id}`} style={{ ...cellBase, minHeight:CELL_MIN_H }}>
                     <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
                       <input
                         type="date"
-                        value={valPlan || ''}
-                        onChange={e => setLocalFecha(p.id, e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') guardarFecha(p); }}
+                        value={valSalida || ''}
+                        onChange={e => setLocalFechaSalida(p.id, e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') guardarFechaSalida(p); }}
                         className="btn"
                         style={{ height:34 }}
                       />
@@ -923,18 +1002,52 @@ async function handleExportXlsxAll(rows) {
                         <button
                           type="button"
                           className="btn"
-                          onClick={() => guardarFecha(p)}
-                          disabled={(valPlan || '') === (currentPlan || '')}
-                          title="Guardar fecha planificada"
+                          onClick={() => guardarFechaSalida(p)}
+                          disabled={(valSalida || '') === (currentSalida || '')}
+                          title="Guardar fecha planificada salida"
                         >
                           Guardar
                         </button>
                         <button
                           type="button"
                           className="btn"
-                          onClick={() => limpiarFecha(p)}
-                          disabled={!currentPlan}
-                          title="Quitar fecha planificada"
+                          onClick={() => limpiarFechaSalida(p)}
+                          disabled={!currentSalida}
+                          title="Quitar fecha planificada salida"
+                        >
+                          Quitar
+                        </button>
+                      </div>
+                    </div>
+                  </div>,
+
+                  // Fecha PLANIFICADA LLEGADA
+                  <div key={`fplan-llegada-${p.id}`} style={{ ...cellBase, minHeight:CELL_MIN_H }}>
+                    <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                      <input
+                        type="date"
+                        value={valLlegada || ''}
+                        onChange={e => setLocalFechaLlegada(p.id, e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') guardarFechaLlegada(p); }}
+                        className="btn"
+                        style={{ height:34 }}
+                      />
+                      <div style={{ display:'flex', gap:6 }}>
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => guardarFechaLlegada(p)}
+                          disabled={(valLlegada || '') === (currentLlegada || '')}
+                          title="Guardar fecha planificada llegada"
+                        >
+                          Guardar
+                        </button>
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => limpiarFechaLlegada(p)}
+                          disabled={!currentLlegada}
+                          title="Quitar fecha planificada llegada"
                         >
                           Quitar
                         </button>
@@ -981,7 +1094,7 @@ async function handleExportXlsxAll(rows) {
               })}
 
               {listPortones.length === 0 && (
-                <div style={{ gridColumn:`1 / span ${STAGES.length + 6}`, marginTop:12, opacity:.7 }}>
+                <div style={{ gridColumn:`1 / span ${STAGES.length + 7}`, marginTop:12, opacity:.7 }}>
                   Sin resultados.
                 </div>
               )}
@@ -1064,6 +1177,80 @@ async function handleExportXlsxAll(rows) {
           </div>
         )}
       </div>
+
+      {/* ==== MODAL OBSERVACIONES ==== */}
+      {obsOpen && (
+        <div
+          style={{
+            position:'fixed',
+            inset:0,
+            background:'rgba(0,0,0,.45)',
+            display:'grid',
+            placeItems:'center',
+            zIndex:9999
+          }}
+          onClick={closeObsModal}
+        >
+          <div
+            style={{
+              background:'var(--surface)',
+              padding:20,
+              borderRadius:12,
+              minWidth:320,
+              maxWidth:520,
+              boxShadow:'0 10px 30px rgba(0,0,0,.25)',
+              display:'flex',
+              flexDirection:'column',
+              gap:10
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <h3 style={{ margin:0 }}>
+              Observaciones NV {obsTarget?.nv} {obsTarget?.nlista ? `- Portón ${obsTarget.nlista}` : ''}
+            </h3>
+            {obsTarget?.partida != null && (
+              <div style={{ fontSize:13, opacity:.8 }}>Partida: {obsTarget.partida}</div>
+            )}
+
+            <textarea
+              rows={6}
+              value={obsDraft}
+              onChange={e => setObsDraft(e.target.value)}
+              className="btn"
+              style={{ resize:'vertical', fontFamily:'inherit', lineHeight:1.3 }}
+              placeholder="Escribí notas internas, aclaraciones, etc."
+            />
+
+            <div style={{ display:'flex', justifyContent:'space-between', gap:8, marginTop:6 }}>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setObsDraft('')}
+              >
+                Limpiar texto
+              </button>
+              <div style={{ display:'flex', gap:8 }}>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={closeObsModal}
+                  disabled={obsSaving}
+                >
+                  Cerrar
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--brand"
+                  onClick={handleSaveObs}
+                  disabled={obsSaving}
+                >
+                  {obsSaving ? 'Guardando…' : 'Guardar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

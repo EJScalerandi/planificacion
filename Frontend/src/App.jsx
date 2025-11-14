@@ -1,5 +1,5 @@
 // src/App.jsx
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
 import { useMemo, useState } from 'react';
 import usePortones from './hooks/usePortones';
 import useIpanel from './hooks/useIpanels';
@@ -163,7 +163,7 @@ const ONE = (key, label) => [{ key, label, mode: 'porton' }];
 const ROUTES = [
   {
     path: '/',
-    label: 'Inicio',
+    label: 'Inicio (Tablero completo)',
     stages: [
       // Diseño: también iPanel
       { key: 'diseno',  label: 'Diseño (Portones)', mode: 'porton' },
@@ -286,10 +286,71 @@ const ROUTES = [
   },
 ];
 
+/** Página de índice con links a todas las rutas */
+function IndexPage() {
+  // Rutas “especiales” que no están en ROUTES
+  const extraRoutes = [
+    { path: '/ipanel',        label: 'iPanel (solo lectura)' },
+    { path: '/statusGate',    label: 'Status Portones' },
+    { path: '/createGate',    label: 'CreateGate (carga / planificación)' },
+    { path: '/planta',        label: 'Planta (solo lectura – detalle)' },
+    { path: '/plantasimple',  label: 'Planta simple (resumen)' },
+    { path: '/statusIpanels', label: 'Status iPanels' },
+  ];
+
+  // Evito duplicar '/' porque ya lo tenemos en ROUTES[0]
+  const routeLinks = [
+    ...ROUTES,
+    ...extraRoutes,
+  ];
+
+  return (
+    <div className="container">
+      <h1 className="h1" style={{ marginBottom: 16 }}>Índice de tableros</h1>
+      <p style={{ marginBottom: 12 }}>
+        Elegí una vista. Por ejemplo: <strong>Laser</strong> te lleva al tablero de la etapa Laser.
+      </p>
+
+      <ul style={{ listStyle:'none', padding:0, display:'flex', flexDirection:'column', gap:8 }}>
+        {routeLinks.map(r => (
+          <li
+            key={r.path}
+            style={{
+              border:'1px solid #ddd',
+              borderRadius:8,
+              padding:'8px 12px',
+              display:'flex',
+              justifyContent:'space-between',
+              alignItems:'center',
+              flexWrap:'wrap',
+              gap:8
+            }}
+          >
+            <div>
+              <Link to={r.path} style={{ fontWeight:600, textDecoration:'none', color:'var(--brand)' }}>
+                {r.label}
+              </Link>
+              <div style={{ fontSize:12, opacity:.7 }}>
+                Ruta: <code>{r.path}</code>
+              </div>
+            </div>
+            <Link to={r.path} className="btn btn--brand">
+              Ir
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
+        {/* Nuevo índice de rutas */}
+        <Route path="/index" element={<IndexPage />} />
+
         {/* Home con todas las columnas (incluye iPanel donde aplica) */}
         <Route
           path="/"
@@ -310,6 +371,7 @@ export default function App() {
         <Route path="/planta" element={<PlantaReadOnlyPage />} />
         <Route path="/plantasimple" element={<PlantaReadOnlySimplePage />} />
         <Route path="/statusIpanels" element={<StatusIpanelsPage />} />
+
         {/* Not found -> home */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
