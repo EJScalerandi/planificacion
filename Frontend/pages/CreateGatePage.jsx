@@ -1185,7 +1185,7 @@ export default function CreateGatePage() {
             <div
               style={{
                 display:'grid',
-                gridTemplateColumns: `${NV_COL_W}px repeat(${IP_STAGES_RENDER.length}, 1fr)`,
+                gridTemplateColumns: `${NV_COL_W}px ${FECHA_NV_COL_W}px ${FECHA_MED_COL_W}px ${FECHA_PROD_COL_W}px ${FECHA_SAL_COL_W}px ${FECHA_LLEG_COL_W}px repeat(${IP_STAGES_RENDER.length}, 1fr)`,
                 columnGap: GRID_GAP,
                 rowGap: GRID_GAP,
                 alignItems:'stretch',
@@ -1195,6 +1195,14 @@ export default function CreateGatePage() {
             >
               {/* Header iPanels */}
               <div style={{ ...headerCell, position:'sticky', top:0, left:0, zIndex:6, background:'var(--surface)', textAlign:'center' }}>NV / Partida</div>
+
+              {/* Headers de fechas (solo lectura) */}
+              <div style={{ ...headerCell, position:'sticky', top:0, zIndex:5, background:'var(--surface)', textAlign:'center' }}>Venta (NV)</div>
+              <div style={{ ...headerCell, position:'sticky', top:0, zIndex:5, background:'var(--surface)', textAlign:'center' }}>Medición</div>
+              <div style={{ ...headerCell, position:'sticky', top:0, zIndex:5, background:'var(--surface)', textAlign:'center' }}>Producción (inicio)</div>
+              <div style={{ ...headerCell, position:'sticky', top:0, zIndex:5, background:'var(--surface)', textAlign:'center' }}>Fecha planificada salida</div>
+              <div style={{ ...headerCell, position:'sticky', top:0, zIndex:5, background:'var(--surface)', textAlign:'center' }}>Fecha planificada llegada</div>
+
               {IP_STAGES_RENDER.map(s => (
                 <div key={`ip-h-${s.key}`} style={{ ...headerCell, position:'sticky', top:0, zIndex:5, background:'var(--surface)', textAlign:'center' }}>
                   <div>{s.label}</div>
@@ -1202,51 +1210,69 @@ export default function CreateGatePage() {
               ))}
 
               {/* Filas iPanels */}
-              {listIpanels.map(i => ([
-                <div key={`ip-nv-${i.id}`} style={{ ...nvCell, position:'sticky', left:0, zIndex:4, background:'var(--surface)', boxShadow:'1px 0 0 rgba(0,0,0,.08)' }}>
-                  <div style={{ display:'flex', flexDirection:'column', lineHeight:1.15 }}>
-                    <strong>NV {i.nv}</strong>
-                    <strong>N° Partida {i.partida ?? ''}</strong>
-                  </div>
-                </div>,
-                ...IP_STAGES_RENDER.map(s => {
-                  const st  = i[s.key];
-                  const ini = i[`${s.key}_inicio`];
-                  const fin = i[`${s.key}_fin`];
-                  const lower = (st || '').toLowerCase();
-                  const clickable = lower === 'pendiente' || lower === 'en proceso';
-                  return (
-                    <div
-                      key={`ip-${i.id}-${s.key}`}
-                      onClick={() => clickable && handleCellClickIpanel(i, s)}
-                      style={{
-                        ...cellBase,
-                        background: cellBg(st),
-                        color: cellInk(st),
-                        minHeight: CELL_MIN_H,
-                        display:'flex',
-                        flexDirection:'column',
-                        justifyContent:'center',
-                        cursor: clickable ? 'pointer' : 'default',
-                        outline: clickable ? '2px dashed rgba(0,0,0,.12)' : 'none'
-                      }}
-                      title={[
-                        `Estado: ${st || ''}`,
-                        ini ? `Inicio: ${fmt(ini)}` : null,
-                        fin ? `Fin: ${fmt(fin)}` : null,
-                        clickable ? (lower === 'pendiente' ? 'Click: Iniciar' : 'Click: Finalizar') : 'Finalizado'
-                      ].filter(Boolean).join('\n')}
-                    >
-                      <div style={{ fontSize:12, fontWeight:700 }}>{st || ''}</div>
-                      <div style={{ fontSize:11 }}>{ini ? `Inicio: ${fmt(ini)}` : ''}</div>
-                      <div style={{ fontSize:11 }}>{fin ? `Fin: ${fmt(fin)}` : ''}</div>
+              {listIpanels.map(i => {
+                const nvFecha      = dateOnly(i.fecha_nv);
+                const medFecha     = dateOnly(i.fecha_med);
+                const prodFecha    = dateOnly(i.fecha_prod);
+                const planSalida   = dateOnly(i.fecha_plan);
+                const planLlegada  = dateOnly(i.fecha_plan_entrega);
+
+                return ([
+                  // NV / Partida
+                  <div key={`ip-nv-${i.id}`} style={{ ...nvCell, position:'sticky', left:0, zIndex:4, background:'var(--surface)', boxShadow:'1px 0 0 rgba(0,0,0,.08)' }}>
+                    <div style={{ display:'flex', flexDirection:'column', lineHeight:1.15 }}>
+                      <strong>NV {i.nv}</strong>
+                      <strong>N° Partida {i.partida ?? ''}</strong>
                     </div>
-                  );
-                })
-              ]))}
+                  </div>,
+
+                  // Fechas (solo lectura)
+                  <div key={`ip-fnv-${i.id}`}  style={{ ...cellBase, minHeight:CELL_MIN_H, display:'grid', placeItems:'center' }}>{nvFecha || ''}</div>,
+                  <div key={`ip-fmed-${i.id}`} style={{ ...cellBase, minHeight:CELL_MIN_H, display:'grid', placeItems:'center' }}>{medFecha || ''}</div>,
+                  <div key={`ip-fpr-${i.id}`}  style={{ ...cellBase, minHeight:CELL_MIN_H, display:'grid', placeItems:'center' }}>{prodFecha || ''}</div>,
+                  <div key={`ip-fps-${i.id}`}  style={{ ...cellBase, minHeight:CELL_MIN_H, display:'grid', placeItems:'center' }}>{planSalida || ''}</div>,
+                  <div key={`ip-fpl-${i.id}`}  style={{ ...cellBase, minHeight:CELL_MIN_H, display:'grid', placeItems:'center' }}>{planLlegada || ''}</div>,
+
+                  // Etapas
+                  ...IP_STAGES_RENDER.map(s => {
+                    const st  = i[s.key];
+                    const ini = i[`${s.key}_inicio`];
+                    const fin = i[`${s.key}_fin`];
+                    const lower = (st || '').toLowerCase();
+                    const clickable = lower === 'pendiente' || lower === 'en proceso';
+                    return (
+                      <div
+                        key={`ip-${i.id}-${s.key}`}
+                        onClick={() => clickable && handleCellClickIpanel(i, s)}
+                        style={{
+                          ...cellBase,
+                          background: cellBg(st),
+                          color: cellInk(st),
+                          minHeight: CELL_MIN_H,
+                          display:'flex',
+                          flexDirection:'column',
+                          justifyContent:'center',
+                          cursor: clickable ? 'pointer' : 'default',
+                          outline: clickable ? '2px dashed rgba(0,0,0,.12)' : 'none'
+                        }}
+                        title={[
+                          `Estado: ${st || ''}`,
+                          ini ? `Inicio: ${fmt(ini)}` : null,
+                          fin ? `Fin: ${fmt(fin)}` : null,
+                          clickable ? (lower === 'pendiente' ? 'Click: Iniciar' : 'Click: Finalizar') : 'Finalizado'
+                        ].filter(Boolean).join('\n')}
+                      >
+                        <div style={{ fontSize:12, fontWeight:700 }}>{st || ''}</div>
+                        <div style={{ fontSize:11 }}>{ini ? `Inicio: ${fmt(ini)}` : ''}</div>
+                        <div style={{ fontSize:11 }}>{fin ? `Fin: ${fmt(fin)}` : ''}</div>
+                      </div>
+                    );
+                  })
+                ]);
+              })}
 
               {listIpanels.length === 0 && (
-                <div style={{ gridColumn:`1 / span ${IP_STAGES_RENDER.length + 1}`, marginTop:12, opacity:.7 }}>
+                <div style={{ gridColumn:`1 / span ${IP_STAGES_RENDER.length + 6}`, marginTop:12, opacity:.7 }}>
                   Sin resultados.
                 </div>
               )}
