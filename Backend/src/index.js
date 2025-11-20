@@ -1,13 +1,27 @@
-require('dotenv').config();
+const path = require('path');
+
+// 👇 Forzamos a dotenv a usar Backend/.env
+require('dotenv').config({
+  path: path.join(__dirname, '..', '.env'),
+});
 
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
 const { Pool } = require('pg');
+const sql = require('mssql'); // <-- SQL Server
 
 const app = express();
 
 const PORT = process.env.PORT || 4000;
+
+// DEBUG: ver qué SQL* ve Node
+console.log('ENV SQL* vars:', Object.keys(process.env).filter(k => k.toUpperCase().includes('SQL')));
+console.log('SQLSERVER_HOST:', process.env.SQLSERVER_HOST);
+console.log('SQLSERVER_DB:', process.env.SQLSERVER_DB);
+console.log('supabase url:', process.env.SUPABASE_DB_URL);
+
+// ======================= CORS / BASE =======================
 
 // ✅ Orígenes permitidos
 const allowedOrigins = (process.env.FRONTEND_ORIGINS ||
@@ -22,6 +36,33 @@ const pool = new Pool({
   connectionString: process.env.SUPABASE_DB_URL,
   ssl: { rejectUnauthorized: false }
 });
+
+// Config SQL Server
+const sqlServerConfig = {
+  user: process.env.SQLSERVER_USER,
+  password: process.env.SQLSERVER_PASSWORD,
+  server: process.env.SQLSERVER_HOST,
+  database: process.env.SQLSERVER_DB,
+  port: Number(process.env.SQLSERVER_PORT || 1433),
+  options: {
+    encrypt: false,              // para 2008 R2 casi siempre false
+    trustServerCertificate: true
+  },
+  pool: {
+    max: 10,
+    min: 0,
+    idleTimeoutMillis: 30000
+  }
+};
+
+let sqlServerPool;
+
+async function getSqlServerPool() {
+  if (!sqlServerPool) {
+    sqlServerPool = await sql.connect(sqlServerConfig);
+  }
+  return sqlServerPool;
+}
 
 // Para que caches/CDN varíen por Origin
 app.use((req, res, next) => { res.header('Vary', 'Origin'); next(); });
@@ -65,53 +106,482 @@ app.get('/healt', async (_req, res) => {
   }
 });
 
-// --------------------- Estados & Etapas ---------------------
+// =========================================================
+// SYNC: traer Pre_Produccion (SQL Server) -> portones_pre_produccion (Supabase)
+// =========================================================
+
+// placeholders $1..$119 (tantos como valores insertamos)
+const PREPROD_VALUE_PLACEHOLDERS = Array.from({ length: 119 }, (_, i) => `$${i + 1}`).join(', ');
+
+// POST /sync/preproduccion
+// Borra la tabla destino y la rellena completa desde SQL Server, en lotes.
+app.post('/sync/preproduccion', async (_req, res) => {
+  const batchSize = 500;
+  let lastId = 0;
+  let total = 0;
+
+  try {
+    const sqlPool = await getSqlServerPool();
+
+    // Limpio tabla destino antes de importar
+    await pool.query('TRUNCATE TABLE public.portones_pre_produccion;');
+
+    // Leo por lotes
+    while (true) {
+      const result = await sqlPool.request()
+        .input('lastId', sql.Int, lastId)
+        .input('batchSize', sql.Int, batchSize)
+        .query(`
+          SELECT TOP (@batchSize)
+            ID,
+            PARTIDA,
+            NV,
+            Nombre,
+            Direccion,
+            ID_cliente,
+            RazSoc,
+            Fecha_NV,
+            ID_Sistema,
+            Sistema,
+            Ancho,
+            Alto,
+            Peso,
+            Fecha_Entrega,
+            Fecha_Inicio,
+            Estado,
+            Revestimiento,
+            Lucera,
+            Color,
+            Liston,
+            PARANTES_Cantidad,
+            PARANTES_Distribucion,
+            Color_Sistema,
+            PUERTA_Posicion,
+            MOTOR_Condicion,
+            MOTOR_Posicion,
+            PASADOR_Condicion,
+            PASADOR_Armado,
+            INSTALACION_Instalador,
+            INSTALACION_Empotraduras,
+            INSTALACION_Posicion,
+            PARANTES_Descripcion,
+            PIERNAS_Tipo,
+            PIERNAS_Altura,
+            Espesor_Revestimiento,
+            DINTEL_Tipo,
+            DINTEL_Ancho,
+            DATOS_Brazos,
+            DATOS_Hueco_Chico,
+            DATOS_Hueco_Grande,
+            PERIMETRO_SINO,
+            PERIMETRO_Descuento,
+            PERIMETRO_Altura,
+            REBAJE_SINO,
+            REBAJE_Descuento,
+            Largo_Planchuelas,
+            Largo_Travesaños,
+            Largo_Parantes,
+            Parantes_Internos,
+            Cantidad_Soportes,
+            Tapajunta_Lat_Inf,
+            Tapajunta_Lat_Sup,
+            Tapajunta_R_Sup,
+            Puerta_Ancho,
+            Puerta_Alto,
+            Piezas,
+            Tapas_piernas,
+            Tipo_Embalaje,
+            Tipo_Canasto,
+            Tipo_Cables,
+            Tipo_Espada,
+            Color_Hoja,
+            Pintura_antes_PU,
+            Cantidad_Chapas,
+            Largo_Chapa,
+            Ancho_Chapa,
+            Cantidad_chapas_Puerta,
+            Largo_Chapa_Puerta,
+            Largo_G_Horiz,
+            Cantidad_G_Horiz,
+            Largo_G_Vertical,
+            Cantidad_G_Vert_Tipo1,
+            Tipo_Borde_G_Puerta,
+            Cantidad_G_Horiz_Puerta,
+            Cantidad_Borde_H_Puerta,
+            Cantidad_G_Vertical,
+            Cantidad_G_Vertical_Puerta1,
+            Largo_G_Horizontal_Puerta,
+            Cantidad_G_Vertical_Puerta2,
+            Cantidad_Chapa_Puerta_Puntas,
+            Largo_Chapa_Puerta_Puntas,
+            Cantidad_Chapas_Puntas,
+            Largo_Chapas_Puntas,
+            BOR_V_T1_CANT,
+            BOR_V_T1_LARG,
+            BOR_H_T1_CANT,
+            BOR_H_T1_LARG,
+            BOR_V_T3_CANT,
+            BOR_V_T3_LARG,
+            BOR_V_T7_CANT,
+            BOR_V_T7_LARG,
+            BOR_H_T7_CANT,
+            BOR_H_T7_LARG,
+            BOR_V_T10_CANT,
+            BOR_V_T10_LARG,
+            BOR_H_T10_CANT,
+            BOR_H_T10_LARG,
+            TAPA_UNION_CANT,
+            TAPA_UNION_LARG,
+            LAM_PAÑO_CANT,
+            LAM_PAÑO_LARG,
+            LAM_PTA_CANT,
+            LAM_PTA_LARG,
+            LAM_EXT_T1_PAÑ_CANT,
+            LAM_EXT_T1_PAÑ_LARG,
+            LAM_EXT_T1_PAÑ_DES,
+            LAM_EXT_T1_PTA_CANT,
+            LAM_EXT_T1_PTA_LARG,
+            LAM_EXT_T1_PTA_DES,
+            LAM_EXT_T2_PAÑ_CANT,
+            LAM_EXT_T2_PAÑ_LARG,
+            LAM_EXT_T2_PAÑ_DES,
+            LAM_EXT_T2_PTA_CANT,
+            LAM_EXT_T2_PTA_LARG,
+            LAM_EXT_T2_PTA_DES,
+            RBJ_Tipo,
+            RBJ_HOR_X1,
+            RBJ_VER_X2,
+            RBJ_Ancho
+          FROM dbo.Pre_Produccion
+          WHERE ID > @lastId
+          ORDER BY ID ASC;
+        `);
+
+      const rows = result.recordset;
+      if (!rows.length) break;
+
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+
+        for (const r of rows) {
+          await client.query(
+            `
+            INSERT INTO public.portones_pre_produccion (
+              id,
+              partida,
+              nv,
+              nombre,
+              direccion,
+              id_cliente,
+              razsoc,
+              fecha_nv,
+              id_sistema,
+              sistema,
+              ancho,
+              alto,
+              peso,
+              fecha_entrega,
+              fecha_inicio,
+              estado,
+              revestimiento,
+              lucera,
+              color,
+              liston,
+              parantes_cantidad,
+              parantes_distribucion,
+              color_sistema,
+              puerta_posicion,
+              motor_condicion,
+              motor_posicion,
+              pasador_condicion,
+              pasador_armado,
+              instalacion_instalador,
+              instalacion_empotraduras,
+              instalacion_posicion,
+              parantes_descripcion,
+              piernas_tipo,
+              piernas_altura,
+              espesor_revestimiento,
+              dintel_tipo,
+              dintel_ancho,
+              datos_brazos,
+              datos_hueco_chico,
+              datos_hueco_grande,
+              perimetro_sino,
+              perimetro_descuento,
+              perimetro_altura,
+              rebaje_sino,
+              rebaje_descuento,
+              largo_planchuelas,
+              largo_travesanos,
+              largo_parantes,
+              parantes_internos,
+              cantidad_soportes,
+              tapajunta_lat_inf,
+              tapajunta_lat_sup,
+              tapajunta_r_sup,
+              puerta_ancho,
+              puerta_alto,
+              piezas,
+              tapas_piernas,
+              tipo_embalaje,
+              tipo_canasto,
+              tipo_cables,
+              tipo_espada,
+              color_hoja,
+              pintura_antes_pu,
+              cantidad_chapas,
+              largo_chapa,
+              ancho_chapa,
+              cantidad_chapas_puerta,
+              largo_chapa_puerta,
+              largo_g_horiz,
+              cantidad_g_horiz,
+              largo_g_vertical,
+              cantidad_g_vert_tipo1,
+              tipo_borde_g_puerta,
+              cantidad_g_horiz_puerta,
+              cantidad_borde_h_puerta,
+              cantidad_g_vertical,
+              cantidad_g_vertical_puerta1,
+              largo_g_horizontal_puerta,
+              cantidad_g_vertical_puerta2,
+              cantidad_chapa_puerta_puntas,
+              largo_chapa_puerta_puntas,
+              cantidad_chapas_puntas,
+              largo_chapas_puntas,
+              bor_v_t1_cant,
+              bor_v_t1_larg,
+              bor_h_t1_cant,
+              bor_h_t1_larg,
+              bor_v_t3_cant,
+              bor_v_t3_larg,
+              bor_v_t7_cant,
+              bor_v_t7_larg,
+              bor_h_t7_cant,
+              bor_h_t7_larg,
+              bor_v_t10_cant,
+              bor_v_t10_larg,
+              bor_h_t10_cant,
+              bor_h_t10_larg,
+              tapa_union_cant,
+              tapa_union_larg,
+              lam_pano_cant,
+              lam_pano_larg,
+              lam_pta_cant,
+              lam_pta_larg,
+              lam_ext_t1_pano_cant,
+              lam_ext_t1_pano_larg,
+              lam_ext_t1_pano_des,
+              lam_ext_t1_pta_cant,
+              lam_ext_t1_pta_larg,
+              lam_ext_t1_pta_des,
+              lam_ext_t2_pano_cant,
+              lam_ext_t2_pano_larg,
+              lam_ext_t2_pano_des,
+              lam_ext_t2_pta_cant,
+              lam_ext_t2_pta_larg,
+              lam_ext_t2_pta_des,
+              rbj_tipo,
+              rbj_hor_x1,
+              rbj_ver_x2,
+              rbj_ancho
+            ) VALUES (
+              ${PREPROD_VALUE_PLACEHOLDERS}
+            );
+            `,
+            [
+              r.ID,
+              r.PARTIDA,
+              r.NV,
+              r.Nombre,
+              r.Direccion,
+              r.ID_cliente,
+              r.RazSoc,
+              r.Fecha_NV,
+              r.ID_Sistema,
+              r.Sistema,
+              r.Ancho,
+              r.Alto,
+              r.Peso,
+              r.Fecha_Entrega,
+              r.Fecha_Inicio,
+              r.Estado,
+              r.Revestimiento,
+              r.Lucera,
+              r.Color,
+              r.Liston,
+              r.PARANTES_Cantidad,
+              r.PARANTES_Distribucion,
+              r.Color_Sistema,
+              r.PUERTA_Posicion,
+              r.MOTOR_Condicion,
+              r.MOTOR_Posicion,
+              r.PASADOR_Condicion,
+              r.PASADOR_Armado,
+              r.INSTALACION_Instalador,
+              r.INSTALACION_Empotraduras,
+              r.INSTALACION_Posicion,
+              r.PARANTES_Descripcion,
+              r.PIERNAS_Tipo,
+              r.PIERNAS_Altura,
+              r.Espesor_Revestimiento,
+              r.DINTEL_Tipo,
+              r.DINTEL_Ancho,
+              r.DATOS_Brazos,
+              r.DATOS_Hueco_Chico,
+              r.DATOS_Hueco_Grande,
+              r.PERIMETRO_SINO,
+              r.PERIMETRO_Descuento,
+              r.PERIMETRO_Altura,
+              r.REBAJE_SINO,
+              r.REBAJE_Descuento,
+              r.Largo_Planchuelas,
+              r.Largo_Travesaños,
+              r.Largo_Parantes,
+              r.Parantes_Internos,
+              r.Cantidad_Soportes,
+              r.Tapajunta_Lat_Inf,
+              r.Tapajunta_Lat_Sup,
+              r.Tapajunta_R_Sup,
+              r.Puerta_Ancho,
+              r.Puerta_Alto,
+              r.Piezas,
+              r.Tapas_piernas,
+              r.Tipo_Embalaje,
+              r.Tipo_Canasto,
+              r.Tipo_Cables,
+              r.Tipo_Espada,
+              r.Color_Hoja,
+              r.Pintura_antes_PU,
+              r.Cantidad_Chapas,
+              r.Largo_Chapa,
+              r.Ancho_Chapa,
+              r.Cantidad_chapas_Puerta,
+              r.Largo_Chapa_Puerta,
+              r.Largo_G_Horiz,
+              r.Cantidad_G_Horiz,
+              r.Largo_G_Vertical,
+              r.Cantidad_G_Vert_Tipo1,
+              r.Tipo_Borde_G_Puerta,
+              r.Cantidad_G_Horiz_Puerta,
+              r.Cantidad_Borde_H_Puerta,
+              r.Cantidad_G_Vertical,
+              r.Cantidad_G_Vertical_Puerta1,
+              r.Largo_G_Horizontal_Puerta,
+              r.Cantidad_G_Vertical_Puerta2,
+              r.Cantidad_Chapa_Puerta_Puntas,
+              r.Largo_Chapa_Puerta_Puntas,
+              r.Cantidad_Chapas_Puntas,
+              r.Largo_Chapas_Puntas,
+              r.BOR_V_T1_CANT,
+              r.BOR_V_T1_LARG,
+              r.BOR_H_T1_CANT,
+              r.BOR_H_T1_LARG,
+              r.BOR_V_T3_CANT,
+              r.BOR_V_T3_LARG,
+              r.BOR_V_T7_CANT,
+              r.BOR_V_T7_LARG,
+              r.BOR_H_T7_CANT,
+              r.BOR_H_T7_LARG,
+              r.BOR_V_T10_CANT,
+              r.BOR_V_T10_LARG,
+              r.BOR_H_T10_CANT,
+              r.BOR_H_T10_LARG,
+              r.TAPA_UNION_CANT,
+              r.TAPA_UNION_LARG,
+              r.LAM_PAÑO_CANT,
+              r.LAM_PAÑO_LARG,
+              r.LAM_PTA_CANT,
+              r.LAM_PTA_LARG,
+              r.LAM_EXT_T1_PAÑ_CANT,
+              r.LAM_EXT_T1_PAÑ_LARG,
+              r.LAM_EXT_T1_PAÑ_DES,
+              r.LAM_EXT_T1_PTA_CANT,
+              r.LAM_EXT_T1_PTA_LARG,
+              r.LAM_EXT_T1_PTA_DES,
+              r.LAM_EXT_T2_PAÑ_CANT,
+              r.LAM_EXT_T2_PAÑ_LARG,
+              r.LAM_EXT_T2_PAÑ_DES,
+              r.LAM_EXT_T2_PTA_CANT,
+              r.LAM_EXT_T2_PTA_LARG,
+              r.LAM_EXT_T2_PTA_DES,
+              r.RBJ_Tipo,
+              r.RBJ_HOR_X1,
+              r.RBJ_VER_X2,
+              r.RBJ_Ancho
+            ]
+          );
+
+          lastId = r.ID;
+          total += 1;
+        }
+
+        await client.query('COMMIT');
+      } catch (e) {
+        await client.query('ROLLBACK');
+        throw e;
+      } finally {
+        client.release();
+      }
+    }
+
+    return res.json({ ok: true, imported: total });
+  } catch (err) {
+    console.error('sync preproduccion error:', err);
+    return res.status(500).json({ error: 'Error sincronizando Pre_Produccion', detail: err.message });
+  }
+});
+
+// ===================== Estados & Etapas ====================
 const STATUS = {
-  PENDIENTE:  'Pendiente',
+  PENDIENTE: 'Pendiente',
   EN_PROCESO: 'En Proceso',
   FINALIZADO: 'Finalizado',
 };
 
 const STAGES = {
-  diseno:          { status: 'diseno',          start: 'diseno_inicio',          end: 'diseno_fin',          next: null },
-  laser:           { status: 'laser',           start: 'laser_inicio',           end: 'laser_fin',           next: null },
-  guillotina:      { status: 'guillotina',      start: 'guillotina_inicio',      end: 'guillotina_fin',      next: null },
-  plegadora:       { status: 'plegadora',       start: 'plegadora_inicio',       end: 'plegadora_fin',       next: null },
+  diseno: { status: 'diseno', start: 'diseno_inicio', end: 'diseno_fin', next: null },
+  laser: { status: 'laser', start: 'laser_inicio', end: 'laser_fin', next: null },
+  guillotina: { status: 'guillotina', start: 'guillotina_inicio', end: 'guillotina_fin', next: null },
+  plegadora: { status: 'plegadora', start: 'plegadora_inicio', end: 'plegadora_fin', next: null },
   armado_marco_piernas: {
     status: 'armado_marco_piernas',
     start: 'armado_marco_piernas_inicio',
-    end:   'armado_marco_piernas_fin',
-    next:  null
-  },corte_revest: {
+    end: 'armado_marco_piernas_fin',
+    next: null
+  },
+  corte_revest: {
     status: 'corte_revest',
-    start:  'corte_revest_inicio',
-    end:    'corte_revest_fin',
-    next:   null
+    start: 'corte_revest_inicio',
+    end: 'corte_revest_fin',
+    next: null
   },
   plegado_revest: {
     status: 'plegado_revest',
-    start:  'plegado_revest_inicio',
-    end:    'plegado_revest_fin',
-    next:   null
+    start: 'plegado_revest_inicio',
+    end: 'plegado_revest_fin',
+    next: null
   },
-  armado_piernas:  { status: 'armado_piernas',  start: 'armado_piernas_inicio',  end: 'armado_piernas_fin',  next: null },
+  armado_piernas: { status: 'armado_piernas', start: 'armado_piernas_inicio', end: 'armado_piernas_fin', next: null },
   armado_primario: { status: 'armado_primario', start: 'armado_primario_inicio', end: 'armado_primario_fin', next: null },
-  armado_hojas:    { status: 'armado_hojas',    start: 'armado_hojas_inicio',    end: 'armado_hojas_fin',    next: null },
-  inyeccion:       { status: 'inyeccion',       start: 'inyeccion_inicio',       end: 'inyeccion_fin',       next: null },
-  revestimiento:   { status: 'revestimiento',   start: 'revestimiento_inicio',   end: 'revestimiento_fin',   next: null },
-  pintura:         { status: 'pintura',         start: 'pintura_inicio',         end: 'pintura_fin',         next: null },
-  armado_final:    { status: 'armado_final',    start: 'armado_final_inicio',    end: 'armado_final_fin',    next: null },
-  despacho:        { status: 'despacho',        start: 'despacho_inicio',        end: 'despacho_fin',        next: null }
+  armado_hojas: { status: 'armado_hojas', start: 'armado_hojas_inicio', end: 'armado_hojas_fin', next: null },
+  inyeccion: { status: 'inyeccion', start: 'inyeccion_inicio', end: 'inyeccion_fin', next: null },
+  revestimiento: { status: 'revestimiento', start: 'revestimiento_inicio', end: 'revestimiento_fin', next: null },
+  pintura: { status: 'pintura', start: 'pintura_inicio', end: 'pintura_fin', next: null },
+  armado_final: { status: 'armado_final', start: 'armado_final_inicio', end: 'armado_final_fin', next: null },
+  despacho: { status: 'despacho', start: 'despacho_inicio', end: 'despacho_fin', next: null }
 };
 
 // iPanel: ahora incluye Despacho
 const IPANEL_STAGES = {
-  diseno:    { status: 'diseno',    start: 'diseno_inicio',    end: 'diseno_fin'    }, // ⬅️ agregado
-  guillotina:{ status: 'guillotina',start: 'guillotina_inicio',end: 'guillotina_fin' },
-  plegado:   { status: 'plegado',   start: 'plegado_inicio',   end: 'plegado_fin'    },
-  pintura:   { status: 'pintura',   start: 'pintura_inicio',   end: 'pintura_fin'    },
-  inyeccion: { status: 'inyeccion', start: 'inyeccion_inicio', end: 'inyeccion_fin'  },
-  despacho:  { status: 'despacho',  start: 'despacho_inicio',  end: 'despacho_fin'   }, // ⬅️ agregado
+  diseno: { status: 'diseno', start: 'diseno_inicio', end: 'diseno_fin' },
+  guillotina: { status: 'guillotina', start: 'guillotina_inicio', end: 'guillotina_fin' },
+  plegado: { status: 'plegado', start: 'plegado_inicio', end: 'plegado_fin' },
+  pintura: { status: 'pintura', start: 'pintura_inicio', end: 'pintura_fin' },
+  inyeccion: { status: 'inyeccion', start: 'inyeccion_inicio', end: 'inyeccion_fin' },
+  despacho: { status: 'despacho', start: 'despacho_inicio', end: 'despacho_fin' },
 };
 
 // --------------------- Lógica Portones ---------------------
@@ -131,9 +601,9 @@ app.post('/portones', async (req, res) => {
   try {
     const { nv, nlista, partida: bodyPartida, npartida } = req.body || {};
 
-    const nNv  = Number(nv);
-    const nNl  = Number(nlista);
-    const nPa  = Number(bodyPartida ?? npartida);
+    const nNv = Number(nv);
+    const nNl = Number(nlista);
+    const nPa = Number(bodyPartida ?? npartida);
 
     if (![nNv, nNl, nPa].every(Number.isInteger)) {
       return res.status(400).json({ error: 'nv, nlista y partida/npartida deben ser enteros' });
@@ -167,7 +637,7 @@ app.post('/portones/:id/stage', async (req, res) => {
   const { stage, action } = req.body || {};
   const cfg = STAGES[stage];
 
-  if (!cfg || !['start','stop'].includes(action)) {
+  if (!cfg || !['start', 'stop'].includes(action)) {
     return res.status(400).json({ error: 'Parámetros inválidos' });
   }
 
@@ -216,12 +686,10 @@ app.post('/portones/:id/fecha-plan', async (req, res) => {
   let { fecha_plan } = req.body || {};
 
   try {
-    // Permitir limpiar la fecha con null/undefined
     if (fecha_plan !== null && fecha_plan !== undefined) {
       if (typeof fecha_plan !== 'string') {
         return res.status(400).json({ error: 'fecha_plan debe ser string con formato YYYY-MM-DD o null' });
       }
-      // Si viene con hora (ISO), nos quedamos con la parte de fecha
       fecha_plan = fecha_plan.slice(0, 10);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha_plan)) {
         return res.status(400).json({ error: 'fecha_plan inválida. Use formato YYYY-MM-DD' });
@@ -326,7 +794,7 @@ app.post('/ipanel/:id/stage', async (req, res) => {
   const { stage, action } = req.body || {};
   const cfg = IPANEL_STAGES[stage];
 
-  if (!cfg || !['start','stop'].includes(action)) {
+  if (!cfg || !['start', 'stop'].includes(action)) {
     return res.status(400).json({ error: 'Parámetros inválidos' });
   }
 
@@ -438,7 +906,7 @@ app.post('/ipanel/:id/fecha-nv', async (req, res) => {
   }
 });
 
-// POST: asignar/actualizar fecha de Nota de Venta
+// POST: asignar/actualizar fecha de Nota de Venta de portones
 // Body: { fecha_nv: 'YYYY-MM-DD' }  // puede ser null para limpiar
 app.post('/portones/:id/fecha-nv', async (req, res) => {
   const { id } = req.params;
@@ -508,21 +976,6 @@ app.post('/portones/:id/fecha-med', async (req, res) => {
   }
 });
 
-
-// --------------------- Cierre prolijo ---------------------
-process.on('SIGINT', async () => {
-  await pool.end();
-  process.exit(0);
-});
-process.on('SIGTERM', async () => {
-  await pool.end();
-  process.exit(0);
-});
-
-app.listen(PORT, () => {
-  console.log(`Backend escuchando en http://localhost:${PORT}`);
-});
-
 // ===================== Observaciones PORTONES =====================
 
 // GET: obtener observaciones de un portón
@@ -585,7 +1038,6 @@ app.post('/portones/:id/observaciones', upsertPortonObservaciones);
 // PUT: idem (idempotente)
 //  -> PUT /portones/:id/observaciones { observaciones: '...' }
 app.put('/portones/:id/observaciones', upsertPortonObservaciones);
-
 
 // ===================== Observaciones IPANEL =====================
 
@@ -657,14 +1109,12 @@ app.post('/portones/:id/fecha-plan-entrega', async (req, res) => {
   let { fecha_plan_entrega } = req.body || {};
 
   try {
-    // Permitir limpiar la fecha con null/undefined
     if (fecha_plan_entrega !== null && fecha_plan_entrega !== undefined) {
       if (typeof fecha_plan_entrega !== 'string') {
         return res.status(400).json({
           error: 'fecha_plan_entrega debe ser string con formato YYYY-MM-DD o null'
         });
       }
-      // Si viene con hora (ISO), nos quedamos con la parte de fecha
       fecha_plan_entrega = fecha_plan_entrega.slice(0, 10);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha_plan_entrega)) {
         return res.status(400).json({
@@ -692,4 +1142,24 @@ app.post('/portones/:id/fecha-plan-entrega', async (req, res) => {
       detail: err.message
     });
   }
+});
+
+// --------------------- Cierre prolijo ---------------------
+process.on('SIGINT', async () => {
+  await pool.end();
+  if (sqlServerPool) {
+    await sqlServerPool.close();
+  }
+  process.exit(0);
+});
+process.on('SIGTERM', async () => {
+  await pool.end();
+  if (sqlServerPool) {
+    await sqlServerPool.close();
+  }
+  process.exit(0);
+});
+
+app.listen(PORT, () => {
+  console.log(`Backend escuchando en http://localhost:${PORT}`);
 });
