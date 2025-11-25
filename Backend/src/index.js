@@ -534,6 +534,27 @@ app.post('/sync/preproduccion', async (_req, res) => {
   }
 });
 
+// GET /preproduccion/last-sync
+// Devuelve la última fecha/hora de sincronización de Pre_Produccion
+app.get('/preproduccion/last-sync', async (_req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT MAX(last_sync_at) AS last_sync_at
+      FROM public.portones_pre_produccion;
+    `);
+
+    const lastSyncAt = rows[0]?.last_sync_at || null;
+
+    return res.json({ lastSyncAt });
+  } catch (err) {
+    console.error('get preproduccion last-sync error:', err);
+    return res.status(500).json({
+      error: 'Error leyendo fecha de última sincronización de preproducción',
+      detail: err.message,
+    });
+  }
+});
+
 // =========================================================
 // PREPRODUCCION: listar y pasar a producción
 // =========================================================
