@@ -534,6 +534,150 @@ app.post('/sync/preproduccion', async (_req, res) => {
   }
 });
 
+// =========================================================
+// PREPRODUCCION: listar y pasar a producción
+// =========================================================
+
+// GET /preproduccion
+// Lista preproducción. Por defecto solo los que NO fueron pasados a producción.
+app.get('/preproduccion', async (req, res) => {
+  try {
+    const soloPendientes = (req.query.soloPendientes ?? 'true') !== 'false';
+
+    let query = `
+      SELECT *
+      FROM public.portones_pre_produccion
+    `;
+    const params = [];
+
+    if (soloPendientes) {
+      query += `
+        WHERE COALESCE(en_produccion, false) = false
+      `;
+    }
+
+    query += `
+      ORDER BY
+        COALESCE(nv, 0) ASC,
+        COALESCE(partida, 0) ASC,
+        id ASC;
+    `;
+
+    const { rows } = await pool.query(query, params);
+    return res.json(rows);
+  } catch (err) {
+    console.error('get preproduccion error:', err);
+    return res.status(500).json({
+      error: 'Error leyendo preproducción',
+      detail: err.message,
+    });
+  }
+});
+
+// GET /preproduccion/por-nv/:nv
+// Busca todos los registros de preproducción para una NV concreta
+app.get('/preproduccion/por-nv/:nv', async (req, res) => {
+  const { nv } = req.params;
+
+  const nNv = Number(nv);
+  if (!Number.isInteger(nNv)) {
+    return res.status(400).json({ error: 'nv debe ser un entero' });
+  }
+
+  try {
+    const { rows } = await pool.query(
+      `
+      SELECT *
+      FROM public.portones_pre_produccion
+      WHERE nv = $1
+      ORDER BY id ASC;
+      `,
+      [nNv]
+    );
+
+    return res.json(rows);
+  } catch (err) {
+    console.error('get preproduccion por nv error:', err);
+    return res.status(500).json({
+      error: 'Error buscando preproducción por NV',
+      detail: err.message,
+    });
+  }
+});
+
+// POST /preproduccion/a-produccion
+// Body: { ids: [1,2,3], nlista?: number }
+// Crea portones en public.portones a partir de pre_produccion
+// y marca en_preproduccion.en_produccion = true para que no vuelvan a aparecer.
+app.post('/preproduccion/a-produccion', async (req, res) => {
+  let { ids, nlista } = req.body || {};
+
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: 'Debes enviar un array ids con al menos un id.' });
+  }
+
+  // Normalizamos ids a enteros
+  ids = ids
+    .map(Number)
+    .filter(Number.isInteger);
+
+  if (!ids.length) {
+    return res.status(400).json({ error: 'El array ids no contiene enteros válidos.' });
+  }
+
+  const nLista = Number.isInteger(Number(nlista)) ? Number(nlista) : 1;
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // 1) Insertar en portones solo los que aún no fueron pasados y tienen NV
+    const insertResult = await client.query(
+      `
+      INSERT INTO public.portones (nv, nlista, partida)
+      SELECT
+        p.nv,
+        $1 AS nlista,
+        p.partida
+      FROM public.portones_pre_produccion p
+      WHERE
+        p.id = ANY($2::int[])
+        AND COALESCE(p.en_produccion, false) = false
+        AND p.nv IS NOT NULL
+      RETURNING id, nv, partida;
+      `,
+      [nLista, ids]
+    );
+
+    // 2) Marcar en_preproduccion.en_produccion = true
+    await client.query(
+      `
+      UPDATE public.portones_pre_produccion
+      SET en_produccion = true
+      WHERE id = ANY($1::int[]);
+      `,
+      [ids]
+    );
+
+    await client.query('COMMIT');
+
+    return res.json({
+      ok: true,
+      creados: insertResult.rowCount,
+      portones: insertResult.rows,
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('preproduccion a produccion error:', err);
+    return res.status(500).json({
+      error: 'Error al pasar preproducción a producción',
+      detail: err.message,
+    });
+  } finally {
+    client.release();
+  }
+});
+
 // ===================== Estados & Etapas ====================
 const STATUS = {
   PENDIENTE: 'Pendiente',
