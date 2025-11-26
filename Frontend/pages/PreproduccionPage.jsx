@@ -63,7 +63,6 @@ export default function PreproduccionPage() {
       setSyncLoading(true);
 
       const result = await syncPreproduccion(); // POST /sync/preproduccion
-      // result.ok, result.imported, result.lastSyncAt (si lo devolvés del back)
 
       await loadPreproduccion();
       await loadLastSync();
@@ -112,7 +111,6 @@ export default function PreproduccionPage() {
     const nlista = searchNLista.trim();
 
     return rows.filter((r) => {
-      // texto libre: NV, PARTIDA, RazSoc, Nombre, Dirección, Sistema
       if (text) {
         const hayTexto =
           String(r.nv ?? '').toLowerCase().includes(text) ||
@@ -125,9 +123,7 @@ export default function PreproduccionPage() {
         if (!hayTexto) return false;
       }
 
-      // filtro N° de lista (si lo estás guardando en la tabla)
       if (nlista) {
-        // si no tenés campo nlista en preproduccion, podés borrar esto
         if (String(r.nlista ?? '') !== nlista) return false;
       }
 
@@ -149,10 +145,8 @@ export default function PreproduccionPage() {
     const allVisibleSelected = visibleIds.every((id) => selectedIds.includes(id));
 
     if (allVisibleSelected) {
-      // deseleccionar visibles
       setSelectedIds((prev) => prev.filter((id) => !visibleIds.includes(id)));
     } else {
-      // agregar visibles a la selección
       setSelectedIds((prev) => Array.from(new Set([...prev, ...visibleIds])));
     }
   }
@@ -162,7 +156,7 @@ export default function PreproduccionPage() {
   }
 
   // ==============================
-  // Render
+  // Render helpers
   // ==============================
   function formatDate(d) {
     if (!d) return '-';
@@ -171,127 +165,217 @@ export default function PreproduccionPage() {
     return date.toLocaleString('es-AR');
   }
 
+  const tableContainerStyle = {
+    overflowX: 'auto',
+    maxHeight: '70vh',
+    border: '1px solid var(--border)',
+    borderRadius: '12px',
+    boxShadow: 'var(--shadow)',
+    background: 'var(--surface)',
+  };
+
+  const thTdBase = {
+    border: '1px solid var(--border)',
+    padding: '4px',
+  };
+
   return (
-    <div style={{ padding: '1.5rem' }}>
-      <h1 style={{ fontSize: '2rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>
-        Preproducción de Portones
-      </h1>
-      <p style={{ marginBottom: '1rem' }}>
-        Sincroniza con SQL Server y envía portones seleccionados a producción.
-      </p>
+    <div className="screen page" style={{ fontFamily: 'system-ui,sans-serif' }}>
+      <div className="container">
+        {/* Header principal */}
+        <div className="header-row" style={{ marginBottom: 12 }}>
+          <h1 className="h1">Preproducción de Portones</h1>
 
-      <div style={{ marginBottom: '1rem' }}>
-        <strong>Última sincronización</strong>
-        <div>{lastSyncAt ? formatDate(lastSyncAt) : 'Sin datos'}</div>
-      </div>
+          <div className="actions">
+            <button
+              onClick={handleSync}
+              disabled={syncLoading}
+              className="btn btn--brand"
+            >
+              {syncLoading ? 'Sincronizando…' : 'Sincronizar ahora'}
+            </button>
+          </div>
+        </div>
 
-      <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-        <button onClick={handleSync} disabled={syncLoading}>
-          {syncLoading ? 'Sincronizando...' : 'Sincronizar ahora'}
-        </button>
+        <p style={{ marginTop: 4, marginBottom: 12, color: 'var(--muted)' }}>
+          Sincroniza con SQL Server y envía portones seleccionados a producción.
+        </p>
 
-        {syncError && (
-          <span style={{ color: 'red', marginLeft: '0.5rem' }}>{syncError}</span>
-        )}
-        {syncSuccess && (
-          <span style={{ color: 'green', marginLeft: '0.5rem' }}>{syncSuccess}</span>
-        )}
-      </div>
+        {/* Última sync como "chip" / métrica */}
+        <div style={{ marginBottom: 12, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <div className="chip">
+            <span style={{ fontSize: 12, textTransform: 'uppercase', opacity: 0.7 }}>
+              Última sincronización
+            </span>
+            <span style={{ fontWeight: 900 }}>
+              {lastSyncAt ? formatDate(lastSyncAt) : 'Sin datos'}
+            </span>
+          </div>
 
-      <div style={{ marginBottom: '0.75rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-        <label>
-          Buscar:{' '}
-          <input
-            type="text"
-            placeholder="Buscar por NV, partida, cliente, dirección, sistema..."
-            value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
-            style={{ minWidth: 250 }}
-          />
-        </label>
+          {syncError && (
+            <div className="metric metric--warn" style={{ fontSize: 14 }}>
+              {syncError}
+            </div>
+          )}
+          {syncSuccess && (
+            <div className="metric metric--ok" style={{ fontSize: 14 }}>
+              {syncSuccess}
+            </div>
+          )}
+        </div>
 
-        <label>
-          N° de lista:{' '}
-          <input
-            type="text"
-            placeholder="N° de lista"
-            value={searchNLista}
-            onChange={(e) => setSearchNLista(e.target.value)}
-            style={{ width: 120 }}
-          />
-        </label>
-      </div>
-
-      <div style={{ marginBottom: '0.75rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-        <button
-          onClick={handleSendToProduccion}
-          disabled={!selectedIds.length || loading}
+        {/* Filtros */}
+        <div
+          className="page__header"
+          style={{
+            display: 'flex',
+            gap: 8,
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            marginBottom: 10,
+          }}
         >
-          A producción ({selectedIds.length})
-        </button>
-        <button onClick={clearSelection} disabled={!selectedIds.length}>
-          Limpiar selección
-        </button>
-        <button onClick={toggleSelectVisible} disabled={!filteredRows.length}>
-          Seleccionar visibles
-        </button>
-      </div>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <span style={{ fontSize: 12, color: 'var(--muted)' }}>Buscar</span>
+            <input
+              type="text"
+              placeholder="NV, partida, cliente, dirección, sistema…"
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              className="btn"
+              style={{ minWidth: 250 }}
+            />
+          </label>
 
-      <div style={{ marginBottom: '0.5rem' }}>
-        {loading ? (
-          <span>Cargando...</span>
-        ) : (
-          <span>
-            Mostrando {filteredRows.length} de {rows.length} registros
-          </span>
-        )}
-      </div>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <span style={{ fontSize: 12, color: 'var(--muted)' }}>N° de lista</span>
+            <input
+              type="text"
+              placeholder="N° de lista"
+              value={searchNLista}
+              onChange={(e) => setSearchNLista(e.target.value)}
+              className="btn"
+              style={{ width: 120 }}
+            />
+          </label>
+        </div>
 
-      <div style={{ overflowX: 'auto', maxHeight: '70vh', border: '1px solid #ddd' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
-          <thead style={{ position: 'sticky', top: 0, background: '#f7f7f7', zIndex: 1 }}>
-            <tr>
-              <th style={{ border: '1px solid #ddd', padding: '4px' }}>Sel</th>
-              <th style={{ border: '1px solid #ddd', padding: '4px' }}>NV</th>
-              <th style={{ border: '1px solid #ddd', padding: '4px' }}>Partida</th>
-              <th style={{ border: '1px solid #ddd', padding: '4px' }}>Cliente</th>
-              <th style={{ border: '1px solid #ddd', padding: '4px' }}>Nombre</th>
-              <th style={{ border: '1px solid #ddd', padding: '4px' }}>Dirección</th>
-              <th style={{ border: '1px solid #ddd', padding: '4px' }}>Sistema</th>
-              <th style={{ border: '1px solid #ddd', padding: '4px' }}>F. NV</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredRows.map((r) => (
-              <tr key={r.id}>
-                <td style={{ border: '1px solid #ddd', padding: '4px', textAlign: 'center' }}>
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.includes(r.id)}
-                    onChange={() => toggleSelect(r.id)}
-                  />
-                </td>
-                <td style={{ border: '1px solid #ddd', padding: '4px' }}>{r.nv}</td>
-                <td style={{ border: '1px solid #ddd', padding: '4px' }}>{r.partida}</td>
-                <td style={{ border: '1px solid #ddd', padding: '4px' }}>{r.razsoc}</td>
-                <td style={{ border: '1px solid #ddd', padding: '4px' }}>{r.nombre}</td>
-                <td style={{ border: '1px solid #ddd', padding: '4px' }}>{r.direccion}</td>
-                <td style={{ border: '1px solid #ddd', padding: '4px' }}>{r.sistema}</td>
-                <td style={{ border: '1px solid #ddd', padding: '4px' }}>
-                  {r.fecha_nv ? new Date(r.fecha_nv).toLocaleDateString('es-AR') : '-'}
-                </td>
-              </tr>
-            ))}
+        {/* Botonera de acciones sobre selección */}
+        <div
+          className="actions"
+          style={{ marginBottom: 10, flexWrap: 'wrap', display: 'flex' }}
+        >
+          <button
+            onClick={handleSendToProduccion}
+            disabled={!selectedIds.length || loading}
+            className="btn btn--brand"
+          >
+            A producción {selectedIds.length ? `(${selectedIds.length})` : ''}
+          </button>
 
-            {!filteredRows.length && !loading && (
+          <button
+            onClick={clearSelection}
+            disabled={!selectedIds.length}
+            className="btn btn--ghost"
+          >
+            Limpiar selección
+          </button>
+
+          <button
+            onClick={toggleSelectVisible}
+            disabled={!filteredRows.length}
+            className="btn"
+          >
+            Seleccionar visibles
+          </button>
+        </div>
+
+        {/* Info de conteo */}
+        <div style={{ marginBottom: 8, fontSize: 13, color: 'var(--muted)' }}>
+          {loading ? (
+            <span>Cargando…</span>
+          ) : (
+            <span>
+              Mostrando <strong>{filteredRows.length}</strong> de{' '}
+              <strong>{rows.length}</strong> registros
+            </span>
+          )}
+        </div>
+
+        {/* Tabla */}
+        <div style={tableContainerStyle}>
+          <table
+            style={{
+              width: '100%',
+              borderCollapse: 'collapse',
+              fontSize: '0.9rem',
+            }}
+          >
+            <thead
+              style={{
+                position: 'sticky',
+                top: 0,
+                background: 'var(--surface)',
+                zIndex: 1,
+              }}
+            >
               <tr>
-                <td colSpan={8} style={{ textAlign: 'center', padding: '8px' }}>
-                  No hay registros para mostrar.
-                </td>
+                <th style={{ ...thTdBase }}>Sel</th>
+                <th style={{ ...thTdBase }}>NV</th>
+                <th style={{ ...thTdBase }}>Partida</th>
+                <th style={{ ...thTdBase }}>Cliente</th>
+                <th style={{ ...thTdBase }}>Nombre</th>
+                <th style={{ ...thTdBase }}>Dirección</th>
+                <th style={{ ...thTdBase }}>Sistema</th>
+                <th style={{ ...thTdBase }}>F. NV</th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {filteredRows.map((r) => (
+                <tr key={r.id}>
+                  <td
+                    style={{
+                      ...thTdBase,
+                      textAlign: 'center',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(r.id)}
+                      onChange={() => toggleSelect(r.id)}
+                    />
+                  </td>
+                  <td style={thTdBase}>{r.nv}</td>
+                  <td style={thTdBase}>{r.partida}</td>
+                  <td style={thTdBase}>{r.razsoc}</td>
+                  <td style={thTdBase}>{r.nombre}</td>
+                  <td style={thTdBase}>{r.direccion}</td>
+                  <td style={thTdBase}>{r.sistema}</td>
+                  <td style={thTdBase}>
+                    {r.fecha_nv
+                      ? new Date(r.fecha_nv).toLocaleDateString('es-AR')
+                      : '-'}
+                  </td>
+                </tr>
+              ))}
+
+              {!filteredRows.length && !loading && (
+                <tr>
+                  <td
+                    colSpan={8}
+                    style={{
+                      textAlign: 'center',
+                      padding: '8px',
+                      color: 'var(--muted)',
+                    }}
+                  >
+                    No hay registros para mostrar.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

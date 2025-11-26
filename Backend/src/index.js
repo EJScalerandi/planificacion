@@ -561,27 +561,38 @@ app.get('/preproduccion/last-sync', async (_req, res) => {
 
 // GET /preproduccion
 // Lista preproducción. Por defecto solo los que NO fueron pasados a producción.
+// GET /preproduccion
+// Lista preproducción. Por defecto solo los que NO fueron pasados a producción.
 app.get('/preproduccion', async (req, res) => {
   try {
     const soloPendientes = (req.query.soloPendientes ?? 'true') !== 'false';
 
     let query = `
-      SELECT *
-      FROM public.portones_pre_produccion
+      SELECT p.*
+      FROM public.portones_pre_produccion p
     `;
     const params = [];
 
     if (soloPendientes) {
+      // ⬇️ Ocultamos:
+      //  - los que ya marcaste en_produccion = true
+      //  - y además cualquier NV/partida que ya tenga un portón creado
       query += `
-        WHERE COALESCE(en_produccion, false) = false
+        WHERE COALESCE(p.en_produccion, false) = false
+          AND NOT EXISTS (
+            SELECT 1
+            FROM public.portones po
+            WHERE po.nv = p.nv
+              AND (po.partida IS NOT DISTINCT FROM p.partida)
+          )
       `;
     }
 
     query += `
       ORDER BY
-        COALESCE(nv, 0) ASC,
-        COALESCE(partida, 0) ASC,
-        id ASC;
+        COALESCE(p.nv, 0) ASC,
+        COALESCE(p.partida, 0) ASC,
+        p.id ASC;
     `;
 
     const { rows } = await pool.query(query, params);
@@ -594,6 +605,7 @@ app.get('/preproduccion', async (req, res) => {
     });
   }
 });
+
 
 // GET /preproduccion/por-nv/:nv
 // Busca todos los registros de preproducción para una NV concreta
@@ -653,19 +665,21 @@ app.post('/preproduccion/a-produccion', async (req, res) => {
     await client.query('BEGIN');
 
     // 1) Insertar en portones solo los que aún no fueron pasados y tienen NV
+    // ⚠️ CAMBIO: ahora también copio fecha_nv desde portones_pre_produccion
     const insertResult = await client.query(
       `
-      INSERT INTO public.portones (nv, nlista, partida)
+      INSERT INTO public.portones (nv, nlista, partida, fecha_nv)
       SELECT
         p.nv,
         $1 AS nlista,
-        p.partida
+        p.partida,
+        p.fecha_nv
       FROM public.portones_pre_produccion p
       WHERE
         p.id = ANY($2::int[])
         AND COALESCE(p.en_produccion, false) = false
         AND p.nv IS NOT NULL
-      RETURNING id, nv, partida;
+      RETURNING id, nv, partida, fecha_nv;
       `,
       [nLista, ids]
     );
