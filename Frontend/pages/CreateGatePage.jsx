@@ -9,6 +9,9 @@ import {
   setFechaNV, setFechaMed,
   setFechaPlanEntrega,
   setPortonObservaciones,
+  setIpanelFechaNV, setIpanelFechaMed,
+  setIpanelFechaProd, setIpanelFechaPlan,
+  setIpanelFechaPlanEntrega,
 } from '../src/api';
 import { isAuthed, login, logout } from '../src/auth/createGateAuth';
 
@@ -223,7 +226,7 @@ export default function CreateGatePage() {
     [onlyIpanels]
   );
 
-  // ---- Estado local para fechas por fila ----
+  // ---- Estado local para fechas por fila (PORTONES) ----
   const [fechaLocal, setFechaLocal] = useState({});
   const [fechaLlegadaLocal, setFechaLlegadaLocal] = useState({});
   const [fechaProdLocal, setFechaProdLocal] = useState({});
@@ -236,7 +239,20 @@ export default function CreateGatePage() {
   const setLocalFechaNV       = (id, ymd) => setFechaNVLocal(prev        => ({ ...prev, [id]: ymd }));
   const setLocalFechaMed      = (id, ymd) => setFechaMedLocal(prev       => ({ ...prev, [id]: ymd }));
 
-  // Guardar/Quitar: Plan SALIDA
+  // ---- Estado local para fechas por fila (IPANELS) ----
+  const [fechaLocalI, setFechaLocalI] = useState({});
+  const [fechaLlegadaLocalI, setFechaLlegadaLocalI] = useState({});
+  const [fechaProdLocalI, setFechaProdLocalI] = useState({});
+  const [fechaNVLocalI, setFechaNVLocalI] = useState({});
+  const [fechaMedLocalI, setFechaMedLocalI] = useState({});
+
+  const setLocalFechaSalidaI   = (id, ymd) => setFechaLocalI(prev        => ({ ...prev, [id]: ymd }));
+  const setLocalFechaLlegadaI  = (id, ymd) => setFechaLlegadaLocalI(prev => ({ ...prev, [id]: ymd }));
+  const setLocalFechaProdI     = (id, ymd) => setFechaProdLocalI(prev    => ({ ...prev, [id]: ymd }));
+  const setLocalFechaNVI       = (id, ymd) => setFechaNVLocalI(prev      => ({ ...prev, [id]: ymd }));
+  const setLocalFechaMedI      = (id, ymd) => setFechaMedLocalI(prev     => ({ ...prev, [id]: ymd }));
+
+  // Guardar/Quitar: Plan SALIDA (portón)
   const guardarFechaSalida = async (p) => {
     const current = dateOnly(p.fecha_plan);
     const val = fechaLocal[p.id] ?? current;
@@ -259,7 +275,7 @@ export default function CreateGatePage() {
     }
   };
 
-  // Guardar/Quitar: Plan LLEGADA
+  // Guardar/Quitar: Plan LLEGADA (portón)
   const guardarFechaLlegada = async (p) => {
     const current = dateOnly(p.fecha_plan_entrega);
     const val = fechaLlegadaLocal[p.id] ?? current;
@@ -282,7 +298,7 @@ export default function CreateGatePage() {
     }
   };
 
-  // Guardar/Quitar: Producción
+  // Guardar/Quitar: Producción (portón)
   const guardarFechaProd = async (p) => {
     const current = dateOnly(p.fecha_prod);
     const val = fechaProdLocal[p.id] ?? current;
@@ -305,7 +321,7 @@ export default function CreateGatePage() {
     }
   };
 
-  // Guardar/Quitar: Venta (NV)
+  // Guardar/Quitar: Venta (NV) (portón)
   const guardarFechaNV = async (p) => {
     const current = dateOnly(p.fecha_nv);
     const val = fechaNVLocal[p.id] ?? current;
@@ -328,7 +344,7 @@ export default function CreateGatePage() {
     }
   };
 
-  // Guardar/Quitar: Medición
+  // Guardar/Quitar: Medición (portón)
   const guardarFechaMed = async (p) => {
     const current = dateOnly(p.fecha_med);
     const val = fechaMedLocal[p.id] ?? current;
@@ -346,6 +362,128 @@ export default function CreateGatePage() {
       const { data: upd } = await setFechaMed(p.id, null);
       replaceItem(upd);
       setLocalFechaMed(p.id, '');
+    } catch (e) {
+      alert(e?.response?.data?.error || e.message);
+    }
+  };
+
+  // ====== FECHAS IPANEL ======
+
+  // Guardar/Quitar: Producción iPanel
+  const guardarFechaProdI = async (i) => {
+    const current = dateOnly(i.fecha_prod);
+    const val = fechaProdLocalI[i.id] ?? current;
+    const ymd = val && /^\d{4}-\d{2}-\d{2}$/.test(val) ? val : null;
+    try {
+      const { data: upd } = await setIpanelFechaProd(i.id, ymd);
+      replaceI(upd);
+      setLocalFechaProdI(i.id, dateOnly(upd.fecha_prod));
+    } catch (e) {
+      alert(e?.response?.data?.error || e.message);
+    }
+  };
+
+  const limpiarFechaProdI = async (i) => {
+    try {
+      const { data: upd } = await setIpanelFechaProd(i.id, null);
+      replaceI(upd);
+      setLocalFechaProdI(i.id, '');
+    } catch (e) {
+      alert(e?.response?.data?.error || e.message);
+    }
+  };
+
+  // Guardar/Quitar: Venta (NV) iPanel
+  const guardarFechaNVI = async (i) => {
+    const current = dateOnly(i.fecha_nv);
+    const val = fechaNVLocalI[i.id] ?? current;
+    const ymd = val && /^\d{4}-\d{2}-\d{2}$/.test(val) ? val : null;
+    try {
+      const { data: upd } = await setIpanelFechaNV(i.id, ymd);
+      replaceI(upd);
+      setLocalFechaNVI(i.id, dateOnly(upd.fecha_nv));
+    } catch (e) {
+      alert(e?.response?.data?.error || e.message);
+    }
+  };
+
+  const limpiarFechaNVI = async (i) => {
+    try {
+      const { data: upd } = await setIpanelFechaNV(i.id, null);
+      replaceI(upd);
+      setLocalFechaNVI(i.id, '');
+    } catch (e) {
+      alert(e?.response?.data?.error || e.message);
+    }
+  };
+
+  // Guardar/Quitar: Medición iPanel
+  const guardarFechaMedI = async (i) => {
+    const current = dateOnly(i.fecha_med);
+    const val = fechaMedLocalI[i.id] ?? current;
+    const ymd = val && /^\d{4}-\d{2}-\d{2}$/.test(val) ? val : null;
+    try {
+      const { data: upd } = await setIpanelFechaMed(i.id, ymd);
+      replaceI(upd);
+      setLocalFechaMedI(i.id, dateOnly(upd.fecha_med));
+    } catch (e) {
+      alert(e?.response?.data?.error || e.message);
+    }
+  };
+
+  const limpiarFechaMedI = async (i) => {
+    try {
+      const { data: upd } = await setIpanelFechaMed(i.id, null);
+      replaceI(upd);
+      setLocalFechaMedI(i.id, '');
+    } catch (e) {
+      alert(e?.response?.data?.error || e.message);
+    }
+  };
+
+  // Guardar/Quitar: Plan SALIDA iPanel
+  const guardarFechaSalidaI = async (i) => {
+    const current = dateOnly(i.fecha_plan);
+    const val = fechaLocalI[i.id] ?? current;
+    const ymd = val && /^\d{4}-\d{2}-\d{2}$/.test(val) ? val : null;
+    try {
+      const { data: upd } = await setIpanelFechaPlan(i.id, ymd);
+      replaceI(upd);
+      setLocalFechaSalidaI(i.id, dateOnly(upd.fecha_plan));
+    } catch (e) {
+      alert(e?.response?.data?.error || e.message);
+    }
+  };
+
+  const limpiarFechaSalidaI = async (i) => {
+    try {
+      const { data: upd } = await setIpanelFechaPlan(i.id, null);
+      replaceI(upd);
+      setLocalFechaSalidaI(i.id, '');
+    } catch (e) {
+      alert(e?.response?.data?.error || e.message);
+    }
+  };
+
+  // Guardar/Quitar: Plan LLEGADA iPanel
+  const guardarFechaLlegadaI = async (i) => {
+    const current = dateOnly(i.fecha_plan_entrega);
+    const val = fechaLlegadaLocalI[i.id] ?? current;
+    const ymd = val && /^\d{4}-\d{2}-\d{2}$/.test(val) ? val : null;
+    try {
+      const { data: upd } = await setIpanelFechaPlanEntrega(i.id, ymd);
+      replaceI(upd);
+      setLocalFechaLlegadaI(i.id, dateOnly(upd.fecha_plan_entrega));
+    } catch (e) {
+      alert(e?.response?.data?.error || e.message);
+    }
+  };
+
+  const limpiarFechaLlegadaI = async (i) => {
+    try {
+      const { data: upd } = await setIpanelFechaPlanEntrega(i.id, null);
+      replaceI(upd);
+      setLocalFechaLlegadaI(i.id, '');
     } catch (e) {
       alert(e?.response?.data?.error || e.message);
     }
@@ -1196,7 +1334,7 @@ export default function CreateGatePage() {
               {/* Header iPanels */}
               <div style={{ ...headerCell, position:'sticky', top:0, left:0, zIndex:6, background:'var(--surface)', textAlign:'center' }}>NV / Partida</div>
 
-              {/* Headers de fechas (solo lectura) */}
+              {/* Headers de fechas (ahora editables igual que Portones) */}
               <div style={{ ...headerCell, position:'sticky', top:0, zIndex:5, background:'var(--surface)', textAlign:'center' }}>Venta (NV)</div>
               <div style={{ ...headerCell, position:'sticky', top:0, zIndex:5, background:'var(--surface)', textAlign:'center' }}>Medición</div>
               <div style={{ ...headerCell, position:'sticky', top:0, zIndex:5, background:'var(--surface)', textAlign:'center' }}>Producción (inicio)</div>
@@ -1211,11 +1349,20 @@ export default function CreateGatePage() {
 
               {/* Filas iPanels */}
               {listIpanels.map(i => {
-                const nvFecha      = dateOnly(i.fecha_nv);
-                const medFecha     = dateOnly(i.fecha_med);
-                const prodFecha    = dateOnly(i.fecha_prod);
-                const planSalida   = dateOnly(i.fecha_plan);
-                const planLlegada  = dateOnly(i.fecha_plan_entrega);
+                const currentNV      = dateOnly(i.fecha_nv);
+                const valNVI         = fechaNVLocalI[i.id] ?? currentNV;
+
+                const currentMed     = dateOnly(i.fecha_med);
+                const valMedI        = fechaMedLocalI[i.id] ?? currentMed;
+
+                const currentProd    = dateOnly(i.fecha_prod);
+                const valProdI       = fechaProdLocalI[i.id] ?? currentProd;
+
+                const currentSalida  = dateOnly(i.fecha_plan);
+                const valSalidaI     = fechaLocalI[i.id] ?? currentSalida;
+
+                const currentLlegada = dateOnly(i.fecha_plan_entrega);
+                const valLlegadaI    = fechaLlegadaLocalI[i.id] ?? currentLlegada;
 
                 return ([
                   // NV / Partida
@@ -1226,12 +1373,175 @@ export default function CreateGatePage() {
                     </div>
                   </div>,
 
-                  // Fechas (solo lectura)
-                  <div key={`ip-fnv-${i.id}`}  style={{ ...cellBase, minHeight:CELL_MIN_H, display:'grid', placeItems:'center' }}>{nvFecha || ''}</div>,
-                  <div key={`ip-fmed-${i.id}`} style={{ ...cellBase, minHeight:CELL_MIN_H, display:'grid', placeItems:'center' }}>{medFecha || ''}</div>,
-                  <div key={`ip-fpr-${i.id}`}  style={{ ...cellBase, minHeight:CELL_MIN_H, display:'grid', placeItems:'center' }}>{prodFecha || ''}</div>,
-                  <div key={`ip-fps-${i.id}`}  style={{ ...cellBase, minHeight:CELL_MIN_H, display:'grid', placeItems:'center' }}>{planSalida || ''}</div>,
-                  <div key={`ip-fpl-${i.id}`}  style={{ ...cellBase, minHeight:CELL_MIN_H, display:'grid', placeItems:'center' }}>{planLlegada || ''}</div>,
+                  // Fecha VENTA (NV) – editable
+                  <div key={`ip-fnv-${i.id}`} style={{ ...cellBase, minHeight:CELL_MIN_H }}>
+                    <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                      <input
+                        type="date"
+                        value={valNVI || ''}
+                        onChange={e => setLocalFechaNVI(i.id, e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') guardarFechaNVI(i); }}
+                        className="btn"
+                        style={{ height:34 }}
+                      />
+                      <div style={{ display:'flex', gap:6 }}>
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => guardarFechaNVI(i)}
+                          disabled={(valNVI || '') === (currentNV || '')}
+                          title="Guardar fecha de venta (NV)"
+                        >
+                          Guardar
+                        </button>
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => limpiarFechaNVI(i)}
+                          disabled={!currentNV}
+                          title="Quitar fecha de venta (NV)"
+                        >
+                          Quitar
+                        </button>
+                      </div>
+                    </div>
+                  </div>,
+
+                  // Fecha MEDICIÓN – editable
+                  <div key={`ip-fmed-${i.id}`} style={{ ...cellBase, minHeight:CELL_MIN_H }}>
+                    <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                      <input
+                        type="date"
+                        value={valMedI || ''}
+                        onChange={e => setLocalFechaMedI(i.id, e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') guardarFechaMedI(i); }}
+                        className="btn"
+                        style={{ height:34 }}
+                      />
+                      <div style={{ display:'flex', gap:6 }}>
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => guardarFechaMedI(i)}
+                          disabled={(valMedI || '') === (currentMed || '')}
+                          title="Guardar fecha de medición"
+                        >
+                          Guardar
+                        </button>
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => limpiarFechaMedI(i)}
+                          disabled={!currentMed}
+                          title="Quitar fecha de medición"
+                        >
+                          Quitar
+                        </button>
+                      </div>
+                    </div>
+                  </div>,
+
+                  // Fecha PRODUCCIÓN – editable
+                  <div key={`ip-fpr-${i.id}`} style={{ ...cellBase, minHeight:CELL_MIN_H }}>
+                    <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                      <input
+                        type="date"
+                        value={valProdI || ''}
+                        onChange={e => setLocalFechaProdI(i.id, e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') guardarFechaProdI(i); }}
+                        className="btn"
+                        style={{ height:34 }}
+                      />
+                      <div style={{ display:'flex', gap:6 }}>
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => guardarFechaProdI(i)}
+                          disabled={(valProdI || '') === (currentProd || '')}
+                          title="Guardar fecha de inicio de producción"
+                        >
+                          Guardar
+                        </button>
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => limpiarFechaProdI(i)}
+                          disabled={!currentProd}
+                          title="Quitar fecha de inicio de producción"
+                        >
+                          Quitar
+                        </button>
+                      </div>
+                    </div>
+                  </div>,
+
+                  // Fecha PLANIFICADA SALIDA – editable
+                  <div key={`ip-fps-${i.id}`} style={{ ...cellBase, minHeight:CELL_MIN_H }}>
+                    <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                      <input
+                        type="date"
+                        value={valSalidaI || ''}
+                        onChange={e => setLocalFechaSalidaI(i.id, e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') guardarFechaSalidaI(i); }}
+                        className="btn"
+                        style={{ height:34 }}
+                      />
+                      <div style={{ display:'flex', gap:6 }}>
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => guardarFechaSalidaI(i)}
+                          disabled={(valSalidaI || '') === (currentSalida || '')}
+                          title="Guardar fecha planificada salida"
+                        >
+                          Guardar
+                        </button>
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => limpiarFechaSalidaI(i)}
+                          disabled={!currentSalida}
+                          title="Quitar fecha planificada salida"
+                        >
+                          Quitar
+                        </button>
+                      </div>
+                    </div>
+                  </div>,
+
+                  // Fecha PLANIFICADA LLEGADA – editable
+                  <div key={`ip-fpl-${i.id}`} style={{ ...cellBase, minHeight:CELL_MIN_H }}>
+                    <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                      <input
+                        type="date"
+                        value={valLlegadaI || ''}
+                        onChange={e => setLocalFechaLlegadaI(i.id, e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') guardarFechaLlegadaI(i); }}
+                        className="btn"
+                        style={{ height:34 }}
+                      />
+                      <div style={{ display:'flex', gap:6 }}>
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => guardarFechaLlegadaI(i)}
+                          disabled={(valLlegadaI || '') === (currentLlegada || '')}
+                          title="Guardar fecha planificada llegada"
+                        >
+                          Guardar
+                        </button>
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => limpiarFechaLlegadaI(i)}
+                          disabled={!currentLlegada}
+                          title="Quitar fecha planificada llegada"
+                        >
+                          Quitar
+                        </button>
+                      </div>
+                    </div>
+                  </div>,
 
                   // Etapas
                   ...IP_STAGES_RENDER.map(s => {

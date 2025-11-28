@@ -1273,6 +1273,118 @@ async function upsertIpanelObservaciones(req, res) {
   }
 }
 
+// POST: asignar/actualizar fecha de Medición de iPanel
+// Body: { fecha_med: 'YYYY-MM-DD' }  // puede ser null para limpiar
+app.post('/ipanel/:id/fecha-med', async (req, res) => {
+  const { id } = req.params;
+  let { fecha_med } = req.body || {};
+
+  try {
+    if (fecha_med !== null && fecha_med !== undefined) {
+      if (typeof fecha_med !== 'string') {
+        return res.status(400).json({ error: 'fecha_med debe ser string con formato YYYY-MM-DD o null' });
+      }
+      fecha_med = fecha_med.slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha_med)) {
+        return res.status(400).json({ error: 'fecha_med inválida. Use formato YYYY-MM-DD' });
+      }
+    }
+
+    const { rows } = await pool.query(
+      `UPDATE public.ipanel
+       SET fecha_med = $2
+       WHERE id = $1
+       RETURNING *;`,
+      [id, fecha_med ?? null]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ error: 'iPanel no encontrado' });
+    }
+    return res.json(rows[0]);
+  } catch (err) {
+    console.error('set ipanel fecha_med error:', err);
+    return res.status(500).json({ error: 'Error al actualizar fecha de medición de iPanel', detail: err.message });
+  }
+});
+
+// POST: asignar/actualizar fecha planificada de SALIDA de iPanel
+// Body: { fecha_plan: 'YYYY-MM-DD' }  // puede ser null para limpiar
+app.post('/ipanel/:id/fecha-plan', async (req, res) => {
+  const { id } = req.params;
+  let { fecha_plan } = req.body || {};
+
+  try {
+    if (fecha_plan !== null && fecha_plan !== undefined) {
+      if (typeof fecha_plan !== 'string') {
+        return res.status(400).json({ error: 'fecha_plan debe ser string con formato YYYY-MM-DD o null' });
+      }
+      fecha_plan = fecha_plan.slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha_plan)) {
+        return res.status(400).json({ error: 'fecha_plan inválida. Use formato YYYY-MM-DD' });
+      }
+    }
+
+    const { rows } = await pool.query(
+      `UPDATE public.ipanel
+       SET fecha_plan = $2
+       WHERE id = $1
+       RETURNING *;`,
+      [id, fecha_plan ?? null]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ error: 'iPanel no encontrado' });
+    }
+    return res.json(rows[0]);
+  } catch (err) {
+    console.error('set ipanel fecha_plan error:', err);
+    return res.status(500).json({ error: 'Error al actualizar fecha planificada de salida de iPanel', detail: err.message });
+  }
+});
+
+// POST: asignar/actualizar fecha planificada de LLEGADA de iPanel
+// Body: { fecha_plan_entrega: 'YYYY-MM-DD' }  // puede ser null para limpiar
+app.post('/ipanel/:id/fecha-plan-entrega', async (req, res) => {
+  const { id } = req.params;
+  let { fecha_plan_entrega } = req.body || {};
+
+  try {
+    if (fecha_plan_entrega !== null && fecha_plan_entrega !== undefined) {
+      if (typeof fecha_plan_entrega !== 'string') {
+        return res.status(400).json({
+          error: 'fecha_plan_entrega debe ser string con formato YYYY-MM-DD o null'
+        });
+      }
+      fecha_plan_entrega = fecha_plan_entrega.slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha_plan_entrega)) {
+        return res.status(400).json({
+          error: 'fecha_plan_entrega inválida. Use formato YYYY-MM-DD'
+        });
+      }
+    }
+
+    const { rows } = await pool.query(
+      `UPDATE public.ipanel
+       SET fecha_plan_entrega = $2
+       WHERE id = $1
+       RETURNING *;`,
+      [id, fecha_plan_entrega ?? null]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ error: 'iPanel no encontrado' });
+    }
+    return res.json(rows[0]);
+  } catch (err) {
+    console.error('set ipanel fecha_plan_entrega error:', err);
+    return res.status(500).json({
+      error: 'Error al actualizar fecha planificada de llegada de iPanel',
+      detail: err.message
+    });
+  }
+});
+
 // POST: crear/actualizar observaciones de un iPanel
 //  -> POST /ipanel/:id/observaciones { observaciones: '...' }
 app.post('/ipanel/:id/observaciones', upsertIpanelObservaciones);

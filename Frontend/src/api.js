@@ -40,6 +40,30 @@ export const startIpanelStage = (id, stage) =>
 export const stopIpanelStage = (id, stage) =>
   api.post(`/ipanel/${id}/stage`, { stage, action: 'stop' });
 
+/* ========= Fechas iPanels ========= */
+
+// Fecha de inicio de producción (YYYY-MM-DD o null)
+export const setIpanelFechaProd = (id, fechaOrNull) =>
+  api.post(`/ipanel/${id}/fecha-prod`, { fecha_prod: fechaOrNull });
+
+// Fecha de venta (NV) (YYYY-MM-DD o null)
+export const setIpanelFechaNV = (id, fechaOrNull) =>
+  api.post(`/ipanel/${id}/fecha-nv`, { fecha_nv: fechaOrNull });
+
+// Fecha de medición (YYYY-MM-DD o null)
+export const setIpanelFechaMed = (id, fechaOrNull) =>
+  api.post(`/ipanel/${id}/fecha-med`, { fecha_med: fechaOrNull });
+
+// Fecha planificada salida (YYYY-MM-DD o null)
+export const setIpanelFechaPlan = (id, fechaOrNull) =>
+  api.post(`/ipanel/${id}/fecha-plan`, { fecha_plan: fechaOrNull });
+
+// Fecha planificada llegada (YYYY-MM-DD o null)
+export const setIpanelFechaPlanEntrega = (id, fechaOrNull) =>
+  api.post(`/ipanel/${id}/fecha-plan-entrega`, {
+    fecha_plan_entrega: fechaOrNull,
+  });
+
 export default api;
 
 /* ========= Fechas extra Portones ========= */
