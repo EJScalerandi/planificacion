@@ -608,6 +608,10 @@ export default function CreateGatePage() {
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState(null);
 
+  // ---- Buscar (iPanels) ----
+  const [qIpanel, setQIpanel] = useState('');
+  const [filterIpanel, setFilterIpanel] = useState(null);
+
   // ---- Listas (Portones) ----
   const baseListPortones = useMemo(() => {
     if (!Array.isArray(dataP)) return [];
@@ -658,15 +662,28 @@ export default function CreateGatePage() {
   }, [listPortones]);
 
   // ---- Listas (iPanels) ----
-  const listIpanels = useMemo(() => {
+  const baseListIpanels = useMemo(() => {
     if (!Array.isArray(dataI)) return [];
-    const base = dataI.filter(i => !isFullyFinishedIpanel(i));
+    let base = dataI.filter(i => !isFullyFinishedIpanel(i));
+
+    const hasFilter = filterIpanel !== null && filterIpanel !== '';
+    if (hasFilter) {
+      const n = Number(filterIpanel);
+      if (!Number.isNaN(n)) {
+        base = base.filter(i => i.nv === n || i.partida === n);
+      }
+    }
+    return base;
+  }, [dataI, filterIpanel]);
+
+  const listIpanels = useMemo(() => {
+    const base = [...baseListIpanels];
     base.sort((a, b) =>
       (Number(a.partida) || 0) - (Number(b.partida) || 0) ||
       (a.nv || 0) - (b.nv || 0)
     );
     return base;
-  }, [dataI]);
+  }, [baseListIpanels]);
 
   const stageStatsI = useMemo(() => {
     const st = {};
@@ -864,7 +881,8 @@ export default function CreateGatePage() {
               disabled={refreshing || refreshingI}
               className="btn"
             >
-              {(refreshing || refreshingI) ? 'Actualizando…' : 'Refrescar'}
+              {(refreshing || refreshingI) ? 'Actualizando…' : 'Refrescar'
+              }
             </button>
 
             <button
@@ -986,9 +1004,50 @@ export default function CreateGatePage() {
           className="page__header"
           style={{ display:'flex', gap:8, alignItems:'center', marginTop:-8, flexWrap:'wrap', paddingTop:0 }}
         >
-          <input type="text" placeholder="Buscar por NV o NPortón (número)" value={q} onChange={(e)=>setQ(e.target.value)} className="btn" style={{ minWidth:260 }} inputMode="numeric" />
+          <input
+            type="text"
+            placeholder="Buscar por NV o NPortón (número)"
+            value={q}
+            onChange={(e)=>setQ(e.target.value)}
+            className="btn"
+            style={{ minWidth:260 }}
+            inputMode="numeric"
+          />
           <button type="submit" className="btn">Buscar</button>
-          <button type="button" className="btn" onClick={()=>{ setQ(''); setFilter(null); }}>Limpiar</button>
+          <button
+            type="button"
+            className="btn"
+            onClick={()=>{ setQ(''); setFilter(null); }}
+          >
+            Limpiar
+          </button>
+        </form>
+      )}
+
+      {/* ===== Buscar (iPanels) ===== */}
+      {onlyIpanels && (
+        <form
+          onSubmit={(e)=>{ e.preventDefault(); setFilterIpanel(qIpanel.trim()); }}
+          className="page__header"
+          style={{ display:'flex', gap:8, alignItems:'center', marginTop:-8, flexWrap:'wrap', paddingTop:0 }}
+        >
+          <input
+            type="text"
+            placeholder="Buscar iPanel por NV o NPartida (número)"
+            value={qIpanel}
+            onChange={(e)=>setQIpanel(e.target.value)}
+            className="btn"
+            style={{ minWidth:260 }}
+            inputMode="numeric"
+          />
+          <button type="submit" className="btn">Buscar</button>
+          <button
+            type="button"
+            className="btn"
+            onClick={()=>{ setQIpanel(''); setFilterIpanel(null); }}
+          >
+            Limpiar
+          </button>
         </form>
       )}
 
