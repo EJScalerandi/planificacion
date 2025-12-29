@@ -52,6 +52,9 @@ export default function StageColumn({
       ? new Date(dt).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })
       : '';
 
+  // ✅ NO mostrar PDFs en iPanel
+  const showPdfButtons = mode !== 'ipanel';
+
   // ✅ abre PDF en app externa:
   // - arm-primario => nv
   // - resto => partida
@@ -178,32 +181,33 @@ export default function StageColumn({
               </div>
 
               <div className="actions" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {pdfButtons.map((b) => {
-                  const needsNv = b.tipo === 'arm-primario';
-                  const enabled =
-                    canPdfBase && (needsNv ? hasNv : hasPartida);
+                {showPdfButtons &&
+                  pdfButtons.map((b) => {
+                    const needsNv = b.tipo === 'arm-primario';
+                    const enabled =
+                      canPdfBase && (needsNv ? hasNv : hasPartida);
 
-                  return (
-                    <button
-                      key={b.tipo}
-                      className="btn"
-                      onClick={() => openPdf(b.tipo, { partida: p.partida, nv: p.nv })}
-                      disabled={!enabled}
-                      title={
-                        enabled
-                          ? `${b.title}`
-                          : !canPdfBase
-                            ? 'Configurar pdfBaseUrl'
-                            : needsNv
-                              ? 'Sin NV'
-                              : 'Sin partida'
-                      }
-                      style={{ fontSize: 16, padding: '8px 10px', borderRadius: 10 }}
-                    >
-                      📄 {b.label}
-                    </button>
-                  );
-                })}
+                    return (
+                      <button
+                        key={b.tipo}
+                        className="btn"
+                        onClick={() => openPdf(b.tipo, { partida: p.partida, nv: p.nv })}
+                        disabled={!enabled}
+                        title={
+                          enabled
+                            ? `${b.title}`
+                            : !canPdfBase
+                              ? 'Configurar pdfBaseUrl'
+                              : needsNv
+                                ? 'Sin NV'
+                                : 'Sin partida'
+                        }
+                        style={{ fontSize: 16, padding: '8px 10px', borderRadius: 10 }}
+                      >
+                        📄 {b.label}
+                      </button>
+                    );
+                  })}
 
                 <button
                   className="btn btn--brand"
