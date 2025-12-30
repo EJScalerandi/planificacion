@@ -93,17 +93,21 @@ export default function StageColumn({
 
   function getPdfButtonsForColumn() {
     if (isDisenoLaser) {
-      return [{ tipo: 'diseno-laser', label: 'D', title: 'PDF Diseño Láser' }];
+      return [
+        { tipo: 'diseno-laser', label: 'D', icon: '🧩', title: 'PDF Diseño Láser' },
+      ];
     }
 
     if (isCortePlegadoTapas) {
       return [
-        { tipo: 'corte-plegado', label: 'C/P', title: 'PDF Corte y Plegado' },
-        { tipo: 'tapajuntas', label: 'T', title: 'PDF Tapajuntas' },
+        { tipo: 'corte-plegado', label: 'C/P', icon: '✂️', title: 'PDF Corte y Plegado' },
+        { tipo: 'tapajuntas', label: 'T', icon: '📐', title: 'PDF Tapajuntas' },
       ];
     }
 
-    return [{ tipo: 'arm-primario', label: 'AP', title: 'PDF Armado Primario (por NV)' }];
+    return [
+      { tipo: 'arm-primario', label: 'AP', icon: '🧰', title: 'PDF Armado Primario (por NV)' },
+    ];
   }
 
   const pdfButtons = getPdfButtonsForColumn();
@@ -184,8 +188,7 @@ export default function StageColumn({
                 {showPdfButtons &&
                   pdfButtons.map((b) => {
                     const needsNv = b.tipo === 'arm-primario';
-                    const enabled =
-                      canPdfBase && (needsNv ? hasNv : hasPartida);
+                    const enabled = canPdfBase && (needsNv ? hasNv : hasPartida);
 
                     return (
                       <button
@@ -204,7 +207,7 @@ export default function StageColumn({
                         }
                         style={{ fontSize: 16, padding: '8px 10px', borderRadius: 10 }}
                       >
-                        📄 {b.label}
+                        {b.icon} {b.label}
                       </button>
                     );
                   })}
