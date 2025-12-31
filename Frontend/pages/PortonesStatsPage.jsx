@@ -677,12 +677,8 @@ export default function PortonesStatsPage() {
             </label>
 
             <button className="btn btn--brand" type="button" onClick={savePlantaBase} disabled={plantaLoading}>
-              {plantaLoading ? 'Guardando…' : 'Guardar (POST)'}
+              {plantaLoading ? 'Guardando…' : 'Guardar'}
             </button>
-          </div>
-
-          <div className="ps-note">
-            Esto hace POST al backend.
           </div>
         </div>
 
