@@ -132,21 +132,21 @@ function isValidISODate10(s) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(s || '').trim());
 }
 
-// GET /planta/base  -> { date: "YYYY-MM-DD", qty: 123 }
+// GET /planta/base -> { date: "YYYY-MM-DD", qty: 123 }  o {date:null, qty:null} si no hay base
 app.get('/planta/base', async (_req, res) => {
   try {
     const { rows } = await pool.query(
       `
       select base_date::text as date, qty
       from public.planta_base
-      order by base_date desc, created_at desc
+      order by base_date desc, created_at desc, id desc
       limit 1;
       `
     );
 
-    if (!rows.length) return res.status(404).json({ error: 'Sin base cargada' });
-
     res.setHeader('Cache-Control', 'no-store');
+
+    if (!rows.length) return res.json({ date: null, qty: null });
     return res.json(rows[0]);
   } catch (err) {
     console.error('planta base get error:', err);
@@ -154,7 +154,8 @@ app.get('/planta/base', async (_req, res) => {
   }
 });
 
-// POST /planta/base  (LIBRE) body: { date, qty } -> inserta nueva base
+// POST /planta/base (LIBRE) body: { date, qty } -> inserta nueva base
+// devuelve { date, qty }
 app.post('/planta/base', async (req, res) => {
   try {
     const date = String(req.body?.date || '').trim();
@@ -167,23 +168,17 @@ app.post('/planta/base', async (req, res) => {
       return res.status(400).json({ error: 'qty debe ser entero >= 0' });
     }
 
-    // opcional: permitir que el front mande "created_by"
-    const createdBy =
-      req.body?.created_by != null && String(req.body.created_by).trim() !== ''
-        ? String(req.body.created_by).trim()
-        : null;
-
     const { rows } = await pool.query(
       `
-      insert into public.planta_base(base_date, qty, created_by)
-      values ($1::date, $2::int, $3::text)
-      returning base_date::text as date, qty, created_at, created_by;
+      insert into public.planta_base(base_date, qty)
+      values ($1::date, $2::int)
+      returning base_date::text as date, qty;
       `,
-      [date, qty, createdBy]
+      [date, qty]
     );
 
     res.setHeader('Cache-Control', 'no-store');
-    return res.status(201).json({ ok: true, base: rows[0] });
+    return res.status(201).json(rows[0]);
   } catch (err) {
     console.error('planta base post error:', err);
     return res.status(500).json({ error: 'Error guardando base planta', detail: err.message });

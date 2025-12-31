@@ -37,7 +37,7 @@ const STAGE_DEFS = [
   { key: 'plegadora', label: 'Plegadora' },
   { key: 'plegado_revest', label: 'Plegado Revest.' },
 
-  { key: 'armado_piernas', label: 'Arm. Piernas' }, // ✅ ESTE ES "Prefabricados" real
+  { key: 'armado_piernas', label: 'Arm. Piernas' }, // ✅ Prefabricados real
   { key: 'armado_hojas', label: 'Arm. Hojas' },
   { key: 'armado_marco_piernas', label: 'Arm. Marco/Piernas' },
   { key: 'armado_primario', label: 'Arm. Primario' },
@@ -154,7 +154,7 @@ export default function PortonesStatsPage() {
 
   // -------------------------
   // Load planta base desde backend
-  // GET /planta/base -> { date: "YYYY-MM-DD", qty: 123 }
+  // GET /planta/base -> { date: "YYYY-MM-DD", qty: 123 } o {date:null, qty:null}
   // -------------------------
   const loadPlantaBase = async () => {
     try {
@@ -168,9 +168,19 @@ export default function PortonesStatsPage() {
         const t = await r.text().catch(() => '');
         throw new Error(`Error ${r.status} leyendo /planta/base. ${t}`);
       }
+
       const data = await r.json();
-      const d = String(data?.date || '').trim();
-      const q = Number(data?.qty);
+      const dRaw = data?.date ?? null;
+      const qRaw = data?.qty ?? null;
+
+      // ✅ tabla vacía: no es error
+      if (dRaw == null || qRaw == null) {
+        setPlantaBase(null);
+        return;
+      }
+
+      const d = String(dRaw).trim();
+      const q = Number(qRaw);
 
       if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || !Number.isFinite(q)) {
         throw new Error('Respuesta inválida de /planta/base (espera {date, qty}).');
@@ -279,10 +289,6 @@ export default function PortonesStatsPage() {
     return t;
   }, [dailyRows]);
 
-  const monthlyRowsWithType = useMemo(() => {
-    return monthlyRows.map((m) => ({ __type: 'month', ...m }));
-  }, [monthlyRows]);
-
   const dailyPlusMonthlyRows = useMemo(() => {
     const totalsByMonth = new Map(monthlyRows.map((x) => [x.month, x]));
     const out = [];
@@ -307,23 +313,6 @@ export default function PortonesStatsPage() {
 
     return out;
   }, [dailyRows, monthlyRows]);
-
-  // -------------------------
-  // Columnas visibles
-  // -------------------------
-  const toggleCol = (k) => {
-    setVisibleCols((prev) => {
-      const set = new Set(prev);
-      if (set.has(k)) set.delete(k);
-      else set.add(k);
-
-      const next = Array.from(set);
-      const safeNext = next.length ? next : loadVisibleColsDefault();
-
-      saveVisibleCols(safeNext);
-      return safeNext;
-    });
-  };
 
   const setAllCols = () => {
     const next = loadVisibleColsDefault();
@@ -421,13 +410,15 @@ export default function PortonesStatsPage() {
           box-shadow: 0 10px 26px rgba(0,0,0,.06);
         }
 
-        /* ✅ Un solo contenedor con overflow-x: auto.
-           Encabezado sticky SIN scroll extra. */
+        /* Un solo contenedor con overflow-x: auto (sin barra duplicada).
+           Añadimos position/isolation para mejorar sticky+z-index */
         .ps-scrollX{
           overflow-x:auto;
           overflow-y:visible;
           scrollbar-gutter: stable both-edges;
           border-radius: 12px;
+          position: relative;
+          isolation: isolate;
         }
 
         .ps-table{
@@ -440,11 +431,11 @@ export default function PortonesStatsPage() {
           font-feature-settings: "tnum" 1;
         }
 
-        /* ✅ Encabezado sticky real */
+        /* Encabezado sticky */
         .ps-table thead th{
           position: sticky;
           top: 0;
-          z-index: 50;
+          z-index: 60;
           background: var(--surface-muted);
           border: 1px solid #e5e7eb;
           border-radius: 12px;
@@ -653,7 +644,7 @@ export default function PortonesStatsPage() {
                 Total = base + (<b>{PLANT_IN_KEY}</b>) − (<b>{PLANT_OUT_KEY}</b>).
               </>
             ) : (
-              <>Base actual: <b>sin datos</b>. (Falta configurar /planta/base en backend)</>
+              <>Base actual: <b>sin datos</b>. (Cargá una base con “Guardar (POST)”).</>
             )}
           </div>
 
