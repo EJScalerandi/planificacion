@@ -2,12 +2,38 @@
 import axios from 'axios';
 
 const api = axios.create({
-  // Intentá unificar con lo que usa el hook (VITE_API_BASE). Dejo ambos por compatibilidad.
   baseURL:
     import.meta.env.VITE_API_URL ||
     import.meta.env.VITE_API_BASE ||
-    'https://planificacion-6sk9.onrender.com',
+    //"https://planificacion-6sk9.onrender.com"
+    'http://localhost:4000',
   timeout: 15000,
+});
+
+// ====== ADMIN TOKEN (localStorage) ======
+export function getAdminToken() {
+  try {
+    return localStorage.getItem('admin_token') || '';
+  } catch {
+    return '';
+  }
+}
+export function setAdminToken(t) {
+  try {
+    localStorage.setItem('admin_token', t || '');
+  } catch {}
+}
+export function clearAdminToken() {
+  try {
+    localStorage.removeItem('admin_token');
+  } catch {}
+}
+
+// Inyecta token si existe
+api.interceptors.request.use((config) => {
+  const t = getAdminToken();
+  if (t) config.headers.Authorization = `Bearer ${t}`;
+  return config;
 });
 
 /* ========= Portones ========= */
@@ -28,6 +54,38 @@ export const setFechaPlan = (id, fechaOrNull) =>
 // Fecha de inicio de producción (YYYY-MM-DD o null)
 export const setFechaProd = (id, fechaOrNull) =>
   api.post(`/portones/${id}/fecha-prod`, { fecha_prod: fechaOrNull });
+
+// Fecha de venta (NV) (YYYY-MM-DD o null)
+export const setFechaNV = (id, fechaOrNull) =>
+  api.post(`/portones/${id}/fecha-nv`, { fecha_nv: fechaOrNull });
+
+// Fecha de medición (YYYY-MM-DD o null)
+export const setFechaMed = (id, fechaOrNull) =>
+  api.post(`/portones/${id}/fecha-med`, { fecha_med: fechaOrNull });
+
+// Fecha planificada llegada (YYYY-MM-DD o null)
+export const setFechaPlanEntrega = (id, fechaOrNull) =>
+  api.post(`/portones/${id}/fecha-plan-entrega`, {
+    fecha_plan_entrega: fechaOrNull,
+  });
+
+/* ========= Observaciones Portones ========= */
+
+// GET observaciones de un portón
+export const getPortonObservaciones = (id) =>
+  api.get(`/portones/${id}/observaciones`);
+
+// POST observaciones (crear/actualizar – tu backend hace UPDATE)
+export const savePortonObservaciones = (id, observaciones) =>
+  api.post(`/portones/${id}/observaciones`, { observaciones });
+
+// PUT observaciones (idempotente)
+export const updatePortonObservaciones = (id, observaciones) =>
+  api.put(`/portones/${id}/observaciones`, { observaciones });
+
+// ✅ Alias de compatibilidad con StatusGatePage.jsx (y otros)
+export const setPortonObservaciones = (id, observaciones) =>
+  updatePortonObservaciones(id, observaciones);
 
 /* ========= iPanels ========= */
 export const fetchIpanels = () => api.get('/ipanel');
@@ -64,39 +122,13 @@ export const setIpanelFechaPlanEntrega = (id, fechaOrNull) =>
     fecha_plan_entrega: fechaOrNull,
   });
 
-export default api;
-
-/* ========= Fechas extra Portones ========= */
-
-// Fecha de venta (NV) (YYYY-MM-DD o null)
-export const setFechaNV = (id, fechaOrNull) =>
-  api.post(`/portones/${id}/fecha-nv`, { fecha_nv: fechaOrNull });
-
-// Fecha de medición (YYYY-MM-DD o null)
-export const setFechaMed = (id, fechaOrNull) =>
-  api.post(`/portones/${id}/fecha-med`, { fecha_med: fechaOrNull });
-
-/* ========= Observaciones Portones ========= */
-
-// GET observaciones de un portón
-export const getPortonObservaciones = (id) =>
-  api.get(`/portones/${id}/observaciones`);
-
-// POST observaciones (crear/actualizar – tu backend hace UPDATE)
-export const savePortonObservaciones = (id, observaciones) =>
-  api.post(`/portones/${id}/observaciones`, { observaciones });
-
-// PUT observaciones (idempotente, misma lógica que POST)
-export const updatePortonObservaciones = (id, observaciones) =>
-  api.put(`/portones/${id}/observaciones`, { observaciones });
-
 /* ========= Observaciones iPanels ========= */
 
 // GET observaciones de un iPanel
 export const getIpanelObservaciones = (id) =>
   api.get(`/ipanel/${id}/observaciones`);
 
-// POST observaciones (crear/actualizar – tu backend hace UPDATE)
+// POST observaciones (crear/actualizar – backend hace UPDATE)
 export const saveIpanelObservaciones = (id, observaciones) =>
   api.post(`/ipanel/${id}/observaciones`, { observaciones });
 
@@ -104,59 +136,106 @@ export const saveIpanelObservaciones = (id, observaciones) =>
 export const updateIpanelObservaciones = (id, observaciones) =>
   api.put(`/ipanel/${id}/observaciones`, { observaciones });
 
-// Fecha planificada llegada (YYYY-MM-DD o null)
-export const setFechaPlanEntrega = (id, fechaOrNull) =>
-  api.post(`/portones/${id}/fecha-plan-entrega`, {
-    fecha_plan_entrega: fechaOrNull,
-  });
-
-// Observaciones portón (string o null)
-export const setPortonObservaciones = (id, observaciones) =>
-  api.put(`/portones/${id}/observaciones`, { observaciones });
-
+// ✅ Alias de compatibilidad con StatusIpanelsPage.jsx (y otros)
 export const setIpanelObservaciones = (id, observaciones) =>
-  api.post(`/ipanel/${id}/observaciones`, { observaciones });
+  updateIpanelObservaciones(id, observaciones);
 
-/* ============ PREPRODUCCIÓN ============ */
+/* ============ ADMIN WORKFLOW ============ */
 
-// Sincronizar Pre_Produccion (SQL Server -> Supabase)
-// (devuelve directamente data, no el response completo)
-export const syncPreproduccion = async () => {
-  const { data } = await api.post('/sync/preproduccion', null, {
-    timeout: 5 * 60 * 1000, // 5 minutos solo para esta llamada
+export async function adminLogin(username, password) {
+  const { data } = await api.post('/admin/login', { username, password });
+  if (data?.token) setAdminToken(data.token);
+  return data;
+}
+
+export async function getWorkflowConfig(line) {
+  const { data } = await api.get('/admin/workflow/config', {
+    params: { line },
   });
   return data;
-};
+}
 
-// Listar preproducción (axios response crudo – lo mantenemos)
-export const fetchPreproduccion = (params = {}) => {
-  return api.get('/preproduccion', { params });
-};
-
-// Enviar items de preproducción a producción (axios response crudo)
-export const sendPreprodToProduccion = (payload) => {
-  // payload: { ids: number[], nlista?: number }
-  return api.post('/preproduccion/a-produccion', payload);
-};
-
-/* ==== Helpers usados por PreproduccionPage.jsx ==== */
-
-// Wrapper que devuelve solo data
-export async function getPreproduccion(params = {}) {
-  const { data } = await fetchPreproduccion(params);
+export async function saveWorkflowConfig(line, payload) {
+  const { data } = await api.put('/admin/workflow/config', payload, {
+    params: { line },
+  });
   return data;
 }
 
-// Wrapper que recibe array de IDs y devuelve solo data
-export async function sendPreproduccionToProduccion(ids, extra = {}) {
-  // extra puede traer nlista si querés
-  const { data } = await sendPreprodToProduccion({ ids, ...extra });
+/* ============ QC (CALIDAD) ============ */
+
+// GET /qc/motives?line=portones|ipanel&kind=RECHAZADO|OBSERVADO&stage=<stageKey>
+export async function qcGetMotives({ line, kind, stage }) {
+  const { data } = await api.get('/qc/motives', {
+    params: {
+      line,
+      kind, // OBSERVADO | RECHAZADO
+      stage: stage ?? null,
+    },
+  });
   return data;
 }
 
-// Última fecha de sincronización
-export async function getPreproduccionLastSync() {
-  const { data } = await api.get('/preproduccion/last-sync');
-  // espero algo como { lastSyncAt: string|null }
+// POST /qc/authorize
+// Body: { line, item_id, stage_key, qc_status, motive_id?, note?, pin }
+export async function qcAuthorize(payload) {
+  const { data } = await api.post('/qc/authorize', payload);
   return data;
 }
+
+// GET /qc/history/:line/:itemId
+export async function qcHistory(line, itemId) {
+  const { data } = await api.get(`/qc/history/${encodeURIComponent(line)}/${encodeURIComponent(itemId)}`);
+  return data;
+}
+
+/* ============ ADMIN QC (CRUD usuarios + motivos) ============ */
+
+// GET /admin/qc/users
+export async function adminQcUsersList() {
+  const { data } = await api.get('/admin/qc/users');
+  return data;
+}
+
+// POST /admin/qc/users
+// Body: { name, pin, is_global?, is_active?, scopes?:[{line,stage_key,enabled?}] }
+export async function adminQcUsersCreate(payload) {
+  const { data } = await api.post('/admin/qc/users', payload);
+  return data;
+}
+
+// PUT /admin/qc/users/:id
+// Body: { name?, pin?, is_global?, is_active? }
+export async function adminQcUsersUpdate(id, payload) {
+  const { data } = await api.put(`/admin/qc/users/${id}`, payload);
+  return data;
+}
+
+// PUT /admin/qc/users/:id/scopes
+// Body: { scopes: [{line, stage_key, enabled?}, ...] }
+export async function adminQcUsersReplaceScopes(id, scopes) {
+  const { data } = await api.put(`/admin/qc/users/${id}/scopes`, { scopes });
+  return data;
+}
+
+// GET /admin/qc/motives?line=&kind=&stage=
+export async function adminQcMotivesList(params = {}) {
+  const { data } = await api.get('/admin/qc/motives', { params });
+  return data;
+}
+
+// POST /admin/qc/motives
+// Body: { line, kind, stage_key?, label, enabled?, priority? }
+export async function adminQcMotivesCreate(payload) {
+  const { data } = await api.post('/admin/qc/motives', payload);
+  return data;
+}
+
+// PUT /admin/qc/motives/:id
+// Body: { label?, enabled?, priority?, stage_key? }
+export async function adminQcMotivesUpdate(id, payload) {
+  const { data } = await api.put(`/admin/qc/motives/${id}`, payload);
+  return data;
+}
+
+export default api;

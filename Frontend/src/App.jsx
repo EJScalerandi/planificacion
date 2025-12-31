@@ -14,20 +14,22 @@ import PlantaReadOnlyPage from '../pages/PlantaOnlyDearPage';
 import IpanelReadOnlyPage from '../pages/IpanelReadOnlyPage';
 import PlantaReadOnlySimplePage from '../pages/PlantaReadyOnlySimplePage';
 import StatusIpanelsPage from '../pages/StatusIpanelsPage';
-import PreproduccionPage from '../pages/PreproduccionPage';
+import PortonesStatsPage from '../pages/PortonesStatsPage';
+import AdminLoginPage from '../pages/admin/AdminLoginPage';
+import AdminHomePage from '../pages/admin/AdminHomePage';
+import WorkflowDesignerPage from '../pages/admin/WorkflowDesignerPage';
+import AdminQcPage from '../pages/admin/AdminQcPage';
 
 const color = 'var(--brand)';
 
-/** Board genérico que sabe dibujar columnas de Portones e iPanel */
 function Board({ stages }) {
-  // datos
   const { data: portones, loading, err, replaceItem, refresh, refreshing } =
     usePortones({ pollMs: 300000 });
-  const { data: ipanels, refresh: refreshIpanel } = useIpanel({ pollMs: 300000 });
+  const { data: ipanels, refresh: refreshIpanel } =
+    useIpanel({ pollMs: 300000 });
 
   const [busyId, setBusyId] = useState(null);
 
-  // --- Buscador: NV / N° Portón (nlista) / Partida ---
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState(null);
 
@@ -44,11 +46,9 @@ function Board({ stages }) {
     if (filter === null || filter === '') return ipanels;
     const n = Number(filter);
     if (Number.isNaN(n)) return ipanels;
-    // iPanel: buscamos por NV o Partida
     return ipanels.filter(ip => ip.nv === n || ip.partida === n);
   }, [ipanels, filter]);
 
-  // handlers Portones
   const handleStart = async (id, stage) => {
     try {
       setBusyId(id);
@@ -72,7 +72,6 @@ function Board({ stages }) {
     }
   };
 
-  // handlers iPanel
   const handleStartIpanel = async (id, stage) => {
     try {
       setBusyId(id);
@@ -97,7 +96,7 @@ function Board({ stages }) {
   };
 
   if (loading) return <div className="container">Cargando…</div>;
-  if (err)      return <div className="container" style={{ color: 'crimson' }}>Error: {err}</div>;
+  if (err) return <div className="container" style={{ color: 'crimson' }}>Error: {err}</div>;
 
   return (
     <div className="container">
@@ -112,10 +111,9 @@ function Board({ stages }) {
         </button>
       </div>
 
-      {/* Buscador */}
       <form
         onSubmit={(e) => { e.preventDefault(); setFilter(q.trim()); }}
-        style={{ display:'flex', gap:8, alignItems:'center', margin:'10px 0', flexWrap:'wrap' }}
+        style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '10px 0', flexWrap: 'wrap' }}
       >
         <input
           type="text"
@@ -157,187 +155,164 @@ function Board({ stages }) {
   );
 }
 
-/** Helper para rutas de una sola etapa (PORTONES por defecto) */
 const ONE = (key, label) => [{ key, label, mode: 'porton' }];
 
-/** Definiciones por etapa con secciones iPanel donde corresponda */
 const ROUTES = [
   {
     path: '/',
     label: 'Inicio (Tablero completo)',
     stages: [
-      // Diseño: también iPanel
-      { key: 'diseno',  label: 'Diseño (Portones)', mode: 'porton' },
-      { key: 'diseno',  label: 'Diseño (iPanel)',   mode: 'ipanel' },
+      { key: 'diseno', label: 'Diseño (Portones)', mode: 'porton' },
+      { key: 'diseno', label: 'Diseño (iPanel)', mode: 'ipanel' },
 
-      { key: 'laser',   label: 'Laser',             mode: 'porton' },
+      { key: 'laser', label: 'Laser', mode: 'porton' },
 
-      // Corte
-      { key: 'guillotina',   label: 'Corte (Piernas)',        mode: 'porton' },
-      { key: 'corte_revest', label: 'Corte (Revestimiento)',  mode: 'porton' },
-      { key: 'guillotina',   label: 'Corte (iPanel)',         mode: 'ipanel'  },
+      { key: 'guillotina', label: 'Corte piernas', mode: 'porton' },
+      { key: 'corte_revest', label: 'Corte revestimiento', mode: 'porton' },
+      { key: 'guillotina', label: 'Corte Ipanel', mode: 'ipanel' },
 
-      // Plegado
-      { key: 'plegadora',      label: 'Plegado (Piernas)',       mode: 'porton' },
-      { key: 'plegado_revest', label: 'Plegado (Revestimiento)', mode: 'porton' },
-      { key: 'plegado',        label: 'Plegado (iPanel)',        mode: 'ipanel'  },
+      { key: 'plegadora', label: 'Plegado Piernas', mode: 'porton' },
+      { key: 'plegado_revest', label: 'Plegado Revestimiento', mode: 'porton' },
+      { key: 'plegado', label: 'Plegado Ipanel', mode: 'ipanel' },
 
-      // Prefabricados / Armados (solo Portones)
-      { key: 'armado_piernas',        label: 'Armado Piernas - Prefabricados', mode: 'porton' },
-      { key: 'armado_marco_piernas',  label: 'Armado Marco Piernas',           mode: 'porton' },
-      { key: 'armado_hojas',          label: 'Armado Hojas',                   mode: 'porton' },
-      { key: 'armado_primario',       label: 'Armado Primario',                mode: 'porton' },
+      { key: 'armado_piernas', label: 'Prefabricados (Armado de piernas)', mode: 'porton' },
+      { key: 'armado_marco_piernas', label: 'Armado de marcos piernas', mode: 'porton' },
+      { key: 'armado_hojas', label: 'Armado de hoja', mode: 'porton' },
+      { key: 'armado_primario', label: 'Armado Primario', mode: 'porton' },
 
-      // Pintura
-      { key: 'pintura', label: 'Pintura (Portones)', mode: 'porton' },
-      { key: 'pintura', label: 'Pintura (iPanel)',   mode: 'ipanel'  },
+      { key: 'revestimiento', label: 'Revestimiento', mode: 'porton' },
 
-      // Inyección
-      { key: 'inyeccion', label: 'Inyección (Portones)', mode: 'porton' },
-      { key: 'inyeccion', label: 'Inyección (iPanel)',   mode: 'ipanel'  },
+      { key: 'pintura', label: 'Pintura Portones', mode: 'porton' },
+      { key: 'pintura', label: 'Pintura (Ipanels)', mode: 'ipanel' },
 
-      // Resto Portones
-      { key: 'revestimiento', label: 'Revestimiento',  mode: 'porton' },
-      { key: 'armado_final',  label: 'Armado Final',   mode: 'porton' },
+      { key: 'inyeccion', label: 'Inyeccion (Portones)', mode: 'porton' },
+      { key: 'inyeccion', label: 'Inyeccion Ipanel', mode: 'ipanel' },
 
-      // Despacho
+      { key: 'armado_final', label: 'Armado Final', mode: 'porton' },
+
       { key: 'despacho', label: 'Despacho (Portones)', mode: 'porton' },
-      { key: 'despacho', label: 'Despacho (iPanel)',   mode: 'ipanel'  },
+      { key: 'despacho', label: 'Despacho (iPanel)', mode: 'ipanel' },
     ]
   },
 
-  // Rutas por etapa
   {
     path: '/diseno',
     label: 'Diseño',
     stages: [
       { key: 'diseno', label: 'Diseño (Portones)', mode: 'porton' },
-      { key: 'diseno', label: 'Diseño (iPanel)',   mode: 'ipanel'  },
+      { key: 'diseno', label: 'Diseño (iPanel)', mode: 'ipanel' },
     ]
   },
 
-  { path: '/laser', label: 'Laser', stages: ONE('laser','Laser') },
+  { path: '/laser', label: 'Laser', stages: ONE('laser', 'Laser') },
 
-  // Corte
   {
     path: '/corte',
     label: 'Corte',
     stages: [
-      { key: 'guillotina',   label: 'Corte (Piernas)',        mode: 'porton' },
-      { key: 'corte_revest', label: 'Corte (Revestimiento)',  mode: 'porton' },
-      { key: 'guillotina',   label: 'Corte (iPanel)',         mode: 'ipanel' },
+      { key: 'guillotina', label: 'Corte piernas', mode: 'porton' },
+      { key: 'corte_revest', label: 'Corte revestimiento', mode: 'porton' },
+      { key: 'guillotina', label: 'Corte Ipanel', mode: 'ipanel' },
     ]
   },
 
-  // Plegado
   {
     path: '/plegado',
     label: 'Plegado',
     stages: [
-      { key: 'plegadora',      label: 'Plegado (Piernas)',       mode: 'porton' },
-      { key: 'plegado_revest', label: 'Plegado (Revestimiento)', mode: 'porton' },
-      { key: 'plegado',        label: 'Plegado (iPanel)',        mode: 'ipanel' },
+      { key: 'plegadora', label: 'Plegado Piernas', mode: 'porton' },
+      { key: 'plegado_revest', label: 'Plegado Revestimiento', mode: 'porton' },
+      { key: 'plegado', label: 'Plegado Ipanel', mode: 'ipanel' },
     ]
   },
 
-  // Armado Piernas - Prefabricados (solo portones)
   {
-    path: '/armado-piernas',
-    label: 'Armado Piernas - Prefabricados',
+    path: '/prefabricados',
+    label: 'Prefabricados / Armado',
     stages: [
-      { key: 'armado_piernas',       label: 'Armado Piernas - Prefabricados', mode: 'porton' },
-      { key: 'armado_marco_piernas', label: 'Armado Marco Piernas',           mode: 'porton' },
-      { key: 'armado_hojas',         label: 'Armado Hojas',                   mode: 'porton' },
+      { key: 'armado_piernas', label: 'Prefabricados (Armado de piernas)', mode: 'porton' },
+      { key: 'armado_marco_piernas', label: 'Armado de marcos piernas', mode: 'porton' },
+      { key: 'armado_hojas', label: 'Armado de hoja', mode: 'porton' },
     ]
   },
 
-  { path: '/armado-primario', label: 'Armado Primario', stages: ONE('armado_primario','Armado Primario') },
+  { path: '/armado-primario', label: 'Armado Primario', stages: ONE('armado_primario', 'Armado Primario') },
 
-  // Pintura
   {
     path: '/pintura',
     label: 'Pintura',
     stages: [
-      { key: 'pintura', label: 'Pintura (Portones)', mode: 'porton' },
-      { key: 'pintura', label: 'Pintura (iPanel)',   mode: 'ipanel' },
+      { key: 'pintura', label: 'Pintura Portones', mode: 'porton' },
+      { key: 'pintura', label: 'Pintura (Ipanels)', mode: 'ipanel' },
     ]
   },
 
-  // Inyección
   {
     path: '/inyeccion',
     label: 'Inyección',
     stages: [
-      { key: 'inyeccion', label: 'Inyección (Portones)', mode: 'porton' },
-      { key: 'inyeccion', label: 'Inyección (iPanel)',   mode: 'ipanel' },
+      { key: 'inyeccion', label: 'Inyeccion (Portones)', mode: 'porton' },
+      { key: 'inyeccion', label: 'Inyeccion Ipanel', mode: 'ipanel' },
     ]
   },
 
-  { path: '/revestimiento',  label: 'Revestimiento',  stages: ONE('revestimiento','Revestimiento') },
-  { path: '/armado-final',   label: 'Armado Final',   stages: ONE('armado_final','Armado Final') },
+  { path: '/revestimiento', label: 'Revestimiento', stages: ONE('revestimiento', 'Revestimiento') },
+  { path: '/armado-final', label: 'Armado Final', stages: ONE('armado_final', 'Armado Final') },
 
-  // Despacho
   {
     path: '/despacho',
     label: 'Despacho',
     stages: [
       { key: 'despacho', label: 'Despacho (Portones)', mode: 'porton' },
-      { key: 'despacho', label: 'Despacho (iPanel)',   mode: 'ipanel' },
+      { key: 'despacho', label: 'Despacho (iPanel)', mode: 'ipanel' },
     ]
   },
 ];
 
-/** Página de índice con links a todas las rutas */
 function IndexPage() {
-  // Rutas “especiales” que no están en ROUTES
   const extraRoutes = [
-    { path: '/ipanel',        label: 'iPanel (solo lectura)' },
-    { path: '/statusGate',    label: 'Status Portones' },
-    { path: '/createGate',    label: 'CreateGate (carga / planificación)' },
-    { path: '/planta',        label: 'Planta (solo lectura – detalle)' },
-    { path: '/plantasimple',  label: 'Planta simple (resumen)' },
+    { path: '/ipanel', label: 'iPanel (solo lectura)' },
+    { path: '/statusGate', label: 'Status Portones' },
+    { path: '/createGate', label: 'CreateGate (carga / planificación)' },
+    { path: '/planta', label: 'Planta (solo lectura – detalle)' },
+    { path: '/plantasimple', label: 'Planta simple (resumen)' },
     { path: '/statusIpanels', label: 'Status iPanels' },
+    { path: '/admin/login', label: 'Admin Login' },
+    { path: '/admin', label: 'Admin - Menú' },
+    { path: '/admin/qc', label: 'Admin - Usuarios QC' },
+    { path: '/admin/workflow', label: 'Admin - Workflow Designer' },
   ];
 
-  // Evito duplicar '/' porque ya lo tenemos en ROUTES[0]
-  const routeLinks = [
-    ...ROUTES,
-    ...extraRoutes,
-  ];
+  const routeLinks = [...ROUTES, ...extraRoutes];
 
   return (
     <div className="container">
       <h1 className="h1" style={{ marginBottom: 16 }}>Índice de tableros</h1>
-      <p style={{ marginBottom: 12 }}>
-        Elegí una vista. Por ejemplo: <strong>Laser</strong> te lleva al tablero de la etapa Laser.
-      </p>
 
-      <ul style={{ listStyle:'none', padding:0, display:'flex', flexDirection:'column', gap:8 }}>
+      <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
         {routeLinks.map(r => (
           <li
             key={r.path}
             style={{
-              border:'1px solid #ddd',
-              borderRadius:8,
-              padding:'8px 12px',
-              display:'flex',
-              justifyContent:'space-between',
-              alignItems:'center',
-              flexWrap:'wrap',
-              gap:8
+              border: '1px solid #ddd',
+              borderRadius: 8,
+              padding: '8px 12px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: 8
             }}
           >
             <div>
-              <Link to={r.path} style={{ fontWeight:600, textDecoration:'none', color:'var(--brand)' }}>
+              <Link to={r.path} style={{ fontWeight: 600, textDecoration: 'none', color: 'var(--brand)' }}>
                 {r.label}
               </Link>
-              <div style={{ fontSize:12, opacity:.7 }}>
+              <div style={{ fontSize: 12, opacity: .7 }}>
                 Ruta: <code>{r.path}</code>
               </div>
             </div>
-            <Link to={r.path} className="btn btn--brand">
-              Ir
-            </Link>
+            <Link to={r.path} className="btn btn--brand">Ir</Link>
           </li>
         ))}
       </ul>
@@ -349,32 +324,28 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Nuevo índice de rutas */}
         <Route path="/index" element={<IndexPage />} />
 
-        {/* Home con todas las columnas (incluye iPanel donde aplica) */}
-        <Route
-          path="/"
-          element={<Board stages={ROUTES.find(r => r.path === '/').stages} />}
-        />
-
-        {/* Rutas por etapa */}
+        <Route path="/" element={<Board stages={ROUTES.find(r => r.path === '/').stages} />} />
         {ROUTES.filter(r => r.path !== '/').map(r => (
           <Route key={r.path} path={r.path} element={<Board stages={r.stages} />} />
         ))}
 
-        {/* Tableros especiales */}
         <Route path="/ipanel" element={<IpanelReadOnlyPage />} />
-        {/* Redirigimos /Diseño (con tilde) a /diseno para mostrar ambas columnas */}
         <Route path="/Diseño" element={<Navigate to="/diseno" replace />} />
         <Route path="/statusGate" element={<StatusGatePage />} />
         <Route path="/createGate" element={<CreateGatePage />} />
         <Route path="/planta" element={<PlantaReadOnlyPage />} />
         <Route path="/plantasimple" element={<PlantaReadOnlySimplePage />} />
         <Route path="/statusIpanels" element={<StatusIpanelsPage />} />
-        <Route path="/preproduccion" element={<PreproduccionPage />} />
+        <Route path="/stats/portones" element={<PortonesStatsPage />} />
 
-        {/* Not found -> home */}
+        {/* Admin */}
+        <Route path="/admin/login" element={<AdminLoginPage />} />
+        <Route path="/admin" element={<AdminHomePage />} />
+        <Route path="/admin/qc" element={<AdminQcPage />} />
+        <Route path="/admin/workflow" element={<WorkflowDesignerPage />} />
+
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

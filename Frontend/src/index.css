@@ -104,3 +104,209 @@ body {
 .duo-cards { max-width: 1100px; margin-inline: auto; }
 .card { max-width: 520px; }
 .card .metric { width: fit-content; }
+
+/* ===== PortonesStats: sticky header + fila mensual siempre pintada ===== */
+
+.stats-wrap{
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+/* Barra superior que muestra el scroll horizontal siempre visible */
+.stats-xbar{
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--surface);
+  border-bottom: 1px solid #e5e7eb;
+}
+
+/* Scroll horizontal real */
+.stats-xscroll{
+  overflow-x: auto;
+  overflow-y: visible;
+  scrollbar-gutter: stable both-edges;
+}
+
+/* Importante: sticky en tablas funciona mucho mejor con separate */
+.stats-table{
+  width: 100%;
+  min-width: 1300px;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.stats-table th,
+.stats-table td{
+  padding: 10px 12px;
+  border-bottom: 1px solid #e5e7eb;
+  white-space: nowrap;
+}
+
+/* Sticky header SIEMPRE visible dentro del scroll vertical (.grid-scroll) */
+.stats-table thead th{
+  position: sticky;
+  top: var(--stats-sticky-top, 0px);
+  z-index: 40;
+  background: var(--surface-muted);
+  background-clip: padding-box;
+  text-align: left;
+}
+
+/* Para que no se “mezcle” con rows al pasar */
+.stats-table thead{
+  position: relative;
+  z-index: 40;
+}
+
+/* Fila mensual: forzamos color aunque haya reglas globales raras */
+.stats-row--month td{
+  background: #111827 !important;
+  color: #fff !important;
+  font-weight: 900 !important;
+}
+
+/* Total general */
+.stats-row--total td{
+  background: var(--surface-muted);
+  font-weight: 900;
+}
+
+
+/* ===========================
+   PortonesStats — make it pretty
+   =========================== */
+
+.stats-wrap{
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, .08);
+  overflow: hidden; /* bordes redondos reales */
+}
+
+/* barra horizontal superior (siempre visible) */
+.stats-xbar{
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  background: var(--surface);
+  border-bottom: 1px solid #e5e7eb;
+}
+
+/* scroll horizontal real */
+.stats-xscroll{
+  overflow-x: auto;
+  overflow-y: visible;
+  scrollbar-gutter: stable both-edges;
+}
+
+.stats-table{
+  width: 100%;
+  min-width: 1400px;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.25;
+  font-feature-settings: "tnum" 1; /* números tabulares */
+}
+
+/* celdas */
+.stats-table th,
+.stats-table td{
+  padding: 10px 16px;          /* aire lateral real */
+  border-bottom: 1px solid #e5e7eb;
+  white-space: nowrap;
+}
+
+/* separadores verticales (columna a columna) */
+.stats-table th,
+.stats-table td{
+  border-right: 1px solid #eef2f7;
+}
+.stats-table th:last-child,
+.stats-table td:last-child{
+  border-right: none;
+}
+
+/* header sticky */
+.stats-table thead th{
+  position: sticky;
+  top: var(--stats-sticky-top, 0px);
+  z-index: 50;
+  background: linear-gradient(180deg, var(--surface-muted), #fff);
+  background-clip: padding-box;
+  text-align: left;
+  font-weight: 900;
+  letter-spacing: .2px;
+  box-shadow: 0 2px 0 rgba(15, 23, 42, .04);
+}
+
+/* zebra + hover */
+.stats-table tbody tr:nth-child(even){
+  background: color-mix(in srgb, var(--surface-muted) 55%, #fff);
+}
+.stats-table tbody tr:hover{
+  background: color-mix(in srgb, var(--brand) 10%, #fff);
+}
+
+/* primera columna (Fecha) sticky a la izquierda */
+.stats-col--date{
+  position: sticky;
+  left: 0;
+  z-index: 45;
+  background: inherit; /* respeta zebra/hover */
+  box-shadow: 8px 0 14px rgba(15, 23, 42, .06);
+}
+.stats-table thead .stats-col--date{
+  z-index: 80; /* arriba de todo */
+  background: linear-gradient(180deg, var(--surface-muted), #fff);
+}
+
+/* celdas numéricas centradas + un poco más finas */
+.stats-num{
+  text-align: center;
+  font-weight: 800;
+}
+
+/* fila mensual (TOTAL MES) — “piripipipi” */
+.stats-row--month td{
+  background: linear-gradient(90deg, #0b1220, #111827) !important;
+  color: #fff !important;
+  font-weight: 900 !important;
+  border-bottom: 1px solid rgba(255,255,255,.12) !important;
+}
+.stats-row--month td:first-child{
+  letter-spacing: .3px;
+}
+
+/* fila total general */
+.stats-row--total td{
+  background: var(--surface-muted);
+  font-weight: 900;
+}
+
+/* “pill” para TOTAL MES (opcional si usás span en el JSX) */
+.stats-pill{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.10);
+  border: 1px solid rgba(255,255,255,.14);
+}
+.stats-pill__dot{
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--brand);
+  box-shadow: 0 0 0 3px rgba(0,130,65,.25);
+}
+
+

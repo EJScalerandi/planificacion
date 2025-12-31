@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { qcAuthorize, qcGetMotives, qcHistory } from '../api';
 
 const bordo = '#008241ff';
 
@@ -17,6 +18,288 @@ function safeStr(v) {
   return String(v).trim();
 }
 
+function mapModeToLine(mode) {
+  return mode === 'ipanel' ? 'ipanel' : 'portones';
+}
+
+function QcModal({
+  open,
+  onClose,
+  item,
+  line,
+  stageKey,
+  title,
+}) {
+  const [pin, setPin] = useState('');
+  const [status, setStatus] = useState('APROBADO'); // APROBADO | OBSERVADO | RECHAZADO
+  const [motiveId, setMotiveId] = useState('');
+  const [motives, setMotives] = useState([]);
+  const [loadingMotives, setLoadingMotives] = useState(false);
+
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+
+  const needsMotive =
+    String(status || '').toUpperCase() === 'OBSERVADO' ||
+    String(status || '').toUpperCase() === 'RECHAZADO';
+
+  // reset al abrir/cambiar item
+  useEffect(() => {
+    if (!open) return;
+    setErr('');
+    setPin('');
+    setStatus('APROBADO');
+    setMotiveId('');
+    setMotives([]);
+    setLoadingMotives(false);
+    setSaving(false);
+  }, [open, item?.id, stageKey, line]);
+
+  // cargar motivos solo si OBSERVADO o RECHAZADO
+  useEffect(() => {
+    let cancelled = false;
+
+    async function run() {
+      if (!open) return;
+      if (!item?.id) return;
+
+      const st = String(status || '').toUpperCase();
+      if (!(st === 'OBSERVADO' || st === 'RECHAZADO')) {
+        setMotives([]);
+        setMotiveId('');
+        return;
+      }
+
+      try {
+        setLoadingMotives(true);
+        setErr('');
+        const data = await qcGetMotives({
+          line,
+          kind: st,       // backend: OBSERVADO | RECHAZADO
+          stage: stageKey // stage_key o null
+        });
+        if (cancelled) return;
+        setMotives(Array.isArray(data) ? data : []);
+        setMotiveId(''); // fuerza selección explícita
+      } catch (e) {
+        if (cancelled) return;
+        setErr(e?.response?.data?.error || e.message);
+        setMotives([]);
+        setMotiveId('');
+      } finally {
+        if (!cancelled) setLoadingMotives(false);
+      }
+    }
+
+    run();
+    return () => { cancelled = true; };
+  }, [open, status, item?.id, line, stageKey]);
+
+  const submit = async () => {
+    if (!item?.id) return;
+
+    const pinStr = String(pin || '').trim();
+    const qc_status = String(status || '').trim().toUpperCase();
+
+    setErr('');
+
+    if (!/^\d{3,10}$/.test(pinStr)) {
+      setErr('PIN inválido (solo numérico, 3 a 10 dígitos).');
+      return;
+    }
+
+    if ((qc_status === 'OBSERVADO' || qc_status === 'RECHAZADO') && !String(motiveId || '').trim()) {
+      setErr('Tenés que elegir un motivo para OBSERVADO/RECHAZADO.');
+      return;
+    }
+
+    try {
+      setSaving(true);
+
+      const payload = {
+        line,
+        item_id: item.id,
+        stage_key: stageKey,
+        qc_status,
+        pin: pinStr,
+      };
+
+      if (qc_status === 'OBSERVADO' || qc_status === 'RECHAZADO') {
+        payload.motive_id = Number(motiveId);
+      }
+
+      const resp = await qcAuthorize(payload);
+      const uname = resp?.user?.name ? ` (${resp.user.name})` : '';
+
+      alert(`QC registrado: ${qc_status}${uname}`);
+      onClose?.();
+    } catch (e) {
+      setErr(e?.response?.data?.error || e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!open || !item) return null;
+
+  const headline = (modeLabel) => {
+    const nv = item?.nv != null ? `NV ${item.nv}` : '';
+    const nlista = item?.nlista != null ? `Portón ${item.nlista}` : '';
+    const partida = item?.partida != null ? `Partida ${item.partida}` : '';
+    const parts = [modeLabel, nv, nlista, partida].filter(Boolean);
+    return parts.join(' · ');
+  };
+
+  const modeLabel = line === 'ipanel' ? 'iPanel' : 'Portón';
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose?.();
+      }}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(15,23,42,0.55)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 16,
+        zIndex: 9999,
+      }}
+    >
+      <div
+        style={{
+          width: 'min(720px, 100%)',
+          background: '#fff',
+          borderRadius: 14,
+          border: '1px solid #e5e7eb',
+          boxShadow: '0 18px 55px rgba(0,0,0,0.25)',
+          overflow: 'hidden',
+        }}
+      >
+        {/* Header */}
+        <div
+          style={{
+            padding: '12px 14px',
+            borderBottom: '1px solid #e5e7eb',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 10,
+            background: '#f8fafc',
+          }}
+        >
+          <div style={{ fontWeight: 900 }}>
+            QC – {title} · {headline(modeLabel)}
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button className="btn" type="button" onClick={onClose} title="Cerrar">
+              Cerrar
+            </button>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {err && (
+            <div style={{ color: 'crimson', fontWeight: 800 }}>
+              {err}
+            </div>
+          )}
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <span style={{ fontWeight: 800 }}>PIN</span>
+              <input
+                className="btn"
+                type="password"          // ✅ se muestra como *
+                value={pin}
+                onChange={(e) => setPin(e.target.value)}
+                inputMode="numeric"
+                autoComplete="off"
+                placeholder="Ej: 1234"
+              />
+              <span style={{ fontSize: 12, opacity: 0.7 }}>
+                Requerido para registrar QC.
+              </span>
+            </label>
+
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <span style={{ fontWeight: 800 }}>Estado</span>
+              <select
+                className="btn"
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+              >
+                <option value="APROBADO">Autorizar</option>
+                <option value="OBSERVADO">Observar</option>
+                <option value="RECHAZADO">Rechazar</option>
+              </select>
+
+              {needsMotive ? (
+                <span style={{ fontSize: 12, opacity: 0.7 }}>
+                  Para {String(status).toUpperCase()} es obligatorio elegir un motivo.
+                </span>
+              ) : (
+                <span style={{ fontSize: 12, opacity: 0.7 }}>
+                  Autorizar registra APROBADO.
+                </span>
+              )}
+            </label>
+          </div>
+
+          {/* Motivos (solo si OBSERVADO/RECHAZADO) */}
+          {needsMotive && (
+            <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 12 }}>
+              <div style={{ fontWeight: 900, marginBottom: 8 }}>
+                Motivo ({String(status).toUpperCase()})
+              </div>
+
+              {loadingMotives ? (
+                <div style={{ opacity: 0.8 }}>Cargando motivos…</div>
+              ) : (
+                <select
+                  className="btn"
+                  style={{ width: '100%' }}
+                  value={motiveId}
+                  onChange={(e) => setMotiveId(e.target.value)}
+                >
+                  <option value="">— Elegí un motivo —</option>
+                  {(motives || []).map((m) => (
+                    <option key={m.id} value={String(m.id)}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 12, opacity: 0.7 }}>
+              Line: <b>{line}</b> · Stage: <b>{stageKey}</b> · Item ID: <b>{item.id}</b>
+            </div>
+
+            <button
+              className="btn btn--brand"
+              type="button"
+              onClick={submit}
+              disabled={saving}
+              title="Registrar QC"
+            >
+              {saving ? 'Guardando…' : 'Confirmar'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function StageColumn({
   title,
   stageKey,
@@ -32,8 +315,12 @@ export default function StageColumn({
   // historial search
   const [q, setQ] = useState('');
   const [searched, setSearched] = useState(false);
-  const [searchResults, setSearchResults] = useState([]); // <-- ahora lista
-  const [selected, setSelected] = useState(null); // <-- seleccionado para detalle
+  const [searchResults, setSearchResults] = useState([]);
+  const [selected, setSelected] = useState(null);
+
+  // QC modal (queda, pero NO se expone el botón por ahora)
+  const [qcOpen, setQcOpen] = useState(false);
+  const [qcTarget, setQcTarget] = useState(null);
 
   const effKey =
     mode === 'ipanel' && stageKey === 'plegadora'
@@ -122,15 +409,8 @@ export default function StageColumn({
 
   const pdfButtons = getPdfButtonsForColumn();
 
-  // ==========================
-  // Historial (búsqueda + últimos 10 finalizados)
-  // ==========================
-
-  // Nota: con el dataset actual (items) solo podés ver “historial”
-  // si el backend manda también finalizados.
   const allSectorItems = useMemo(() => (items || []).slice(), [items]);
 
-  // Helper: toma campos “nv / nlista / partida” en varios formatos
   function getFields(p) {
     const nv = safeStr(p?.nv ?? p?.NV);
     const nlista = safeStr(p?.nlista ?? p?.NRO_PORTON ?? p?.porton);
@@ -138,46 +418,30 @@ export default function StageColumn({
     return { nv, nlista, partida };
   }
 
-  // Búsqueda:
-  // - Si coincide EXACTO con partida => devuelve TODOS los portones de esa partida
-  // - Si coincide EXACTO con nv => devuelve TODOS los portones de ese nv
-  // - Si coincide EXACTO con nlista => devuelve TODOS los portones de ese nlista
-  // - Si no, fallback "contiene" (capado) para ayudar a encontrar
   function searchByQuery(query) {
     const qq = safeStr(query);
     if (!qq) return [];
 
-    // 1) exact PARTIDA
     const exactPartidaHits = (allSectorItems || []).filter((p) => getFields(p).partida === qq);
     if (exactPartidaHits.length) return exactPartidaHits;
 
-    // 2) exact NV
     const exactNvHits = (allSectorItems || []).filter((p) => getFields(p).nv === qq);
     if (exactNvHits.length) return exactNvHits;
 
-    // 3) exact N° Portón
     const exactPortonHits = (allSectorItems || []).filter((p) => getFields(p).nlista === qq);
     if (exactPortonHits.length) return exactPortonHits;
 
-    // 4) contains fallback
-    const containsHits = (allSectorItems || [])
+    return (allSectorItems || [])
       .filter((p) => {
         const { nv, nlista, partida } = getFields(p);
         return nv.includes(qq) || nlista.includes(qq) || partida.includes(qq);
       })
       .slice(0, 50);
-
-    return containsHits;
   }
 
   function sortResults(list) {
     const key = effKey;
 
-    // Orden:
-    // 1) en proceso primero
-    // 2) pendiente después
-    // 3) finalizado al final
-    // 4) por partida, nv, nlista
     return (list || []).slice().sort((a, b) => {
       const sa = low(a?.[key]);
       const sb = low(b?.[key]);
@@ -230,7 +494,7 @@ export default function StageColumn({
   const last10Finalizados = useMemo(() => {
     const key = effKey;
 
-    const finals = (allSectorItems || [])
+    return (allSectorItems || [])
       .filter((p) => {
         const st = low(p?.[key]);
         const hasFin = !!p?.[`${key}_fin`];
@@ -242,11 +506,19 @@ export default function StageColumn({
       })
       .sort((a, b) => (b.__finTs || 0) - (a.__finTs || 0))
       .slice(0, 10);
-
-    return finals;
   }, [allSectorItems, effKey]);
 
   const canPdfBase = !!String(pdfBaseUrl || '').trim();
+
+  // ✅ QC deshabilitado por ahora para operadores (dejamos el modal preparado)
+  /*
+  const openQc = (p) => {
+    setQcTarget(p);
+    setQcOpen(true);
+  };
+  */
+
+  const line = mapModeToLine(mode);
 
   return (
     <div
@@ -372,6 +644,19 @@ export default function StageColumn({
                     );
                   })}
 
+                {/* ✅ Botón QC deshabilitado por ahora */}
+                {/*
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={() => openQc(p)}
+                  title="QC: Autorizar / Observar / Rechazar"
+                  style={{ fontSize: 14, padding: '8px 10px', borderRadius: 10, fontWeight: 900 }}
+                >
+                  QC
+                </button>
+                */}
+
                 <button
                   className="btn btn--brand"
                   onClick={() => onStart && onStart(p.id, effKey)}
@@ -399,9 +684,7 @@ export default function StageColumn({
         {ordered.length === 0 && <div style={{ opacity: 0.6, fontSize: 13 }}>Sin elementos.</div>}
       </div>
 
-      {/* =========================
-          Modal Historial
-      ========================== */}
+      {/* Modal Historial */}
       {showHist && (
         <div
           role="dialog"
@@ -609,7 +892,6 @@ export default function StageColumn({
                         </div>
                       )}
 
-                      {/* Detalle seleccionado (para 1 o varios resultados) */}
                       {selected && (
                         <div
                           style={{
@@ -713,6 +995,16 @@ export default function StageColumn({
           </div>
         </div>
       )}
+
+      {/* Modal QC (queda listo, pero no se invoca sin el botón) */}
+      <QcModal
+        open={qcOpen}
+        onClose={() => { setQcOpen(false); setQcTarget(null); }}
+        item={qcTarget}
+        line={line}
+        stageKey={effKey}
+        title={title}
+      />
     </div>
   );
 }
