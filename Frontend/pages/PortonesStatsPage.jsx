@@ -53,7 +53,7 @@ const STAGE_DEFS = [
 const LS_VISIBLE_COLS_KEY = 'portones_stats_visible_cols_v2';
 
 // ✅ Total en planta = base + armado_piernas - despacho
-const PLANT_IN_KEY = 'armado_piernas';
+const PLANT_IN_KEY = 'plegadora';
 const PLANT_OUT_KEY = 'despacho';
 
 function newCounts() {
