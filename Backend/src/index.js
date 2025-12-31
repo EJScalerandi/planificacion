@@ -21,7 +21,7 @@ console.log('supabase url:', process.env.SUPABASE_DB_URL);
 // ======================= CORS / BASE =======================
 
 const allowedOrigins = (process.env.FRONTEND_ORIGINS ||
-  'http://localhost:5173,http://localhost:5174,https://planificacion-pi.vercel.app'
+  'https://planificacion-pi.vercel.app'
 )
   .split(',')
   .map(s => s.trim().replace(/\/$/, ''))
