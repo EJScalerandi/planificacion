@@ -239,3 +239,12 @@ export async function adminQcMotivesUpdate(id, payload) {
 }
 
 export default api;
+
+/* ========= Bases (Planta / Despachar) ========= */
+export const getPlantaBase = () => api.get('/planta/base');
+export const postPlantaBase = (payload) => api.post('/planta/base', payload);
+export const getPlantaBases = () => api.get('/planta/bases');
+
+export const getDespacharBase = () => api.get('/despachar/base');
+export const postDespacharBase = (payload) => api.post('/despachar/base', payload);
+export const getDespacharBases = () => api.get('/despachar/bases');
