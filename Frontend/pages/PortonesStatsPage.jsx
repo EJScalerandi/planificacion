@@ -37,7 +37,7 @@ const STAGE_DEFS = [
   { key: 'plegadora', label: 'Plegadora' },
   { key: 'plegado_revest', label: 'Plegado Revest.' },
 
-  { key: 'armado_piernas', label: 'Arm. Piernas' }, // ✅ Prefabricados real
+  { key: 'armado_piernas', label: 'Arm. Piernas' },
   { key: 'armado_hojas', label: 'Arm. Hojas' },
   { key: 'armado_marco_piernas', label: 'Arm. Marco/Piernas' },
   { key: 'armado_primario', label: 'Arm. Primario' },
@@ -52,9 +52,14 @@ const STAGE_DEFS = [
 
 const LS_VISIBLE_COLS_KEY = 'portones_stats_visible_cols_v2';
 
-// ✅ Total en planta = base + armado_piernas - despacho
+// Mantengo EXACTO lo que tenías:
+// Total en planta = base + (plegadora) - (despacho)
 const PLANT_IN_KEY = 'plegadora';
 const PLANT_OUT_KEY = 'despacho';
+
+// Portones para despachar = base + (armado_final) - (despacho)
+const DISP_IN_KEY = 'armado_final';
+const DISP_OUT_KEY = 'despacho';
 
 function newCounts() {
   const c = {};
@@ -88,6 +93,56 @@ function saveVisibleCols(keys) {
   } catch {}
 }
 
+// Serie "por tramos" usando histórico de bases:
+// - cada base aplica desde su fecha, sin borrar lo anterior
+function buildSegmentedSeries(dailyRows, bases, inKey, outKey) {
+  const byDate = new Map();
+  const byMonthEnd = new Map();
+
+  const sortedBases = Array.isArray(bases)
+    ? [...bases]
+        .map((b) => ({ date: String(b?.date || '').slice(0, 10), qty: Number(b?.qty) }))
+        .filter((b) => /^\d{4}-\d{2}-\d{2}$/.test(b.date) && Number.isFinite(b.qty))
+        .sort((a, b) => a.date.localeCompare(b.date))
+    : [];
+
+  if (!sortedBases.length) return { byDate, byMonthEnd };
+
+  let bi = 0;
+  let running = null;
+  let currentMonth = '';
+
+  for (const r of dailyRows) {
+    const d = r.date;
+
+    while (bi < sortedBases.length && sortedBases[bi].date <= d) {
+      running = sortedBases[bi].qty;
+      bi += 1;
+      currentMonth = '';
+    }
+
+    if (running == null) continue;
+
+    const mm = monthKey(d);
+    if (!currentMonth) currentMonth = mm;
+
+    if (mm !== currentMonth) {
+      byMonthEnd.set(currentMonth, running);
+      currentMonth = mm;
+    }
+
+    const inQty = Number(r.counts?.[inKey] || 0);
+    const outQty = Number(r.counts?.[outKey] || 0);
+
+    running += (inQty - outQty);
+    byDate.set(d, running);
+  }
+
+  if (currentMonth) byMonthEnd.set(currentMonth, running);
+
+  return { byDate, byMonthEnd };
+}
+
 export default function PortonesStatsPage() {
   const [portones, setPortones] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -106,15 +161,29 @@ export default function PortonesStatsPage() {
     return STAGE_DEFS.filter((s) => set.has(s.key));
   }, [visibleCols]);
 
-  // Base “Total en planta”
+  // =========================
+  // BASES (igual manejo que Total en planta)
+  // =========================
   const [plantaBase, setPlantaBase] = useState(null); // {date, qty}
   const [plantaLoading, setPlantaLoading] = useState(false);
   const [plantaErr, setPlantaErr] = useState('');
   const [plantaOk, setPlantaOk] = useState('');
 
+  const [despBase, setDespBase] = useState(null); // {date, qty}
+  const [despLoading, setDespLoading] = useState(false);
+  const [despErr, setDespErr] = useState('');
+  const [despOk, setDespOk] = useState('');
+
+  // Históricos (para no “borrar lo anterior”)
+  const [plantaBases, setPlantaBases] = useState([]); // [{date,qty,...}]
+  const [despBases, setDespBases] = useState([]);     // [{date,qty,...}]
+
   // Inputs (solo fecha y cantidad)
   const [newPlantaDate, setNewPlantaDate] = useState('');
   const [newPlantaQty, setNewPlantaQty] = useState('');
+
+  const [newDespDate, setNewDespDate] = useState('');
+  const [newDespQty, setNewDespQty] = useState('');
 
   // -------------------------
   // Load portones
@@ -128,9 +197,7 @@ export default function PortonesStatsPage() {
         setErr('');
 
         const base = apiBase();
-        const url = `${base}/portones`;
-
-        const r = await fetch(url);
+        const r = await fetch(`${base}/portones`);
         if (!r.ok) {
           const t = await r.text().catch(() => '');
           throw new Error(`Error ${r.status} leyendo /portones. ${t}`);
@@ -153,8 +220,7 @@ export default function PortonesStatsPage() {
   }, []);
 
   // -------------------------
-  // Load planta base desde backend
-  // GET /planta/base -> { date: "YYYY-MM-DD", qty: 123 } o {date:null, qty:null}
+  // Load bases (planta)
   // -------------------------
   const loadPlantaBase = async () => {
     try {
@@ -163,6 +229,8 @@ export default function PortonesStatsPage() {
       setPlantaOk('');
 
       const base = apiBase();
+
+      // Base actual (igual a lo que ya tenías)
       const r = await fetch(`${base}/planta/base`, { cache: 'no-store' });
       if (!r.ok) {
         const t = await r.text().catch(() => '');
@@ -173,22 +241,29 @@ export default function PortonesStatsPage() {
       const dRaw = data?.date ?? null;
       const qRaw = data?.qty ?? null;
 
-      // ✅ tabla vacía: no es error
       if (dRaw == null || qRaw == null) {
         setPlantaBase(null);
-        return;
+      } else {
+        const d = String(dRaw).trim();
+        const q = Number(qRaw);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || !Number.isFinite(q)) {
+          throw new Error('Respuesta inválida de /planta/base (espera {date, qty}).');
+        }
+        setPlantaBase({ date: d, qty: q });
       }
 
-      const d = String(dRaw).trim();
-      const q = Number(qRaw);
-
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || !Number.isFinite(q)) {
-        throw new Error('Respuesta inválida de /planta/base (espera {date, qty}).');
+      // Histórico (para cálculo por tramos)
+      const rh = await fetch(`${base}/planta/bases`, { cache: 'no-store' });
+      if (rh.ok) {
+        const hist = await rh.json();
+        setPlantaBases(Array.isArray(hist) ? hist : []);
+      } else {
+        // fallback: si no existe el endpoint aún, al menos no romper
+        setPlantaBases(plantaBase ? [plantaBase] : []);
       }
-
-      setPlantaBase({ date: d, qty: q });
     } catch (e) {
       setPlantaBase(null);
+      setPlantaBases([]);
       setPlantaErr(e?.message || 'No se pudo cargar la base de planta.');
     } finally {
       setPlantaLoading(false);
@@ -197,6 +272,61 @@ export default function PortonesStatsPage() {
 
   useEffect(() => {
     loadPlantaBase();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // -------------------------
+  // Load bases (despachar)
+  // -------------------------
+  const loadDespBase = async () => {
+    try {
+      setDespLoading(true);
+      setDespErr('');
+      setDespOk('');
+
+      const base = apiBase();
+
+      // Base actual
+      const r = await fetch(`${base}/despachar/base`, { cache: 'no-store' });
+      if (!r.ok) {
+        const t = await r.text().catch(() => '');
+        throw new Error(`Error ${r.status} leyendo /despachar/base. ${t}`);
+      }
+
+      const data = await r.json();
+      const dRaw = data?.date ?? null;
+      const qRaw = data?.qty ?? null;
+
+      if (dRaw == null || qRaw == null) {
+        setDespBase(null);
+      } else {
+        const d = String(dRaw).trim();
+        const q = Number(qRaw);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || !Number.isFinite(q)) {
+          throw new Error('Respuesta inválida de /despachar/base (espera {date, qty}).');
+        }
+        setDespBase({ date: d, qty: q });
+      }
+
+      // Histórico
+      const rh = await fetch(`${base}/despachar/bases`, { cache: 'no-store' });
+      if (rh.ok) {
+        const hist = await rh.json();
+        setDespBases(Array.isArray(hist) ? hist : []);
+      } else {
+        setDespBases(despBase ? [despBase] : []);
+      }
+    } catch (e) {
+      setDespBase(null);
+      setDespBases([]);
+      setDespErr(e?.message || 'No se pudo cargar la base de despachar.');
+    } finally {
+      setDespLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadDespBase();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -241,45 +371,15 @@ export default function PortonesStatsPage() {
   }, [dailyRows]);
 
   // -------------------------
-  // Total en planta (serie)
-  // base + (armado_piernas) - (despacho)
+  // Series (por tramos)
   // -------------------------
   const plantSeries = useMemo(() => {
-    const byDate = new Map();
-    const byMonthEnd = new Map();
+    return buildSegmentedSeries(dailyRows, plantaBases, PLANT_IN_KEY, PLANT_OUT_KEY);
+  }, [dailyRows, plantaBases]);
 
-    const baseDate = plantaBase?.date || null;
-    const baseQty = Number(plantaBase?.qty ?? NaN);
-    if (!baseDate || !Number.isFinite(baseQty)) {
-      return { byDate, byMonthEnd, baseDate: null, baseQty: null };
-    }
-
-    let running = baseQty;
-    let currentMonth = '';
-
-    for (const r of dailyRows) {
-      const d = r.date;
-      if (d < baseDate) continue;
-
-      const mm = monthKey(d);
-      if (!currentMonth) currentMonth = mm;
-
-      if (mm !== currentMonth) {
-        byMonthEnd.set(currentMonth, running);
-        currentMonth = mm;
-      }
-
-      const inQty = Number(r.counts?.[PLANT_IN_KEY] || 0);
-      const outQty = Number(r.counts?.[PLANT_OUT_KEY] || 0);
-      running += (inQty - outQty);
-
-      byDate.set(d, running);
-    }
-
-    if (currentMonth) byMonthEnd.set(currentMonth, running);
-
-    return { byDate, byMonthEnd, baseDate, baseQty };
-  }, [dailyRows, plantaBase]);
+  const despSeries = useMemo(() => {
+    return buildSegmentedSeries(dailyRows, despBases, DISP_IN_KEY, DISP_OUT_KEY);
+  }, [dailyRows, despBases]);
 
   const totalsAll = useMemo(() => {
     const t = newCounts();
@@ -321,8 +421,7 @@ export default function PortonesStatsPage() {
   };
 
   // -------------------------
-  // POST planta base
-  // POST /planta/base { date, qty }
+  // POST planta base (igual a lo que tenías)
   // -------------------------
   const savePlantaBase = async () => {
     try {
@@ -365,6 +464,9 @@ export default function PortonesStatsPage() {
       setNewPlantaDate('');
       setNewPlantaQty('');
       setPlantaOk(`Guardado: ${rq} desde ${fmtAR(rd)}.`);
+
+      // recargar histórico para preservar lo anterior
+      await loadPlantaBase();
     } catch (e) {
       setPlantaErr(e?.message || 'No se pudo guardar la base.');
     } finally {
@@ -372,16 +474,72 @@ export default function PortonesStatsPage() {
     }
   };
 
+  // -------------------------
+  // POST despachar base (MISMO manejo)
+  // -------------------------
+  const saveDespBase = async () => {
+    try {
+      setDespErr('');
+      setDespOk('');
+
+      const d = String(newDespDate || '').trim();
+      const qStr = String(newDespQty || '').trim();
+
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+        setDespErr('Fecha inválida. Usá YYYY-MM-DD.');
+        return;
+      }
+      if (!/^-?\d+$/.test(qStr)) {
+        setDespErr('Cantidad inválida. Usá un entero (ej: 120).');
+        return;
+      }
+
+      const qty = Number(qStr);
+      const base = apiBase();
+
+      setDespLoading(true);
+
+      const r = await fetch(`${base}/despachar/base`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: d, qty }),
+      });
+
+      if (!r.ok) {
+        const t = await r.text().catch(() => '');
+        throw new Error(`Error ${r.status} guardando base despachar. ${t}`);
+      }
+
+      const data = await r.json();
+      const rd = String(data?.date || d);
+      const rq = Number(data?.qty ?? qty);
+
+      setDespBase({ date: rd, qty: rq });
+      setNewDespDate('');
+      setNewDespQty('');
+      setDespOk(`Guardado: ${rq} desde ${fmtAR(rd)}.`);
+
+      // recargar histórico para preservar lo anterior
+      await loadDespBase();
+    } catch (e) {
+      setDespErr(e?.message || 'No se pudo guardar la base.');
+    } finally {
+      setDespLoading(false);
+    }
+  };
+
   const exportCsv = () => {
-    const header = ['Fecha', 'Total en planta', ...visibleStages.map((s) => s.label)];
+    const header = ['Fecha', 'Total en planta', 'Portones para despachar', ...visibleStages.map((s) => s.label)];
     const lines = [header.join(';')];
 
     for (const r of dailyRows) {
       const plant = plantSeries.byDate.get(r.date);
-      const showPlant = plantSeries.baseDate && r.date >= plantSeries.baseDate;
+      const desp = despSeries.byDate.get(r.date);
+
       const row = [
         fmtAR(r.date),
-        showPlant ? String(plant ?? '') : '',
+        plant != null ? String(plant) : '',
+        desp != null ? String(desp) : '',
         ...visibleStages.map((s) => String(r.counts?.[s.key] || 0)),
       ];
       lines.push(row.join(';'));
@@ -409,9 +567,6 @@ export default function PortonesStatsPage() {
           background:var(--surface);
           box-shadow: 0 10px 26px rgba(0,0,0,.06);
         }
-
-        /* Un solo contenedor con overflow-x: auto (sin barra duplicada).
-           Añadimos position/isolation para mejorar sticky+z-index */
         .ps-scrollX{
           overflow-x:auto;
           overflow-y:visible;
@@ -420,18 +575,15 @@ export default function PortonesStatsPage() {
           position: relative;
           isolation: isolate;
         }
-
         .ps-table{
           border-collapse: separate;
           border-spacing: 10px 6px;
           width:100%;
-          min-width: 1480px;
+          min-width: 1620px;
           color: var(--ink);
           background: var(--surface);
           font-feature-settings: "tnum" 1;
         }
-
-        /* Encabezado sticky */
         .ps-table thead th{
           position: sticky;
           top: 0;
@@ -445,7 +597,6 @@ export default function PortonesStatsPage() {
           box-shadow: 0 8px 18px rgba(0,0,0,.08);
           background-clip: padding-box;
         }
-
         .ps-date{
           font-weight: 900;
           padding: 10px 12px !important;
@@ -454,9 +605,7 @@ export default function PortonesStatsPage() {
           background: #fff;
           white-space: nowrap;
         }
-
         .ps-num{ text-align:center; }
-
         .ps-chip{
           display: inline-flex;
           align-items: center;
@@ -471,27 +620,22 @@ export default function PortonesStatsPage() {
           box-shadow: 0 6px 14px rgba(0,0,0,.05);
           white-space: nowrap;
         }
-
         .ps-chip--zero{
           opacity: .55;
           background: var(--surface-muted);
         }
-
-        .ps-chip--plant{
+        .ps-chip--metric{
           border-color: color-mix(in srgb, var(--brand) 45%, #e5e7eb);
           background: color-mix(in srgb, var(--brand) 10%, #fff);
         }
-
         .ps-row--month .ps-date{
           border-color: color-mix(in srgb, var(--brand) 45%, #e5e7eb);
           background: color-mix(in srgb, var(--brand) 12%, #fff);
         }
-
         .ps-chip--month{
           border-color: color-mix(in srgb, var(--brand) 45%, #e5e7eb);
           background: color-mix(in srgb, var(--brand) 14%, #fff);
         }
-
         .ps-pill{
           display:inline-flex;
           align-items:center;
@@ -510,7 +654,6 @@ export default function PortonesStatsPage() {
           background: var(--brand);
           box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand) 22%, transparent);
         }
-
         .ps-row--total .ps-date{
           border-color: color-mix(in srgb, var(--state-done) 45%, #e5e7eb);
           background: color-mix(in srgb, var(--state-done) 14%, #fff);
@@ -519,7 +662,6 @@ export default function PortonesStatsPage() {
           border-color: color-mix(in srgb, var(--state-done) 45%, #e5e7eb);
           background: color-mix(in srgb, var(--state-done) 16%, #fff);
         }
-
         .ps-panel{
           border: 1px solid #e5e7eb;
           border-radius: 12px;
@@ -527,14 +669,12 @@ export default function PortonesStatsPage() {
           padding: 12px;
           box-shadow: 0 10px 26px rgba(0,0,0,.06);
         }
-
         .ps-cols{
           display:grid;
           grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
           gap: 8px 12px;
           margin-top: 8px;
         }
-
         .ps-colItem{
           display:flex;
           align-items:center;
@@ -544,7 +684,6 @@ export default function PortonesStatsPage() {
           padding: 8px 10px;
           background: #fff;
         }
-
         .ps-note{
           font-size: 12px;
           opacity: .75;
@@ -628,6 +767,7 @@ export default function PortonesStatsPage() {
           </div>
         )}
 
+        {/* TARJETA 1: Total en planta (igual que tu versión) */}
         <div className="ps-panel" style={{ marginTop: 12 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
             <div style={{ fontWeight: 1000 }}>Total en planta</div>
@@ -644,7 +784,7 @@ export default function PortonesStatsPage() {
                 Total = base + (<b>{PLANT_IN_KEY}</b>) − (<b>{PLANT_OUT_KEY}</b>).
               </>
             ) : (
-              <>Base actual: <b>sin datos</b>. (Cargá una base con “Guardar (POST)”).</>
+              <>Base actual: <b>sin datos</b>. (Cargá una base con “Guardar”).</>
             )}
           </div>
 
@@ -682,6 +822,61 @@ export default function PortonesStatsPage() {
           </div>
         </div>
 
+        {/* TARJETA 2: Portones para despachar (IGUAL manejo, tabla nueva) */}
+        <div className="ps-panel" style={{ marginTop: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            <div style={{ fontWeight: 1000 }}>Portones para despachar</div>
+
+            <button className="btn" type="button" onClick={loadDespBase} disabled={despLoading}>
+              {despLoading ? 'Cargando…' : 'Recargar base'}
+            </button>
+          </div>
+
+          <div style={{ marginTop: 6, fontSize: 12, opacity: 0.85 }}>
+            {despBase ? (
+              <>
+                Base actual: <b>{despBase.qty}</b> desde <b>{fmtAR(despBase.date)}</b>.{' '}
+                Total = base + (<b>{DISP_IN_KEY}</b>) − (<b>{DISP_OUT_KEY}</b>).
+              </>
+            ) : (
+              <>Base actual: <b>sin datos</b>. (Cargá una base con “Guardar”).</>
+            )}
+          </div>
+
+          {(despErr || despOk) && (
+            <div style={{ marginTop: 8, fontWeight: 900, color: despErr ? 'crimson' : 'var(--brand)' }}>
+              {despErr || despOk}
+            </div>
+          )}
+
+          <div style={{ marginTop: 12, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <span style={{ fontWeight: 900 }}>Fecha</span>
+              <input
+                className="btn"
+                type="date"
+                value={newDespDate}
+                onChange={(e) => setNewDespDate(e.target.value)}
+              />
+            </label>
+
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <span style={{ fontWeight: 900 }}>Cantidad</span>
+              <input
+                className="btn"
+                inputMode="numeric"
+                placeholder="Ej: 80"
+                value={newDespQty}
+                onChange={(e) => setNewDespQty(e.target.value)}
+              />
+            </label>
+
+            <button className="btn btn--brand" type="button" onClick={saveDespBase} disabled={despLoading}>
+              {despLoading ? 'Guardando…' : 'Guardar'}
+            </button>
+          </div>
+        </div>
+
         {loading && <div style={{ marginTop: 12, opacity: 0.8 }}>Cargando…</div>}
         {err && <div style={{ marginTop: 12, color: 'crimson', fontWeight: 900 }}>{err}</div>}
       </div>
@@ -694,6 +889,7 @@ export default function PortonesStatsPage() {
                 <colgroup>
                   <col style={{ width: 150 }} />
                   <col style={{ width: 170 }} />
+                  <col style={{ width: 210 }} />
                   {visibleStages.map((s) => (
                     <col key={s.key} style={{ width: 140 }} />
                   ))}
@@ -705,6 +901,9 @@ export default function PortonesStatsPage() {
                     <th title={`Total en planta = base + ${PLANT_IN_KEY} acumulado − ${PLANT_OUT_KEY} acumulado`}>
                       Total en planta
                     </th>
+                    <th title={`Portones para despachar = base + ${DISP_IN_KEY} acumulado − ${DISP_OUT_KEY} acumulado`}>
+                      Portones para despachar
+                    </th>
                     {visibleStages.map((s) => (
                       <th key={s.key}>{s.label}</th>
                     ))}
@@ -715,14 +914,17 @@ export default function PortonesStatsPage() {
                   {view === 'monthly' && (
                     monthlyRows.length === 0 ? (
                       <tr>
-                        <td colSpan={2 + visibleStages.length} style={{ padding: 12, opacity: 0.7 }}>
+                        <td colSpan={3 + visibleStages.length} style={{ padding: 12, opacity: 0.7 }}>
                           Sin datos mensuales para el rango seleccionado.
                         </td>
                       </tr>
                     ) : (
                       monthlyRows.map((m, idx) => {
                         const plantEnd = plantSeries.byMonthEnd.get(m.month);
+                        const despEnd = despSeries.byMonthEnd.get(m.month);
+
                         const plantText = Number.isFinite(plantEnd) ? String(plantEnd) : '';
+                        const despText = Number.isFinite(despEnd) ? String(despEnd) : '';
 
                         return (
                           <tr key={`m-${m.month}-${idx}`} className="ps-row ps-row--month">
@@ -734,8 +936,14 @@ export default function PortonesStatsPage() {
                             </td>
 
                             <td className="ps-num">
-                              <span className={plantText ? 'ps-chip ps-chip--month ps-chip--plant' : 'ps-chip ps-chip--month ps-chip--zero'}>
+                              <span className={plantText ? 'ps-chip ps-chip--month ps-chip--metric' : 'ps-chip ps-chip--month ps-chip--zero'}>
                                 {plantText || '—'}
+                              </span>
+                            </td>
+
+                            <td className="ps-num">
+                              <span className={despText ? 'ps-chip ps-chip--month ps-chip--metric' : 'ps-chip ps-chip--month ps-chip--zero'}>
+                                {despText || '—'}
                               </span>
                             </td>
 
@@ -753,23 +961,31 @@ export default function PortonesStatsPage() {
                   {view === 'daily' && (
                     dailyRows.length === 0 ? (
                       <tr>
-                        <td colSpan={2 + visibleStages.length} style={{ padding: 12, opacity: 0.7 }}>
+                        <td colSpan={3 + visibleStages.length} style={{ padding: 12, opacity: 0.7 }}>
                           Sin datos diarios para el rango seleccionado.
                         </td>
                       </tr>
                     ) : (
                       dailyRows.map((r, idx) => {
                         const plant = plantSeries.byDate.get(r.date);
-                        const showPlant = plantSeries.baseDate && r.date >= plantSeries.baseDate;
-                        const plantText = showPlant ? String(plant ?? '') : '';
+                        const desp = despSeries.byDate.get(r.date);
+
+                        const plantText = plant != null ? String(plant) : '';
+                        const despText = desp != null ? String(desp) : '';
 
                         return (
                           <tr key={`d-${r.date}-${idx}`}>
                             <td className="ps-date">{fmtAR(r.date)}</td>
 
                             <td className="ps-num">
-                              <span className={plantText ? 'ps-chip ps-chip--plant' : 'ps-chip ps-chip--zero'}>
+                              <span className={plantText ? 'ps-chip ps-chip--metric' : 'ps-chip ps-chip--zero'}>
                                 {plantText || '—'}
+                              </span>
+                            </td>
+
+                            <td className="ps-num">
+                              <span className={despText ? 'ps-chip ps-chip--metric' : 'ps-chip ps-chip--zero'}>
+                                {despText || '—'}
                               </span>
                             </td>
 
@@ -790,7 +1006,7 @@ export default function PortonesStatsPage() {
                   {view === 'daily+monthly' && (
                     dailyPlusMonthlyRows.length === 0 ? (
                       <tr>
-                        <td colSpan={2 + visibleStages.length} style={{ padding: 12, opacity: 0.7 }}>
+                        <td colSpan={3 + visibleStages.length} style={{ padding: 12, opacity: 0.7 }}>
                           Sin datos para el rango seleccionado.
                         </td>
                       </tr>
@@ -798,7 +1014,10 @@ export default function PortonesStatsPage() {
                       dailyPlusMonthlyRows.map((x, idx) => {
                         if (x.__type === 'month') {
                           const plantEnd = plantSeries.byMonthEnd.get(x.month);
+                          const despEnd = despSeries.byMonthEnd.get(x.month);
+
                           const plantText = Number.isFinite(plantEnd) ? String(plantEnd) : '';
+                          const despText = Number.isFinite(despEnd) ? String(despEnd) : '';
 
                           return (
                             <tr key={`mx-${x.month}-${idx}`} className="ps-row ps-row--month">
@@ -810,8 +1029,14 @@ export default function PortonesStatsPage() {
                               </td>
 
                               <td className="ps-num">
-                                <span className={plantText ? 'ps-chip ps-chip--month ps-chip--plant' : 'ps-chip ps-chip--month ps-chip--zero'}>
+                                <span className={plantText ? 'ps-chip ps-chip--month ps-chip--metric' : 'ps-chip ps-chip--month ps-chip--zero'}>
                                   {plantText || '—'}
+                                </span>
+                              </td>
+
+                              <td className="ps-num">
+                                <span className={despText ? 'ps-chip ps-chip--month ps-chip--metric' : 'ps-chip ps-chip--month ps-chip--zero'}>
+                                  {despText || '—'}
                                 </span>
                               </td>
 
@@ -825,16 +1050,24 @@ export default function PortonesStatsPage() {
                         }
 
                         const plant = plantSeries.byDate.get(x.date);
-                        const showPlant = plantSeries.baseDate && x.date >= plantSeries.baseDate;
-                        const plantText = showPlant ? String(plant ?? '') : '';
+                        const desp = despSeries.byDate.get(x.date);
+
+                        const plantText = plant != null ? String(plant) : '';
+                        const despText = desp != null ? String(desp) : '';
 
                         return (
                           <tr key={`dx-${x.date}-${idx}`}>
                             <td className="ps-date">{fmtAR(x.date)}</td>
 
                             <td className="ps-num">
-                              <span className={plantText ? 'ps-chip ps-chip--plant' : 'ps-chip ps-chip--zero'}>
+                              <span className={plantText ? 'ps-chip ps-chip--metric' : 'ps-chip ps-chip--zero'}>
                                 {plantText || '—'}
+                              </span>
+                            </td>
+
+                            <td className="ps-num">
+                              <span className={despText ? 'ps-chip ps-chip--metric' : 'ps-chip ps-chip--zero'}>
+                                {despText || '—'}
                               </span>
                             </td>
 
@@ -878,10 +1111,21 @@ export default function PortonesStatsPage() {
                       {(() => {
                         const last = dailyRows.length ? dailyRows[dailyRows.length - 1].date : null;
                         const v = last ? plantSeries.byDate.get(last) : null;
-                        const show = last && plantSeries.baseDate && last >= plantSeries.baseDate;
                         return (
-                          <span className={show ? 'ps-chip ps-chip--plant' : 'ps-chip ps-chip--zero'}>
-                            {show && Number.isFinite(v) ? String(v) : '—'}
+                          <span className={Number.isFinite(v) ? 'ps-chip ps-chip--metric' : 'ps-chip ps-chip--zero'}>
+                            {Number.isFinite(v) ? String(v) : '—'}
+                          </span>
+                        );
+                      })()}
+                    </td>
+
+                    <td className="ps-num">
+                      {(() => {
+                        const last = dailyRows.length ? dailyRows[dailyRows.length - 1].date : null;
+                        const v = last ? despSeries.byDate.get(last) : null;
+                        return (
+                          <span className={Number.isFinite(v) ? 'ps-chip ps-chip--metric' : 'ps-chip ps-chip--zero'}>
+                            {Number.isFinite(v) ? String(v) : '—'}
                           </span>
                         );
                       })()}
