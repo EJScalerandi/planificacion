@@ -1368,6 +1368,26 @@ app.post('/portones/:id/fecha-plan-entrega', async (req, res) => {
   }
 });
 
+// GET /planta/bases -> [{date:"YYYY-MM-DD", qty:123, created_at:"..."}]
+// Devuelve TODAS las bases (histórico) para que el front no “borre” lo previo al cargar una nueva base
+app.get('/planta/bases', async (_req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `
+      select base_date::text as date, qty, created_at
+      from public.planta_base
+      order by base_date asc, created_at asc, id asc;
+      `
+    );
+
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json(rows);
+  } catch (err) {
+    console.error('planta bases get error:', err);
+    return res.status(500).json({ error: 'Error leyendo histórico base planta', detail: err.message });
+  }
+});
+
 // ===================== Observaciones PORTONES =====================
 
 app.get('/portones/:id/observaciones', async (req, res) => {
