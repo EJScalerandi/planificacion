@@ -656,7 +656,7 @@ export default function StageColumn({
                   })}
 
                 {/* ✅ Botón QC deshabilitado por ahora */}
-                {/*
+                
                 <button
                   className="btn"
                   type="button"
@@ -666,7 +666,7 @@ export default function StageColumn({
                 >
                   QC
                 </button>
-                */}
+               
 
                 <button
                   className="btn btn--brand"

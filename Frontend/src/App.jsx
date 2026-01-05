@@ -1,6 +1,6 @@
 // src/App.jsx
 import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import usePortones from './hooks/usePortones';
 import useIpanel from './hooks/useIpanels';
 import {
@@ -22,6 +22,86 @@ import AdminQcPage from '../pages/admin/AdminQcPage';
 
 const color = 'var(--brand)';
 
+const STATUS = {
+  PENDIENTE: 'Pendiente',
+  EN_PROCESO: 'En Proceso',
+  FINALIZADO: 'Finalizado',
+};
+
+function apiBase() {
+  const v = import.meta.env.VITE_API_URL || '';
+  return String(v || '').replace(/\/$/, '');
+}
+
+function low(v) { return String(v ?? '').toLowerCase(); }
+
+function isFinalizadoByKey(item, key) {
+  // key apunta a la columna status (ej: diseno, laser, etc)
+  return low(item?.[key]) === low(STATUS.FINALIZADO);
+}
+
+function buildReqIndex(requirements) {
+  // requirements: [{stage_key, type, group_id, required_key}, ...]
+  const idx = new Map();
+  for (const r of requirements || []) {
+    const stageKey = String(r?.stage_key || '').trim();
+    const type = String(r?.type || '').trim();
+    const requiredKey = String(r?.required_key || '').trim();
+    const gid = r?.group_id == null ? null : Number(r.group_id);
+
+    if (!stageKey || !type || !requiredKey) continue;
+
+    if (!idx.has(stageKey)) {
+      idx.set(stageKey, { all: new Set(), anyGroups: new Map() });
+    }
+    const bucket = idx.get(stageKey);
+
+    if (type === 'ALL') {
+      bucket.all.add(requiredKey);
+    } else if (type === 'ANY_GROUP') {
+      const g = Number.isFinite(gid) ? gid : 0;
+      if (!bucket.anyGroups.has(g)) bucket.anyGroups.set(g, new Set());
+      bucket.anyGroups.get(g).add(requiredKey);
+    }
+  }
+  return idx;
+}
+
+function canAppearInStage({ item, stageKey, reqIndex }) {
+  const st = item?.[stageKey];
+
+  // Si no tiene status en esa columna, no debería estar en esa etapa
+  if (st == null) return false;
+
+  // Si ya está en proceso o finalizado, se muestra igual (no debería pasar con requisitos rotos,
+  // pero es más seguro no ocultar trabajo en curso).
+  const stLow = low(st);
+  if (stLow === low(STATUS.EN_PROCESO) || stLow === low(STATUS.FINALIZADO)) return true;
+
+  // Solo gateamos el caso Pendiente
+  if (stLow !== low(STATUS.PENDIENTE)) return true;
+
+  // Si no hay requisitos cargados, fallback: mostrar como antes
+  if (!reqIndex) return true;
+
+  const req = reqIndex.get(stageKey);
+  if (!req) return true; // sin requisitos para esa etapa
+
+  // ALL
+  for (const k of req.all) {
+    if (!isFinalizadoByKey(item, k)) return false;
+  }
+
+  // ANY_GROUP: cada grupo debe tener al menos uno finalizado
+  for (const [, set] of req.anyGroups.entries()) {
+    const keys = Array.from(set);
+    const ok = keys.some(k => isFinalizadoByKey(item, k));
+    if (!ok) return false;
+  }
+
+  return true;
+}
+
 function Board({ stages }) {
   const { data: portones, loading, err, replaceItem, refresh, refreshing } =
     usePortones({ pollMs: 300000 });
@@ -32,6 +112,55 @@ function Board({ stages }) {
 
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState(null);
+
+  // Workflow config (public read-only)
+  const [wfPortones, setWfPortones] = useState(null); // {stages, edges, requirements}
+  const [wfIpanel, setWfIpanel] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadWorkflow(line) {
+      const base = apiBase();
+      const r = await fetch(`${base}/workflow/config?line=${encodeURIComponent(line)}`, { cache: 'no-store' });
+      if (!r.ok) {
+        const t = await r.text().catch(() => '');
+        throw new Error(`Error ${r.status} leyendo /workflow/config (${line}). ${t}`);
+      }
+      return r.json();
+    }
+
+    (async () => {
+      try {
+        const [p, i] = await Promise.all([
+          loadWorkflow('portones'),
+          loadWorkflow('ipanel'),
+        ]);
+
+        if (cancelled) return;
+
+        setWfPortones(p?.ok ? p : null);
+        setWfIpanel(i?.ok ? i : null);
+      } catch (e) {
+        // Si falla, no rompemos el tablero: simplemente queda el comportamiento anterior
+        console.warn('No se pudo cargar workflow public config:', e?.message || e);
+        if (!cancelled) {
+          setWfPortones(null);
+          setWfIpanel(null);
+        }
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, []);
+
+  const reqIndexPortones = useMemo(() => {
+    return wfPortones?.requirements ? buildReqIndex(wfPortones.requirements) : null;
+  }, [wfPortones]);
+
+  const reqIndexIpanel = useMemo(() => {
+    return wfIpanel?.requirements ? buildReqIndex(wfIpanel.requirements) : null;
+  }, [wfIpanel]);
 
   const filteredPortones = useMemo(() => {
     if (!Array.isArray(portones)) return [];
@@ -137,13 +266,23 @@ function Board({ stages }) {
       <div className="stage-grid">
         {stages.map(s => {
           const isIpanel = s.mode === 'ipanel';
+
+          const baseItems = isIpanel ? filteredIpanels : filteredPortones;
+          const reqIndex = isIpanel ? reqIndexIpanel : reqIndexPortones;
+
+          // ✅ Filtro por requisitos: solo aparecen los "Pendiente" que cumplan,
+          // y siempre dejamos ver los "En Proceso" / "Finalizado"
+          const itemsForStage = baseItems.filter(item =>
+            canAppearInStage({ item, stageKey: s.key, reqIndex })
+          );
+
           return (
             <StageColumn
               key={`${s.mode || 'porton'}-${s.key}-${s.label}`}
               title={s.label}
               stageKey={s.key}
               mode={s.mode || 'porton'}
-              items={isIpanel ? filteredIpanels : filteredPortones}
+              items={itemsForStage}
               onStart={isIpanel ? handleStartIpanel : handleStart}
               onStop={isIpanel ? handleStopIpanel : handleStop}
               disabledId={busyId}
