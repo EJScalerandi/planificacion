@@ -379,6 +379,9 @@ export default function StageColumn({
 
   const titleNorm = low(title);
 
+  // ✅ Prefabricados por key técnica
+  const isPrefabricados = effKey === 'armado_piernas';
+
   const isDisenoLaser =
     titleNorm.includes('diseño') ||
     titleNorm.includes('diseno') ||
@@ -393,6 +396,14 @@ export default function StageColumn({
     titleNorm.includes('pleg');
 
   function getPdfButtonsForColumn() {
+    // ✅ Prefabricados: mostrar también Tapajuntas (además del AP)
+    if (isPrefabricados) {
+      return [
+        { tipo: 'arm-primario', label: 'AP', title: 'PDF Armado Primario (por NV)', icon: '🧰' },
+        { tipo: 'tapajuntas', label: 'T', title: 'PDF Tapajuntas', icon: '🧱' },
+      ];
+    }
+
     if (isDisenoLaser) {
       return [{ tipo: 'diseno-laser', label: 'D', title: 'PDF Diseño Láser', icon: '🧩' }];
     }
