@@ -20,6 +20,8 @@ import AdminHomePage from '../pages/admin/AdminHomePage';
 import WorkflowDesignerPage from '../pages/admin/WorkflowDesignerPage';
 import AdminQcPage from '../pages/admin/AdminQcPage';
 
+import LogoDeGrandis from './assets/DeGrandis_1.png';
+
 const color = 'var(--brand)';
 
 const STATUS = {
@@ -73,8 +75,7 @@ function canAppearInStage({ item, stageKey, reqIndex }) {
   // Si no tiene status en esa columna, no debería estar en esa etapa
   if (st == null) return false;
 
-  // Si ya está en proceso o finalizado, se muestra igual (no debería pasar con requisitos rotos,
-  // pero es más seguro no ocultar trabajo en curso).
+  // Si ya está en proceso o finalizado, se muestra igual
   const stLow = low(st);
   if (stLow === low(STATUS.EN_PROCESO) || stLow === low(STATUS.FINALIZADO)) return true;
 
@@ -142,7 +143,6 @@ function Board({ stages }) {
         setWfPortones(p?.ok ? p : null);
         setWfIpanel(i?.ok ? i : null);
       } catch (e) {
-        // Si falla, no rompemos el tablero: simplemente queda el comportamiento anterior
         console.warn('No se pudo cargar workflow public config:', e?.message || e);
         if (!cancelled) {
           setWfPortones(null);
@@ -270,8 +270,6 @@ function Board({ stages }) {
           const baseItems = isIpanel ? filteredIpanels : filteredPortones;
           const reqIndex = isIpanel ? reqIndexIpanel : reqIndexPortones;
 
-          // ✅ Filtro por requisitos: solo aparecen los "Pendiente" que cumplan,
-          // y siempre dejamos ver los "En Proceso" / "Finalizado"
           const itemsForStage = baseItems.filter(item =>
             canAppearInStage({ item, stageKey: s.key, reqIndex })
           );
@@ -459,33 +457,76 @@ function IndexPage() {
   );
 }
 
+/** Pantalla de mantenimiento embebida en este mismo archivo (copy/paste total) */
+function MaintenancePage() {
+  return (
+    <div
+      style={{
+        minHeight: '100vh',
+        background: '#000',
+        color: '#fff',
+        display: 'grid',
+        placeItems: 'center',
+        padding: 24,
+      }}
+    >
+      <div
+        style={{
+          width: '100%',
+          maxWidth: 760,
+          textAlign: 'center',
+          border: '1px solid rgba(255,255,255,0.12)',
+          borderRadius: 18,
+          padding: 24,
+          background: 'rgba(0,0,0,0.65)',
+          boxShadow: '0 14px 40px rgba(0,0,0,0.45)',
+        }}
+      >
+        <div
+          style={{
+            display: 'grid',
+            placeItems: 'center',
+            marginBottom: 18,
+            padding: 18,
+            borderRadius: 14,
+            background: '#000', // fondo negro para el logo
+            border: '1px solid rgba(255,255,255,0.10)',
+          }}
+        >
+          <img
+            src={LogoDeGrandis}
+            alt="De Grandis Portones"
+            style={{
+              width: 280,
+              maxWidth: '80%',
+              height: 'auto',
+              display: 'block',
+              objectFit: 'contain',
+            }}
+          />
+        </div>
+
+        <h1 style={{ margin: '0 0 10px', fontSize: 22, fontWeight: 700 }}>
+          Aplicación en actualización
+        </h1>
+
+        <p style={{ margin: 0, fontSize: 16, lineHeight: 1.55, opacity: 0.9 }}>
+          La aplicación se encuentra  en actualización. Te avisaremos cuando ya se encuentre operativa.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/index" element={<IndexPage />} />
+        {/* Ruta canónica */}
+        <Route path="/mantenimiento" element={<MaintenancePage />} />
 
-        <Route path="/" element={<Board stages={ROUTES.find(r => r.path === '/').stages} />} />
-        {ROUTES.filter(r => r.path !== '/').map(r => (
-          <Route key={r.path} path={r.path} element={<Board stages={r.stages} />} />
-        ))}
-
-        <Route path="/ipanel" element={<IpanelReadOnlyPage />} />
-        <Route path="/Diseño" element={<Navigate to="/diseno" replace />} />
-        <Route path="/statusGate" element={<StatusGatePage />} />
-        <Route path="/createGate" element={<CreateGatePage />} />
-        <Route path="/planta" element={<PlantaReadOnlyPage />} />
-        <Route path="/plantasimple" element={<PlantaReadOnlySimplePage />} />
-        <Route path="/statusIpanels" element={<StatusIpanelsPage />} />
-        <Route path="/stats/portones" element={<PortonesStatsPage />} />
-
-        {/* Admin */}
-        <Route path="/admin/login" element={<AdminLoginPage />} />
-        <Route path="/admin" element={<AdminHomePage />} />
-        <Route path="/admin/qc" element={<AdminQcPage />} />
-        <Route path="/admin/workflow" element={<WorkflowDesignerPage />} />
-
-        <Route path="*" element={<Navigate to="/" replace />} />
+        {/* TODO el resto deshabilitado */}
+        <Route path="*" element={<Navigate to="/mantenimiento" replace />} />
       </Routes>
     </BrowserRouter>
   );
