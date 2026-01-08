@@ -18,11 +18,11 @@ const PORT = process.env.PORT || 4000;
 
 console.log('supabase url:', process.env.SUPABASE_DB_URL);
 
-// ======================= CORS / BASE =======================
+// ============================================================================
+// 0) Infra / DB / Middlewares
+// ============================================================================
 
-const allowedOrigins = (process.env.FRONTEND_ORIGINS ||
-  'https://planificacion-pi.vercel.app'
-)
+const allowedOrigins = (process.env.FRONTEND_ORIGINS || 'https://planificacion-pi.vercel.app')
   .split(',')
   .map(s => s.trim().replace(/\/$/, ''))
   .filter(Boolean);
@@ -48,12 +48,15 @@ app.options('*', cors());
 app.use(express.json());
 app.use(morgan('dev'));
 
-// --------------------- Rutas básicas ---------------------
+// ============================================================================
+// 1) Rutas base (health)
+// ============================================================================
+
 app.get('/', (_req, res) => {
   res.json({ ok: true, service: 'portones-backend' });
 });
 
-app.get('/healtz', async (_req, res) => {
+async function healthHandler(_req, res) {
   try {
     await pool.query('select 1;');
     return res.status(200).type('text/plain; charset=utf-8').send('El servidor está Online');
@@ -61,21 +64,14 @@ app.get('/healtz', async (_req, res) => {
     console.error('Healthcheck error:', err);
     return res.status(500).type('text/plain; charset=utf-8').send('El servidor tiene errores');
   }
-});
+}
+app.get('/healtz', healthHandler);
+app.get('/healt', healthHandler);
 
-app.get('/healt', async (_req, res) => {
-  try {
-    await pool.query('select 1;');
-    return res.status(200).type('text/plain; charset=utf-8').send('El servidor está Online');
-  } catch (err) {
-    console.error('Healthcheck error:', err);
-    return res.status(500).type('text/plain; charset=utf-8').send('El servidor tiene errores');
-  }
-});
+// ============================================================================
+// 2) Auth Admin (dashboard)
+// ============================================================================
 
-// =========================
-// AUTH ADMIN (dashboard)
-// =========================
 const JWT_SECRET = process.env.ADMIN_JWT_SECRET || 'dev_secret_change_me';
 
 function signAdminToken(payload) {
@@ -103,10 +99,12 @@ app.post('/admin/login', async (req, res) => {
     }
 
     const { rows } = await pool.query(
-      `select id, username, password_hash, is_active
-       from public.admin_users
-       where username = $1
-       limit 1;`,
+      `
+      select id, username, password_hash, is_active
+      from public.admin_users
+      where username = $1
+      limit 1;
+      `,
       [String(username).trim()]
     );
 
@@ -124,15 +122,18 @@ app.post('/admin/login', async (req, res) => {
   }
 });
 
-// =========================
-// PLANTA BASE (Supabase table public.planta_base)
-// =========================
+// ============================================================================
+// 3) Helpers comunes
+// ============================================================================
 
 function isValidISODate10(s) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(s || '').trim());
 }
 
-// GET /planta/base -> { date: "YYYY-MM-DD", qty: 123 }  o {date:null, qty:null} si no hay base
+// ============================================================================
+// 4) Planta base
+// ============================================================================
+
 app.get('/planta/base', async (_req, res) => {
   try {
     const { rows } = await pool.query(
@@ -145,7 +146,6 @@ app.get('/planta/base', async (_req, res) => {
     );
 
     res.setHeader('Cache-Control', 'no-store');
-
     if (!rows.length) return res.json({ date: null, qty: null });
     return res.json(rows[0]);
   } catch (err) {
@@ -154,19 +154,13 @@ app.get('/planta/base', async (_req, res) => {
   }
 });
 
-// POST /planta/base (LIBRE) body: { date, qty } -> inserta nueva base
-// devuelve { date, qty }
 app.post('/planta/base', async (req, res) => {
   try {
     const date = String(req.body?.date || '').trim();
     const qty = Number(req.body?.qty);
 
-    if (!isValidISODate10(date)) {
-      return res.status(400).json({ error: 'Fecha inválida (YYYY-MM-DD)' });
-    }
-    if (!Number.isInteger(qty) || qty < 0) {
-      return res.status(400).json({ error: 'qty debe ser entero >= 0' });
-    }
+    if (!isValidISODate10(date)) return res.status(400).json({ error: 'Fecha inválida (YYYY-MM-DD)' });
+    if (!Number.isInteger(qty) || qty < 0) return res.status(400).json({ error: 'qty debe ser entero >= 0' });
 
     const { rows } = await pool.query(
       `
@@ -185,9 +179,27 @@ app.post('/planta/base', async (req, res) => {
   }
 });
 
-// =========================
-// QC (PIN + permisos + motivos + auditoría)
-// =========================
+app.get('/planta/bases', async (_req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `
+      select base_date::text as date, qty, created_at
+      from public.planta_base
+      order by base_date asc, created_at asc, id asc;
+      `
+    );
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json(rows);
+  } catch (err) {
+    console.error('planta bases get error:', err);
+    return res.status(500).json({ error: 'Error leyendo histórico base planta', detail: err.message });
+  }
+});
+
+// ============================================================================
+// 5) QC (PIN + permisos + motivos + auditoría) + Admin QC
+// ============================================================================
+
 const QC_PIN_SALT = process.env.QC_PIN_SALT || 'dev_change_me_pin_salt';
 
 function hashPin(pin) {
@@ -197,16 +209,14 @@ function hashPin(pin) {
 function isValidLine(line) {
   return ['portones', 'ipanel'].includes(line);
 }
-
 function isValidQcStatus(s) {
   return ['APROBADO', 'OBSERVADO', 'RECHAZADO'].includes(s);
 }
-
 function isValidKind(k) {
   return ['OBSERVADO', 'RECHAZADO'].includes(k);
 }
 
-// GET /qc/motives?line=portones&kind=RECHAZADO&stage=laser
+// --- QC público
 app.get('/qc/motives', async (req, res) => {
   try {
     const line = String(req.query.line || '').trim();
@@ -236,7 +246,6 @@ app.get('/qc/motives', async (req, res) => {
   }
 });
 
-// GET /qc/history/:line/:itemId
 app.get('/qc/history/:line/:itemId', async (req, res) => {
   try {
     const line = String(req.params.line || '').trim();
@@ -274,18 +283,8 @@ app.get('/qc/history/:line/:itemId', async (req, res) => {
   }
 });
 
-// POST /qc/authorize
-// Body: { line, item_id, stage_key, qc_status, motive_id?, note?, pin }
 app.post('/qc/authorize', async (req, res) => {
-  const {
-    line,
-    item_id,
-    stage_key,
-    qc_status,
-    motive_id,
-    note,
-    pin
-  } = req.body || {};
+  const { line, item_id, stage_key, qc_status, motive_id, note, pin } = req.body || {};
 
   const nItemId = Number(item_id);
   const stageKey = String(stage_key || '').trim();
@@ -302,7 +301,6 @@ app.post('/qc/authorize', async (req, res) => {
   try {
     await client.query('begin');
 
-    // 1) Usuario por PIN
     const pinHash = hashPin(pinStr);
     const uQ = await client.query(
       `
@@ -320,7 +318,6 @@ app.post('/qc/authorize', async (req, res) => {
       return res.status(401).json({ error: 'PIN incorrecto o usuario inactivo' });
     }
 
-    // 2) Estado actual QC (último evento)
     const lastQ = await client.query(
       `
       select qc_status
@@ -334,13 +331,11 @@ app.post('/qc/authorize', async (req, res) => {
 
     const lastStatus = lastQ.rows[0]?.qc_status || null;
 
-    // 3) Regla especial: si está RECHAZADO, solo GLOBAL lo destraba
     if (lastStatus === 'RECHAZADO' && qcStatus !== 'RECHAZADO' && !user.is_global) {
       await client.query('rollback');
       return res.status(403).json({ error: 'Solo un usuario GLOBAL puede destrabar un RECHAZADO' });
     }
 
-    // 4) Permisos por sección si no es global
     if (!user.is_global) {
       const sQ = await client.query(
         `
@@ -360,7 +355,6 @@ app.post('/qc/authorize', async (req, res) => {
       }
     }
 
-    // 5) Motivo obligatorio para OBSERVADO/RECHAZADO
     let motiveId = null;
     if (qcStatus === 'OBSERVADO' || qcStatus === 'RECHAZADO') {
       const mid = Number(motive_id);
@@ -369,7 +363,6 @@ app.post('/qc/authorize', async (req, res) => {
         return res.status(400).json({ error: 'motive_id requerido para Observado/Rechazado' });
       }
 
-      // validar motivo (line + kind + enabled + stage_key null o coincide)
       const motQ = await client.query(
         `
         select id
@@ -391,7 +384,6 @@ app.post('/qc/authorize', async (req, res) => {
       motiveId = mid;
     }
 
-    // 6) Insert auditoría
     const ins = await client.query(
       `
       insert into public.qc_event(line, item_id, stage_key, qc_status, motive_id, note, by_user_id)
@@ -417,12 +409,7 @@ app.post('/qc/authorize', async (req, res) => {
   }
 });
 
-// =========================
-// ADMIN QC API (CRUD usuarios QC + motivos)
-// Protegido con adminAuth
-// =========================
-
-// GET /admin/qc/users
+// --- Admin QC (mantengo tu lógica tal cual)
 app.get('/admin/qc/users', adminAuth, async (_req, res) => {
   try {
     const [uQ, sQ] = await Promise.all([
@@ -460,8 +447,6 @@ app.get('/admin/qc/users', adminAuth, async (_req, res) => {
   }
 });
 
-// POST /admin/qc/users
-// Body: { name, pin, is_global?, is_active?, scopes?:[{line,stage_key,enabled?}] }
 app.post('/admin/qc/users', adminAuth, async (req, res) => {
   const { name, pin, is_global, is_active, scopes } = req.body || {};
   const nm = String(name || '').trim();
@@ -490,7 +475,6 @@ app.post('/admin/qc/users', adminAuth, async (req, res) => {
 
     const user = ins.rows[0];
 
-    // scopes opcionales (si no es global)
     if (user.is_global !== true && Array.isArray(scopes)) {
       for (const s of scopes) {
         const line = String(s?.line || '').trim();
@@ -511,7 +495,6 @@ app.post('/admin/qc/users', adminAuth, async (req, res) => {
 
     await client.query('commit');
 
-    // devolver con scopes
     const sQ = await pool.query(
       `
       select user_id, line, stage_key, enabled
@@ -532,8 +515,6 @@ app.post('/admin/qc/users', adminAuth, async (req, res) => {
   }
 });
 
-// PUT /admin/qc/users/:id
-// Body: { name?, pin?, is_global?, is_active? }
 app.put('/admin/qc/users/:id', adminAuth, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) return res.status(400).json({ error: 'id inválido' });
@@ -601,9 +582,6 @@ app.put('/admin/qc/users/:id', adminAuth, async (req, res) => {
   }
 });
 
-// PUT /admin/qc/users/:id/scopes
-// Body: { scopes: [{line, stage_key, enabled?}, ...] }
-// Reemplaza scopes completos (wipe & insert)
 app.put('/admin/qc/users/:id/scopes', adminAuth, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) return res.status(400).json({ error: 'id inválido' });
@@ -663,7 +641,6 @@ app.put('/admin/qc/users/:id/scopes', adminAuth, async (req, res) => {
   }
 });
 
-// GET /admin/qc/motives?line=&kind=&stage=
 app.get('/admin/qc/motives', adminAuth, async (req, res) => {
   try {
     const line = req.query.line ? String(req.query.line).trim() : null;
@@ -692,8 +669,6 @@ app.get('/admin/qc/motives', adminAuth, async (req, res) => {
   }
 });
 
-// POST /admin/qc/motives
-// Body: { line, kind, stage_key?, label, enabled?, priority? }
 app.post('/admin/qc/motives', adminAuth, async (req, res) => {
   try {
     const { line, kind, stage_key, label, enabled, priority } = req.body || {};
@@ -724,8 +699,6 @@ app.post('/admin/qc/motives', adminAuth, async (req, res) => {
   }
 });
 
-// PUT /admin/qc/motives/:id
-// Body: { label?, enabled?, priority?, stage_key? }
 app.put('/admin/qc/motives/:id', adminAuth, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) return res.status(400).json({ error: 'id inválido' });
@@ -783,9 +756,10 @@ app.put('/admin/qc/motives/:id', adminAuth, async (req, res) => {
   }
 });
 
-// =========================
-// WORKFLOW ENGINE (Opción A)
-// =========================
+// ============================================================================
+// 6) Workflow engine + API (tu lógica)
+// ============================================================================
+
 const STATUS = {
   PENDIENTE: 'Pendiente',
   EN_PROCESO: 'En Proceso',
@@ -793,16 +767,8 @@ const STATUS = {
 };
 
 function low(v) { return (v || '').toString().toLowerCase(); }
+function getValueByField(ctx, field) { return ctx ? ctx[field] : undefined; }
 
-function getValueByField(ctx, field) {
-  if (!ctx) return undefined;
-  return ctx[field];
-}
-
-// condition_json soportado (simple):
-// { all: [ {field,op,value}, ... ] }
-// { any: [ ... ] }
-// o ambos: { all:[...], any:[...] }
 function evalRule(ctx, rule) {
   const field = rule?.field;
   const op = rule?.op;
@@ -853,40 +819,44 @@ function evalConditionJson(ctx, conditionJson) {
 async function getWorkflowConfig(line) {
   const [st, ed, rq] = await Promise.all([
     pool.query(
-      `select line, key, label, status_col, start_col, end_col, enabled
-       from public.workflow_stage
-       where line = $1
-       order by key asc;`,
+      `
+      select line, key, label, status_col, start_col, end_col, enabled
+      from public.workflow_stage
+      where line = $1
+      order by key asc;
+      `,
       [line]
     ),
     pool.query(
-      `select id, line, from_key, to_key, priority, enabled, condition_json
-       from public.workflow_edge
-       where line = $1
-       order by from_key asc, priority asc, to_key asc;`,
+      `
+      select id, line, from_key, to_key, priority, enabled, condition_json
+      from public.workflow_edge
+      where line = $1
+      order by from_key asc, priority asc, to_key asc;
+      `,
       [line]
     ),
     pool.query(
-      `select id, line, stage_key, type, group_id, required_key
-       from public.workflow_requirement
-       where line = $1
-       order by stage_key asc, type asc, group_id asc nulls first, required_key asc;`,
+      `
+      select id, line, stage_key, type, group_id, required_key
+      from public.workflow_requirement
+      where line = $1
+      order by stage_key asc, type asc, group_id asc nulls first, required_key asc;
+      `,
       [line]
     ),
   ]);
 
-  return {
-    stages: st.rows,
-    edges: ed.rows,
-    requirements: rq.rows,
-  };
+  return { stages: st.rows, edges: ed.rows, requirements: rq.rows };
 }
 
 async function loadStageMap(line) {
   const { rows } = await pool.query(
-    `select key, label, status_col, start_col, end_col, enabled
-     from public.workflow_stage
-     where line = $1;`,
+    `
+    select key, label, status_col, start_col, end_col, enabled
+    from public.workflow_stage
+    where line = $1;
+    `,
     [line]
   );
   const map = new Map();
@@ -896,10 +866,12 @@ async function loadStageMap(line) {
 
 async function getNextStages(line, fromKey, ctx) {
   const { rows } = await pool.query(
-    `select id, line, from_key, to_key, priority, enabled, condition_json
-     from public.workflow_edge
-     where line = $1 and from_key = $2 and enabled = true
-     order by priority asc, to_key asc;`,
+    `
+    select id, line, from_key, to_key, priority, enabled, condition_json
+    from public.workflow_edge
+    where line = $1 and from_key = $2 and enabled = true
+    order by priority asc, to_key asc;
+    `,
     [line, fromKey]
   );
 
@@ -912,9 +884,11 @@ async function getNextStages(line, fromKey, ctx) {
 
 async function checkRequirements(line, stageKey, rowData) {
   const { rows } = await pool.query(
-    `select type, group_id, required_key
-     from public.workflow_requirement
-     where line = $1 and stage_key = $2;`,
+    `
+    select type, group_id, required_key
+    from public.workflow_requirement
+    where line = $1 and stage_key = $2;
+    `,
     [line, stageKey]
   );
 
@@ -930,9 +904,7 @@ async function checkRequirements(line, stageKey, rowData) {
   const isFinal = (k) => low(rowData?.[k]) === low(STATUS.FINALIZADO);
 
   for (const k of reqAll) {
-    if (!isFinal(k)) {
-      return { ok: false, reason: `Requisito ALL no cumplido: ${k} no está Finalizado` };
-    }
+    if (!isFinal(k)) return { ok: false, reason: `Requisito ALL no cumplido: ${k} no está Finalizado` };
   }
 
   for (const [gid, keys] of anyGroups.entries()) {
@@ -945,14 +917,11 @@ async function checkRequirements(line, stageKey, rowData) {
   return { ok: true };
 }
 
-// ===================== WORKFLOW ADMIN API =====================
-
+// --- Workflow Admin
 app.get('/admin/workflow/config', adminAuth, async (req, res) => {
   try {
     const line = String(req.query.line || '').trim();
-    if (!['portones', 'ipanel'].includes(line)) {
-      return res.status(400).json({ error: 'line debe ser portones o ipanel' });
-    }
+    if (!['portones', 'ipanel'].includes(line)) return res.status(400).json({ error: 'line debe ser portones o ipanel' });
     const cfg = await getWorkflowConfig(line);
     return res.json({ ok: true, ...cfg });
   } catch (err) {
@@ -963,9 +932,7 @@ app.get('/admin/workflow/config', adminAuth, async (req, res) => {
 
 app.put('/admin/workflow/config', adminAuth, async (req, res) => {
   const line = String(req.query.line || '').trim();
-  if (!['portones', 'ipanel'].includes(line)) {
-    return res.status(400).json({ error: 'line debe ser portones o ipanel' });
-  }
+  if (!['portones', 'ipanel'].includes(line)) return res.status(400).json({ error: 'line debe ser portones o ipanel' });
 
   const { edges = [], requirements = [], stageLabels = [] } = req.body || {};
 
@@ -977,9 +944,11 @@ app.put('/admin/workflow/config', adminAuth, async (req, res) => {
       for (const s of stageLabels) {
         if (!s?.key) continue;
         await client.query(
-          `update public.workflow_stage
-           set label = $3, updated_at = now()
-           where line = $1 and key = $2;`,
+          `
+          update public.workflow_stage
+          set label = $3, updated_at = now()
+          where line = $1 and key = $2;
+          `,
           [line, String(s.key), String(s.label || s.key)]
         );
       }
@@ -1034,20 +1003,36 @@ app.put('/admin/workflow/config', adminAuth, async (req, res) => {
   }
 });
 
-// ===================== Estados & Etapas ====================
-// Mantengo tus keys técnicas (no rompe lo previo)
+// --- Workflow público read-only
+app.get('/workflow/config', async (req, res) => {
+  try {
+    const line = String(req.query.line || '').trim();
+    if (!['portones', 'ipanel'].includes(line)) return res.status(400).json({ error: 'line debe ser portones o ipanel' });
+
+    const cfg = await getWorkflowConfig(line);
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json({ ok: true, ...cfg });
+  } catch (err) {
+    console.error('public workflow config error:', err);
+    return res.status(500).json({ error: 'Error leyendo workflow', detail: err.message });
+  }
+});
+
+// ============================================================================
+// 7) Etapas “legacy” (porque hoy escribís en public.portones) + Allowed cols
+// ============================================================================
 
 const STAGES = {
   diseno: { status: 'diseno', start: 'diseno_inicio', end: 'diseno_fin' },
   laser: { status: 'laser', start: 'laser_inicio', end: 'laser_fin' },
 
-  guillotina: { status: 'guillotina', start: 'guillotina_inicio', end: 'guillotina_fin' }, // Corte piernas
-  corte_revest: { status: 'corte_revest', start: 'corte_revest_inicio', end: 'corte_revest_fin' }, // Corte revest.
+  guillotina: { status: 'guillotina', start: 'guillotina_inicio', end: 'guillotina_fin' },
+  corte_revest: { status: 'corte_revest', start: 'corte_revest_inicio', end: 'corte_revest_fin' },
 
-  plegadora: { status: 'plegadora', start: 'plegadora_inicio', end: 'plegadora_fin' }, // Plegado piernas
-  plegado_revest: { status: 'plegado_revest', start: 'plegado_revest_inicio', end: 'plegado_revest_fin' }, // Plegado revest.
+  plegadora: { status: 'plegadora', start: 'plegadora_inicio', end: 'plegadora_fin' },
+  plegado_revest: { status: 'plegado_revest', start: 'plegado_revest_inicio', end: 'plegado_revest_fin' },
 
-  armado_piernas: { status: 'armado_piernas', start: 'armado_piernas_inicio', end: 'armado_piernas_fin' }, // Prefabricados
+  armado_piernas: { status: 'armado_piernas', start: 'armado_piernas_inicio', end: 'armado_piernas_fin' },
   armado_hojas: { status: 'armado_hojas', start: 'armado_hojas_inicio', end: 'armado_hojas_fin' },
   armado_marco_piernas: { status: 'armado_marco_piernas', start: 'armado_marco_piernas_inicio', end: 'armado_marco_piernas_fin' },
   armado_primario: { status: 'armado_primario', start: 'armado_primario_inicio', end: 'armado_primario_fin' },
@@ -1062,8 +1047,8 @@ const STAGES = {
 
 const IPANEL_STAGES = {
   diseno: { status: 'diseno', start: 'diseno_inicio', end: 'diseno_fin' },
-  guillotina: { status: 'guillotina', start: 'guillotina_inicio', end: 'guillotina_fin' }, // Corte ipanel
-  plegado: { status: 'plegado', start: 'plegado_inicio', end: 'plegado_fin' }, // Plegado ipanel
+  guillotina: { status: 'guillotina', start: 'guillotina_inicio', end: 'guillotina_fin' },
+  plegado: { status: 'plegado', start: 'plegado_inicio', end: 'plegado_fin' },
   pintura: { status: 'pintura', start: 'pintura_inicio', end: 'pintura_fin' },
   inyeccion: { status: 'inyeccion', start: 'inyeccion_inicio', end: 'inyeccion_fin' },
   despacho: { status: 'despacho', start: 'despacho_inicio', end: 'despacho_fin' },
@@ -1072,15 +1057,119 @@ const IPANEL_STAGES = {
 const PORTONES_ALLOWED_STATUS_COLS = new Set(Object.keys(STAGES));
 const IPANEL_ALLOWED_STATUS_COLS = new Set(Object.keys(IPANEL_STAGES));
 
-// --------------------- Lógica Portones ---------------------
+// ============================================================================
+// 8) PORTONES
+// ============================================================================
 
+// (Legacy) GET /portones -> sigue leyendo la tabla vieja
 app.get('/portones', async (_req, res) => {
   try {
     const { rows } = await pool.query('select * from public.portones order by nv asc;');
-    res.json(rows);
+    return res.json(rows);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Error leyendo portones', detail: err.message });
+    return res.status(500).json({ error: 'Error leyendo portones', detail: err.message });
+  }
+});
+
+// (Nuevo) GET /portones_v2 -> arma el mismo "shape" pero desde tablas normalizadas
+app.get('/portones_v2', async (_req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `
+      select
+        p.*,
+
+        -- ====== ESTADOS (desde porton_etapas_estado) ======
+        max(case when e.etapa = 'diseno'::public.porton_etapa then e.estado end) as diseno,
+        max(case when e.etapa = 'laser'::public.porton_etapa then e.estado end) as laser,
+        max(case when e.etapa = 'guillotina'::public.porton_etapa then e.estado end) as guillotina,
+        max(case when e.etapa = 'plegadora'::public.porton_etapa then e.estado end) as plegadora,
+        max(case when e.etapa = 'armado_piernas'::public.porton_etapa then e.estado end) as armado_piernas,
+        max(case when e.etapa = 'armado_primario'::public.porton_etapa then e.estado end) as armado_primario,
+        max(case when e.etapa = 'inyeccion'::public.porton_etapa then e.estado end) as inyeccion,
+        max(case when e.etapa = 'corte_revest'::public.porton_etapa then e.estado end) as corte_revest,
+        max(case when e.etapa = 'plegado_revest'::public.porton_etapa then e.estado end) as plegado_revest,
+        max(case when e.etapa = 'revestimiento'::public.porton_etapa then e.estado end) as revestimiento,
+        max(case when e.etapa = 'pintura'::public.porton_etapa then e.estado end) as pintura,
+        max(case when e.etapa = 'armado_hojas'::public.porton_etapa then e.estado end) as armado_hojas,
+        max(case when e.etapa = 'armado_marco_piernas'::public.porton_etapa then e.estado end) as armado_marco_piernas,
+        max(case when e.etapa = 'armado_final'::public.porton_etapa then e.estado end) as armado_final,
+        max(case when e.etapa = 'despacho'::public.porton_etapa then e.estado end) as despacho,
+
+        -- ====== INICIO/FIN (desde porton_etapas_tiempos) ======
+        max(case when t.etapa = 'diseno'::public.porton_etapa then t.inicio end) as diseno_inicio,
+        max(case when t.etapa = 'diseno'::public.porton_etapa then t.fin end) as diseno_fin,
+
+        max(case when t.etapa = 'laser'::public.porton_etapa then t.inicio end) as laser_inicio,
+        max(case when t.etapa = 'laser'::public.porton_etapa then t.fin end) as laser_fin,
+
+        max(case when t.etapa = 'guillotina'::public.porton_etapa then t.inicio end) as guillotina_inicio,
+        max(case when t.etapa = 'guillotina'::public.porton_etapa then t.fin end) as guillotina_fin,
+
+        max(case when t.etapa = 'plegadora'::public.porton_etapa then t.inicio end) as plegadora_inicio,
+        max(case when t.etapa = 'plegadora'::public.porton_etapa then t.fin end) as plegadora_fin,
+
+        max(case when t.etapa = 'armado_piernas'::public.porton_etapa then t.inicio end) as armado_piernas_inicio,
+        max(case when t.etapa = 'armado_piernas'::public.porton_etapa then t.fin end) as armado_piernas_fin,
+
+        max(case when t.etapa = 'armado_primario'::public.porton_etapa then t.inicio end) as armado_primario_inicio,
+        max(case when t.etapa = 'armado_primario'::public.porton_etapa then t.fin end) as armado_primario_fin,
+
+        max(case when t.etapa = 'inyeccion'::public.porton_etapa then t.inicio end) as inyeccion_inicio,
+        max(case when t.etapa = 'inyeccion'::public.porton_etapa then t.fin end) as inyeccion_fin,
+
+        max(case when t.etapa = 'corte_revest'::public.porton_etapa then t.inicio end) as corte_revest_inicio,
+        max(case when t.etapa = 'corte_revest'::public.porton_etapa then t.fin end) as corte_revest_fin,
+
+        max(case when t.etapa = 'plegado_revest'::public.porton_etapa then t.inicio end) as plegado_revest_inicio,
+        max(case when t.etapa = 'plegado_revest'::public.porton_etapa then t.fin end) as plegado_revest_fin,
+
+        max(case when t.etapa = 'revestimiento'::public.porton_etapa then t.inicio end) as revestimiento_inicio,
+        max(case when t.etapa = 'revestimiento'::public.porton_etapa then t.fin end) as revestimiento_fin,
+
+        max(case when t.etapa = 'pintura'::public.porton_etapa then t.inicio end) as pintura_inicio,
+        max(case when t.etapa = 'pintura'::public.porton_etapa then t.fin end) as pintura_fin,
+
+        max(case when t.etapa = 'armado_hojas'::public.porton_etapa then t.inicio end) as armado_hojas_inicio,
+        max(case when t.etapa = 'armado_hojas'::public.porton_etapa then t.fin end) as armado_hojas_fin,
+
+        max(case when t.etapa = 'armado_marco_piernas'::public.porton_etapa then t.inicio end) as armado_marco_piernas_inicio,
+        max(case when t.etapa = 'armado_marco_piernas'::public.porton_etapa then t.fin end) as armado_marco_piernas_fin,
+
+        max(case when t.etapa = 'armado_final'::public.porton_etapa then t.inicio end) as armado_final_inicio,
+        max(case when t.etapa = 'armado_final'::public.porton_etapa then t.fin end) as armado_final_fin,
+
+        max(case when t.etapa = 'despacho'::public.porton_etapa then t.inicio end) as despacho_inicio,
+        max(case when t.etapa = 'despacho'::public.porton_etapa then t.fin end) as despacho_fin
+
+      from public.portones p
+      left join public.porton_etapas_estado e
+        on e.porton_id = p.id
+      left join public.porton_etapas_tiempos t
+        on t.porton_id = p.id
+       and t.etapa = e.etapa
+      group by p.id
+      order by p.nv asc;
+      `
+    );
+
+    // Defaults defensivos si llegara a faltar alguna fila (no debería si tu trigger crea 15 etapas)
+    const stageKeys = [
+      'diseno','laser','guillotina','plegadora','armado_piernas','armado_primario',
+      'inyeccion','corte_revest','plegado_revest','revestimiento','pintura',
+      'armado_hojas','armado_marco_piernas','armado_final','despacho'
+    ];
+    for (const r of rows) {
+      for (const k of stageKeys) {
+        if (r[k] == null) r[k] = 'Pendiente';
+      }
+    }
+
+    return res.json(rows);
+  } catch (err) {
+    console.error('get /portones_v2 error:', err);
+    return res.status(500).json({ error: 'Error leyendo portones_v2', detail: err.message });
   }
 });
 
@@ -1105,9 +1194,11 @@ app.post('/portones', async (req, res) => {
     }
 
     const { rows } = await pool.query(
-      `insert into public.portones (nv, nlista, partida)
-       values ($1, $2, $3)
-       returning *;`,
+      `
+      insert into public.portones (nv, nlista, partida)
+      values ($1, $2, $3)
+      returning *;
+      `,
       [nNv, nNl, nPa]
     );
 
@@ -1148,15 +1239,15 @@ app.post('/portones/:id/stage', async (req, res) => {
 
       await client.query(
         `
-        UPDATE public.portones
-        SET ${cfg.status} = $2,
-            ${cfg.start}  = COALESCE(${cfg.start}, now())
-        WHERE id = $1;
+        update public.portones
+        set ${cfg.status} = $2,
+            ${cfg.start}  = coalesce(${cfg.start}, now())
+        where id = $1;
         `,
         [id, STATUS.EN_PROCESO]
       );
 
-      const { rows } = await client.query('SELECT * FROM public.portones WHERE id = $1;', [id]);
+      const { rows } = await client.query('select * from public.portones where id = $1;', [id]);
       await client.query('commit');
       return res.json(rows[0]);
     }
@@ -1164,10 +1255,10 @@ app.post('/portones/:id/stage', async (req, res) => {
     // stop => Finaliza
     await client.query(
       `
-      UPDATE public.portones
-      SET ${cfg.status} = $2,
-          ${cfg.end}    = COALESCE(${cfg.end}, now())
-      WHERE id = $1;
+      update public.portones
+      set ${cfg.status} = $2,
+          ${cfg.end}    = coalesce(${cfg.end}, now())
+      where id = $1;
       `,
       [id, STATUS.FINALIZADO]
     );
@@ -1175,7 +1266,6 @@ app.post('/portones/:id/stage', async (req, res) => {
     const afterQ = await client.query('select * from public.portones where id = $1;', [id]);
     const row1 = afterQ.rows[0];
 
-    // ruteo mixto: habilitar múltiples "next"
     const stageMap = await loadStageMap('portones');
     const ctx = { ...(row1 || {}) };
     const nextKeys = await getNextStages('portones', stage, ctx);
@@ -1184,19 +1274,20 @@ app.post('/portones/:id/stage', async (req, res) => {
       const ns = stageMap.get(nk);
       if (!ns) continue;
 
-      // Seguridad: solo permitimos columnas status conocidas
       const col = ns.status_col;
       if (!PORTONES_ALLOWED_STATUS_COLS.has(col)) continue;
 
       await client.query(
-        `UPDATE public.portones
-         SET ${col} = COALESCE(${col}, $2)
-         WHERE id = $1;`,
+        `
+        update public.portones
+        set ${col} = coalesce(${col}, $2)
+        where id = $1;
+        `,
         [id, STATUS.PENDIENTE]
       );
     }
 
-    const { rows } = await client.query('SELECT * FROM public.portones WHERE id = $1;', [id]);
+    const { rows } = await client.query('select * from public.portones where id = $1;', [id]);
     await client.query('commit');
     return res.json(rows[0]);
   } catch (err) {
@@ -1208,196 +1299,55 @@ app.post('/portones/:id/stage', async (req, res) => {
   }
 });
 
-// POST /portones/:id/fecha-plan
-app.post('/portones/:id/fecha-plan', async (req, res) => {
-  const { id } = req.params;
-  let { fecha_plan } = req.body || {};
+// --- Fechas Portones (misma lógica, solo agrupado)
+function datePatchHandler(fieldName) {
+  return async (req, res) => {
+    const { id } = req.params;
+    let v = req.body?.[fieldName];
 
-  try {
-    if (fecha_plan !== null && fecha_plan !== undefined) {
-      if (typeof fecha_plan !== 'string') {
-        return res.status(400).json({ error: 'fecha_plan debe ser string con formato YYYY-MM-DD o null' });
+    try {
+      if (v !== null && v !== undefined) {
+        if (typeof v !== 'string') return res.status(400).json({ error: `${fieldName} debe ser string YYYY-MM-DD o null` });
+        v = v.slice(0, 10);
+        if (!isValidISODate10(v)) return res.status(400).json({ error: `${fieldName} inválida. Use formato YYYY-MM-DD` });
       }
-      fecha_plan = fecha_plan.slice(0, 10);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha_plan)) {
-        return res.status(400).json({ error: 'fecha_plan inválida. Use formato YYYY-MM-DD' });
-      }
+
+      const { rows } = await pool.query(
+        `
+        update public.portones
+        set ${fieldName} = $2
+        where id = $1
+        returning *;
+        `,
+        [id, v ?? null]
+      );
+
+      if (!rows.length) return res.status(404).json({ error: 'Portón no encontrado' });
+      return res.json(rows[0]);
+    } catch (err) {
+      console.error(`set ${fieldName} error:`, err);
+      return res.status(500).json({ error: `Error al actualizar ${fieldName}`, detail: err.message });
     }
+  };
+}
 
-    const { rows } = await pool.query(
-      `UPDATE public.portones
-       SET fecha_plan = $2
-       WHERE id = $1
-       RETURNING *;`,
-      [id, fecha_plan ?? null]
-    );
+app.post('/portones/:id/fecha-plan', datePatchHandler('fecha_plan'));
+app.post('/portones/:id/fecha-prod', datePatchHandler('fecha_prod'));
+app.post('/portones/:id/fecha-nv', datePatchHandler('fecha_nv'));
+app.post('/portones/:id/fecha-med', datePatchHandler('fecha_med'));
+app.post('/portones/:id/fecha-plan-entrega', datePatchHandler('fecha_plan_entrega'));
 
-    if (!rows.length) return res.status(404).json({ error: 'Portón no encontrado' });
-    return res.json(rows[0]);
-  } catch (err) {
-    console.error('set fecha_plan error:', err);
-    return res.status(500).json({ error: 'Error al actualizar fecha planificada', detail: err.message });
-  }
-});
-
-// POST /portones/:id/fecha-prod
-app.post('/portones/:id/fecha-prod', async (req, res) => {
-  const { id } = req.params;
-  let { fecha_prod } = req.body || {};
-
-  try {
-    if (fecha_prod !== null && fecha_prod !== undefined) {
-      if (typeof fecha_prod !== 'string') {
-        return res.status(400).json({ error: 'fecha_prod debe ser string con formato YYYY-MM-DD o null' });
-      }
-      fecha_prod = fecha_prod.slice(0, 10);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha_prod)) {
-        return res.status(400).json({ error: 'fecha_prod inválida. Use formato YYYY-MM-DD' });
-      }
-    }
-
-    const { rows } = await pool.query(
-      `UPDATE public.portones
-       SET fecha_prod = $2
-       WHERE id = $1
-       RETURNING *;`,
-      [id, fecha_prod ?? null]
-    );
-
-    if (!rows.length) return res.status(404).json({ error: 'Portón no encontrado' });
-    return res.json(rows[0]);
-  } catch (err) {
-    console.error('set fecha_prod error:', err);
-    return res.status(500).json({ error: 'Error al actualizar fecha de producción', detail: err.message });
-  }
-});
-
-// POST /portones/:id/fecha-nv
-app.post('/portones/:id/fecha-nv', async (req, res) => {
-  const { id } = req.params;
-  let { fecha_nv } = req.body || {};
-
-  try {
-    if (fecha_nv !== null && fecha_nv !== undefined) {
-      if (typeof fecha_nv !== 'string') {
-        return res.status(400).json({ error: 'fecha_nv debe ser string con formato YYYY-MM-DD o null' });
-      }
-      fecha_nv = fecha_nv.slice(0, 10);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha_nv)) {
-        return res.status(400).json({ error: 'fecha_nv inválida. Use formato YYYY-MM-DD' });
-      }
-    }
-
-    const { rows } = await pool.query(
-      `UPDATE public.portones
-       SET fecha_nv = $2
-       WHERE id = $1
-       RETURNING *;`,
-      [id, fecha_nv ?? null]
-    );
-
-    if (!rows.length) return res.status(404).json({ error: 'Portón no encontrado' });
-    return res.json(rows[0]);
-  } catch (err) {
-    console.error('set fecha_nv error:', err);
-    return res.status(500).json({ error: 'Error al actualizar fecha de nota de venta', detail: err.message });
-  }
-});
-
-// POST /portones/:id/fecha-med
-app.post('/portones/:id/fecha-med', async (req, res) => {
-  const { id } = req.params;
-  let { fecha_med } = req.body || {};
-
-  try {
-    if (fecha_med !== null && fecha_med !== undefined) {
-      if (typeof fecha_med !== 'string') {
-        return res.status(400).json({ error: 'fecha_med debe ser string con formato YYYY-MM-DD o null' });
-      }
-      fecha_med = fecha_med.slice(0, 10);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha_med)) {
-        return res.status(400).json({ error: 'fecha_med inválida. Use formato YYYY-MM-DD' });
-      }
-    }
-
-    const { rows } = await pool.query(
-      `UPDATE public.portones
-       SET fecha_med = $2
-       WHERE id = $1
-       RETURNING *;`,
-      [id, fecha_med ?? null]
-    );
-
-    if (!rows.length) return res.status(404).json({ error: 'Portón no encontrado' });
-    return res.json(rows[0]);
-  } catch (err) {
-    console.error('set fecha_med error:', err);
-    return res.status(500).json({ error: 'Error al actualizar fecha de medición', detail: err.message });
-  }
-});
-
-// POST /portones/:id/fecha-plan-entrega
-app.post('/portones/:id/fecha-plan-entrega', async (req, res) => {
-  const { id } = req.params;
-  let { fecha_plan_entrega } = req.body || {};
-
-  try {
-    if (fecha_plan_entrega !== null && fecha_plan_entrega !== undefined) {
-      if (typeof fecha_plan_entrega !== 'string') {
-        return res.status(400).json({ error: 'fecha_plan_entrega debe ser string con formato YYYY-MM-DD o null' });
-      }
-      fecha_plan_entrega = fecha_plan_entrega.slice(0, 10);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha_plan_entrega)) {
-        return res.status(400).json({ error: 'fecha_plan_entrega inválida. Use formato YYYY-MM-DD' });
-      }
-    }
-
-    const { rows } = await pool.query(
-      `UPDATE public.portones
-       SET fecha_plan_entrega = $2
-       WHERE id = $1
-       RETURNING *;`,
-      [id, fecha_plan_entrega ?? null]
-    );
-
-    if (!rows.length) return res.status(404).json({ error: 'Portón no encontrado' });
-    return res.json(rows[0]);
-  } catch (err) {
-    console.error('set fecha_plan_entrega error:', err);
-    return res.status(500).json({ error: 'Error al actualizar fecha planificada de llegada', detail: err.message });
-  }
-});
-
-// GET /planta/bases -> [{date:"YYYY-MM-DD", qty:123, created_at:"..."}]
-// Devuelve TODAS las bases (histórico) para que el front no “borre” lo previo al cargar una nueva base
-app.get('/planta/bases', async (_req, res) => {
-  try {
-    const { rows } = await pool.query(
-      `
-      select base_date::text as date, qty, created_at
-      from public.planta_base
-      order by base_date asc, created_at asc, id asc;
-      `
-    );
-
-    res.setHeader('Cache-Control', 'no-store');
-    return res.json(rows);
-  } catch (err) {
-    console.error('planta bases get error:', err);
-    return res.status(500).json({ error: 'Error leyendo histórico base planta', detail: err.message });
-  }
-});
-
-// ===================== Observaciones PORTONES =====================
-
+// --- Observaciones Portones
 app.get('/portones/:id/observaciones', async (req, res) => {
   const { id } = req.params;
 
   try {
     const { rows } = await pool.query(
-      `SELECT id, observaciones
-       FROM public.portones
-       WHERE id = $1;`,
+      `
+      select id, observaciones
+      from public.portones
+      where id = $1;
+      `,
       [id]
     );
 
@@ -1419,10 +1369,12 @@ async function upsertPortonObservaciones(req, res) {
     }
 
     const { rows } = await pool.query(
-      `UPDATE public.portones
-       SET observaciones = $2
-       WHERE id = $1
-       RETURNING id, observaciones;`,
+      `
+      update public.portones
+      set observaciones = $2
+      where id = $1
+      returning id, observaciones;
+      `,
       [id, observaciones ?? null]
     );
 
@@ -1433,22 +1385,26 @@ async function upsertPortonObservaciones(req, res) {
     return res.status(500).json({ error: 'Error al actualizar observaciones de portón', detail: err.message });
   }
 }
-
 app.post('/portones/:id/observaciones', upsertPortonObservaciones);
 app.put('/portones/:id/observaciones', upsertPortonObservaciones);
 
-// --------------------- Lógica IPANEL ---------------------
+// ============================================================================
+// 9) IPANEL (sin cambios funcionales; solo ordenado)
+// ============================================================================
 
 app.get('/ipanel', async (_req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT * FROM public.ipanel
-       ORDER BY COALESCE(partida, 0) ASC, COALESCE(nv, 0) ASC, id ASC;`
+      `
+      select *
+      from public.ipanel
+      order by coalesce(partida, 0) asc, coalesce(nv, 0) asc, id asc;
+      `
     );
-    res.json(rows);
+    return res.json(rows);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Error leyendo ipanel', detail: err.message });
+    return res.status(500).json({ error: 'Error leyendo ipanel', detail: err.message });
   }
 });
 
@@ -1458,14 +1414,14 @@ app.post('/ipanel', async (req, res) => {
     const nNv = Number(nv);
     const hasPartida = (bodyPartida ?? npartida) != null;
 
-    if (!Number.isInteger(nNv)) {
-      return res.status(400).json({ error: 'nv debe ser entero' });
-    }
+    if (!Number.isInteger(nNv)) return res.status(400).json({ error: 'nv debe ser entero' });
 
-    let query = `INSERT INTO public.ipanel (nv${hasPartida ? ', partida' : ''})
-                 VALUES ($1${hasPartida ? ', $2' : ''})
-                 RETURNING *;`;
-    let params = hasPartida ? [nNv, Number(bodyPartida ?? npartida)] : [nNv];
+    const query = `
+      insert into public.ipanel (nv${hasPartida ? ', partida' : ''})
+      values ($1${hasPartida ? ', $2' : ''})
+      returning *;
+    `;
+    const params = hasPartida ? [nNv, Number(bodyPartida ?? npartida)] : [nNv];
 
     const { rows } = await pool.query(query, params);
     return res.status(201).json(rows[0]);
@@ -1475,7 +1431,6 @@ app.post('/ipanel', async (req, res) => {
   }
 });
 
-// POST /ipanel/:id/stage  { stage, action: 'start'|'stop' }
 app.post('/ipanel/:id/stage', async (req, res) => {
   const { id } = req.params;
   const { stage, action } = req.body || {};
@@ -1505,26 +1460,25 @@ app.post('/ipanel/:id/stage', async (req, res) => {
 
       await client.query(
         `
-        UPDATE public.ipanel
-        SET ${cfg.status} = $2,
-            ${cfg.start}  = COALESCE(${cfg.start}, now())
-        WHERE id = $1;
+        update public.ipanel
+        set ${cfg.status} = $2,
+            ${cfg.start}  = coalesce(${cfg.start}, now())
+        where id = $1;
         `,
         [id, STATUS.EN_PROCESO]
       );
 
-      const { rows } = await client.query('SELECT * FROM public.ipanel WHERE id = $1;', [id]);
+      const { rows } = await client.query('select * from public.ipanel where id = $1;', [id]);
       await client.query('commit');
       return res.json(rows[0]);
     }
 
-    // stop
     await client.query(
       `
-      UPDATE public.ipanel
-      SET ${cfg.status} = $2,
-          ${cfg.end}    = COALESCE(${cfg.end}, now())
-      WHERE id = $1;
+      update public.ipanel
+      set ${cfg.status} = $2,
+          ${cfg.end}    = coalesce(${cfg.end}, now())
+      where id = $1;
       `,
       [id, STATUS.FINALIZADO]
     );
@@ -1544,14 +1498,16 @@ app.post('/ipanel/:id/stage', async (req, res) => {
       if (!IPANEL_ALLOWED_STATUS_COLS.has(col)) continue;
 
       await client.query(
-        `UPDATE public.ipanel
-         SET ${col} = COALESCE(${col}, $2)
-         WHERE id = $1;`,
+        `
+        update public.ipanel
+        set ${col} = coalesce(${col}, $2)
+        where id = $1;
+        `,
         [id, STATUS.PENDIENTE]
       );
     }
 
-    const { rows } = await client.query('SELECT * FROM public.ipanel WHERE id = $1;', [id]);
+    const { rows } = await client.query('select * from public.ipanel where id = $1;', [id]);
     await client.query('commit');
     return res.json(rows[0]);
   } catch (err) {
@@ -1563,176 +1519,24 @@ app.post('/ipanel/:id/stage', async (req, res) => {
   }
 });
 
-// POST /ipanel/:id/fecha-prod
-app.post('/ipanel/:id/fecha-prod', async (req, res) => {
-  const { id } = req.params;
-  let { fecha_prod } = req.body || {};
+// Fechas iPanel reutilizando el mismo helper
+app.post('/ipanel/:id/fecha-prod', datePatchHandler('fecha_prod'));
+app.post('/ipanel/:id/fecha-nv', datePatchHandler('fecha_nv'));
+app.post('/ipanel/:id/fecha-med', datePatchHandler('fecha_med'));
+app.post('/ipanel/:id/fecha-plan', datePatchHandler('fecha_plan'));
+app.post('/ipanel/:id/fecha-plan-entrega', datePatchHandler('fecha_plan_entrega'));
 
-  try {
-    if (fecha_prod !== null && fecha_prod !== undefined) {
-      if (typeof fecha_prod !== 'string') {
-        return res.status(400).json({ error: 'fecha_prod debe ser string con formato YYYY-MM-DD o null' });
-      }
-      fecha_prod = fecha_prod.slice(0, 10);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha_prod)) {
-        return res.status(400).json({ error: 'fecha_prod inválida. Use formato YYYY-MM-DD' });
-      }
-    }
-
-    const { rows } = await pool.query(
-      `UPDATE public.ipanel
-       SET fecha_prod = $2
-       WHERE id = $1
-       RETURNING *;`,
-      [id, fecha_prod ?? null]
-    );
-
-    if (!rows.length) return res.status(404).json({ error: 'iPanel no encontrado' });
-    return res.json(rows[0]);
-  } catch (err) {
-    console.error('set ipanel fecha_prod error:', err);
-    return res.status(500).json({ error: 'Error al actualizar fecha de producción de iPanel', detail: err.message });
-  }
-});
-
-// POST /ipanel/:id/fecha-nv
-app.post('/ipanel/:id/fecha-nv', async (req, res) => {
-  const { id } = req.params;
-  let { fecha_nv } = req.body || {};
-
-  try {
-    if (fecha_nv !== null && fecha_nv !== undefined) {
-      if (typeof fecha_nv !== 'string') {
-        return res.status(400).json({ error: 'fecha_nv debe ser string con formato YYYY-MM-DD o null' });
-      }
-      fecha_nv = fecha_nv.slice(0, 10);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha_nv)) {
-        return res.status(400).json({ error: 'fecha_nv inválida. Use formato YYYY-MM-DD' });
-      }
-    }
-
-    const { rows } = await pool.query(
-      `UPDATE public.ipanel
-       SET fecha_nv = $2
-       WHERE id = $1
-       RETURNING *;`,
-      [id, fecha_nv ?? null]
-    );
-
-    if (!rows.length) return res.status(404).json({ error: 'iPanel no encontrado' });
-    return res.json(rows[0]);
-  } catch (err) {
-    console.error('set ipanel fecha_nv error:', err);
-    return res.status(500).json({ error: 'Error al actualizar fecha de nota de venta de iPanel', detail: err.message });
-  }
-});
-
-// POST /ipanel/:id/fecha-med
-app.post('/ipanel/:id/fecha-med', async (req, res) => {
-  const { id } = req.params;
-  let { fecha_med } = req.body || {};
-
-  try {
-    if (fecha_med !== null && fecha_med !== undefined) {
-      if (typeof fecha_med !== 'string') {
-        return res.status(400).json({ error: 'fecha_med debe ser string con formato YYYY-MM-DD o null' });
-      }
-      fecha_med = fecha_med.slice(0, 10);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha_med)) {
-        return res.status(400).json({ error: 'fecha_med inválida. Use formato YYYY-MM-DD' });
-      }
-    }
-
-    const { rows } = await pool.query(
-      `UPDATE public.ipanel
-       SET fecha_med = $2
-       WHERE id = $1
-       RETURNING *;`,
-      [id, fecha_med ?? null]
-    );
-
-    if (!rows.length) return res.status(404).json({ error: 'iPanel no encontrado' });
-    return res.json(rows[0]);
-  } catch (err) {
-    console.error('set ipanel fecha_med error:', err);
-    return res.status(500).json({ error: 'Error al actualizar fecha de medición de iPanel', detail: err.message });
-  }
-});
-
-// POST /ipanel/:id/fecha-plan
-app.post('/ipanel/:id/fecha-plan', async (req, res) => {
-  const { id } = req.params;
-  let { fecha_plan } = req.body || {};
-
-  try {
-    if (fecha_plan !== null && fecha_plan !== undefined) {
-      if (typeof fecha_plan !== 'string') {
-        return res.status(400).json({ error: 'fecha_plan debe ser string con formato YYYY-MM-DD o null' });
-      }
-      fecha_plan = fecha_plan.slice(0, 10);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha_plan)) {
-        return res.status(400).json({ error: 'fecha_plan inválida. Use formato YYYY-MM-DD' });
-      }
-    }
-
-    const { rows } = await pool.query(
-      `UPDATE public.ipanel
-       SET fecha_plan = $2
-       WHERE id = $1
-       RETURNING *;`,
-      [id, fecha_plan ?? null]
-    );
-
-    if (!rows.length) return res.status(404).json({ error: 'iPanel no encontrado' });
-    return res.json(rows[0]);
-  } catch (err) {
-    console.error('set ipanel fecha_plan error:', err);
-    return res.status(500).json({ error: 'Error al actualizar fecha planificada de salida de iPanel', detail: err.message });
-  }
-});
-
-// POST /ipanel/:id/fecha-plan-entrega
-app.post('/ipanel/:id/fecha-plan-entrega', async (req, res) => {
-  const { id } = req.params;
-  let { fecha_plan_entrega } = req.body || {};
-
-  try {
-    if (fecha_plan_entrega !== null && fecha_plan_entrega !== undefined) {
-      if (typeof fecha_plan_entrega !== 'string') {
-        return res.status(400).json({ error: 'fecha_plan_entrega debe ser string con formato YYYY-MM-DD o null' });
-      }
-      fecha_plan_entrega = fecha_plan_entrega.slice(0, 10);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha_plan_entrega)) {
-        return res.status(400).json({ error: 'fecha_plan_entrega inválida. Use formato YYYY-MM-DD' });
-      }
-    }
-
-    const { rows } = await pool.query(
-      `UPDATE public.ipanel
-       SET fecha_plan_entrega = $2
-       WHERE id = $1
-       RETURNING *;`,
-      [id, fecha_plan_entrega ?? null]
-    );
-
-    if (!rows.length) return res.status(404).json({ error: 'iPanel no encontrado' });
-    return res.json(rows[0]);
-  } catch (err) {
-    console.error('set ipanel fecha_plan_entrega error:', err);
-    return res.status(500).json({ error: 'Error al actualizar fecha planificada de llegada de iPanel', detail: err.message });
-  }
-});
-
-// ===================== Observaciones IPANEL =====================
-
+// Observaciones iPanel
 app.get('/ipanel/:id/observaciones', async (req, res) => {
   const { id } = req.params;
 
   try {
     const { rows } = await pool.query(
-      `SELECT id, observaciones
-       FROM public.ipanel
-       WHERE id = $1;`,
+      `
+      select id, observaciones
+      from public.ipanel
+      where id = $1;
+      `,
       [id]
     );
 
@@ -1754,10 +1558,12 @@ async function upsertIpanelObservaciones(req, res) {
     }
 
     const { rows } = await pool.query(
-      `UPDATE public.ipanel
-       SET observaciones = $2
-       WHERE id = $1
-       RETURNING id, observaciones;`,
+      `
+      update public.ipanel
+      set observaciones = $2
+      where id = $1
+      returning id, observaciones;
+      `,
       [id, observaciones ?? null]
     );
 
@@ -1768,15 +1574,13 @@ async function upsertIpanelObservaciones(req, res) {
     return res.status(500).json({ error: 'Error al actualizar observaciones de iPanel', detail: err.message });
   }
 }
-
 app.post('/ipanel/:id/observaciones', upsertIpanelObservaciones);
 app.put('/ipanel/:id/observaciones', upsertIpanelObservaciones);
 
-// =========================
-// DESPACHAR BASE (Supabase table public.despachar_base)
-// =========================
+// ============================================================================
+// 10) Despachar base
+// ============================================================================
 
-// GET /despachar/base -> { date: "YYYY-MM-DD", qty: 123 }  o {date:null, qty:null} si no hay base
 app.get('/despachar/base', async (_req, res) => {
   try {
     const { rows } = await pool.query(
@@ -1789,7 +1593,6 @@ app.get('/despachar/base', async (_req, res) => {
     );
 
     res.setHeader('Cache-Control', 'no-store');
-
     if (!rows.length) return res.json({ date: null, qty: null });
     return res.json(rows[0]);
   } catch (err) {
@@ -1798,19 +1601,13 @@ app.get('/despachar/base', async (_req, res) => {
   }
 });
 
-// POST /despachar/base (LIBRE) body: { date, qty } -> inserta nueva base
-// devuelve { date, qty }
 app.post('/despachar/base', async (req, res) => {
   try {
     const date = String(req.body?.date || '').trim();
     const qty = Number(req.body?.qty);
 
-    if (!isValidISODate10(date)) {
-      return res.status(400).json({ error: 'Fecha inválida (YYYY-MM-DD)' });
-    }
-    if (!Number.isInteger(qty) || qty < 0) {
-      return res.status(400).json({ error: 'qty debe ser entero >= 0' });
-    }
+    if (!isValidISODate10(date)) return res.status(400).json({ error: 'Fecha inválida (YYYY-MM-DD)' });
+    if (!Number.isInteger(qty) || qty < 0) return res.status(400).json({ error: 'qty debe ser entero >= 0' });
 
     const { rows } = await pool.query(
       `
@@ -1828,26 +1625,7 @@ app.post('/despachar/base', async (req, res) => {
     return res.status(500).json({ error: 'Error guardando base despachar', detail: err.message });
   }
 });
-// ===================== WORKFLOW PUBLIC (read-only) =====================
-// GET /workflow/config?line=portones|ipanel
-app.get('/workflow/config', async (req, res) => {
-  try {
-    const line = String(req.query.line || '').trim();
-    if (!['portones', 'ipanel'].includes(line)) {
-      return res.status(400).json({ error: 'line debe ser portones o ipanel' });
-    }
-    const cfg = await getWorkflowConfig(line);
-    res.setHeader('Cache-Control', 'no-store');
-    return res.json({ ok: true, ...cfg });
-  } catch (err) {
-    console.error('public workflow config error:', err);
-    return res.status(500).json({ error: 'Error leyendo workflow', detail: err.message });
-  }
-});
 
-
-// GET /despachar/bases -> [{date:"YYYY-MM-DD", qty:123, created_at:"..."}]
-// Devuelve TODAS las bases (histórico) para que el front no “borre” lo previo al cargar una nueva base
 app.get('/despachar/bases', async (_req, res) => {
   try {
     const { rows } = await pool.query(
@@ -1866,8 +1644,10 @@ app.get('/despachar/bases', async (_req, res) => {
   }
 });
 
+// ============================================================================
+// 11) Cierre prolijo
+// ============================================================================
 
-// --------------------- Cierre prolijo ---------------------
 process.on('SIGINT', async () => {
   await pool.end();
   process.exit(0);
