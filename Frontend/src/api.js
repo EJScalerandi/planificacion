@@ -248,3 +248,4 @@ export const getPlantaBases = () => api.get('/planta/bases');
 export const getDespacharBase = () => api.get('/despachar/base');
 export const postDespacharBase = (payload) => api.post('/despachar/base', payload);
 export const getDespacharBases = () => api.get('/despachar/bases');
+export const fetchPortonesV2 = () => api.get('/portones_v2');

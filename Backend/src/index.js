@@ -1019,32 +1019,10 @@ app.get('/workflow/config', async (req, res) => {
 });
 
 // ============================================================================
-// 7) Etapas “legacy” (porque hoy escribís en public.portones) + Allowed cols
+// 7) Etapas (PORTONES normalizado + IPANEL legacy) + helpers de shape
 // ============================================================================
 
-const STAGES = {
-  diseno: { status: 'diseno', start: 'diseno_inicio', end: 'diseno_fin' },
-  laser: { status: 'laser', start: 'laser_inicio', end: 'laser_fin' },
-
-  guillotina: { status: 'guillotina', start: 'guillotina_inicio', end: 'guillotina_fin' },
-  corte_revest: { status: 'corte_revest', start: 'corte_revest_inicio', end: 'corte_revest_fin' },
-
-  plegadora: { status: 'plegadora', start: 'plegadora_inicio', end: 'plegadora_fin' },
-  plegado_revest: { status: 'plegado_revest', start: 'plegado_revest_inicio', end: 'plegado_revest_fin' },
-
-  armado_piernas: { status: 'armado_piernas', start: 'armado_piernas_inicio', end: 'armado_piernas_fin' },
-  armado_hojas: { status: 'armado_hojas', start: 'armado_hojas_inicio', end: 'armado_hojas_fin' },
-  armado_marco_piernas: { status: 'armado_marco_piernas', start: 'armado_marco_piernas_inicio', end: 'armado_marco_piernas_fin' },
-  armado_primario: { status: 'armado_primario', start: 'armado_primario_inicio', end: 'armado_primario_fin' },
-
-  revestimiento: { status: 'revestimiento', start: 'revestimiento_inicio', end: 'revestimiento_fin' },
-  pintura: { status: 'pintura', start: 'pintura_inicio', end: 'pintura_fin' },
-  inyeccion: { status: 'inyeccion', start: 'inyeccion_inicio', end: 'inyeccion_fin' },
-
-  armado_final: { status: 'armado_final', start: 'armado_final_inicio', end: 'armado_final_fin' },
-  despacho: { status: 'despacho', start: 'despacho_inicio', end: 'despacho_fin' }
-};
-
+// iPanel sigue legacy (columnas)
 const IPANEL_STAGES = {
   diseno: { status: 'diseno', start: 'diseno_inicio', end: 'diseno_fin' },
   guillotina: { status: 'guillotina', start: 'guillotina_inicio', end: 'guillotina_fin' },
@@ -1054,33 +1032,135 @@ const IPANEL_STAGES = {
   despacho: { status: 'despacho', start: 'despacho_inicio', end: 'despacho_fin' },
 };
 
-const PORTONES_ALLOWED_STATUS_COLS = new Set(Object.keys(STAGES));
 const IPANEL_ALLOWED_STATUS_COLS = new Set(Object.keys(IPANEL_STAGES));
 
-// ============================================================================
-// 8) PORTONES
-// ============================================================================
+// Portones (normalizado): set defensivo para no aceptar cualquier texto
+const PORTON_ETAPAS = new Set([
+  'diseno','laser','guillotina','plegadora',
+  'armado_marco_piernas','armado_piernas','armado_primario','armado_hojas',
+  'inyeccion','revestimiento','pintura','armado_final','despacho',
+  'corte_revest','plegado_revest',
+]);
 
-// (Legacy) GET /portones -> sigue leyendo la tabla vieja
-app.get('/portones', async (_req, res) => {
-  try {
-    const { rows } = await pool.query('select * from public.portones order by nv asc;');
-    return res.json(rows);
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: 'Error leyendo portones', detail: err.message });
+const PORTON_STAGE_KEYS_ORDER = [
+  'diseno','laser','guillotina','plegadora',
+  'armado_piernas','armado_primario','inyeccion','corte_revest','plegado_revest',
+  'revestimiento','pintura','armado_hojas','armado_marco_piernas','armado_final','despacho'
+];
+
+async function getPortonShapeById(db, id) {
+  const { rows } = await db.query(
+    `
+    select
+      p.*,
+
+      -- ====== ESTADOS ======
+      max(case when e.etapa = 'diseno'::public.porton_etapa then e.estado end) as diseno,
+      max(case when e.etapa = 'laser'::public.porton_etapa then e.estado end) as laser,
+      max(case when e.etapa = 'guillotina'::public.porton_etapa then e.estado end) as guillotina,
+      max(case when e.etapa = 'plegadora'::public.porton_etapa then e.estado end) as plegadora,
+      max(case when e.etapa = 'armado_piernas'::public.porton_etapa then e.estado end) as armado_piernas,
+      max(case when e.etapa = 'armado_primario'::public.porton_etapa then e.estado end) as armado_primario,
+      max(case when e.etapa = 'inyeccion'::public.porton_etapa then e.estado end) as inyeccion,
+      max(case when e.etapa = 'corte_revest'::public.porton_etapa then e.estado end) as corte_revest,
+      max(case when e.etapa = 'plegado_revest'::public.porton_etapa then e.estado end) as plegado_revest,
+      max(case when e.etapa = 'revestimiento'::public.porton_etapa then e.estado end) as revestimiento,
+      max(case when e.etapa = 'pintura'::public.porton_etapa then e.estado end) as pintura,
+      max(case when e.etapa = 'armado_hojas'::public.porton_etapa then e.estado end) as armado_hojas,
+      max(case when e.etapa = 'armado_marco_piernas'::public.porton_etapa then e.estado end) as armado_marco_piernas,
+      max(case when e.etapa = 'armado_final'::public.porton_etapa then e.estado end) as armado_final,
+      max(case when e.etapa = 'despacho'::public.porton_etapa then e.estado end) as despacho,
+
+      -- ====== TIEMPOS ======
+      max(case when t.etapa = 'diseno'::public.porton_etapa then t.inicio end) as diseno_inicio,
+      max(case when t.etapa = 'diseno'::public.porton_etapa then t.fin end) as diseno_fin,
+
+      max(case when t.etapa = 'laser'::public.porton_etapa then t.inicio end) as laser_inicio,
+      max(case when t.etapa = 'laser'::public.porton_etapa then t.fin end) as laser_fin,
+
+      max(case when t.etapa = 'guillotina'::public.porton_etapa then t.inicio end) as guillotina_inicio,
+      max(case when t.etapa = 'guillotina'::public.porton_etapa then t.fin end) as guillotina_fin,
+
+      max(case when t.etapa = 'plegadora'::public.porton_etapa then t.inicio end) as plegadora_inicio,
+      max(case when t.etapa = 'plegadora'::public.porton_etapa then t.fin end) as plegadora_fin,
+
+      max(case when t.etapa = 'armado_piernas'::public.porton_etapa then t.inicio end) as armado_piernas_inicio,
+      max(case when t.etapa = 'armado_piernas'::public.porton_etapa then t.fin end) as armado_piernas_fin,
+
+      max(case when t.etapa = 'armado_primario'::public.porton_etapa then t.inicio end) as armado_primario_inicio,
+      max(case when t.etapa = 'armado_primario'::public.porton_etapa then t.fin end) as armado_primario_fin,
+
+      max(case when t.etapa = 'inyeccion'::public.porton_etapa then t.inicio end) as inyeccion_inicio,
+      max(case when t.etapa = 'inyeccion'::public.porton_etapa then t.fin end) as inyeccion_fin,
+
+      max(case when t.etapa = 'corte_revest'::public.porton_etapa then t.inicio end) as corte_revest_inicio,
+      max(case when t.etapa = 'corte_revest'::public.porton_etapa then t.fin end) as corte_revest_fin,
+
+      max(case when t.etapa = 'plegado_revest'::public.porton_etapa then t.inicio end) as plegado_revest_inicio,
+      max(case when t.etapa = 'plegado_revest'::public.porton_etapa then t.fin end) as plegado_revest_fin,
+
+      max(case when t.etapa = 'revestimiento'::public.porton_etapa then t.inicio end) as revestimiento_inicio,
+      max(case when t.etapa = 'revestimiento'::public.porton_etapa then t.fin end) as revestimiento_fin,
+
+      max(case when t.etapa = 'pintura'::public.porton_etapa then t.inicio end) as pintura_inicio,
+      max(case when t.etapa = 'pintura'::public.porton_etapa then t.fin end) as pintura_fin,
+
+      max(case when t.etapa = 'armado_hojas'::public.porton_etapa then t.inicio end) as armado_hojas_inicio,
+      max(case when t.etapa = 'armado_hojas'::public.porton_etapa then t.fin end) as armado_hojas_fin,
+
+      max(case when t.etapa = 'armado_marco_piernas'::public.porton_etapa then t.inicio end) as armado_marco_piernas_inicio,
+      max(case when t.etapa = 'armado_marco_piernas'::public.porton_etapa then t.fin end) as armado_marco_piernas_fin,
+
+      max(case when t.etapa = 'armado_final'::public.porton_etapa then t.inicio end) as armado_final_inicio,
+      max(case when t.etapa = 'armado_final'::public.porton_etapa then t.fin end) as armado_final_fin,
+
+      max(case when t.etapa = 'despacho'::public.porton_etapa then t.inicio end) as despacho_inicio,
+      max(case when t.etapa = 'despacho'::public.porton_etapa then t.fin end) as despacho_fin
+
+    from public.portones p
+    left join public.porton_etapas_estado e
+      on e.porton_id = p.id
+    left join public.porton_etapas_tiempos t
+      on t.porton_id = p.id
+    where p.id = $1
+    group by p.id
+    limit 1;
+    `,
+    [id]
+  );
+
+  const r = rows[0] || null;
+  if (!r) return null;
+
+  // Defaults defensivos
+  for (const k of PORTON_STAGE_KEYS_ORDER) {
+    if (r[k] == null) r[k] = STATUS.PENDIENTE;
   }
-});
+  return r;
+}
 
-// (Nuevo) GET /portones_v2 -> arma el mismo "shape" pero desde tablas normalizadas
-app.get('/portones_v2', async (_req, res) => {
+function normalizePortonesRows(rows) {
+  for (const r of rows) {
+    for (const k of PORTON_STAGE_KEYS_ORDER) {
+      if (r[k] == null) r[k] = STATUS.PENDIENTE;
+    }
+  }
+  return rows;
+}
+
+// ============================================================================
+// 8) PORTONES (ahora /portones YA usa tablas nuevas; NO existe /portones_v2)
+// ============================================================================
+
+// GET /portones -> shape completo desde tablas normalizadas
+app.get('/portones', async (_req, res) => {
   try {
     const { rows } = await pool.query(
       `
       select
         p.*,
 
-        -- ====== ESTADOS (desde porton_etapas_estado) ======
+        -- ====== ESTADOS ======
         max(case when e.etapa = 'diseno'::public.porton_etapa then e.estado end) as diseno,
         max(case when e.etapa = 'laser'::public.porton_etapa then e.estado end) as laser,
         max(case when e.etapa = 'guillotina'::public.porton_etapa then e.estado end) as guillotina,
@@ -1097,7 +1177,7 @@ app.get('/portones_v2', async (_req, res) => {
         max(case when e.etapa = 'armado_final'::public.porton_etapa then e.estado end) as armado_final,
         max(case when e.etapa = 'despacho'::public.porton_etapa then e.estado end) as despacho,
 
-        -- ====== INICIO/FIN (desde porton_etapas_tiempos) ======
+        -- ====== TIEMPOS ======
         max(case when t.etapa = 'diseno'::public.porton_etapa then t.inicio end) as diseno_inicio,
         max(case when t.etapa = 'diseno'::public.porton_etapa then t.fin end) as diseno_fin,
 
@@ -1148,31 +1228,19 @@ app.get('/portones_v2', async (_req, res) => {
         on e.porton_id = p.id
       left join public.porton_etapas_tiempos t
         on t.porton_id = p.id
-       and t.etapa = e.etapa
       group by p.id
       order by p.nv asc;
       `
     );
 
-    // Defaults defensivos si llegara a faltar alguna fila (no debería si tu trigger crea 15 etapas)
-    const stageKeys = [
-      'diseno','laser','guillotina','plegadora','armado_piernas','armado_primario',
-      'inyeccion','corte_revest','plegado_revest','revestimiento','pintura',
-      'armado_hojas','armado_marco_piernas','armado_final','despacho'
-    ];
-    for (const r of rows) {
-      for (const k of stageKeys) {
-        if (r[k] == null) r[k] = 'Pendiente';
-      }
-    }
-
-    return res.json(rows);
+    return res.json(normalizePortonesRows(rows));
   } catch (err) {
-    console.error('get /portones_v2 error:', err);
-    return res.status(500).json({ error: 'Error leyendo portones_v2', detail: err.message });
+    console.error(err);
+    return res.status(500).json({ error: 'Error leyendo portones', detail: err.message });
   }
 });
 
+// POST /portones -> crea base y devuelve shape completo (asumiendo trigger crea etapas)
 app.post('/portones', async (req, res) => {
   try {
     const { nv, nlista, partida: bodyPartida, npartida } = req.body || {};
@@ -1193,29 +1261,35 @@ app.post('/portones', async (req, res) => {
       return res.status(409).json({ error: 'Ya existe un portón con ese NV y NLista' });
     }
 
-    const { rows } = await pool.query(
+    const ins = await pool.query(
       `
       insert into public.portones (nv, nlista, partida)
       values ($1, $2, $3)
-      returning *;
+      returning id;
       `,
       [nNv, nNl, nPa]
     );
 
-    return res.status(201).json(rows[0]);
+    const id = ins.rows[0]?.id;
+    const shaped = await getPortonShapeById(pool, id);
+
+    // Si por alguna razón el trigger aún no insertó etapas, igual devolvemos al menos base
+    return res.status(201).json(shaped || { id, nv: nNv, nlista: nNl, partida: nPa });
   } catch (err) {
     console.error('create porton error:', err);
     return res.status(500).json({ error: 'Error creando portón', detail: err.message });
   }
 });
 
-// POST /portones/:id/stage  { stage, action: 'start'|'stop' }
+// POST /portones/:id/stage  { stage, action: 'start'|'stop' }  (NORMALIZADO)
 app.post('/portones/:id/stage', async (req, res) => {
   const { id } = req.params;
   const { stage, action } = req.body || {};
-  const cfg = STAGES[stage];
 
-  if (!cfg || !['start', 'stop'].includes(action)) {
+  const stageKey = String(stage || '').trim();
+  const act = String(action || '').trim();
+
+  if (!PORTON_ETAPAS.has(stageKey) || !['start', 'stop'].includes(act)) {
     return res.status(400).json({ error: 'Parámetros inválidos' });
   }
 
@@ -1223,15 +1297,14 @@ app.post('/portones/:id/stage', async (req, res) => {
   try {
     await client.query('begin');
 
-    const before = await client.query('select * from public.portones where id = $1;', [id]);
-    const row0 = before.rows[0];
-    if (!row0) {
+    const before = await getPortonShapeById(client, id);
+    if (!before) {
       await client.query('rollback');
       return res.status(404).json({ error: 'Portón no encontrado' });
     }
 
-    if (action === 'start') {
-      const reqCheck = await checkRequirements('portones', stage, row0);
+    if (act === 'start') {
+      const reqCheck = await checkRequirements('portones', stageKey, before);
       if (!reqCheck.ok) {
         await client.query('rollback');
         return res.status(409).json({ error: reqCheck.reason });
@@ -1239,57 +1312,78 @@ app.post('/portones/:id/stage', async (req, res) => {
 
       await client.query(
         `
-        update public.portones
-        set ${cfg.status} = $2,
-            ${cfg.start}  = coalesce(${cfg.start}, now())
-        where id = $1;
+        insert into public.porton_etapas_estado(porton_id, etapa, estado)
+        values ($1, $2::public.porton_etapa, $3)
+        on conflict (porton_id, etapa)
+        do update set estado = excluded.estado;
         `,
-        [id, STATUS.EN_PROCESO]
+        [id, stageKey, STATUS.EN_PROCESO]
       );
 
-      const { rows } = await client.query('select * from public.portones where id = $1;', [id]);
+      await client.query(
+        `
+        insert into public.porton_etapas_tiempos(porton_id, etapa, inicio, fin)
+        values ($1, $2::public.porton_etapa, now(), null)
+        on conflict (porton_id, etapa)
+        do update set inicio = coalesce(public.porton_etapas_tiempos.inicio, excluded.inicio);
+        `,
+        [id, stageKey]
+      );
+
+      const after = await getPortonShapeById(client, id);
       await client.query('commit');
-      return res.json(rows[0]);
+      return res.json(after);
     }
 
     // stop => Finaliza
     await client.query(
       `
-      update public.portones
-      set ${cfg.status} = $2,
-          ${cfg.end}    = coalesce(${cfg.end}, now())
-      where id = $1;
+      insert into public.porton_etapas_estado(porton_id, etapa, estado)
+      values ($1, $2::public.porton_etapa, $3)
+      on conflict (porton_id, etapa)
+      do update set estado = excluded.estado;
       `,
-      [id, STATUS.FINALIZADO]
+      [id, stageKey, STATUS.FINALIZADO]
     );
 
-    const afterQ = await client.query('select * from public.portones where id = $1;', [id]);
-    const row1 = afterQ.rows[0];
+    await client.query(
+      `
+      insert into public.porton_etapas_tiempos(porton_id, etapa, inicio, fin)
+      values ($1, $2::public.porton_etapa, null, now())
+      on conflict (porton_id, etapa)
+      do update set fin = coalesce(public.porton_etapas_tiempos.fin, excluded.fin);
+      `,
+      [id, stageKey]
+    );
+
+    const afterStop = await getPortonShapeById(client, id);
+    const ctx = { ...(afterStop || {}) };
 
     const stageMap = await loadStageMap('portones');
-    const ctx = { ...(row1 || {}) };
-    const nextKeys = await getNextStages('portones', stage, ctx);
+    const nextKeys = await getNextStages('portones', stageKey, ctx);
 
+    // “Desbloquear” siguientes: setear Pendiente SOLO si está NULL
     for (const nk of nextKeys) {
       const ns = stageMap.get(nk);
       if (!ns) continue;
 
-      const col = ns.status_col;
-      if (!PORTONES_ALLOWED_STATUS_COLS.has(col)) continue;
+      const nextStageKey = String(ns.status_col || '').trim();
+      if (!PORTON_ETAPAS.has(nextStageKey)) continue;
 
       await client.query(
         `
-        update public.portones
-        set ${col} = coalesce(${col}, $2)
-        where id = $1;
+        insert into public.porton_etapas_estado(porton_id, etapa, estado)
+        values ($1, $2::public.porton_etapa, $3)
+        on conflict (porton_id, etapa)
+        do update set estado = coalesce(public.porton_etapas_estado.estado, excluded.estado);
         `,
-        [id, STATUS.PENDIENTE]
+        [id, nextStageKey, STATUS.PENDIENTE]
       );
     }
 
-    const { rows } = await client.query('select * from public.portones where id = $1;', [id]);
+    const finalRow = await getPortonShapeById(client, id);
     await client.query('commit');
-    return res.json(rows[0]);
+    return res.json(finalRow);
   } catch (err) {
     await client.query('rollback');
     console.error('stage error:', err);
@@ -1299,8 +1393,8 @@ app.post('/portones/:id/stage', async (req, res) => {
   }
 });
 
-// --- Fechas Portones (misma lógica, solo agrupado)
-function datePatchHandler(fieldName) {
+// --- Fechas Portones (devuelven shape completo)
+function datePatchHandlerPortones(fieldName) {
   return async (req, res) => {
     const { id } = req.params;
     let v = req.body?.[fieldName];
@@ -1312,18 +1406,19 @@ function datePatchHandler(fieldName) {
         if (!isValidISODate10(v)) return res.status(400).json({ error: `${fieldName} inválida. Use formato YYYY-MM-DD` });
       }
 
-      const { rows } = await pool.query(
+      const { rowCount } = await pool.query(
         `
         update public.portones
         set ${fieldName} = $2
-        where id = $1
-        returning *;
+        where id = $1;
         `,
         [id, v ?? null]
       );
 
-      if (!rows.length) return res.status(404).json({ error: 'Portón no encontrado' });
-      return res.json(rows[0]);
+      if (!rowCount) return res.status(404).json({ error: 'Portón no encontrado' });
+
+      const shaped = await getPortonShapeById(pool, id);
+      return res.json(shaped);
     } catch (err) {
       console.error(`set ${fieldName} error:`, err);
       return res.status(500).json({ error: `Error al actualizar ${fieldName}`, detail: err.message });
@@ -1331,11 +1426,11 @@ function datePatchHandler(fieldName) {
   };
 }
 
-app.post('/portones/:id/fecha-plan', datePatchHandler('fecha_plan'));
-app.post('/portones/:id/fecha-prod', datePatchHandler('fecha_prod'));
-app.post('/portones/:id/fecha-nv', datePatchHandler('fecha_nv'));
-app.post('/portones/:id/fecha-med', datePatchHandler('fecha_med'));
-app.post('/portones/:id/fecha-plan-entrega', datePatchHandler('fecha_plan_entrega'));
+app.post('/portones/:id/fecha-plan', datePatchHandlerPortones('fecha_plan'));
+app.post('/portones/:id/fecha-prod', datePatchHandlerPortones('fecha_prod'));
+app.post('/portones/:id/fecha-nv', datePatchHandlerPortones('fecha_nv'));
+app.post('/portones/:id/fecha-med', datePatchHandlerPortones('fecha_med'));
+app.post('/portones/:id/fecha-plan-entrega', datePatchHandlerPortones('fecha_plan_entrega'));
 
 // --- Observaciones Portones
 app.get('/portones/:id/observaciones', async (req, res) => {
@@ -1368,18 +1463,19 @@ async function upsertPortonObservaciones(req, res) {
       return res.status(400).json({ error: 'observaciones debe ser string o null' });
     }
 
-    const { rows } = await pool.query(
+    const { rowCount } = await pool.query(
       `
       update public.portones
       set observaciones = $2
-      where id = $1
-      returning id, observaciones;
+      where id = $1;
       `,
       [id, observaciones ?? null]
     );
 
-    if (!rows.length) return res.status(404).json({ error: 'Portón no encontrado' });
-    return res.json(rows[0]);
+    if (!rowCount) return res.status(404).json({ error: 'Portón no encontrado' });
+
+    const shaped = await getPortonShapeById(pool, id);
+    return res.json(shaped);
   } catch (err) {
     console.error('set observaciones porton error:', err);
     return res.status(500).json({ error: 'Error al actualizar observaciones de portón', detail: err.message });
@@ -1389,7 +1485,7 @@ app.post('/portones/:id/observaciones', upsertPortonObservaciones);
 app.put('/portones/:id/observaciones', upsertPortonObservaciones);
 
 // ============================================================================
-// 9) IPANEL (sin cambios funcionales; solo ordenado)
+// 9) IPANEL (sin cambios funcionales; sigue legacy)
 // ============================================================================
 
 app.get('/ipanel', async (_req, res) => {
@@ -1519,7 +1615,38 @@ app.post('/ipanel/:id/stage', async (req, res) => {
   }
 });
 
-// Fechas iPanel reutilizando el mismo helper
+// Fechas iPanel (legacy)
+function datePatchHandler(fieldName) {
+  return async (req, res) => {
+    const { id } = req.params;
+    let v = req.body?.[fieldName];
+
+    try {
+      if (v !== null && v !== undefined) {
+        if (typeof v !== 'string') return res.status(400).json({ error: `${fieldName} debe ser string YYYY-MM-DD o null` });
+        v = v.slice(0, 10);
+        if (!isValidISODate10(v)) return res.status(400).json({ error: `${fieldName} inválida. Use formato YYYY-MM-DD` });
+      }
+
+      const { rows } = await pool.query(
+        `
+        update public.ipanel
+        set ${fieldName} = $2
+        where id = $1
+        returning *;
+        `,
+        [id, v ?? null]
+      );
+
+      if (!rows.length) return res.status(404).json({ error: 'iPanel no encontrado' });
+      return res.json(rows[0]);
+    } catch (err) {
+      console.error(`set ${fieldName} error:`, err);
+      return res.status(500).json({ error: `Error al actualizar ${fieldName}`, detail: err.message });
+    }
+  };
+}
+
 app.post('/ipanel/:id/fecha-prod', datePatchHandler('fecha_prod'));
 app.post('/ipanel/:id/fecha-nv', datePatchHandler('fecha_nv'));
 app.post('/ipanel/:id/fecha-med', datePatchHandler('fecha_med'));
