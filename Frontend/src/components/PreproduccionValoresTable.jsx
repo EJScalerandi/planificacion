@@ -7,6 +7,10 @@ import {
   fetchPortones,
 } from '../api';
 
+import LogisticaAuthModal from './modals/LogisticaAuthModal';
+import AdminAuthModal from './modals/AdminAuthModal';
+import ComercialAuthModal from './modals/ComercialAuthModal';
+
 // =====================
 // NV bloqueados (no deben aparecer)
 // =====================
@@ -17,6 +21,11 @@ const BLOCKED_NV_SET = new Set(
     .trim()
     .split(/\s+/)
 );
+
+// =====================
+// Constantes
+// =====================
+const DAYS = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sábado', 'domingo'];
 
 // =====================
 // Helpers
@@ -191,7 +200,7 @@ function getNvIntFromRow(row) {
 }
 
 // =====================
-// PDF field defs (basado en tu Excel actual)
+// PDF field defs
 // =====================
 function getPdfFieldDefs() {
   return [
@@ -225,7 +234,7 @@ function getPdfFieldDefs() {
 }
 
 // =====================
-// Print: ventana + fallback iframe
+// Print
 // =====================
 function openPdfPrintWindow({ title, rows, cols }) {
   const safeCols = (cols || []).filter((c) => c && c.id && c.label);
@@ -293,7 +302,9 @@ function openPdfPrintWindow({ title, rows, cols }) {
           w.print();
         } catch {
           tryPrintInIframe(html);
-          try { w.close(); } catch {}
+          try {
+            w.close();
+          } catch {}
         }
       }, 250);
       return;
@@ -316,7 +327,9 @@ function openPdfPrintWindow({ title, rows, cols }) {
     const idoc = iframe.contentWindow?.document;
     if (!idoc) {
       alert('No se pudo generar el PDF (bloqueo del navegador).');
-      try { document.body.removeChild(iframe); } catch {}
+      try {
+        document.body.removeChild(iframe);
+      } catch {}
       return;
     }
 
@@ -330,7 +343,9 @@ function openPdfPrintWindow({ title, rows, cols }) {
         iframe.contentWindow.print();
       } finally {
         setTimeout(() => {
-          try { document.body.removeChild(iframe); } catch {}
+          try {
+            document.body.removeChild(iframe);
+          } catch {}
         }, 500);
       }
     }, 250);
@@ -338,10 +353,8 @@ function openPdfPrintWindow({ title, rows, cols }) {
 }
 
 // =====================
-// Column config (TABLA)
+// Column config
 // =====================
-const DAYS = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sábado', 'domingo'];
-
 const BASE_COLS = [
   { id: 'estado', label: 'ESTADO', patchKey: 'estado_imput' },
 
@@ -422,167 +435,6 @@ function savePdfFieldsToStorage(map) {
   } catch {}
 }
 
-// =====================
-// Styles
-// =====================
-const styles = {
-  page: { padding: 16, background: '#f6f7f9', minHeight: '100%' },
-  card: {
-    background: '#fff',
-    border: '1px solid #e7e7ea',
-    borderRadius: 12,
-    boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
-    padding: 12,
-  },
-  headerRow: { display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' },
-  title: { margin: 0, fontSize: 18, fontWeight: 700, color: '#111' },
-  subInfo: { marginLeft: 'auto', fontSize: 12, color: '#4b5563' },
-
-  btn: {
-    padding: '7px 10px',
-    borderRadius: 10,
-    border: '1px solid #d1d5db',
-    background: '#fff',
-    fontSize: 12,
-    cursor: 'pointer',
-  },
-  btnPrimary: {
-    padding: '7px 10px',
-    borderRadius: 10,
-    border: '1px solid #1f2937',
-    background: '#111827',
-    color: '#fff',
-    fontSize: 12,
-    cursor: 'pointer',
-  },
-  btnDanger: {
-    padding: '7px 10px',
-    borderRadius: 10,
-    border: '1px solid #ef4444',
-    background: '#fff5f5',
-    color: '#991b1b',
-    fontSize: 12,
-    cursor: 'pointer',
-  },
-  btnDisabled: { opacity: 0.55, cursor: 'not-allowed' },
-
-  errorBox: {
-    background: '#fff5f5',
-    border: '1px solid #fecaca',
-    padding: 10,
-    borderRadius: 10,
-    marginBottom: 10,
-    color: '#7f1d1d',
-    fontSize: 12,
-  },
-
-  tableWrap: { overflow: 'auto', border: '1px solid #e5e7eb', borderRadius: 12, background: '#fff' },
-  table: { borderCollapse: 'separate', borderSpacing: 0, width: '100%' },
-
-  th: {
-    position: 'sticky',
-    top: 0,
-    background: '#f9fafb',
-    borderBottom: '1px solid #e5e7eb',
-    padding: 10,
-    textAlign: 'left',
-    fontSize: 12,
-    whiteSpace: 'nowrap',
-    zIndex: 3,
-    color: '#111827',
-  },
-
-  thFilter: {
-    position: 'sticky',
-    top: 40,
-    background: '#f3f4f6',
-    borderBottom: '2px solid #d1d5db',
-    padding: 8,
-    zIndex: 2,
-    boxShadow: 'inset 0 0 0 1px #d1d5db',
-  },
-
-  td: {
-    borderBottom: '1px solid #f0f0f0',
-    padding: 8,
-    fontSize: 12,
-    whiteSpace: 'nowrap',
-    verticalAlign: 'top',
-    color: '#111827',
-  },
-
-  input: {
-    width: '100%',
-    fontSize: 12,
-    padding: '6px 8px',
-    borderRadius: 10,
-    border: '2px solid #d1d5db',
-    outline: 'none',
-    background: '#fff',
-  },
-  select: {
-    width: '100%',
-    fontSize: 12,
-    padding: '6px 8px',
-    borderRadius: 10,
-    border: '2px solid #d1d5db',
-    outline: 'none',
-    background: '#fff',
-  },
-
-  dateFilterBox: { display: 'grid', gap: 6, minWidth: 170 },
-  dateRow: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 },
-  dateLabel: { fontSize: 11, color: '#374151' },
-  tinyCheckRow: { display: 'flex', alignItems: 'center', gap: 8 },
-
-  hint: { marginTop: 8, fontSize: 11, color: '#6b7280' },
-
-  panelWrap: { position: 'relative' },
-  panel: {
-    position: 'absolute',
-    top: 40,
-    left: 0,
-    width: 380,
-    maxHeight: 460,
-    overflow: 'auto',
-    background: '#fff',
-    border: '1px solid #e5e7eb',
-    borderRadius: 12,
-    boxShadow: '0 8px 24px rgba(0,0,0,0.08)',
-    padding: 10,
-    zIndex: 5,
-  },
-  panelTitle: { fontSize: 12, fontWeight: 700, marginBottom: 8, color: '#111827' },
-  panelRow: { display: 'flex', alignItems: 'center', gap: 8, padding: '6px 4px' },
-
-  badgeOk: {
-    display: 'inline-block',
-    padding: '2px 8px',
-    borderRadius: 999,
-    background: '#ecfdf5',
-    border: '1px solid #a7f3d0',
-    color: '#065f46',
-    fontSize: 11,
-    fontWeight: 600,
-  },
-  badgePending: {
-    display: 'inline-block',
-    padding: '2px 8px',
-    borderRadius: 999,
-    background: '#fffbeb',
-    border: '1px solid #fde68a',
-    color: '#92400e',
-    fontSize: 11,
-    fontWeight: 600,
-  },
-
-  pager: { display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, flexWrap: 'wrap' },
-  pagerInfo: { fontSize: 12, color: '#374151' },
-};
-
-// =====================
-// Component
-// =====================
 export default function PreproduccionValoresTable() {
   const ALL_COLS = useMemo(() => [...BASE_COLS, ACTION_COL], []);
   const PDF_DEFS = useMemo(() => getPdfFieldDefs(), []);
@@ -593,23 +445,22 @@ export default function PreproduccionValoresTable() {
   const [saving, setSaving] = useState(() => new Set());
 
   // ====== Estado basado en PORTONES ======
-  // fuente de verdad: si NV existe en /portones => "produccion"
   const [portonesNvSet, setPortonesNvSet] = useState(() => new Set());
   const [portonesIndexState, setPortonesIndexState] = useState('idle'); // idle|loading|ok|error
 
   // Filtros:
   // - string para texto
-  // - { from:'YYYY-MM-DD', to:'YYYY-MM-DD', empty:boolean } para fechas
+  // - { from:'YYYY-MM-DD', to:'YYYY-MM-DD', has:boolean, empty:boolean } para fechas
   const [filters, setFilters] = useState(() => {
     const o = {};
     for (const c of ALL_COLS) {
-      if (c.type === 'date') o[c.id] = { from: '', to: '', empty: false };
+      if (c.type === 'date') o[c.id] = { from: '', to: '', has: false, empty: false };
       else o[c.id] = '';
     }
     return o;
   });
 
-  // Columnas visibles (tabla)
+  // Columnas visibles
   const [showColsPanel, setShowColsPanel] = useState(false);
   const colsPanelRef = useRef(null);
   const [visibleCols, setVisibleCols] = useState(() => {
@@ -636,6 +487,55 @@ export default function PreproduccionValoresTable() {
   });
   useEffect(() => savePdfFieldsToStorage(pdfFields), [pdfFields, PDF_DEFS]);
 
+  // ===== Modal Logística =====
+  const [logModalOpen, setLogModalOpen] = useState(false);
+  const [logModalRow, setLogModalRow] = useState(null);
+  const [logModalBusy, setLogModalBusy] = useState(false);
+
+  const openLogModal = (row) => {
+    setLogModalRow(row);
+    setLogModalOpen(true);
+  };
+  const closeLogModal = () => {
+    if (logModalBusy) return;
+    setLogModalOpen(false);
+    setLogModalRow(null);
+  };
+
+  // ===== Modal Admin =====
+  const [adminModalOpen, setAdminModalOpen] = useState(false);
+  const [adminModalRow, setAdminModalRow] = useState(null);
+  const [adminModalBusy, setAdminModalBusy] = useState(false);
+
+  const openAdminModal = (row) => {
+    const d = row?.data || {};
+    if (Boolean(d.auth_admin)) return; // no editable post-autorización
+    setAdminModalRow(row);
+    setAdminModalOpen(true);
+  };
+  const closeAdminModal = () => {
+    if (adminModalBusy) return;
+    setAdminModalOpen(false);
+    setAdminModalRow(null);
+  };
+
+  // ===== Modal Comercial =====
+  const [comModalOpen, setComModalOpen] = useState(false);
+  const [comModalRow, setComModalRow] = useState(null);
+  const [comModalBusy, setComModalBusy] = useState(false);
+
+  const openComModal = (row) => {
+    const d = row?.data || {};
+    if (Boolean(d.auth_comercial)) return; // no editable post-autorización
+    setComModalRow(row);
+    setComModalOpen(true);
+  };
+  const closeComModal = () => {
+    if (comModalBusy) return;
+    setComModalOpen(false);
+    setComModalRow(null);
+  };
+
   // Paginado
   const [pageSize, setPageSize] = useState(25);
   const [page, setPage] = useState(1);
@@ -655,7 +555,10 @@ export default function PreproduccionValoresTable() {
     return () => document.removeEventListener('mousedown', onDocClick);
   }, [showColsPanel, showPdfPanel]);
 
-  const visibleColsList = useMemo(() => ALL_COLS.filter((c) => visibleCols[c.id] !== false), [ALL_COLS, visibleCols]);
+  const visibleColsList = useMemo(
+    () => ALL_COLS.filter((c) => visibleCols[c.id] !== false),
+    [ALL_COLS, visibleCols]
+  );
 
   const refreshPortonesNvIndex = useCallback(async () => {
     setPortonesIndexState('loading');
@@ -663,7 +566,6 @@ export default function PreproduccionValoresTable() {
       const rr = await fetchPortones();
       const list = Array.isArray(rr?.data) ? rr.data : rr?.data ? [rr.data] : [];
 
-      // Intento robusto: si viene {nv:...} o {data:{nv...}} etc.
       const set = new Set();
       for (const it of list) {
         const nv = parseInt(String(it?.nv ?? it?.NV ?? it?.nlista ?? it?.NLista ?? '').trim(), 10);
@@ -689,8 +591,6 @@ export default function PreproduccionValoresTable() {
     } finally {
       setLoading(false);
     }
-
-    // Siempre refresca índice de portones al recargar
     await refreshPortonesNvIndex();
   }, [refreshPortonesNvIndex]);
 
@@ -705,9 +605,11 @@ export default function PreproduccionValoresTable() {
       const res = await updatePreproduccionValor(id, patch);
       const updated = res?.data;
       setRows((prev) => prev.map((r) => (r.id === id ? updated : r)));
+      return updated;
     } catch (e) {
       const msg = e?.response?.data?.error || e?.message || 'Error guardando';
       alert(msg);
+      throw e;
     } finally {
       setSaving((prev) => {
         const n = new Set(prev);
@@ -717,7 +619,52 @@ export default function PreproduccionValoresTable() {
     }
   }, []);
 
-  // ====== EXCLUSIÓN GLOBAL por NV (no aparecen nunca) ======
+  const submitLogisticaAuth = useCallback(
+    async (patch) => {
+      const id = logModalRow?.id;
+      if (!id) return;
+      setLogModalBusy(true);
+      try {
+        await onPatch(id, patch);
+        closeLogModal();
+      } finally {
+        setLogModalBusy(false);
+      }
+    },
+    [logModalRow, onPatch]
+  );
+
+  const submitAdminAuth = useCallback(
+    async (patch) => {
+      const id = adminModalRow?.id;
+      if (!id) return;
+      setAdminModalBusy(true);
+      try {
+        await onPatch(id, patch);
+        closeAdminModal();
+      } finally {
+        setAdminModalBusy(false);
+      }
+    },
+    [adminModalRow, onPatch]
+  );
+
+  const submitComercialAuth = useCallback(
+    async (patch) => {
+      const id = comModalRow?.id;
+      if (!id) return;
+      setComModalBusy(true);
+      try {
+        await onPatch(id, patch);
+        closeComModal();
+      } finally {
+        setComModalBusy(false);
+      }
+    },
+    [comModalRow, onPatch]
+  );
+
+  // ====== EXCLUSIÓN GLOBAL por NV ======
   const rowsAfterNvExclusion = useMemo(() => {
     return (rows || []).filter((r) => {
       const nv = getNvCanonicalFromRow(r);
@@ -725,7 +672,7 @@ export default function PreproduccionValoresTable() {
     });
   }, [rows]);
 
-  // ====== Estado acciones (FUENTE DE VERDAD: portonesNvSet) ======
+  // ====== Estado acciones ======
   const getAccionesStatus = useCallback(
     (row) => {
       const d = row?.data || {};
@@ -741,28 +688,37 @@ export default function PreproduccionValoresTable() {
     [portonesNvSet]
   );
 
+  // =====================
+  // Date filter: intervalo + con fecha + sin fecha
+  // =====================
   function matchDateFilter(cellDateLike, filterObj) {
     const cell = normalizeDate10(cellDateLike);
-    const emptyChecked = Boolean(filterObj?.empty);
+
     const from = normalizeDate10(filterObj?.from);
     const to = normalizeDate10(filterObj?.to);
+    const wantHas = Boolean(filterObj?.has);
+    const wantEmpty = Boolean(filterObj?.empty);
 
     const hasRange = Boolean(from || to);
-    const isEmpty = !cell;
-    const emptyMatch = emptyChecked && isEmpty;
+    const hasDate = Boolean(cell);
 
-    let rangeMatch = true;
+    if (!hasRange && !wantHas && !wantEmpty) return true;
+
+    let inRange = false;
     if (hasRange) {
-      if (!cell) rangeMatch = false;
-      else {
-        if (from && cell < from) rangeMatch = false;
-        if (to && cell > to) rangeMatch = false;
+      if (hasDate) {
+        inRange = true;
+        if (from && cell < from) inRange = false;
+        if (to && cell > to) inRange = false;
       }
     }
 
-    if (hasRange) return rangeMatch || emptyMatch;
-    if (emptyChecked) return emptyMatch;
-    return true;
+    let ok = false;
+    if (hasRange) ok = ok || inRange;
+    if (wantEmpty) ok = ok || !hasDate;
+    if (wantHas && !hasRange) ok = ok || hasDate;
+
+    return ok;
   }
 
   const filteredRows = useMemo(() => {
@@ -772,8 +728,13 @@ export default function PreproduccionValoresTable() {
       if (!col) return false;
 
       if (col.type === 'date') {
-        const obj = v && typeof v === 'object' ? v : { from: '', to: '', empty: false };
-        return String(obj.from || '').trim() !== '' || String(obj.to || '').trim() !== '' || Boolean(obj.empty);
+        const obj = v && typeof v === 'object' ? v : { from: '', to: '', has: false, empty: false };
+        return (
+          String(obj.from || '').trim() !== '' ||
+          String(obj.to || '').trim() !== '' ||
+          Boolean(obj.has) ||
+          Boolean(obj.empty)
+        );
       }
       return String(v || '').trim() !== '';
     });
@@ -786,11 +747,9 @@ export default function PreproduccionValoresTable() {
         const col = ALL_COLS.find((c) => c.id === colId);
         if (!col) return true;
 
-        // ===== FILTRO ACCIONES =====
         if (col.type === 'actions') {
           const needle = String(fval || '').toLowerCase().trim();
           if (!needle) return true;
-
           const st = getAccionesStatus(row);
           if (needle === 'pendiente') return st === 'pendiente';
           if (needle === 'listo') return st === 'listo';
@@ -812,7 +771,7 @@ export default function PreproduccionValoresTable() {
         const raw = getCellValue(row, col);
 
         if (col.type === 'date') {
-          const obj = fval && typeof fval === 'object' ? fval : { from: '', to: '', empty: false };
+          const obj = fval && typeof fval === 'object' ? fval : { from: '', to: '', has: false, empty: false };
           return matchDateFilter(raw, obj);
         }
 
@@ -844,8 +803,6 @@ export default function PreproduccionValoresTable() {
       if (!id) return;
 
       const d = row?.data || {};
-
-      // Requiere 3 autorizaciones en true
       const okAuth = Boolean(d.auth_admin) && Boolean(d.auth_logistica) && Boolean(d.auth_comercial);
       if (!okAuth) return;
 
@@ -855,16 +812,13 @@ export default function PreproduccionValoresTable() {
         return;
       }
 
-      // Si ya existe en portones, no hagas nada (ya está enviado)
       if (portonesNvSet.has(nv)) return;
 
-      // Helpers local: date10 o null
       const dateOrNull = (v) => {
         const x = normalizeDate10(v);
         return x ? x : null;
       };
 
-      // Mapeo EXACTO según tu definición
       const payload = {
         nv,
         nlista: nv,
@@ -873,23 +827,16 @@ export default function PreproduccionValoresTable() {
         fecha_prod: dateOrNull(d.inicio_prod_imput ?? d.Inicio_Prod_Imput ?? null),
         fecha_nv: dateOrNull(getAny(d, ['Fecha_NV', 'fecha_nv', 'Fecha_Venta', 'fecha_venta'])),
         fecha_med: dateOrNull(d.fecha_medicion_imput ?? d.Fecha_Medicion_Imput ?? null),
-        // NO se envía: fecha_plan_entrega
-        // NO se envía: observaciones
-        // Resto: defaults en DB
       };
 
       try {
         await createPorton(payload);
-
-        // Actualiza índice local (sin depender de flags)
         setPortonesNvSet((prev) => {
           const next = new Set(prev);
           next.add(nv);
           return next;
         });
 
-        // Opcional: guardar timestamp de auditoría (NO es fuente de verdad)
-        // Si no lo querés, borrá estas 2 líneas.
         await onPatch(id, { fecha_envio_produccion: new Date().toISOString() });
       } catch (e) {
         const status = e?.response?.status;
@@ -902,7 +849,6 @@ export default function PreproduccionValoresTable() {
           String(msg).toLowerCase().includes('portones_nv_nlista_uniq');
 
         if (isDuplicate) {
-          // Ya existía en portones => marcamos localmente como enviado
           setPortonesNvSet((prev) => {
             const next = new Set(prev);
             next.add(nv);
@@ -917,6 +863,7 @@ export default function PreproduccionValoresTable() {
     [onPatch, portonesNvSet]
   );
 
+  // ======= ÚNICA DECLARACIÓN (antes había dos) =======
   const pdfWeeksList = useMemo(() => {
     const set = new Set();
     for (const r of filteredRows) {
@@ -958,6 +905,56 @@ export default function PreproduccionValoresTable() {
     setPdfFields(map);
   };
 
+  const renderDateFilter = (colId) => {
+    const curr =
+      filters[colId] && typeof filters[colId] === 'object'
+        ? filters[colId]
+        : { from: '', to: '', has: false, empty: false };
+
+    const from = curr.from || '';
+    const to = curr.to || '';
+    const has = Boolean(curr.has);
+    const empty = Boolean(curr.empty);
+
+    const setObj = (next) => setFilters((p) => ({ ...p, [colId]: { ...curr, ...next } }));
+
+    return (
+      <div className="pp-dateFilterBox">
+        <div className="pp-dateRow">
+          <div>
+            <div className="pp-dateLabel">Desde</div>
+            <input type="date" value={from} onChange={(e) => setObj({ from: e.target.value })} className="pp-input" />
+          </div>
+          <div>
+            <div className="pp-dateLabel">Hasta</div>
+            <input type="date" value={to} onChange={(e) => setObj({ to: e.target.value })} className="pp-input" />
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 6 }}>
+          <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input type="checkbox" checked={has} onChange={(e) => setObj({ has: e.target.checked })} />
+            <span style={{ fontSize: 12 }}>Con fecha</span>
+          </label>
+
+          <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input type="checkbox" checked={empty} onChange={(e) => setObj({ empty: e.target.checked })} />
+            <span style={{ fontSize: 12 }}>Sin fecha</span>
+          </label>
+        </div>
+
+        <button
+          type="button"
+          className="btn"
+          style={{ marginTop: 8 }}
+          onClick={() => setFilters((p) => ({ ...p, [colId]: { from: '', to: '', has: false, empty: false } }))}
+        >
+          Limpiar
+        </button>
+      </div>
+    );
+  };
+
   const renderCell = (row, col) => {
     const data = row?.data || {};
     const id = row.id;
@@ -970,19 +967,19 @@ export default function PreproduccionValoresTable() {
       return (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {alreadySent ? (
-            <span style={styles.badgeOk}>Enviado</span>
+            <span className="pp-badge pp-badge--ok">Enviado</span>
           ) : st === 'listo' ? (
             <button
               onClick={() => sendToProduccion(row)}
               disabled={isBusy}
-              style={{ ...styles.btnPrimary, ...(isBusy ? styles.btnDisabled : null) }}
+              className="btn btn--brand pp-btnCell"
               title="Enviar a producción (requiere 3 autorizaciones)"
             >
               Enviar a producción
             </button>
           ) : (
-            <span style={styles.badgePending} title="Faltan autorizaciones">
-              Pendiente de autorizaciones
+            <span className="pp-badge pp-badge--pending" title="Faltan autorizaciones">
+              Pendiente
             </span>
           )}
         </div>
@@ -994,6 +991,75 @@ export default function PreproduccionValoresTable() {
     if (col.type === 'calc_medidas') return <span>{medidasDisplayFromRow(row)}</span>;
 
     if (col.type === 'bool' && col.patchKey) {
+      // Admin => botón + modal (sin editar luego)
+      if (col.patchKey === 'auth_admin') {
+        const ok = Boolean(data.auth_admin);
+        if (ok) return <span className="pp-badge pp-badge--ok">Autorizado</span>;
+        return (
+          <button
+            type="button"
+            className="pp-btnCell pp-btnCell--brand"
+            onClick={() => openAdminModal(row)}
+            disabled={isBusy}
+            title="Autorizar administración"
+          >
+            Autorizar
+          </button>
+        );
+      }
+
+      // Logística => botón + modal (editable con Ver/Editar)
+      if (col.patchKey === 'auth_logistica') {
+        const ok = Boolean(data.auth_logistica);
+        return (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {ok ? (
+              <>
+                <span className="pp-badge pp-badge--ok">Autorizado</span>
+                <button
+                  type="button"
+                  className="pp-btnCell"
+                  onClick={() => openLogModal(row)}
+                  disabled={isBusy}
+                  title="Ver / Editar datos de autorización logística"
+                >
+                  Ver / Editar
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="pp-btnCell pp-btnCell--brand"
+                onClick={() => openLogModal(row)}
+                disabled={isBusy}
+                title="Autorizar logística (requiere completar datos obligatorios)"
+              >
+                Autorizar
+              </button>
+            )}
+          </div>
+        );
+      }
+
+      // Comercial => botón + modal (sin editar luego)
+      if (col.patchKey === 'auth_comercial') {
+        const ok = Boolean(data.auth_comercial);
+        if (ok) return <span className="pp-badge pp-badge--ok">Autorizado</span>;
+
+        return (
+          <button
+            type="button"
+            className="pp-btnCell pp-btnCell--brand"
+            onClick={() => openComModal(row)}
+            disabled={isBusy}
+            title="Autorizar comercial (requiere responder la pregunta obligatoria)"
+          >
+            Autorizar
+          </button>
+        );
+      }
+
+      // resto => checkbox normal
       const checked = Boolean(data[col.patchKey]);
       return (
         <input
@@ -1021,7 +1087,8 @@ export default function PreproduccionValoresTable() {
               );
             }}
             onBlur={() => onPatch(id, { [col.patchKey]: normalizeDate10(data[col.patchKey] ?? '') || null })}
-            style={{ ...styles.input, width: 150 }}
+            className="pp-input"
+            style={{ width: 150 }}
           />
         );
       }
@@ -1039,7 +1106,8 @@ export default function PreproduccionValoresTable() {
               );
               onPatch(id, { [col.patchKey]: next || null });
             }}
-            style={{ ...styles.select, width: 170 }}
+            className="pp-select"
+            style={{ width: 170 }}
           >
             <option value="">(vacío)</option>
             {DAYS.map((d) => (
@@ -1063,7 +1131,8 @@ export default function PreproduccionValoresTable() {
             );
           }}
           onBlur={() => onPatch(id, { [col.patchKey]: (data[col.patchKey] ?? '').toString().trim() || null })}
-          style={{ ...styles.input, width: 220 }}
+          className="pp-input"
+          style={{ width: 220 }}
         />
       );
     }
@@ -1073,86 +1142,67 @@ export default function PreproduccionValoresTable() {
     return <span>{toStr(raw)}</span>;
   };
 
-  const renderDateFilter = (colId) => {
-    const curr =
-      filters[colId] && typeof filters[colId] === 'object' ? filters[colId] : { from: '', to: '', empty: false };
-    const from = curr.from || '';
-    const to = curr.to || '';
-    const empty = Boolean(curr.empty);
-
-    const setObj = (next) => setFilters((p) => ({ ...p, [colId]: { ...curr, ...next } }));
-
-    return (
-      <div style={styles.dateFilterBox}>
-        <div style={styles.dateRow}>
-          <div>
-            <div style={styles.dateLabel}>Desde</div>
-            <input type="date" value={from} onChange={(e) => setObj({ from: e.target.value })} style={styles.input} />
-          </div>
-          <div>
-            <div style={styles.dateLabel}>Hasta</div>
-            <input type="date" value={to} onChange={(e) => setObj({ to: e.target.value })} style={styles.input} />
-          </div>
-        </div>
-
-        <label style={styles.tinyCheckRow}>
-          <input type="checkbox" checked={empty} onChange={(e) => setObj({ empty: e.target.checked })} />
-          <span style={{ fontSize: 12, color: '#111827' }}>Sin fecha</span>
-        </label>
-
-        <button
-          type="button"
-          style={styles.btn}
-          onClick={() => setFilters((p) => ({ ...p, [colId]: { from: '', to: '', empty: false } }))}
-        >
-          Limpiar
-        </button>
-      </div>
-    );
-  };
-
   return (
-    <div style={styles.page}>
-      <div style={styles.card}>
-        <div style={styles.headerRow}>
-          <h2 style={styles.title}>Preproducción</h2>
+    <div style={{ padding: 16 }}>
+      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 12 }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
+          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800 }}>Preproducción</h2>
 
-          <button onClick={load} disabled={loading} style={{ ...styles.btn, ...(loading ? styles.btnDisabled : null) }}>
+          <button onClick={load} disabled={loading} className="btn">
             Recargar
           </button>
 
           {portonesIndexState === 'error' ? (
-            <div style={{ ...styles.errorBox, margin: 0 }}>
+            <div style={{ background: '#fff5f5', border: '1px solid #fecaca', padding: 8, borderRadius: 10 }}>
               No se pudo cargar <b>Portones</b>. El estado “Enviado” puede ser incorrecto hasta recargar.
             </div>
           ) : null}
 
           {/* Panel Columnas */}
-          <div style={styles.panelWrap} ref={colsPanelRef}>
-            <button onClick={() => setShowColsPanel((p) => !p)} style={styles.btn} disabled={loading}>
+          <div style={{ position: 'relative' }} ref={colsPanelRef}>
+            <button onClick={() => setShowColsPanel((p) => !p)} className="btn" disabled={loading}>
               Columnas
             </button>
 
             {showColsPanel ? (
-              <div style={styles.panel}>
-                <div style={styles.panelTitle}>Mostrar/Ocultar columnas (Tabla)</div>
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 40,
+                  left: 0,
+                  width: 380,
+                  maxHeight: 460,
+                  overflow: 'auto',
+                  background: '#fff',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: 12,
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.08)',
+                  padding: 10,
+                  zIndex: 5,
+                }}
+              >
+                <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 8 }}>Mostrar/Ocultar columnas (Tabla)</div>
                 <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                  <button style={styles.btn} onClick={() => toggleAllCols(true)}>
+                  <button className="btn" onClick={() => toggleAllCols(true)}>
                     Mostrar todas
                   </button>
-                  <button style={styles.btnDanger} onClick={() => toggleAllCols(false)}>
+                  <button
+                    className="btn"
+                    style={{ borderColor: '#ef4444', background: '#fff5f5', color: '#991b1b' }}
+                    onClick={() => toggleAllCols(false)}
+                  >
                     Ocultar todas
                   </button>
                 </div>
 
                 {ALL_COLS.map((c) => (
-                  <label key={c.id} style={styles.panelRow}>
+                  <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 4px' }}>
                     <input
                       type="checkbox"
                       checked={visibleCols[c.id] !== false}
                       onChange={(e) => setVisibleCols((p) => ({ ...p, [c.id]: e.target.checked }))}
                     />
-                    <span style={{ fontSize: 12, color: '#111827' }}>{c.label}</span>
+                    <span style={{ fontSize: 12 }}>{c.label}</span>
                   </label>
                 ))}
 
@@ -1162,38 +1212,55 @@ export default function PreproduccionValoresTable() {
           </div>
 
           {/* Panel PDF */}
-          <div style={styles.panelWrap} ref={pdfPanelRef}>
+          <div style={{ position: 'relative' }} ref={pdfPanelRef}>
             <button
               onClick={() => setShowPdfPanel((p) => !p)}
-              style={styles.btn}
+              className="btn"
               disabled={loading || filteredRows.length === 0}
             >
               PDF
             </button>
 
             {showPdfPanel ? (
-              <div style={styles.panel}>
-                <div style={styles.panelTitle}>PDF: semana y campos</div>
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 40,
+                  left: 0,
+                  width: 380,
+                  maxHeight: 460,
+                  overflow: 'auto',
+                  background: '#fff',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: 12,
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.08)',
+                  padding: 10,
+                  zIndex: 5,
+                }}
+              >
+                <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 8 }}>PDF: semana y campos</div>
 
                 <div style={{ display: 'grid', gap: 8, marginBottom: 10 }}>
-                  <label style={{ fontSize: 12, color: '#111827' }}>
+                  <label style={{ fontSize: 12 }}>
                     Semana según
                     <select
                       value={pdfMode}
                       onChange={(e) => setPdfMode(e.target.value)}
-                      style={{ ...styles.select, marginTop: 6 }}
+                      className="pp-select"
+                      style={{ marginTop: 6, width: '100%' }}
                     >
                       <option value="produccion">Producción (Inicio Prod)</option>
                       <option value="despacho">Despacho (Fecha Salida)</option>
                     </select>
                   </label>
 
-                  <label style={{ fontSize: 12, color: '#111827' }}>
+                  <label style={{ fontSize: 12 }}>
                     Semana a imprimir
                     <select
                       value={pdfWeek}
                       onChange={(e) => setPdfWeek(e.target.value)}
-                      style={{ ...styles.select, marginTop: 6 }}
+                      className="pp-select"
+                      style={{ marginTop: 6, width: '100%' }}
                     >
                       <option value="">Todas</option>
                       {pdfWeeksList.map((w) => (
@@ -1209,34 +1276,37 @@ export default function PreproduccionValoresTable() {
                 </div>
 
                 <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                  <button style={styles.btn} onClick={() => toggleAllPdfFields(true)}>
+                  <button className="btn" onClick={() => toggleAllPdfFields(true)}>
                     Campos: todos
                   </button>
-                  <button style={styles.btnDanger} onClick={() => toggleAllPdfFields(false)}>
+                  <button
+                    className="btn"
+                    style={{ borderColor: '#ef4444', background: '#fff5f5', color: '#991b1b' }}
+                    onClick={() => toggleAllPdfFields(false)}
+                  >
                     Campos: ninguno
                   </button>
                 </div>
 
                 {PDF_DEFS.map((f) => (
-                  <label key={`pdf_${f.id}`} style={styles.panelRow}>
+                  <label
+                    key={`pdf_${f.id}`}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 4px' }}
+                  >
                     <input
                       type="checkbox"
                       checked={pdfFields[f.id] !== false}
                       onChange={(e) => setPdfFields((p) => ({ ...p, [f.id]: e.target.checked }))}
                     />
-                    <span style={{ fontSize: 12, color: '#111827' }}>{f.label}</span>
+                    <span style={{ fontSize: 12 }}>{f.label}</span>
                   </label>
                 ))}
 
                 <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                  <button
-                    style={{ ...styles.btnPrimary, ...(pdfSelectedRows.length === 0 ? styles.btnDisabled : null) }}
-                    onClick={printPdf}
-                    disabled={pdfSelectedRows.length === 0}
-                  >
+                  <button className="btn btn--brand" onClick={printPdf} disabled={pdfSelectedRows.length === 0}>
                     Imprimir PDF
                   </button>
-                  <button style={styles.btn} onClick={() => setShowPdfPanel(false)}>
+                  <button className="btn" onClick={() => setShowPdfPanel(false)}>
                     Cerrar
                   </button>
                 </div>
@@ -1244,21 +1314,47 @@ export default function PreproduccionValoresTable() {
             ) : null}
           </div>
 
-          <div style={styles.subInfo}>{loading ? 'Cargando…' : `Registros: ${total}`}</div>
+          <div style={{ marginLeft: 'auto', fontSize: 12, color: '#374151' }}>
+            {loading ? 'Cargando…' : `Registros: ${total}`}
+          </div>
         </div>
 
         {err ? (
-          <div style={styles.errorBox}>
+          <div
+            style={{
+              background: '#fff5f5',
+              border: '1px solid #fecaca',
+              padding: 10,
+              borderRadius: 10,
+              marginBottom: 10,
+              color: '#7f1d1d',
+              fontSize: 12,
+            }}
+          >
             <b>Error:</b> {err}
           </div>
         ) : null}
 
-        <div style={styles.tableWrap}>
-          <table style={styles.table}>
+        <div style={{ overflow: 'auto', border: '1px solid #e5e7eb', borderRadius: 12, background: '#fff' }}>
+          <table style={{ borderCollapse: 'separate', borderSpacing: 0, width: '100%' }}>
             <thead>
               <tr>
                 {visibleColsList.map((c) => (
-                  <th key={c.id} style={styles.th}>
+                  <th
+                    key={c.id}
+                    style={{
+                      position: 'sticky',
+                      top: 0,
+                      background: '#f9fafb',
+                      borderBottom: '1px solid #e5e7eb',
+                      padding: 10,
+                      textAlign: 'left',
+                      fontSize: 12,
+                      whiteSpace: 'nowrap',
+                      zIndex: 3,
+                      color: '#111827',
+                    }}
+                  >
                     {c.label}
                   </th>
                 ))}
@@ -1266,23 +1362,36 @@ export default function PreproduccionValoresTable() {
 
               <tr>
                 {visibleColsList.map((c) => (
-                  <th key={`${c.id}_filter`} style={styles.thFilter}>
+                  <th
+                    key={`${c.id}_filter`}
+                    style={{
+                      position: 'sticky',
+                      top: 40,
+                      background: '#f3f4f6',
+                      borderBottom: '2px solid #d1d5db',
+                      padding: 8,
+                      zIndex: 2,
+                      boxShadow: 'inset 0 0 0 1px #d1d5db',
+                    }}
+                  >
                     {c.type === 'actions' ? (
                       <select
                         value={filters[c.id] || ''}
                         onChange={(e) => setFilters((p) => ({ ...p, [c.id]: e.target.value }))}
-                        style={styles.select}
+                        className="pp-select"
+                        style={{ width: '100%' }}
                       >
                         <option value="">(todos)</option>
-                        <option value="pendiente">Pendiente de autorización</option>
-                        <option value="listo">Autorizado (listo para enviar)</option>
-                        <option value="produccion">En producción (enviado)</option>
+                        <option value="pendiente">Pendiente</option>
+                        <option value="listo">Listo</option>
+                        <option value="produccion">En producción</option>
                       </select>
                     ) : c.type === 'day' ? (
                       <select
                         value={filters[c.id] || ''}
                         onChange={(e) => setFilters((p) => ({ ...p, [c.id]: e.target.value }))}
-                        style={styles.select}
+                        className="pp-select"
+                        style={{ width: '100%' }}
                       >
                         <option value="">(todos)</option>
                         {DAYS.map((d) => (
@@ -1298,7 +1407,7 @@ export default function PreproduccionValoresTable() {
                         value={filters[c.id] || ''}
                         onChange={(e) => setFilters((p) => ({ ...p, [c.id]: e.target.value }))}
                         placeholder="Filtrar…"
-                        style={styles.input}
+                        className="pp-input"
                       />
                     )}
                   </th>
@@ -1310,7 +1419,17 @@ export default function PreproduccionValoresTable() {
               {pagedRows.map((row) => (
                 <tr key={row.id}>
                   {visibleColsList.map((col) => (
-                    <td key={`${row.id}_${col.id}`} style={styles.td}>
+                    <td
+                      key={`${row.id}_${col.id}`}
+                      style={{
+                        borderBottom: '1px solid #f0f0f0',
+                        padding: 8,
+                        fontSize: 12,
+                        whiteSpace: 'nowrap',
+                        verticalAlign: 'top',
+                        color: '#111827',
+                      }}
+                    >
                       {renderCell(row, col)}
                     </td>
                   ))}
@@ -1328,9 +1447,8 @@ export default function PreproduccionValoresTable() {
           </table>
         </div>
 
-        {/* Paginado */}
-        <div style={styles.pager}>
-          <div style={styles.pagerInfo}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
+          <div style={{ fontSize: 12, color: '#374151' }}>
             Mostrando <b>{total ? startIdx + 1 : 0}</b>–<b>{endIdx}</b> de <b>{total}</b>
           </div>
 
@@ -1339,7 +1457,8 @@ export default function PreproduccionValoresTable() {
             <select
               value={pageSize}
               onChange={(e) => setPageSize(Number(e.target.value))}
-              style={{ ...styles.select, width: 110, marginLeft: 8 }}
+              className="pp-select"
+              style={{ width: 110, marginLeft: 8 }}
             >
               {[10, 25, 50, 100].map((n) => (
                 <option key={n} value={n}>
@@ -1349,11 +1468,7 @@ export default function PreproduccionValoresTable() {
             </select>
           </label>
 
-          <button
-            style={{ ...styles.btn, ...(safePage <= 1 ? styles.btnDisabled : null) }}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={safePage <= 1}
-          >
+          <button className="btn" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={safePage <= 1}>
             Anterior
           </button>
 
@@ -1362,7 +1477,7 @@ export default function PreproduccionValoresTable() {
           </div>
 
           <button
-            style={{ ...styles.btn, ...(safePage >= pageCount ? styles.btnDisabled : null) }}
+            className="btn"
             onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
             disabled={safePage >= pageCount}
           >
@@ -1370,11 +1485,36 @@ export default function PreproduccionValoresTable() {
           </button>
         </div>
 
-        <div style={styles.hint}>
-          Filtros de fecha: podés usar <b>Desde/Hasta</b> y/o <b>Sin fecha</b>. Si marcás “Sin fecha” junto con rango,
-          trae <i>rango OR sin fecha</i>. Acciones: filtra Pendiente / Listo / En producción.
+        <div style={{ marginTop: 8, fontSize: 11, color: '#6b7280' }}>
+          Fechas: podés usar <b>Desde/Hasta</b> (intervalo), y/o <b>Con fecha</b>, y/o <b>Sin fecha</b>. Si combinás
+          intervalo + “Sin fecha” trae <i>intervalo OR sin fecha</i>.
         </div>
       </div>
+
+      {/* Modales */}
+      <LogisticaAuthModal
+        open={logModalOpen}
+        row={logModalRow}
+        busy={logModalBusy}
+        onClose={closeLogModal}
+        onSubmit={submitLogisticaAuth}
+      />
+
+      <AdminAuthModal
+        open={adminModalOpen}
+        row={adminModalRow}
+        busy={adminModalBusy}
+        onClose={closeAdminModal}
+        onSubmit={submitAdminAuth}
+      />
+
+      <ComercialAuthModal
+        open={comModalOpen}
+        row={comModalRow}
+        busy={comModalBusy}
+        onClose={closeComModal}
+        onSubmit={submitComercialAuth}
+      />
     </div>
   );
 }
