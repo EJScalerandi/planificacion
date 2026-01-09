@@ -522,12 +522,12 @@ export default function StageColumn({
   const canPdfBase = !!String(pdfBaseUrl || '').trim();
 
   // ✅ QC deshabilitado por ahora para operadores (dejamos el modal preparado)
-  /*
-  const openQc = (p) => {
-    setQcTarget(p);
-    setQcOpen(true);
-  };
-  */
+  
+   const openQc = (p) => {
+   setQcTarget(p);
+   setQcOpen(true);
+   }
+
 
   const line = mapModeToLine(mode);
 

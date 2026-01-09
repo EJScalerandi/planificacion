@@ -19,6 +19,7 @@ import AdminLoginPage from '../pages/admin/AdminLoginPage';
 import AdminHomePage from '../pages/admin/AdminHomePage';
 import WorkflowDesignerPage from '../pages/admin/WorkflowDesignerPage';
 import AdminQcPage from '../pages/admin/AdminQcPage';
+import PreproduccionValoresTable from '../src/components/PreproduccionValoresTable';
 
 const color = 'var(--brand)';
 
@@ -484,6 +485,10 @@ export default function App() {
         <Route path="/admin" element={<AdminHomePage />} />
         <Route path="/admin/qc" element={<AdminQcPage />} />
         <Route path="/admin/workflow" element={<WorkflowDesignerPage />} />
+        
+
+        <Route path= "/a" element={<PreproduccionValoresTable />} />
+
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

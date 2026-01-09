@@ -5,7 +5,7 @@ const api = axios.create({
   baseURL:
     import.meta.env.VITE_API_URL ||
     import.meta.env.VITE_API_BASE ||
-    //"https://planificacion-6sk9.onrender.com"
+    //'https://planificacion-6sk9.onrender.com'
     'http://localhost:4000',
   timeout: 15000,
 });
@@ -83,7 +83,7 @@ export const savePortonObservaciones = (id, observaciones) =>
 export const updatePortonObservaciones = (id, observaciones) =>
   api.put(`/portones/${id}/observaciones`, { observaciones });
 
-// ✅ Alias de compatibilidad con StatusGatePage.jsx (y otros)
+// ✅ Alias de compatibilidad
 export const setPortonObservaciones = (id, observaciones) =>
   updatePortonObservaciones(id, observaciones);
 
@@ -100,23 +100,18 @@ export const stopIpanelStage = (id, stage) =>
 
 /* ========= Fechas iPanels ========= */
 
-// Fecha de inicio de producción (YYYY-MM-DD o null)
 export const setIpanelFechaProd = (id, fechaOrNull) =>
   api.post(`/ipanel/${id}/fecha-prod`, { fecha_prod: fechaOrNull });
 
-// Fecha de venta (NV) (YYYY-MM-DD o null)
 export const setIpanelFechaNV = (id, fechaOrNull) =>
   api.post(`/ipanel/${id}/fecha-nv`, { fecha_nv: fechaOrNull });
 
-// Fecha de medición (YYYY-MM-DD o null)
 export const setIpanelFechaMed = (id, fechaOrNull) =>
   api.post(`/ipanel/${id}/fecha-med`, { fecha_med: fechaOrNull });
 
-// Fecha planificada salida (YYYY-MM-DD o null)
 export const setIpanelFechaPlan = (id, fechaOrNull) =>
   api.post(`/ipanel/${id}/fecha-plan`, { fecha_plan: fechaOrNull });
 
-// Fecha planificada llegada (YYYY-MM-DD o null)
 export const setIpanelFechaPlanEntrega = (id, fechaOrNull) =>
   api.post(`/ipanel/${id}/fecha-plan-entrega`, {
     fecha_plan_entrega: fechaOrNull,
@@ -124,19 +119,15 @@ export const setIpanelFechaPlanEntrega = (id, fechaOrNull) =>
 
 /* ========= Observaciones iPanels ========= */
 
-// GET observaciones de un iPanel
 export const getIpanelObservaciones = (id) =>
   api.get(`/ipanel/${id}/observaciones`);
 
-// POST observaciones (crear/actualizar – backend hace UPDATE)
 export const saveIpanelObservaciones = (id, observaciones) =>
   api.post(`/ipanel/${id}/observaciones`, { observaciones });
 
-// PUT observaciones (idempotente)
 export const updateIpanelObservaciones = (id, observaciones) =>
   api.put(`/ipanel/${id}/observaciones`, { observaciones });
 
-// ✅ Alias de compatibilidad con StatusIpanelsPage.jsx (y otros)
 export const setIpanelObservaciones = (id, observaciones) =>
   updateIpanelObservaciones(id, observaciones);
 
@@ -164,75 +155,57 @@ export async function saveWorkflowConfig(line, payload) {
 
 /* ============ QC (CALIDAD) ============ */
 
-// GET /qc/motives?line=portones|ipanel&kind=RECHAZADO|OBSERVADO&stage=<stageKey>
 export async function qcGetMotives({ line, kind, stage }) {
   const { data } = await api.get('/qc/motives', {
-    params: {
-      line,
-      kind, // OBSERVADO | RECHAZADO
-      stage: stage ?? null,
-    },
+    params: { line, kind, stage: stage ?? null },
   });
   return data;
 }
 
-// POST /qc/authorize
-// Body: { line, item_id, stage_key, qc_status, motive_id?, note?, pin }
 export async function qcAuthorize(payload) {
   const { data } = await api.post('/qc/authorize', payload);
   return data;
 }
 
-// GET /qc/history/:line/:itemId
 export async function qcHistory(line, itemId) {
-  const { data } = await api.get(`/qc/history/${encodeURIComponent(line)}/${encodeURIComponent(itemId)}`);
+  const { data } = await api.get(
+    `/qc/history/${encodeURIComponent(line)}/${encodeURIComponent(itemId)}`
+  );
   return data;
 }
 
 /* ============ ADMIN QC (CRUD usuarios + motivos) ============ */
 
-// GET /admin/qc/users
 export async function adminQcUsersList() {
   const { data } = await api.get('/admin/qc/users');
   return data;
 }
 
-// POST /admin/qc/users
-// Body: { name, pin, is_global?, is_active?, scopes?:[{line,stage_key,enabled?}] }
 export async function adminQcUsersCreate(payload) {
   const { data } = await api.post('/admin/qc/users', payload);
   return data;
 }
 
-// PUT /admin/qc/users/:id
-// Body: { name?, pin?, is_global?, is_active? }
 export async function adminQcUsersUpdate(id, payload) {
   const { data } = await api.put(`/admin/qc/users/${id}`, payload);
   return data;
 }
 
-// PUT /admin/qc/users/:id/scopes
-// Body: { scopes: [{line, stage_key, enabled?}, ...] }
 export async function adminQcUsersReplaceScopes(id, scopes) {
   const { data } = await api.put(`/admin/qc/users/${id}/scopes`, { scopes });
   return data;
 }
 
-// GET /admin/qc/motives?line=&kind=&stage=
 export async function adminQcMotivesList(params = {}) {
   const { data } = await api.get('/admin/qc/motives', { params });
   return data;
 }
 
-// POST /admin/qc/motives
-// Body: { line, kind, stage_key?, label, enabled?, priority? }
 export async function adminQcMotivesCreate(payload) {
   const { data } = await api.post('/admin/qc/motives', payload);
   return data;
 }
 
-// PUT /admin/qc/motives/:id
-// Body: { label?, enabled?, priority?, stage_key? }
 export async function adminQcMotivesUpdate(id, payload) {
   const { data } = await api.put(`/admin/qc/motives/${id}`, payload);
   return data;
@@ -248,4 +221,9 @@ export const getPlantaBases = () => api.get('/planta/bases');
 export const getDespacharBase = () => api.get('/despachar/base');
 export const postDespacharBase = (payload) => api.post('/despachar/base', payload);
 export const getDespacharBases = () => api.get('/despachar/bases');
-export const fetchPortonesV2 = () => api.get('/portones_v2');
+
+/* ========= Preproducción ========= */
+export const fetchPreproduccionValores = () => api.get('/preproduccion-valores');
+
+export const updatePreproduccionValor = (id, patch) =>
+  api.put(`/preproduccion-valores/${id}`, { patch });
