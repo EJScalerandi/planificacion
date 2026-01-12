@@ -20,6 +20,7 @@ import AdminHomePage from '../pages/admin/AdminHomePage';
 import WorkflowDesignerPage from '../pages/admin/WorkflowDesignerPage';
 import AdminQcPage from '../pages/admin/AdminQcPage';
 import PreproduccionValoresTable from '../src/components/PreproduccionValoresTable';
+import UserAdminDashboard from './components/UserAdminDashboard';
 
 const color = 'var(--brand)';
 
@@ -488,6 +489,7 @@ export default function App() {
         
 
         <Route path= "/a" element={<PreproduccionValoresTable />} />
+        <Route path= "/b" element={<UserAdminDashboard />} />
 
 
         <Route path="*" element={<Navigate to="/" replace />} />

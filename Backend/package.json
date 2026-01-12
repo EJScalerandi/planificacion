@@ -1,24 +1,22 @@
 {
-  "name": "backend",
+  "name": "portones-backend",
   "version": "1.0.0",
-  "main": "src/index.js",
-  "type": "commonjs",
+  "private": true,
+  "main": "server/index.js",
   "scripts": {
-    "dev": "nodemon src/index.js",
-    "start": "node src/index.js"
+    "start": "node server/index.js",
+    "dev": "nodemon server/index.js"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.45.0",
-    "bcryptjs": "^3.0.3",
+    "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
-    "express": "^4.21.2",
-    "jsonwebtoken": "^9.0.3",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
-    "mssql": "^12.1.0",
-    "pg": "^8.16.3"
+    "pg": "^8.12.0"
   },
   "devDependencies": {
-    "nodemon": "^3.1.0"
+    "nodemon": "^3.1.4"
   }
 }

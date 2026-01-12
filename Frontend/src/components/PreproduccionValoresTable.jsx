@@ -199,26 +199,6 @@ function getNvIntFromRow(row) {
   return Number.isFinite(nv) ? nv : null;
 }
 
-function localDate10FromDate(date) {
-  const yyyy = date.getFullYear();
-  const mm = pad2(date.getMonth() + 1);
-  const dd = pad2(date.getDate());
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-function addDaysToDate10(date10, days) {
-  if (!isISODate10(date10)) return '';
-  const d = new Date(`${date10}T00:00:00`);
-  d.setDate(d.getDate() + days);
-  return localDate10FromDate(d);
-}
-
-function getFechaSalidaDate10(row) {
-  const d = row?.data || {};
-  const raw = d.fecha_salida_imput ?? d.Fecha_Salida_Imput ?? null;
-  return normalizeDate10(raw);
-}
-
 // =====================
 // PDF field defs
 // =====================
@@ -247,7 +227,6 @@ function getPdfFieldDefs() {
 
     { id: 'medidas', label: 'Medidas', type: 'calc_medidas' },
 
-    { id: 'url_logistica', label: 'URL', type: 'text', patchKey: 'url_logistica' },
     { id: 'transporte', label: 'Transporte', type: 'text', patchKey: 'transporte_imput' },
     { id: 'instaladores', label: 'Instaladores', type: 'text', patchKey: 'instaladores_imput' },
     { id: 'observacion', label: 'Observación', type: 'text', patchKey: 'observacion_imput' },
@@ -404,7 +383,6 @@ const BASE_COLS = [
 
   { id: 'medidas', label: 'Medidas', type: 'calc_medidas' },
 
-  { id: 'url_logistica', label: 'URL', patchKey: 'url_logistica' },
   { id: 'transporte', label: 'Transporte', patchKey: 'transporte_imput' },
   { id: 'instaladores', label: 'Instaladores', patchKey: 'instaladores_imput' },
   { id: 'observacion', label: 'Observación', patchKey: 'observacion_imput' },
@@ -415,42 +393,6 @@ const BASE_COLS = [
 ];
 
 const ACTION_COL = { id: 'acciones', label: 'Acciones', type: 'actions' };
-
-const ACCESS_ROLE_KEY = 'pp_access_role_v1';
-const ACCESS_ROLES = [
-  { id: 'admin', label: 'Admin' },
-  { id: 'logistica', label: 'Logística' },
-  { id: 'comercial', label: 'Comercial' },
-  { id: 'administrativo', label: 'Administrativo' },
-];
-
-const COMMERCIAL_COLS = new Set([
-  'estado',
-  'fecha_venta',
-  'fecha_probable',
-  'fecha_salida',
-  'partida',
-  'nv',
-  'nombre',
-  'distribuidor',
-  'tipo',
-  'color',
-  'revestimiento',
-  'condicion',
-  'direccion',
-  'medidas',
-  'observacion',
-]);
-
-const ADMINISTRATIVO_COLS = new Set([
-  'nv',
-  'fecha_venta',
-  'nombre',
-  'distribuidor',
-  'url_logistica',
-  'fecha_salida',
-  'auth_admin',
-]);
 
 function loadVisibleColsFromStorage(allCols) {
   try {
@@ -470,38 +412,6 @@ function saveVisibleColsToStorage(map) {
   try {
     localStorage.setItem('pp_visible_cols_v5', JSON.stringify(map));
   } catch {}
-}
-
-function loadAccessRoleFromStorage() {
-  try {
-    const raw = localStorage.getItem(ACCESS_ROLE_KEY);
-    const exists = ACCESS_ROLES.some((r) => r.id === raw);
-    return exists ? raw : 'admin';
-  } catch {
-    return 'admin';
-  }
-}
-
-function saveAccessRoleToStorage(roleId) {
-  try {
-    localStorage.setItem(ACCESS_ROLE_KEY, roleId);
-  } catch {}
-}
-
-function buildVisibleColsMapForRole(roleId, allCols) {
-  if (roleId === 'comercial') {
-    const map = {};
-    for (const col of allCols) map[col.id] = COMMERCIAL_COLS.has(col.id);
-    return map;
-  }
-  if (roleId === 'administrativo') {
-    const map = {};
-    for (const col of allCols) map[col.id] = ADMINISTRATIVO_COLS.has(col.id);
-    return map;
-  }
-  const map = {};
-  for (const col of allCols) map[col.id] = true;
-  return map;
 }
 
 function loadPdfFieldsFromStorage(fieldDefs) {
@@ -554,24 +464,13 @@ export default function PreproduccionValoresTable() {
   const [showColsPanel, setShowColsPanel] = useState(false);
   const colsPanelRef = useRef(null);
   const [visibleCols, setVisibleCols] = useState(() => {
-    if (accessRole === 'comercial' || accessRole === 'administrativo') {
-      return buildVisibleColsMapForRole(accessRole, ALL_COLS);
-    }
     const stored = loadVisibleColsFromStorage(ALL_COLS);
     if (stored) return stored;
-    return buildVisibleColsMapForRole(accessRole, ALL_COLS);
+    const initial = {};
+    for (const c of ALL_COLS) initial[c.id] = true;
+    return initial;
   });
-  useEffect(() => {
-    if (accessRole === 'comercial' || accessRole === 'administrativo') {
-      setVisibleCols(buildVisibleColsMapForRole(accessRole, ALL_COLS));
-      return;
-    }
-    const stored = loadVisibleColsFromStorage(ALL_COLS);
-    setVisibleCols(stored || buildVisibleColsMapForRole(accessRole, ALL_COLS));
-  }, [accessRole, ALL_COLS]);
-  useEffect(() => {
-    if (!isFixedColumnsRole) saveVisibleColsToStorage(visibleCols);
-  }, [visibleCols, isFixedColumnsRole]);
+  useEffect(() => saveVisibleColsToStorage(visibleCols), [visibleCols]);
 
   // Panel PDF
   const [showPdfPanel, setShowPdfPanel] = useState(false);
@@ -840,7 +739,7 @@ export default function PreproduccionValoresTable() {
       return String(v || '').trim() !== '';
     });
 
-    const base = roleFilteredRows;
+    const base = rowsAfterNvExclusion;
     if (!active.length) return base;
 
     return base.filter((row) => {
@@ -887,7 +786,7 @@ export default function PreproduccionValoresTable() {
         return ciIncludes(toStr(raw), fval);
       });
     });
-  }, [roleFilteredRows, filters, ALL_COLS, visibleCols, getAccionesStatus]);
+  }, [rowsAfterNvExclusion, filters, ALL_COLS, visibleCols, getAccionesStatus]);
 
   useEffect(() => setPage(1), [filters, pageSize]);
 
