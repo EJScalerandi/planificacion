@@ -5,6 +5,7 @@ import {
   updatePreproduccionValor,
   createPorton,
   fetchPortones,
+  getAdminToken,
 } from '../api';
 
 import LogisticaAuthModal from './modals/LogisticaAuthModal';
@@ -39,6 +40,46 @@ function toStr(v) {
   } catch {
     return String(v);
   }
+}
+
+// ===== JWT/Scopes =====
+function parseJwt(token) {
+  try {
+    const part = String(token || '').split('.')[1];
+    if (!part) return null;
+    const base64 = part.replace(/-/g, '+').replace(/_/g, '/');
+    const json = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
+function normalizeScopes(scopesRaw) {
+  if (Array.isArray(scopesRaw)) return scopesRaw.map((s) => String(s || '').trim()).filter(Boolean);
+  if (typeof scopesRaw === 'string') {
+    return scopesRaw
+      .split(/[\s,]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function getCurrentScopes() {
+  const token = getAdminToken();
+  const payload = parseJwt(token) || {};
+  return normalizeScopes(payload.scopes ?? payload.scope ?? payload.permissions ?? []);
+}
+
+function hasAny(scopes, needed) {
+  const set = new Set((scopes || []).map((s) => String(s || '').trim()));
+  return (needed || []).some((n) => set.has(n));
 }
 
 function pad2(n) {
@@ -222,7 +263,12 @@ function getPdfFieldDefs() {
     { id: 'color', label: 'Color', type: 'text', sourceKeys: ['Color', 'Color_Hoja'] },
     { id: 'revestimiento', label: 'Revestimiento', type: 'text', sourceKeys: ['Sistema'] },
 
-    { id: 'condicion', label: 'Condición', type: 'text', sourceKeys: ['Tipo_embalaje', 'Tipo_Embalaje', 'tipo_embalaje'] },
+    {
+      id: 'condicion',
+      label: 'Condición',
+      type: 'text',
+      sourceKeys: ['Tipo_embalaje', 'Tipo_Embalaje', 'tipo_embalaje'],
+    },
     { id: 'direccion', label: 'Dirección', type: 'text', sourceKeys: ['Direccion', 'Dirección', 'direccion'] },
 
     { id: 'medidas', label: 'Medidas', type: 'calc_medidas' },
@@ -436,15 +482,57 @@ function savePdfFieldsToStorage(map) {
 }
 
 export default function PreproduccionValoresTable() {
-  const ALL_COLS = useMemo(() => [...BASE_COLS, ACTION_COL], []);
+  // ===== Scopes / accessMode =====
+  const userScopes = useMemo(() => getCurrentScopes(), []);
+  const isFull = useMemo(() => hasAny(userScopes, ['preproduccion:full']), [userScopes]);
+  const isLimited = useMemo(
+    () => !isFull && hasAny(userScopes, ['preproduccion:comercial_view']),
+    [userScopes, isFull]
+  );
+
+  const accessMode = isFull ? 'full' : isLimited ? 'limited' : 'none';
+
+  const LIMITED_COL_IDS = useMemo(
+    () => new Set(['fecha_venta', 'nv', 'nombre', 'distribuidor', 'fecha_salida', 'inicio_prod']),
+    []
+  );
+  const LIMITED_LABEL_OVERRIDES = useMemo(
+    () => ({
+      distribuidor: 'Razón Social',
+      inicio_prod: 'Fecha Producción',
+    }),
+    []
+  );
+
+  const ALL_COLS = useMemo(() => {
+    if (accessMode === 'limited') {
+      return BASE_COLS.filter((c) => LIMITED_COL_IDS.has(c.id)).map((c) =>
+        LIMITED_LABEL_OVERRIDES[c.id] ? { ...c, label: LIMITED_LABEL_OVERRIDES[c.id] } : c
+      );
+    }
+    return [...BASE_COLS, ACTION_COL];
+  }, [accessMode, LIMITED_COL_IDS, LIMITED_LABEL_OVERRIDES]);
+
   const PDF_DEFS = useMemo(() => getPdfFieldDefs(), []);
+
+  // Sin permisos
+  if (accessMode === 'none') {
+    return (
+      <div style={{ padding: 16 }}>
+        <div style={{ background: '#fff5f5', border: '1px solid #fecaca', padding: 12, borderRadius: 12 }}>
+          No tenés permisos para ver Preproducción. Pedí que te asignen: <b>preproduccion:full</b> o{' '}
+          <b>preproduccion:comercial_view</b>.
+        </div>
+      </div>
+    );
+  }
 
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
   const [saving, setSaving] = useState(() => new Set());
 
-  // ====== Estado basado en PORTONES ======
+  // ====== Estado basado en PORTONES (solo full) ======
   const [portonesNvSet, setPortonesNvSet] = useState(() => new Set());
   const [portonesIndexState, setPortonesIndexState] = useState('idle'); // idle|loading|ok|error
 
@@ -460,19 +548,30 @@ export default function PreproduccionValoresTable() {
     return o;
   });
 
-  // Columnas visibles
+  // Columnas visibles:
+  // - full: configurable y persistente
+  // - limited: fijo (todas las disponibles del modo limited)
   const [showColsPanel, setShowColsPanel] = useState(false);
   const colsPanelRef = useRef(null);
+
   const [visibleCols, setVisibleCols] = useState(() => {
-    const stored = loadVisibleColsFromStorage(ALL_COLS);
-    if (stored) return stored;
     const initial = {};
     for (const c of ALL_COLS) initial[c.id] = true;
+
+    if (accessMode === 'limited') return initial;
+
+    const stored = loadVisibleColsFromStorage(ALL_COLS);
+    if (stored) return stored;
+
     return initial;
   });
-  useEffect(() => saveVisibleColsToStorage(visibleCols), [visibleCols]);
 
-  // Panel PDF
+  useEffect(() => {
+    if (accessMode !== 'full') return;
+    saveVisibleColsToStorage(visibleCols);
+  }, [visibleCols, accessMode]);
+
+  // Panel PDF (solo full)
   const [showPdfPanel, setShowPdfPanel] = useState(false);
   const pdfPanelRef = useRef(null);
   const [pdfMode, setPdfMode] = useState('produccion');
@@ -485,9 +584,12 @@ export default function PreproduccionValoresTable() {
     for (const f of PDF_DEFS) init[f.id] = true;
     return init;
   });
-  useEffect(() => savePdfFieldsToStorage(pdfFields), [pdfFields, PDF_DEFS]);
+  useEffect(() => {
+    if (accessMode !== 'full') return;
+    savePdfFieldsToStorage(pdfFields);
+  }, [pdfFields, PDF_DEFS, accessMode]);
 
-  // ===== Modal Logística =====
+  // ===== Modales (solo full) =====
   const [logModalOpen, setLogModalOpen] = useState(false);
   const [logModalRow, setLogModalRow] = useState(null);
   const [logModalBusy, setLogModalBusy] = useState(false);
@@ -502,14 +604,13 @@ export default function PreproduccionValoresTable() {
     setLogModalRow(null);
   };
 
-  // ===== Modal Admin =====
   const [adminModalOpen, setAdminModalOpen] = useState(false);
   const [adminModalRow, setAdminModalRow] = useState(null);
   const [adminModalBusy, setAdminModalBusy] = useState(false);
 
   const openAdminModal = (row) => {
     const d = row?.data || {};
-    if (Boolean(d.auth_admin)) return; // no editable post-autorización
+    if (Boolean(d.auth_admin)) return;
     setAdminModalRow(row);
     setAdminModalOpen(true);
   };
@@ -519,14 +620,13 @@ export default function PreproduccionValoresTable() {
     setAdminModalRow(null);
   };
 
-  // ===== Modal Comercial =====
   const [comModalOpen, setComModalOpen] = useState(false);
   const [comModalRow, setComModalRow] = useState(null);
   const [comModalBusy, setComModalBusy] = useState(false);
 
   const openComModal = (row) => {
     const d = row?.data || {};
-    if (Boolean(d.auth_comercial)) return; // no editable post-autorización
+    if (Boolean(d.auth_comercial)) return;
     setComModalRow(row);
     setComModalOpen(true);
   };
@@ -555,10 +655,7 @@ export default function PreproduccionValoresTable() {
     return () => document.removeEventListener('mousedown', onDocClick);
   }, [showColsPanel, showPdfPanel]);
 
-  const visibleColsList = useMemo(
-    () => ALL_COLS.filter((c) => visibleCols[c.id] !== false),
-    [ALL_COLS, visibleCols]
-  );
+  const visibleColsList = useMemo(() => ALL_COLS.filter((c) => visibleCols[c.id] !== false), [ALL_COLS, visibleCols]);
 
   const refreshPortonesNvIndex = useCallback(async () => {
     setPortonesIndexState('loading');
@@ -591,8 +688,11 @@ export default function PreproduccionValoresTable() {
     } finally {
       setLoading(false);
     }
-    await refreshPortonesNvIndex();
-  }, [refreshPortonesNvIndex]);
+
+    if (accessMode === 'full') {
+      await refreshPortonesNvIndex();
+    }
+  }, [refreshPortonesNvIndex, accessMode]);
 
   useEffect(() => {
     load();
@@ -672,7 +772,7 @@ export default function PreproduccionValoresTable() {
     });
   }, [rows]);
 
-  // ====== Estado acciones ======
+  // ====== Estado acciones (solo full, pero queda definido) ======
   const getAccionesStatus = useCallback(
     (row) => {
       const d = row?.data || {};
@@ -799,6 +899,8 @@ export default function PreproduccionValoresTable() {
 
   const sendToProduccion = useCallback(
     async (row) => {
+      if (accessMode !== 'full') return;
+
       const id = row?.id;
       if (!id) return;
 
@@ -860,10 +962,10 @@ export default function PreproduccionValoresTable() {
         alert(msg);
       }
     },
-    [onPatch, portonesNvSet]
+    [onPatch, portonesNvSet, accessMode]
   );
 
-  // ======= ÚNICA DECLARACIÓN (antes había dos) =======
+  // ======= ÚNICA DECLARACIÓN =======
   const pdfWeeksList = useMemo(() => {
     const set = new Set();
     for (const r of filteredRows) {
@@ -956,6 +1058,18 @@ export default function PreproduccionValoresTable() {
   };
 
   const renderCell = (row, col) => {
+    // ===== limited: SOLO LECTURA =====
+    if (accessMode === 'limited') {
+      const raw = getCellValue(row, col);
+      if (col.id === 'fecha_venta') {
+        // viene de sourceKeys y puede ser yyyy-mm-dd u otro formato
+        return <span>{formatDMY(toISODate10(raw))}</span>;
+      }
+      if (col.type === 'date') return <span>{formatDMY(toISODate10(raw))}</span>;
+      return <span>{toStr(raw)}</span>;
+    }
+
+    // ===== full: comportamiento actual =====
     const data = row?.data || {};
     const id = row.id;
     const isBusy = saving.has(id);
@@ -991,7 +1105,6 @@ export default function PreproduccionValoresTable() {
     if (col.type === 'calc_medidas') return <span>{medidasDisplayFromRow(row)}</span>;
 
     if (col.type === 'bool' && col.patchKey) {
-      // Admin => botón + modal (sin editar luego)
       if (col.patchKey === 'auth_admin') {
         const ok = Boolean(data.auth_admin);
         if (ok) return <span className="pp-badge pp-badge--ok">Autorizado</span>;
@@ -1008,7 +1121,6 @@ export default function PreproduccionValoresTable() {
         );
       }
 
-      // Logística => botón + modal (editable con Ver/Editar)
       if (col.patchKey === 'auth_logistica') {
         const ok = Boolean(data.auth_logistica);
         return (
@@ -1041,7 +1153,6 @@ export default function PreproduccionValoresTable() {
         );
       }
 
-      // Comercial => botón + modal (sin editar luego)
       if (col.patchKey === 'auth_comercial') {
         const ok = Boolean(data.auth_comercial);
         if (ok) return <span className="pp-badge pp-badge--ok">Autorizado</span>;
@@ -1059,7 +1170,6 @@ export default function PreproduccionValoresTable() {
         );
       }
 
-      // resto => checkbox normal
       const checked = Boolean(data[col.patchKey]);
       return (
         <input
@@ -1146,173 +1256,179 @@ export default function PreproduccionValoresTable() {
     <div style={{ padding: 16 }}>
       <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 12 }}>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
-          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800 }}>Preproducción</h2>
+          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800 }}>
+            Preproducción {accessMode === 'limited' ? <span style={{ fontSize: 12, fontWeight: 700 }}>(Vista)</span> : null}
+          </h2>
 
           <button onClick={load} disabled={loading} className="btn">
             Recargar
           </button>
 
-          {portonesIndexState === 'error' ? (
+          {accessMode === 'full' && portonesIndexState === 'error' ? (
             <div style={{ background: '#fff5f5', border: '1px solid #fecaca', padding: 8, borderRadius: 10 }}>
               No se pudo cargar <b>Portones</b>. El estado “Enviado” puede ser incorrecto hasta recargar.
             </div>
           ) : null}
 
-          {/* Panel Columnas */}
-          <div style={{ position: 'relative' }} ref={colsPanelRef}>
-            <button onClick={() => setShowColsPanel((p) => !p)} className="btn" disabled={loading}>
-              Columnas
-            </button>
+          {/* Panel Columnas (solo full) */}
+          {accessMode === 'full' ? (
+            <div style={{ position: 'relative' }} ref={colsPanelRef}>
+              <button onClick={() => setShowColsPanel((p) => !p)} className="btn" disabled={loading}>
+                Columnas
+              </button>
 
-            {showColsPanel ? (
-              <div
-                style={{
-                  position: 'absolute',
-                  top: 40,
-                  left: 0,
-                  width: 380,
-                  maxHeight: 460,
-                  overflow: 'auto',
-                  background: '#fff',
-                  border: '1px solid #e5e7eb',
-                  borderRadius: 12,
-                  boxShadow: '0 8px 24px rgba(0,0,0,0.08)',
-                  padding: 10,
-                  zIndex: 5,
-                }}
-              >
-                <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 8 }}>Mostrar/Ocultar columnas (Tabla)</div>
-                <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                  <button className="btn" onClick={() => toggleAllCols(true)}>
-                    Mostrar todas
-                  </button>
-                  <button
-                    className="btn"
-                    style={{ borderColor: '#ef4444', background: '#fff5f5', color: '#991b1b' }}
-                    onClick={() => toggleAllCols(false)}
-                  >
-                    Ocultar todas
-                  </button>
-                </div>
-
-                {ALL_COLS.map((c) => (
-                  <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 4px' }}>
-                    <input
-                      type="checkbox"
-                      checked={visibleCols[c.id] !== false}
-                      onChange={(e) => setVisibleCols((p) => ({ ...p, [c.id]: e.target.checked }))}
-                    />
-                    <span style={{ fontSize: 12 }}>{c.label}</span>
-                  </label>
-                ))}
-
-                <div style={{ marginTop: 8, fontSize: 11, color: '#6b7280' }}>Se guarda en este navegador.</div>
-              </div>
-            ) : null}
-          </div>
-
-          {/* Panel PDF */}
-          <div style={{ position: 'relative' }} ref={pdfPanelRef}>
-            <button
-              onClick={() => setShowPdfPanel((p) => !p)}
-              className="btn"
-              disabled={loading || filteredRows.length === 0}
-            >
-              PDF
-            </button>
-
-            {showPdfPanel ? (
-              <div
-                style={{
-                  position: 'absolute',
-                  top: 40,
-                  left: 0,
-                  width: 380,
-                  maxHeight: 460,
-                  overflow: 'auto',
-                  background: '#fff',
-                  border: '1px solid #e5e7eb',
-                  borderRadius: 12,
-                  boxShadow: '0 8px 24px rgba(0,0,0,0.08)',
-                  padding: 10,
-                  zIndex: 5,
-                }}
-              >
-                <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 8 }}>PDF: semana y campos</div>
-
-                <div style={{ display: 'grid', gap: 8, marginBottom: 10 }}>
-                  <label style={{ fontSize: 12 }}>
-                    Semana según
-                    <select
-                      value={pdfMode}
-                      onChange={(e) => setPdfMode(e.target.value)}
-                      className="pp-select"
-                      style={{ marginTop: 6, width: '100%' }}
+              {showColsPanel ? (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 40,
+                    left: 0,
+                    width: 380,
+                    maxHeight: 460,
+                    overflow: 'auto',
+                    background: '#fff',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: 12,
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.08)',
+                    padding: 10,
+                    zIndex: 5,
+                  }}
+                >
+                  <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 8 }}>Mostrar/Ocultar columnas (Tabla)</div>
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                    <button className="btn" onClick={() => toggleAllCols(true)}>
+                      Mostrar todas
+                    </button>
+                    <button
+                      className="btn"
+                      style={{ borderColor: '#ef4444', background: '#fff5f5', color: '#991b1b' }}
+                      onClick={() => toggleAllCols(false)}
                     >
-                      <option value="produccion">Producción (Inicio Prod)</option>
-                      <option value="despacho">Despacho (Fecha Salida)</option>
-                    </select>
-                  </label>
+                      Ocultar todas
+                    </button>
+                  </div>
 
-                  <label style={{ fontSize: 12 }}>
-                    Semana a imprimir
-                    <select
-                      value={pdfWeek}
-                      onChange={(e) => setPdfWeek(e.target.value)}
-                      className="pp-select"
-                      style={{ marginTop: 6, width: '100%' }}
+                  {ALL_COLS.map((c) => (
+                    <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 4px' }}>
+                      <input
+                        type="checkbox"
+                        checked={visibleCols[c.id] !== false}
+                        onChange={(e) => setVisibleCols((p) => ({ ...p, [c.id]: e.target.checked }))}
+                      />
+                      <span style={{ fontSize: 12 }}>{c.label}</span>
+                    </label>
+                  ))}
+
+                  <div style={{ marginTop: 8, fontSize: 11, color: '#6b7280' }}>Se guarda en este navegador.</div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {/* Panel PDF (solo full) */}
+          {accessMode === 'full' ? (
+            <div style={{ position: 'relative' }} ref={pdfPanelRef}>
+              <button
+                onClick={() => setShowPdfPanel((p) => !p)}
+                className="btn"
+                disabled={loading || filteredRows.length === 0}
+              >
+                PDF
+              </button>
+
+              {showPdfPanel ? (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 40,
+                    left: 0,
+                    width: 380,
+                    maxHeight: 460,
+                    overflow: 'auto',
+                    background: '#fff',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: 12,
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.08)',
+                    padding: 10,
+                    zIndex: 5,
+                  }}
+                >
+                  <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 8 }}>PDF: semana y campos</div>
+
+                  <div style={{ display: 'grid', gap: 8, marginBottom: 10 }}>
+                    <label style={{ fontSize: 12 }}>
+                      Semana según
+                      <select
+                        value={pdfMode}
+                        onChange={(e) => setPdfMode(e.target.value)}
+                        className="pp-select"
+                        style={{ marginTop: 6, width: '100%' }}
+                      >
+                        <option value="produccion">Producción (Inicio Prod)</option>
+                        <option value="despacho">Despacho (Fecha Salida)</option>
+                      </select>
+                    </label>
+
+                    <label style={{ fontSize: 12 }}>
+                      Semana a imprimir
+                      <select
+                        value={pdfWeek}
+                        onChange={(e) => setPdfWeek(e.target.value)}
+                        className="pp-select"
+                        style={{ marginTop: 6, width: '100%' }}
+                      >
+                        <option value="">Todas</option>
+                        {pdfWeeksList.map((w) => (
+                          <option key={w} value={w}>
+                            {w} {weekTitleFromSelection(w) ? `· ${weekTitleFromSelection(w)}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                      <div style={{ fontSize: 12, color: '#374151', marginTop: 6 }}>
+                        Filas a imprimir: <b>{pdfSelectedRows.length}</b>
+                      </div>
+                    </label>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                    <button className="btn" onClick={() => toggleAllPdfFields(true)}>
+                      Campos: todos
+                    </button>
+                    <button
+                      className="btn"
+                      style={{ borderColor: '#ef4444', background: '#fff5f5', color: '#991b1b' }}
+                      onClick={() => toggleAllPdfFields(false)}
                     >
-                      <option value="">Todas</option>
-                      {pdfWeeksList.map((w) => (
-                        <option key={w} value={w}>
-                          {w} {weekTitleFromSelection(w) ? `· ${weekTitleFromSelection(w)}` : ''}
-                        </option>
-                      ))}
-                    </select>
-                    <div style={{ fontSize: 12, color: '#374151', marginTop: 6 }}>
-                      Filas a imprimir: <b>{pdfSelectedRows.length}</b>
-                    </div>
-                  </label>
-                </div>
+                      Campos: ninguno
+                    </button>
+                  </div>
 
-                <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                  <button className="btn" onClick={() => toggleAllPdfFields(true)}>
-                    Campos: todos
-                  </button>
-                  <button
-                    className="btn"
-                    style={{ borderColor: '#ef4444', background: '#fff5f5', color: '#991b1b' }}
-                    onClick={() => toggleAllPdfFields(false)}
-                  >
-                    Campos: ninguno
-                  </button>
-                </div>
+                  {PDF_DEFS.map((f) => (
+                    <label
+                      key={`pdf_${f.id}`}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 4px' }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={pdfFields[f.id] !== false}
+                        onChange={(e) => setPdfFields((p) => ({ ...p, [f.id]: e.target.checked }))}
+                      />
+                      <span style={{ fontSize: 12 }}>{f.label}</span>
+                    </label>
+                  ))}
 
-                {PDF_DEFS.map((f) => (
-                  <label
-                    key={`pdf_${f.id}`}
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 4px' }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={pdfFields[f.id] !== false}
-                      onChange={(e) => setPdfFields((p) => ({ ...p, [f.id]: e.target.checked }))}
-                    />
-                    <span style={{ fontSize: 12 }}>{f.label}</span>
-                  </label>
-                ))}
-
-                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                  <button className="btn btn--brand" onClick={printPdf} disabled={pdfSelectedRows.length === 0}>
-                    Imprimir PDF
-                  </button>
-                  <button className="btn" onClick={() => setShowPdfPanel(false)}>
-                    Cerrar
-                  </button>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                    <button className="btn btn--brand" onClick={printPdf} disabled={pdfSelectedRows.length === 0}>
+                      Imprimir PDF
+                    </button>
+                    <button className="btn" onClick={() => setShowPdfPanel(false)}>
+                      Cerrar
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ) : null}
-          </div>
+              ) : null}
+            </div>
+          ) : null}
 
           <div style={{ marginLeft: 'auto', fontSize: 12, color: '#374151' }}>
             {loading ? 'Cargando…' : `Registros: ${total}`}
@@ -1476,11 +1592,7 @@ export default function PreproduccionValoresTable() {
             Página <b>{safePage}</b> / <b>{pageCount}</b>
           </div>
 
-          <button
-            className="btn"
-            onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
-            disabled={safePage >= pageCount}
-          >
+          <button className="btn" onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={safePage >= pageCount}>
             Siguiente
           </button>
         </div>
@@ -1491,30 +1603,34 @@ export default function PreproduccionValoresTable() {
         </div>
       </div>
 
-      {/* Modales */}
-      <LogisticaAuthModal
-        open={logModalOpen}
-        row={logModalRow}
-        busy={logModalBusy}
-        onClose={closeLogModal}
-        onSubmit={submitLogisticaAuth}
-      />
+      {/* Modales (solo full) */}
+      {accessMode === 'full' ? (
+        <>
+          <LogisticaAuthModal
+            open={logModalOpen}
+            row={logModalRow}
+            busy={logModalBusy}
+            onClose={closeLogModal}
+            onSubmit={submitLogisticaAuth}
+          />
 
-      <AdminAuthModal
-        open={adminModalOpen}
-        row={adminModalRow}
-        busy={adminModalBusy}
-        onClose={closeAdminModal}
-        onSubmit={submitAdminAuth}
-      />
+          <AdminAuthModal
+            open={adminModalOpen}
+            row={adminModalRow}
+            busy={adminModalBusy}
+            onClose={closeAdminModal}
+            onSubmit={submitAdminAuth}
+          />
 
-      <ComercialAuthModal
-        open={comModalOpen}
-        row={comModalRow}
-        busy={comModalBusy}
-        onClose={closeComModal}
-        onSubmit={submitComercialAuth}
-      />
+          <ComercialAuthModal
+            open={comModalOpen}
+            row={comModalRow}
+            busy={comModalBusy}
+            onClose={closeComModal}
+            onSubmit={submitComercialAuth}
+          />
+        </>
+      ) : null}
     </div>
   );
 }
