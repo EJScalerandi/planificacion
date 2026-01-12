@@ -1,7 +1,7 @@
 const express = require('express');
 const { pool } = require('../../db');
 const { isValidISODate10 } = require('../../lib/common');
-const { STATUS, loadStageMap, getNextStages, checkRequirements } = require('../../lib/workflow');
+const { STATUS, checkRequirements } = require('../../lib/workflow');
 
 const router = express.Router();
 
@@ -113,26 +113,8 @@ router.post('/ipanel/:id/stage', async (req, res) => {
     const afterQ = await client.query('select * from public.ipanel where id = $1;', [id]);
     const row1 = afterQ.rows[0];
 
-    const stageMap = await loadStageMap('ipanel');
-    const ctx = { ...(row1 || {}) };
-    const nextKeys = await getNextStages('ipanel', stage, ctx);
-
-    for (const nk of nextKeys) {
-      const ns = stageMap.get(nk);
-      if (!ns) continue;
-
-      const col = ns.status_col;
-      if (!IPANEL_ALLOWED_STATUS_COLS.has(col)) continue;
-
-      await client.query(
-        `
-        update public.ipanel
-        set ${col} = coalesce(${col}, $2)
-        where id = $1;
-        `,
-        [id, STATUS.PENDIENTE]
-      );
-    }
+    // A partir de ahora, el ruteo a la/s siguiente/s etapa/s se ejecuta cuando se completa el QC.
+    // El STOP solo marca FINALIZADO y cierra tiempos.
 
     const { rows } = await client.query('select * from public.ipanel where id = $1;', [id]);
     await client.query('commit');

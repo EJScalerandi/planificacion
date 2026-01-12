@@ -1,8 +1,88 @@
 const express = require('express');
 const crypto = require('crypto');
 const { pool } = require('../../db');
+const { STATUS, loadStageMap, getNextStages } = require('../../lib/workflow');
 
 const router = express.Router();
+
+function low(v) { return String(v ?? '').toLowerCase(); }
+
+// Whitelists defensivos para evitar SQL injection en columnas dinámicas
+const PORTON_ETAPAS = new Set([
+  'diseno','laser','guillotina','plegadora',
+  'armado_marco_piernas','armado_piernas','armado_primario','armado_hojas',
+  'inyeccion','revestimiento','pintura','armado_final','despacho',
+  'corte_revest','plegado_revest',
+]);
+
+const IPANEL_ETAPAS = new Set([
+  'diseno','guillotina','plegado','pintura','inyeccion','despacho'
+]);
+
+async function getPortonIdByNv(db, nv) {
+  const { rows } = await db.query(
+    `select id from public.portones where nv = $1 order by created_at desc, id desc limit 1;`,
+    [nv]
+  );
+  return rows[0]?.id || null;
+}
+
+async function getPortonCtxById(db, id) {
+  const pQ = await db.query(
+    `
+    select
+      id, nv, nlista, partida,
+      fecha_plan, fecha_prod, fecha_nv, fecha_med, fecha_plan_entrega,
+      observaciones, created_at
+    from public.portones
+    where id = $1
+    limit 1;
+    `,
+    [id]
+  );
+  if (!pQ.rows.length) return null;
+
+  const ctx = { ...pQ.rows[0] };
+
+  const sQ = await db.query(
+    `
+    select etapa::text as k, estado as v
+    from public.porton_etapas_estado
+    where porton_id = $1;
+    `,
+    [id]
+  );
+
+  for (const r of sQ.rows) {
+    if (r?.k) ctx[String(r.k)] = r.v;
+  }
+
+  const tQ = await db.query(
+    `
+    select etapa::text as k, inicio, fin
+    from public.porton_etapas_tiempos
+    where porton_id = $1;
+    `,
+    [id]
+  );
+  for (const r of tQ.rows) {
+    const k = String(r?.k || '');
+    if (!k) continue;
+    ctx[`${k}_inicio`] = r.inicio ?? null;
+    ctx[`${k}_fin`] = r.fin ?? null;
+  }
+
+  return ctx;
+}
+
+async function getIpanelByNv(db, nv) {
+  const { rows } = await db.query(
+    `select * from public.ipanel where nv = $1 order by created_at desc, id desc limit 1;`,
+    [nv]
+  );
+  return rows[0] || null;
+}
+
 
 const QC_PIN_SALT = process.env.QC_PIN_SALT || 'dev_change_me_pin_salt';
 
@@ -199,7 +279,93 @@ router.post('/qc/authorize', async (req, res) => {
       [line, nItemId, stageKey, qcStatus, motiveId, note ?? null, user.id]
     );
 
-    await client.query('commit');
+    
+      // =========================
+      // ✅ Ruteo por QC (NO por STOP)
+      // - Si QC = APROBADO u OBSERVADO y la etapa está FINALIZADO => habilita la/s siguiente/s.
+      // - Si QC = RECHAZADO => NO rutea (queda en el listado).
+      // =========================
+      if (qcStatus !== 'RECHAZADO') {
+        const stageMap = await loadStageMap(line);
+
+        // status_col real de la etapa (por si key != columna)
+        const stRow = stageMap.get(stageKey);
+        const statusCol = String(stRow?.status_col || stageKey || '').trim();
+
+        if (!statusCol) {
+          await client.query('rollback');
+          return res.status(400).json({ error: 'stage_key inválida para workflow' });
+        }
+
+        if (line === 'portones') {
+          const portonId = await getPortonIdByNv(client, nItemId);
+          if (!portonId) {
+            await client.query('rollback');
+            return res.status(404).json({ error: 'Portón no encontrado para ese NV' });
+          }
+
+          const ctx = await getPortonCtxById(client, portonId);
+          if (!ctx) {
+            await client.query('rollback');
+            return res.status(404).json({ error: 'Portón no encontrado' });
+          }
+
+          const st = low(ctx?.[statusCol]);
+          if (st !== low(STATUS.FINALIZADO)) {
+            await client.query('rollback');
+            return res.status(409).json({ error: `La etapa ${statusCol} debe estar FINALIZADO antes de completar QC` });
+          }
+
+          const nextKeys = await getNextStages('portones', stageKey, ctx);
+
+          for (const nk of nextKeys || []) {
+            const ns = stageMap.get(nk);
+            if (!ns) continue;
+
+            const nextStageCol = String(ns.status_col || '').trim();
+            if (!PORTON_ETAPAS.has(nextStageCol)) continue;
+
+            await client.query(
+              `
+              insert into public.porton_etapas_estado(porton_id, etapa, estado)
+              values ($1, $2::public.porton_etapa, $3)
+              on conflict (porton_id, etapa)
+              do update set estado = coalesce(public.porton_etapas_estado.estado, excluded.estado);
+              `,
+              [portonId, nextStageCol, STATUS.PENDIENTE]
+            );
+          }
+        } else if (line === 'ipanel') {
+          const ip = await getIpanelByNv(client, nItemId);
+          if (!ip?.id) {
+            await client.query('rollback');
+            return res.status(404).json({ error: 'iPanel no encontrado para ese NV' });
+          }
+
+          const st = low(ip?.[statusCol]);
+          if (st !== low(STATUS.FINALIZADO)) {
+            await client.query('rollback');
+            return res.status(409).json({ error: `La etapa ${statusCol} debe estar FINALIZADO antes de completar QC` });
+          }
+
+          const nextKeys = await getNextStages('ipanel', stageKey, ip);
+
+          for (const nk of nextKeys || []) {
+            const ns = stageMap.get(nk);
+            if (!ns) continue;
+
+            const nextStageCol = String(ns.status_col || '').trim();
+            if (!IPANEL_ETAPAS.has(nextStageCol)) continue;
+
+            await client.query(
+              `update public.ipanel set ${nextStageCol} = coalesce(${nextStageCol}, $2) where id = $1;`,
+              [ip.id, STATUS.PENDIENTE]
+            );
+          }
+        }
+      }
+
+await client.query('commit');
 
     return res.json({
       ok: true,

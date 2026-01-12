@@ -342,34 +342,12 @@ router.post('/portones/:id/stage', async (req, res) => {
       [id, stageKey]
     );
 
+    // IMPORTANTE:
+    // A partir de ahora, el routeo a la siguiente etapa NO se hace al poner STOP.
+    // Se hace cuando se completa el QC (APROBADO u OBSERVADO). Ver /qc/authorize.
     const afterStop = await getPortonShapeById(client, id);
-    const ctx = { ...(afterStop || {}) };
-
-    const stageMap = await loadStageMap('portones');
-    const nextKeys = await getNextStages('portones', stageKey, ctx);
-
-    for (const nk of nextKeys) {
-      const ns = stageMap.get(nk);
-      if (!ns) continue;
-
-      const nextStageKey = String(ns.status_col || '').trim();
-      if (!PORTON_ETAPAS.has(nextStageKey)) continue;
-
-      // Si ya existe estado, NO lo pisamos (solo si es null inexistente)
-      await client.query(
-        `
-        insert into public.porton_etapas_estado(porton_id, etapa, estado)
-        values ($1, $2::public.porton_etapa, $3)
-        on conflict (porton_id, etapa)
-        do update set estado = coalesce(public.porton_etapas_estado.estado, excluded.estado);
-        `,
-        [id, nextStageKey, STATUS.PENDIENTE]
-      );
-    }
-
-    const finalRow = await getPortonShapeById(client, id);
     await client.query('commit');
-    return res.json(finalRow);
+    return res.json(afterStop);
   } catch (err) {
     await client.query('rollback');
     console.error('stage error:', err);
