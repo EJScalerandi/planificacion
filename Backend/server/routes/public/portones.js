@@ -1,3 +1,4 @@
+// routes/portones.js
 const express = require('express');
 const { pool } = require('../../db');
 const { isValidISODate10 } = require('../../lib/common');
@@ -7,25 +8,36 @@ const router = express.Router();
 
 // Portones (normalizado): set defensivo para no aceptar cualquier texto
 const PORTON_ETAPAS = new Set([
-  'diseno','laser','guillotina','plegadora',
-  'armado_marco_piernas','armado_piernas','armado_primario','armado_hojas',
-  'inyeccion','revestimiento','pintura','armado_final','despacho',
-  'corte_revest','plegado_revest',
+  'diseno', 'laser', 'guillotina', 'plegadora',
+  'armado_marco_piernas', 'armado_piernas', 'armado_primario', 'armado_hojas',
+  'inyeccion', 'revestimiento', 'pintura', 'armado_final', 'despacho',
+  'corte_revest', 'plegado_revest',
 ]);
 
+// OJO: acá el orden solo lo usamos para “shape” y compatibilidad en frontend
 const PORTON_STAGE_KEYS_ORDER = [
-  'diseno','laser','guillotina','plegadora',
-  'armado_piernas','armado_primario','inyeccion','corte_revest','plegado_revest',
-  'revestimiento','pintura','armado_hojas','armado_marco_piernas','armado_final','despacho'
+  'diseno', 'laser', 'guillotina', 'plegadora',
+  'armado_piernas', 'armado_primario', 'inyeccion', 'corte_revest', 'plegado_revest',
+  'revestimiento', 'pintura', 'armado_hojas', 'armado_marco_piernas', 'armado_final', 'despacho'
 ];
+
+// IMPORTANTE:
+// No usar p.* porque public.portones todavía tiene columnas de etapa con default Pendiente.
+// Eso rompe el workflow porque hace que “aparezca en todos lados”.
+const PORTON_BASE_COLS_SQL = `
+  p.id, p.nv, p.nlista, p.partida,
+  p.fecha_plan, p.fecha_prod, p.fecha_nv, p.fecha_med, p.fecha_plan_entrega,
+  p.observaciones,
+  p.created_at
+`;
 
 async function getPortonShapeById(db, id) {
   const { rows } = await db.query(
     `
     select
-      p.*,
+      ${PORTON_BASE_COLS_SQL},
 
-      -- ====== ESTADOS ======
+      -- ====== ESTADOS (SIEMPRE desde porton_etapas_estado) ======
       max(case when e.etapa = 'diseno'::public.porton_etapa then e.estado end) as diseno,
       max(case when e.etapa = 'laser'::public.porton_etapa then e.estado end) as laser,
       max(case when e.etapa = 'guillotina'::public.porton_etapa then e.estado end) as guillotina,
@@ -42,7 +54,7 @@ async function getPortonShapeById(db, id) {
       max(case when e.etapa = 'armado_final'::public.porton_etapa then e.estado end) as armado_final,
       max(case when e.etapa = 'despacho'::public.porton_etapa then e.estado end) as despacho,
 
-      -- ====== TIEMPOS ======
+      -- ====== TIEMPOS (SIEMPRE desde porton_etapas_tiempos) ======
       max(case when t.etapa = 'diseno'::public.porton_etapa then t.inicio end) as diseno_inicio,
       max(case when t.etapa = 'diseno'::public.porton_etapa then t.fin end) as diseno_fin,
 
@@ -100,22 +112,9 @@ async function getPortonShapeById(db, id) {
     [id]
   );
 
-  const r = rows[0] || null;
-  if (!r) return null;
-
-  for (const k of PORTON_STAGE_KEYS_ORDER) {
-    if (r[k] == null) r[k] = STATUS.PENDIENTE;
-  }
-  return r;
-}
-
-function normalizePortonesRows(rows) {
-  for (const r of rows) {
-    for (const k of PORTON_STAGE_KEYS_ORDER) {
-      if (r[k] == null) r[k] = STATUS.PENDIENTE;
-    }
-  }
-  return rows;
+  // NOTA: ya NO “normalizamos” null a Pendiente.
+  // null significa “esa etapa no existe todavía”, y el front la oculta.
+  return rows[0] || null;
 }
 
 // GET /portones
@@ -124,7 +123,7 @@ router.get('/portones', async (_req, res) => {
     const { rows } = await pool.query(
       `
       select
-        p.*,
+        ${PORTON_BASE_COLS_SQL},
 
         -- ====== ESTADOS ======
         max(case when e.etapa = 'diseno'::public.porton_etapa then e.estado end) as diseno,
@@ -199,7 +198,7 @@ router.get('/portones', async (_req, res) => {
       `
     );
 
-    return res.json(normalizePortonesRows(rows));
+    return res.json(rows);
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: 'Error leyendo portones', detail: err.message });
@@ -208,6 +207,7 @@ router.get('/portones', async (_req, res) => {
 
 // POST /portones
 router.post('/portones', async (req, res) => {
+  const client = await pool.connect();
   try {
     const { nv, nlista, partida: bodyPartida, npartida } = req.body || {};
 
@@ -219,15 +219,18 @@ router.post('/portones', async (req, res) => {
       return res.status(400).json({ error: 'nv, nlista y partida/npartida deben ser enteros' });
     }
 
-    const { rowCount: exists } = await pool.query(
+    await client.query('begin');
+
+    const { rowCount: exists } = await client.query(
       'select 1 from public.portones where nv = $1 and nlista = $2 limit 1;',
       [nNv, nNl]
     );
     if (exists) {
+      await client.query('rollback');
       return res.status(409).json({ error: 'Ya existe un portón con ese NV y NLista' });
     }
 
-    const ins = await pool.query(
+    const ins = await client.query(
       `
       insert into public.portones (nv, nlista, partida)
       values ($1, $2, $3)
@@ -237,12 +240,30 @@ router.post('/portones', async (req, res) => {
     );
 
     const id = ins.rows[0]?.id;
-    const shaped = await getPortonShapeById(pool, id);
 
+    // ====== ETAPAS INICIALES (SIEMPRE) ======
+    // Diseño + Corte Piernas (guillotina)
+    await client.query(
+      `
+      insert into public.porton_etapas_estado(porton_id, etapa, estado)
+      values
+        ($1, 'diseno'::public.porton_etapa, $2),
+        ($1, 'guillotina'::public.porton_etapa, $2)
+      on conflict (porton_id, etapa) do nothing;
+      `,
+      [id, STATUS.PENDIENTE]
+    );
+
+    const shaped = await getPortonShapeById(client, id);
+
+    await client.query('commit');
     return res.status(201).json(shaped || { id, nv: nNv, nlista: nNl, partida: nPa });
   } catch (err) {
+    await client.query('rollback');
     console.error('create porton error:', err);
     return res.status(500).json({ error: 'Error creando portón', detail: err.message });
+  } finally {
+    client.release();
   }
 });
 
@@ -334,6 +355,7 @@ router.post('/portones/:id/stage', async (req, res) => {
       const nextStageKey = String(ns.status_col || '').trim();
       if (!PORTON_ETAPAS.has(nextStageKey)) continue;
 
+      // Si ya existe estado, NO lo pisamos (solo si es null inexistente)
       await client.query(
         `
         insert into public.porton_etapas_estado(porton_id, etapa, estado)

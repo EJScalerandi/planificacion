@@ -13,18 +13,25 @@ import AdminAuthModal from './modals/AdminAuthModal';
 import ComercialAuthModal from './modals/ComercialAuthModal';
 
 // =====================
-// NV bloqueados (no deben aparecer)
+// NV bloqueados (no deben aparecer) - desde TXT público
 // =====================
-// IMPORTANTE: dejá tu lista actual tal como la tenés (es larguísima y no la repito acá).
-// Pegá tu string de NVs dentro del template literal.
-const BLOCKED_NV_SET = new Set(
-  `
-  /* PEGAR ACÁ TU LISTA ACTUAL DE NVs BLOQUEADOS (la misma que ya tenés) */
-  `
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-);
+const BLOCKED_NV_URL = '/blocked_nvs.txt';
+
+function normalizeNvToken(token) {
+  const s = String(token || '').trim();
+  if (!s || s.startsWith('#')) return '';
+  const m = s.match(/\d+/);
+  return m ? m[0] : s;
+}
+
+function parseBlockedNvText(txt) {
+  return new Set(
+    String(txt || '')
+      .split(/\s+/)
+      .map(normalizeNvToken)
+      .filter(Boolean)
+  );
+}
 
 // =====================
 // Constantes
@@ -532,10 +539,7 @@ export default function PreproduccionValoresTable() {
   );
 
   // Admin (preproduccion:admin): campos + autorización admin
-  const ADMIN_COL_IDS = useMemo(
-    () => new Set(['fecha_venta', 'nv', 'nombre', 'distribuidor', 'fecha_salida', 'auth_admin']),
-    []
-  );
+  const ADMIN_COL_IDS = useMemo(() => new Set(['fecha_venta', 'nv', 'nombre', 'distribuidor', 'fecha_salida', 'auth_admin']), []);
   const ADMIN_LABEL_OVERRIDES = useMemo(
     () => ({
       distribuidor: 'Razón Social',
@@ -577,6 +581,39 @@ export default function PreproduccionValoresTable() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
   const [saving, setSaving] = useState(() => new Set());
+
+  // ====== NV bloqueados (desde TXT) ======
+  const [blockedNvSet, setBlockedNvSet] = useState(() => new Set());
+  const [blockedNvState, setBlockedNvState] = useState('idle'); // idle|loading|ok|error
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadBlocked() {
+      setBlockedNvState('loading');
+      try {
+        const resp = await fetch(BLOCKED_NV_URL, { cache: 'no-store' });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const txt = await resp.text();
+        const set = parseBlockedNvText(txt);
+
+        if (!cancelled) {
+          setBlockedNvSet(set);
+          setBlockedNvState('ok');
+        }
+      } catch {
+        if (!cancelled) {
+          setBlockedNvSet(new Set());
+          setBlockedNvState('error');
+        }
+      }
+    }
+
+    loadBlocked();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // ====== Estado basado en PORTONES (solo full) ======
   const [portonesNvSet, setPortonesNvSet] = useState(() => new Set());
@@ -816,9 +853,9 @@ export default function PreproduccionValoresTable() {
   const rowsAfterNvExclusion = useMemo(() => {
     return (rows || []).filter((r) => {
       const nv = getNvCanonicalFromRow(r);
-      return nv ? !BLOCKED_NV_SET.has(nv) : true;
+      return nv ? !blockedNvSet.has(nv) : true;
     });
-  }, [rows]);
+  }, [rows, blockedNvSet]);
 
   // ====== Corte ADMIN por fecha salida (<= viernes semana siguiente) ======
   const rowsAfterAccessWindow = useMemo(() => {
@@ -828,7 +865,9 @@ export default function PreproduccionValoresTable() {
     const colFechaSalida = ALL_COLS.find((c) => c.id === 'fecha_salida');
 
     return (rowsAfterNvExclusion || []).filter((row) => {
-      const raw = colFechaSalida ? getCellValue(row, colFechaSalida) : row?.data?.fecha_salida_imput ?? row?.data?.Fecha_Salida_Imput;
+      const raw = colFechaSalida
+        ? getCellValue(row, colFechaSalida)
+        : row?.data?.fecha_salida_imput ?? row?.data?.Fecha_Salida_Imput;
       const date10 = toISODate10(raw);
       if (!isISODate10(date10)) return false; // en admin, si no hay fecha salida: no mostramos
       return date10 <= cutoff; // deja TODO lo pasado + hasta viernes semana siguiente
@@ -1364,6 +1403,12 @@ export default function PreproduccionValoresTable() {
             </div>
           ) : null}
 
+          {accessMode === 'full' && blockedNvState === 'error' ? (
+            <div style={{ background: '#fff5f5', border: '1px solid #fecaca', padding: 8, borderRadius: 10 }}>
+              No se pudo cargar <b>blocked_nvs.txt</b>. No se aplicaron exclusiones por NV.
+            </div>
+          ) : null}
+
           {/* Panel Columnas (solo full) */}
           {accessMode === 'full' ? (
             <div style={{ position: 'relative' }} ref={colsPanelRef}>
@@ -1704,11 +1749,7 @@ export default function PreproduccionValoresTable() {
             Página <b>{safePage}</b> / <b>{pageCount}</b>
           </div>
 
-          <button
-            className="btn"
-            onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
-            disabled={safePage >= pageCount}
-          >
+          <button className="btn" onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={safePage >= pageCount}>
             Siguiente
           </button>
         </div>

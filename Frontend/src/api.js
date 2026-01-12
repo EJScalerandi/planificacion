@@ -158,21 +158,36 @@ export async function saveWorkflowConfig(line, payload) {
 export async function qcGetMotives({ line, kind, stage }) {
   const { data } = await api.get('/qc/motives', {
     params: { line, kind, stage: stage ?? null },
+    headers: { 'Cache-Control': 'no-cache' },
   });
   return data;
 }
 
 export async function qcAuthorize(payload) {
-  const { data } = await api.post('/qc/authorize', payload);
+  const { data } = await api.post('/qc/authorize', payload, {
+    headers: { 'Cache-Control': 'no-cache' },
+  });
   return data;
 }
 
-export async function qcHistory(line, itemId) {
+// ✅ IMPORTANTE: firma por objeto
+export async function qcHistory({ line, item_id }) {
+  const t = Date.now(); // cache buster
   const { data } = await api.get(
-    `/qc/history/${encodeURIComponent(line)}/${encodeURIComponent(itemId)}`
+    `/qc/history/${encodeURIComponent(line)}/${encodeURIComponent(item_id)}`,
+    {
+      params: { t },
+      headers: {
+        'Cache-Control': 'no-cache',
+        Pragma: 'no-cache',
+      },
+    }
   );
   return data;
 }
+
+
+
 
 /* ============ ADMIN QC (CRUD usuarios + motivos) ============ */
 
