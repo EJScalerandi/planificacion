@@ -484,18 +484,25 @@ function savePdfFieldsToStorage(map) {
 export default function PreproduccionValoresTable() {
   // ===== Scopes / accessMode =====
   const userScopes = useMemo(() => getCurrentScopes(), []);
+
   const isFull = useMemo(() => hasAny(userScopes, ['preproduccion:full']), [userScopes]);
+
+  const isAdmin = useMemo(() => !isFull && hasAny(userScopes, ['preproduccion:admin']), [userScopes, isFull]);
+
   const isLimited = useMemo(
-    () => !isFull && hasAny(userScopes, ['preproduccion:comercial_view']),
-    [userScopes, isFull]
+    () => !isFull && !isAdmin && hasAny(userScopes, ['preproduccion:comercial_view']),
+    [userScopes, isFull, isAdmin]
   );
 
-  const accessMode = isFull ? 'full' : isLimited ? 'limited' : 'none';
+  const accessMode = isFull ? 'full' : isAdmin ? 'admin' : isLimited ? 'limited' : 'none';
 
   const LIMITED_COL_IDS = useMemo(
     () => new Set(['fecha_venta', 'nv', 'nombre', 'distribuidor', 'fecha_salida', 'inicio_prod']),
     []
   );
+
+  const ADMIN_COL_IDS = useMemo(() => new Set(['fecha_venta', 'nv', 'nombre', 'distribuidor', 'fecha_salida']), []);
+
   const LIMITED_LABEL_OVERRIDES = useMemo(
     () => ({
       distribuidor: 'Razón Social',
@@ -510,18 +517,33 @@ export default function PreproduccionValoresTable() {
         LIMITED_LABEL_OVERRIDES[c.id] ? { ...c, label: LIMITED_LABEL_OVERRIDES[c.id] } : c
       );
     }
+
+    if (accessMode === 'admin') {
+      // Solo lectura, sin acciones, sin auth
+      return BASE_COLS.filter((c) => ADMIN_COL_IDS.has(c.id));
+    }
+
+    // full
     return [...BASE_COLS, ACTION_COL];
-  }, [accessMode, LIMITED_COL_IDS, LIMITED_LABEL_OVERRIDES]);
+  }, [accessMode, LIMITED_COL_IDS, ADMIN_COL_IDS, LIMITED_LABEL_OVERRIDES]);
 
   const PDF_DEFS = useMemo(() => getPdfFieldDefs(), []);
+
+  // ADMIN: semana objetivo = "semana siguiente" (desde el lunes ya ve toda la semana próxima)
+  const adminTargetWeekLabel = useMemo(() => {
+    if (accessMode !== 'admin') return '';
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
+    return isoWeekLabelFromDate(d.toISOString().slice(0, 10));
+  }, [accessMode]);
 
   // Sin permisos
   if (accessMode === 'none') {
     return (
       <div style={{ padding: 16 }}>
         <div style={{ background: '#fff5f5', border: '1px solid #fecaca', padding: 12, borderRadius: 12 }}>
-          No tenés permisos para ver Preproducción. Pedí que te asignen: <b>preproduccion:full</b> o{' '}
-          <b>preproduccion:comercial_view</b>.
+          No tenés permisos para ver Preproducción. Pedí que te asignen: <b>preproduccion:full</b>,{' '}
+          <b>preproduccion:admin</b> o <b>preproduccion:comercial_view</b>.
         </div>
       </div>
     );
@@ -532,7 +554,7 @@ export default function PreproduccionValoresTable() {
   const [err, setErr] = useState('');
   const [saving, setSaving] = useState(() => new Set());
 
-  // ====== Estado basado en PORTONES (solo full) ======
+  // ====== Estado basado en PORTONES (full/admin) ======
   const [portonesNvSet, setPortonesNvSet] = useState(() => new Set());
   const [portonesIndexState, setPortonesIndexState] = useState('idle'); // idle|loading|ok|error
 
@@ -550,7 +572,7 @@ export default function PreproduccionValoresTable() {
 
   // Columnas visibles:
   // - full: configurable y persistente
-  // - limited: fijo (todas las disponibles del modo limited)
+  // - limited/admin: fijo (todas las disponibles del modo)
   const [showColsPanel, setShowColsPanel] = useState(false);
   const colsPanelRef = useRef(null);
 
@@ -558,7 +580,7 @@ export default function PreproduccionValoresTable() {
     const initial = {};
     for (const c of ALL_COLS) initial[c.id] = true;
 
-    if (accessMode === 'limited') return initial;
+    if (accessMode === 'limited' || accessMode === 'admin') return initial;
 
     const stored = loadVisibleColsFromStorage(ALL_COLS);
     if (stored) return stored;
@@ -689,7 +711,7 @@ export default function PreproduccionValoresTable() {
       setLoading(false);
     }
 
-    if (accessMode === 'full') {
+    if (accessMode === 'full' || accessMode === 'admin') {
       await refreshPortonesNvIndex();
     }
   }, [refreshPortonesNvIndex, accessMode]);
@@ -839,7 +861,21 @@ export default function PreproduccionValoresTable() {
       return String(v || '').trim() !== '';
     });
 
-    const base = rowsAfterNvExclusion;
+    let base = rowsAfterNvExclusion;
+
+    // ADMIN: mostrar SOLO portones cuya Fecha Salida cae en la semana siguiente (ISO week)
+    // y que existan en Portones (según índice portonesNvSet).
+    if (accessMode === 'admin') {
+      base = base.filter((row) => {
+        const nv = getNvIntFromRow(row);
+        if (nv == null) return false;
+        if (!portonesNvSet.has(nv)) return false;
+
+        const lab = weekLabelFromRow(row, 'despacho'); // Fecha Salida
+        return adminTargetWeekLabel ? lab === adminTargetWeekLabel : false;
+      });
+    }
+
     if (!active.length) return base;
 
     return base.filter((row) => {
@@ -886,7 +922,16 @@ export default function PreproduccionValoresTable() {
         return ciIncludes(toStr(raw), fval);
       });
     });
-  }, [rowsAfterNvExclusion, filters, ALL_COLS, visibleCols, getAccionesStatus]);
+  }, [
+    rowsAfterNvExclusion,
+    filters,
+    ALL_COLS,
+    visibleCols,
+    getAccionesStatus,
+    accessMode,
+    portonesNvSet,
+    adminTargetWeekLabel,
+  ]);
 
   useEffect(() => setPage(1), [filters, pageSize]);
 
@@ -1058,11 +1103,10 @@ export default function PreproduccionValoresTable() {
   };
 
   const renderCell = (row, col) => {
-    // ===== limited: SOLO LECTURA =====
-    if (accessMode === 'limited') {
+    // ===== limited/admin: SOLO LECTURA =====
+    if (accessMode === 'limited' || accessMode === 'admin') {
       const raw = getCellValue(row, col);
       if (col.id === 'fecha_venta') {
-        // viene de sourceKeys y puede ser yyyy-mm-dd u otro formato
         return <span>{formatDMY(toISODate10(raw))}</span>;
       }
       if (col.type === 'date') return <span>{formatDMY(toISODate10(raw))}</span>;
@@ -1257,7 +1301,13 @@ export default function PreproduccionValoresTable() {
       <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 12 }}>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800 }}>
-            Preproducción {accessMode === 'limited' ? <span style={{ fontSize: 12, fontWeight: 700 }}>(Vista)</span> : null}
+            Preproducción{' '}
+            {accessMode === 'limited' ? <span style={{ fontSize: 12, fontWeight: 700 }}>(Vista)</span> : null}
+            {accessMode === 'admin' ? (
+              <span style={{ fontSize: 12, fontWeight: 700 }}>
+                (Portones {adminTargetWeekLabel ? `· ${weekTitleFromSelection(adminTargetWeekLabel)}` : ''})
+              </span>
+            ) : null}
           </h2>
 
           <button onClick={load} disabled={loading} className="btn">
@@ -1267,6 +1317,12 @@ export default function PreproduccionValoresTable() {
           {accessMode === 'full' && portonesIndexState === 'error' ? (
             <div style={{ background: '#fff5f5', border: '1px solid #fecaca', padding: 8, borderRadius: 10 }}>
               No se pudo cargar <b>Portones</b>. El estado “Enviado” puede ser incorrecto hasta recargar.
+            </div>
+          ) : null}
+
+          {accessMode === 'admin' && portonesIndexState === 'error' ? (
+            <div style={{ background: '#fff5f5', border: '1px solid #fecaca', padding: 8, borderRadius: 10 }}>
+              No se pudo cargar <b>Portones</b>. La vista puede estar incompleta hasta recargar.
             </div>
           ) : null}
 
