@@ -325,7 +325,7 @@ body {
 
 .pp-card{
   background: var(--surface);
-  border: 1px solid #e5e7eb;
+  border: 1px solid #7be5b9;
   border-radius: 14px;
   box-shadow: 0 10px 30px rgba(15, 23, 42, .08);
   padding: 12px;
@@ -362,7 +362,7 @@ body {
   gap: 8px;
   padding: 6px 10px;
   border-radius: 999px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #53e1b1;
   background: color-mix(in srgb, var(--surface-muted) 70%, #fff);
   font-weight: 800;
   font-feature-settings: "tnum" 1;

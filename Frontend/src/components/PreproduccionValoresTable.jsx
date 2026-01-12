@@ -15,12 +15,15 @@ import ComercialAuthModal from './modals/ComercialAuthModal';
 // =====================
 // NV bloqueados (no deben aparecer)
 // =====================
+// IMPORTANTE: dejá tu lista actual tal como la tenés (es larguísima y no la repito acá).
+// Pegá tu string de NVs dentro del template literal.
 const BLOCKED_NV_SET = new Set(
   `
-2837 2838 2839 2840 2841 2842 2843 2844 2845 2846 2869 2870 2849 2850 2851 2852 2853 2854 2855 2856 2857 2858 2859 2865 2862 2863 2864 2866 2871 2872 2873 2874 2876 2875 2877 2878 2880 2879 2881 2882 2883 2884 2885 2886 2887 2888 2889 2890 2891 2892 2893 2894 2895 2896 1591 2897 2898 2899 2900 2901 2902 2903 2904 2905 2906 2907 2908 2909 2910 2911 2912 2913 2914 2917 2918 2920 2921 2922 2923 2924 2926 2927 2928 2929 2931 2932 2934 2933 2935 2936 2937 2938 2939 2940 2941 2942 2943 2944 2945 2946 2947 2948 2949 2950 2951 2952 2953 2954 2955 2956 2957 2958 2959 2960 2961 2962 2963 2964 2965 2966 2967 2968 2969 2970 2971 2972 2974 2973 2975 2976 2977 2978 2980 2981 2982 2984 2983 2979 2985 2986 2987 2988 2989 2991 2992 2993 2994 2995 2996 2997 2998 2999 3000 3001 3022 3003 3004 3006 3007 3008 3009 3010 3267 3012 3013 3014 3015 3016 3017 3018 3019 3020 3021 3023 3024 3026 3027 3028 3029 3030 3031 3032 3033 3034 3035 3037 3038 3040 3041 3042 3044 3045 3046 3047 3048 3049 3050 3051 3052 3053 3054 3055 3056 3057 2520 3058 3059 3060 3061 3062 3063 3064 3065 3066 3067 3069 3070 3071 3072 3073 3074 3075 3077 3078 3079 3080 3081 3082 3084 3085 3086 3087 3088 3089 3090 3091 3093 3095 3096 3097 3098 3099 3102 3101 3100 3103 3104 3105 3106 3107 3108 3109 3110 3111 3112 3113 3114 3115 3117 3118 3119 3120 3121 3122 3123 3124 3125 3126 3127 3128 3129 3130 3131 3132 3133 3134 3135 3136 3137 3138 3139 3140 3141 3142 3143 3144 3145 3146 3147 3149 3150 3151 3152 3153 3154 3155 3156 3157 3158 3159 3160 3161 3162 3163 3164 3165 3166 3167 3168 3169 3171 3172 3173 3174 3175 3176 3178 3179 3180 3181 3182 3183 3184 3185 3186 3187 3188 3189 3190 3191 3192 3193 3194 3195 3196 3197 3198 3199 3200 3201 3202 3203 3204 3205 3206 3207 3209 3210 3211 3213 3215 3216 3217 3218 3219 3220 3221 3222 3223 3224 1476 3225 3226 3227 3228 3231 3232 3233 3286 3235 3236 3237 3238 3239 3240 3248 3242 3243 3244 3245 3246 3247 3249 3250 3251 3252 3287 3254 3255 3256 3257 3258 3259 3260 3261 3262 3263 3429 3265 3266 3270 3271 3272 3273 3274 3275 3276 3277 3278 3279 3280 3281 3283 3284 3285 3288 3289 3291 3292 3293 3294 3295 3296 3297 3298 3299 3300 3301 3302 3303 3304 3305 3306 3307 3310 3311 3312 3313 3314 3315 3316 3317 3318 3319 3321 3322 3323 3324 3325 3326 3327 3328 3329 3330 3331 3332 3333 3334 3335 3336 3337 3338 3339 3340 3341 3342 3343 3344 3345 3346 3347 3348 3349 3350 3351 3352 3353 3354 3355 3356 3357 3358 3359 3360 3361 3362 3363 3364 3365 3366 3367 3368 3369 3370 3371 3372 3373 3374 3375 3376 3377 3378 3379 3381 3382 3384 3385 3386 3387 3388 3389 3390 3391 3392 3393 3425 3395 3396 3397 3398 3400 3399 3401 3402 3403 3404 3405 3406 3407 3408 3409 3410 3411 3413 3414 3415 3416 3417 3418 3419 3420 3421 3422 3423 3424 3426 3427 3428 3430 3431 3432 3433 3434 3435 3436 3437 3438 3439 3440 3441 3442 3443 3444 3445 3446 3447 3448 3449 3450 3451 3452 3453 3454 3455 3457 3458 3459 3461 3462 3463 3464 3465 3466 3467 3468 3469 3470 3471 3472 3473 3474 3475 3477 3478 3479 3480 3481 3482 3483 3484 3485 3486 3487 3488 3489 3490 3491 3492 3493 3494 3495 3496 3497 3498 3499 3501 3502 3503 3504 3505 3506 3507 3508 3509 3512 3514 3515 3516 3517 3518 3519 3520 3522 3523 3524 3525 3526 3527 3528 3529 3530 3531 3532 3533 3534 3535 3536 3537 3538 3539 3540 3541 3542 3543 3544 3545 3546 3547 3548 3549 3550 3551 3552 3553 3554 3555 3556 3557 3558 3559 3560 3561 3562 3563 3568 3569 3570 3572 3573 3576 3577 3578 3579 3580 3581 3583 3584 3586 3587 3591 3592 3595 3596 3597 3598 3599 3601 3602 3607 3604 3605 3606 3609 3608 3611 3612 3613 3614 3615 3616 3617 3618 3619 3620 3621 3622 3623 3624 3625 3626 3627 3628 3629 3630 3631 3632 3633 3634 3664 3637 3638 3640 1774 3641 3642 3643 3645 3646 3647 3648 3649 3650 3651 3652 3653 3654 3656 3657 3658 3659 3662 3663 3665 3666 3667 3668 3669 3671 3672 3675 3677 3679 3682 3683 3684 3685 3686 3691 3692 3693 3694 3695 3696 3697 3698 3699 3700 3701 3702 3703 3704 3705 3706 3708 3709 3710 3711 3712 3713 3714 3716 3717 3721 3723 3724 3725 3726 3727 3728 3729 3730 3731 3732 3733 3734 3735 3738 3741 3743 3745 3746 3747 3748 3749 3752 3755 3756 3759 3763 3765 3766 3767 3768 3769 3777 3780 3781 3782 3784 3791 3793 3794 3795 3796 3798
-`
+  /* PEGAR ACÁ TU LISTA ACTUAL DE NVs BLOQUEADOS (la misma que ya tenés) */
+  `
     .trim()
     .split(/\s+/)
+    .filter(Boolean)
 );
 
 // =====================
@@ -238,6 +241,26 @@ function getNvIntFromRow(row) {
   const nvStr = getNvCanonicalFromRow(row);
   const nv = parseInt(String(nvStr || '').trim(), 10);
   return Number.isFinite(nv) ? nv : null;
+}
+
+// =====================
+// Corte para vista ADMIN:
+// "no mostrar muy futuro": incluir todo lo pasado y hasta el VIERNES de la semana siguiente
+// =====================
+function nextWeekFridayCutoffISO10() {
+  const now = new Date();
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const dayMon0 = (d.getUTCDay() + 6) % 7; // lunes=0
+  const mondayThisWeek = new Date(d);
+  mondayThisWeek.setUTCDate(d.getUTCDate() - dayMon0);
+
+  const nextWeekFriday = new Date(mondayThisWeek);
+  nextWeekFriday.setUTCDate(mondayThisWeek.getUTCDate() + 11); // lunes + (7 + viernes(4)) = 11
+
+  const yyyy = nextWeekFriday.getUTCFullYear();
+  const mm = pad2(nextWeekFriday.getUTCMonth() + 1);
+  const dd = pad2(nextWeekFriday.getUTCDate());
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 // =====================
@@ -486,9 +509,7 @@ export default function PreproduccionValoresTable() {
   const userScopes = useMemo(() => getCurrentScopes(), []);
 
   const isFull = useMemo(() => hasAny(userScopes, ['preproduccion:full']), [userScopes]);
-
   const isAdmin = useMemo(() => !isFull && hasAny(userScopes, ['preproduccion:admin']), [userScopes, isFull]);
-
   const isLimited = useMemo(
     () => !isFull && !isAdmin && hasAny(userScopes, ['preproduccion:comercial_view']),
     [userScopes, isFull, isAdmin]
@@ -496,17 +517,30 @@ export default function PreproduccionValoresTable() {
 
   const accessMode = isFull ? 'full' : isAdmin ? 'admin' : isLimited ? 'limited' : 'none';
 
+  // Limited (comercial_view)
   const LIMITED_COL_IDS = useMemo(
     () => new Set(['fecha_venta', 'nv', 'nombre', 'distribuidor', 'fecha_salida', 'inicio_prod']),
     []
   );
-
-  const ADMIN_COL_IDS = useMemo(() => new Set(['fecha_venta', 'nv', 'nombre', 'distribuidor', 'fecha_salida']), []);
-
   const LIMITED_LABEL_OVERRIDES = useMemo(
     () => ({
       distribuidor: 'Razón Social',
       inicio_prod: 'Fecha Producción',
+      fecha_salida: 'Fecha salida',
+    }),
+    []
+  );
+
+  // Admin (preproduccion:admin): campos + autorización admin
+  const ADMIN_COL_IDS = useMemo(
+    () => new Set(['fecha_venta', 'nv', 'nombre', 'distribuidor', 'fecha_salida', 'auth_admin']),
+    []
+  );
+  const ADMIN_LABEL_OVERRIDES = useMemo(
+    () => ({
+      distribuidor: 'Razón Social',
+      fecha_salida: 'Fecha salida',
+      auth_admin: 'Aut. Admin',
     }),
     []
   );
@@ -517,33 +551,23 @@ export default function PreproduccionValoresTable() {
         LIMITED_LABEL_OVERRIDES[c.id] ? { ...c, label: LIMITED_LABEL_OVERRIDES[c.id] } : c
       );
     }
-
     if (accessMode === 'admin') {
-      // Solo lectura, sin acciones, sin auth
-      return BASE_COLS.filter((c) => ADMIN_COL_IDS.has(c.id));
+      return BASE_COLS.filter((c) => ADMIN_COL_IDS.has(c.id)).map((c) =>
+        ADMIN_LABEL_OVERRIDES[c.id] ? { ...c, label: ADMIN_LABEL_OVERRIDES[c.id] } : c
+      );
     }
-
-    // full
     return [...BASE_COLS, ACTION_COL];
-  }, [accessMode, LIMITED_COL_IDS, ADMIN_COL_IDS, LIMITED_LABEL_OVERRIDES]);
+  }, [accessMode, LIMITED_COL_IDS, LIMITED_LABEL_OVERRIDES, ADMIN_COL_IDS, ADMIN_LABEL_OVERRIDES]);
 
   const PDF_DEFS = useMemo(() => getPdfFieldDefs(), []);
-
-  // ADMIN: semana objetivo = "semana siguiente" (desde el lunes ya ve toda la semana próxima)
-  const adminTargetWeekLabel = useMemo(() => {
-    if (accessMode !== 'admin') return '';
-    const d = new Date();
-    d.setDate(d.getDate() + 7);
-    return isoWeekLabelFromDate(d.toISOString().slice(0, 10));
-  }, [accessMode]);
 
   // Sin permisos
   if (accessMode === 'none') {
     return (
       <div style={{ padding: 16 }}>
         <div style={{ background: '#fff5f5', border: '1px solid #fecaca', padding: 12, borderRadius: 12 }}>
-          No tenés permisos para ver Preproducción. Pedí que te asignen: <b>preproduccion:full</b>,{' '}
-          <b>preproduccion:admin</b> o <b>preproduccion:comercial_view</b>.
+          No tenés permisos para ver Preproducción. Pedí que te asignen: <b>preproduccion:full</b>, <b>preproduccion:admin</b>{' '}
+          o <b>preproduccion:comercial_view</b>.
         </div>
       </div>
     );
@@ -554,12 +578,12 @@ export default function PreproduccionValoresTable() {
   const [err, setErr] = useState('');
   const [saving, setSaving] = useState(() => new Set());
 
-  // ====== Estado basado en PORTONES (full/admin) ======
+  // ====== Estado basado en PORTONES (solo full) ======
   const [portonesNvSet, setPortonesNvSet] = useState(() => new Set());
   const [portonesIndexState, setPortonesIndexState] = useState('idle'); // idle|loading|ok|error
 
   // Filtros:
-  // - string para texto
+  // - string para texto / bool / actions / day
   // - { from:'YYYY-MM-DD', to:'YYYY-MM-DD', has:boolean, empty:boolean } para fechas
   const [filters, setFilters] = useState(() => {
     const o = {};
@@ -572,7 +596,7 @@ export default function PreproduccionValoresTable() {
 
   // Columnas visibles:
   // - full: configurable y persistente
-  // - limited/admin: fijo (todas las disponibles del modo)
+  // - admin/limited: fijo (todas las disponibles del modo)
   const [showColsPanel, setShowColsPanel] = useState(false);
   const colsPanelRef = useRef(null);
 
@@ -580,7 +604,7 @@ export default function PreproduccionValoresTable() {
     const initial = {};
     for (const c of ALL_COLS) initial[c.id] = true;
 
-    if (accessMode === 'limited' || accessMode === 'admin') return initial;
+    if (accessMode !== 'full') return initial;
 
     const stored = loadVisibleColsFromStorage(ALL_COLS);
     if (stored) return stored;
@@ -611,21 +635,8 @@ export default function PreproduccionValoresTable() {
     savePdfFieldsToStorage(pdfFields);
   }, [pdfFields, PDF_DEFS, accessMode]);
 
-  // ===== Modales (solo full) =====
-  const [logModalOpen, setLogModalOpen] = useState(false);
-  const [logModalRow, setLogModalRow] = useState(null);
-  const [logModalBusy, setLogModalBusy] = useState(false);
-
-  const openLogModal = (row) => {
-    setLogModalRow(row);
-    setLogModalOpen(true);
-  };
-  const closeLogModal = () => {
-    if (logModalBusy) return;
-    setLogModalOpen(false);
-    setLogModalRow(null);
-  };
-
+  // ===== Modales =====
+  // Admin: full + admin
   const [adminModalOpen, setAdminModalOpen] = useState(false);
   const [adminModalRow, setAdminModalRow] = useState(null);
   const [adminModalBusy, setAdminModalBusy] = useState(false);
@@ -640,6 +651,21 @@ export default function PreproduccionValoresTable() {
     if (adminModalBusy) return;
     setAdminModalOpen(false);
     setAdminModalRow(null);
+  };
+
+  // Logística + Comercial: solo full
+  const [logModalOpen, setLogModalOpen] = useState(false);
+  const [logModalRow, setLogModalRow] = useState(null);
+  const [logModalBusy, setLogModalBusy] = useState(false);
+
+  const openLogModal = (row) => {
+    setLogModalRow(row);
+    setLogModalOpen(true);
+  };
+  const closeLogModal = () => {
+    if (logModalBusy) return;
+    setLogModalOpen(false);
+    setLogModalRow(null);
   };
 
   const [comModalOpen, setComModalOpen] = useState(false);
@@ -711,7 +737,7 @@ export default function PreproduccionValoresTable() {
       setLoading(false);
     }
 
-    if (accessMode === 'full' || accessMode === 'admin') {
+    if (accessMode === 'full') {
       await refreshPortonesNvIndex();
     }
   }, [refreshPortonesNvIndex, accessMode]);
@@ -741,21 +767,6 @@ export default function PreproduccionValoresTable() {
     }
   }, []);
 
-  const submitLogisticaAuth = useCallback(
-    async (patch) => {
-      const id = logModalRow?.id;
-      if (!id) return;
-      setLogModalBusy(true);
-      try {
-        await onPatch(id, patch);
-        closeLogModal();
-      } finally {
-        setLogModalBusy(false);
-      }
-    },
-    [logModalRow, onPatch]
-  );
-
   const submitAdminAuth = useCallback(
     async (patch) => {
       const id = adminModalRow?.id;
@@ -769,6 +780,21 @@ export default function PreproduccionValoresTable() {
       }
     },
     [adminModalRow, onPatch]
+  );
+
+  const submitLogisticaAuth = useCallback(
+    async (patch) => {
+      const id = logModalRow?.id;
+      if (!id) return;
+      setLogModalBusy(true);
+      try {
+        await onPatch(id, patch);
+        closeLogModal();
+      } finally {
+        setLogModalBusy(false);
+      }
+    },
+    [logModalRow, onPatch]
   );
 
   const submitComercialAuth = useCallback(
@@ -794,7 +820,22 @@ export default function PreproduccionValoresTable() {
     });
   }, [rows]);
 
-  // ====== Estado acciones (solo full, pero queda definido) ======
+  // ====== Corte ADMIN por fecha salida (<= viernes semana siguiente) ======
+  const rowsAfterAccessWindow = useMemo(() => {
+    if (accessMode !== 'admin') return rowsAfterNvExclusion;
+
+    const cutoff = nextWeekFridayCutoffISO10();
+    const colFechaSalida = ALL_COLS.find((c) => c.id === 'fecha_salida');
+
+    return (rowsAfterNvExclusion || []).filter((row) => {
+      const raw = colFechaSalida ? getCellValue(row, colFechaSalida) : row?.data?.fecha_salida_imput ?? row?.data?.Fecha_Salida_Imput;
+      const date10 = toISODate10(raw);
+      if (!isISODate10(date10)) return false; // en admin, si no hay fecha salida: no mostramos
+      return date10 <= cutoff; // deja TODO lo pasado + hasta viernes semana siguiente
+    });
+  }, [rowsAfterNvExclusion, accessMode, ALL_COLS]);
+
+  // ====== Estado acciones (solo full) ======
   const getAccionesStatus = useCallback(
     (row) => {
       const d = row?.data || {};
@@ -861,21 +902,7 @@ export default function PreproduccionValoresTable() {
       return String(v || '').trim() !== '';
     });
 
-    let base = rowsAfterNvExclusion;
-
-    // ADMIN: mostrar SOLO portones cuya Fecha Salida cae en la semana siguiente (ISO week)
-    // y que existan en Portones (según índice portonesNvSet).
-    if (accessMode === 'admin') {
-      base = base.filter((row) => {
-        const nv = getNvIntFromRow(row);
-        if (nv == null) return false;
-        if (!portonesNvSet.has(nv)) return false;
-
-        const lab = weekLabelFromRow(row, 'despacho'); // Fecha Salida
-        return adminTargetWeekLabel ? lab === adminTargetWeekLabel : false;
-      });
-    }
-
+    const base = rowsAfterAccessWindow;
     if (!active.length) return base;
 
     return base.filter((row) => {
@@ -914,24 +941,23 @@ export default function PreproduccionValoresTable() {
         if (col.type === 'bool') {
           const b = Boolean(raw);
           const needle = String(fval).toLowerCase().trim();
+          if (!needle) return true;
+
+          // UI: Autorizar / Autorizado
+          if (needle === 'autorizado') return b === true;
+          if (needle === 'autorizar') return b === false;
+
+          // compatibilidad anterior
           if (['si', 'sí', 'true', '1'].includes(needle)) return b === true;
           if (['no', 'false', '0'].includes(needle)) return b === false;
+
           return true;
         }
 
         return ciIncludes(toStr(raw), fval);
       });
     });
-  }, [
-    rowsAfterNvExclusion,
-    filters,
-    ALL_COLS,
-    visibleCols,
-    getAccionesStatus,
-    accessMode,
-    portonesNvSet,
-    adminTargetWeekLabel,
-  ]);
+  }, [rowsAfterAccessWindow, filters, ALL_COLS, visibleCols, getAccionesStatus]);
 
   useEffect(() => setPage(1), [filters, pageSize]);
 
@@ -1010,7 +1036,7 @@ export default function PreproduccionValoresTable() {
     [onPatch, portonesNvSet, accessMode]
   );
 
-  // ======= ÚNICA DECLARACIÓN =======
+  // ======= PDF helpers =======
   const pdfWeeksList = useMemo(() => {
     const set = new Set();
     for (const r of filteredRows) {
@@ -1103,21 +1129,43 @@ export default function PreproduccionValoresTable() {
   };
 
   const renderCell = (row, col) => {
-    // ===== limited/admin: SOLO LECTURA =====
-    if (accessMode === 'limited' || accessMode === 'admin') {
-      const raw = getCellValue(row, col);
-      if (col.id === 'fecha_venta') {
-        return <span>{formatDMY(toISODate10(raw))}</span>;
-      }
-      if (col.type === 'date') return <span>{formatDMY(toISODate10(raw))}</span>;
-      return <span>{toStr(raw)}</span>;
-    }
-
-    // ===== full: comportamiento actual =====
     const data = row?.data || {};
     const id = row.id;
     const isBusy = saving.has(id);
 
+    // ===== limited: SOLO LECTURA =====
+    if (accessMode === 'limited') {
+      const raw = getCellValue(row, col);
+      if (col.id === 'fecha_venta') return <span>{formatDMY(toISODate10(raw))}</span>;
+      if (col.type === 'date') return <span>{formatDMY(toISODate10(raw))}</span>;
+      return <span>{toStr(raw)}</span>;
+    }
+
+    // ===== admin: lectura + SOLO autoriza administración =====
+    if (accessMode === 'admin') {
+      if (col.type === 'bool' && col.patchKey === 'auth_admin') {
+        const ok = Boolean(data.auth_admin);
+        if (ok) return <span className="pp-badge pp-badge--ok">Autorizado</span>;
+        return (
+          <button
+            type="button"
+            className="pp-btnCell pp-btnCell--brand"
+            onClick={() => openAdminModal(row)}
+            disabled={isBusy}
+            title="Autorizar administración"
+          >
+            Autorizar
+          </button>
+        );
+      }
+
+      const raw = getCellValue(row, col);
+      if (col.id === 'fecha_venta') return <span>{formatDMY(toISODate10(raw))}</span>;
+      if (col.type === 'date') return <span>{formatDMY(toISODate10(raw))}</span>;
+      return <span>{toStr(raw)}</span>;
+    }
+
+    // ===== full: comportamiento completo =====
     if (col.type === 'actions') {
       const st = getAccionesStatus(row);
       const alreadySent = st === 'produccion';
@@ -1303,11 +1351,7 @@ export default function PreproduccionValoresTable() {
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800 }}>
             Preproducción{' '}
             {accessMode === 'limited' ? <span style={{ fontSize: 12, fontWeight: 700 }}>(Vista)</span> : null}
-            {accessMode === 'admin' ? (
-              <span style={{ fontSize: 12, fontWeight: 700 }}>
-                (Portones {adminTargetWeekLabel ? `· ${weekTitleFromSelection(adminTargetWeekLabel)}` : ''})
-              </span>
-            ) : null}
+            {accessMode === 'admin' ? <span style={{ fontSize: 12, fontWeight: 700 }}>(Administración)</span> : null}
           </h2>
 
           <button onClick={load} disabled={loading} className="btn">
@@ -1317,12 +1361,6 @@ export default function PreproduccionValoresTable() {
           {accessMode === 'full' && portonesIndexState === 'error' ? (
             <div style={{ background: '#fff5f5', border: '1px solid #fecaca', padding: 8, borderRadius: 10 }}>
               No se pudo cargar <b>Portones</b>. El estado “Enviado” puede ser incorrecto hasta recargar.
-            </div>
-          ) : null}
-
-          {accessMode === 'admin' && portonesIndexState === 'error' ? (
-            <div style={{ background: '#fff5f5', border: '1px solid #fecaca', padding: 8, borderRadius: 10 }}>
-              No se pudo cargar <b>Portones</b>. La vista puede estar incompleta hasta recargar.
             </div>
           ) : null}
 
@@ -1486,6 +1524,13 @@ export default function PreproduccionValoresTable() {
             </div>
           ) : null}
 
+          {/* hint admin cutoff */}
+          {accessMode === 'admin' ? (
+            <div style={{ fontSize: 12, color: '#374151' }}>
+              Mostrando hasta: <b>{formatDMY(nextWeekFridayCutoffISO10())}</b>
+            </div>
+          ) : null}
+
           <div style={{ marginLeft: 'auto', fontSize: 12, color: '#374151' }}>
             {loading ? 'Cargando…' : `Registros: ${total}`}
           </div>
@@ -1574,6 +1619,17 @@ export default function PreproduccionValoresTable() {
                       </select>
                     ) : c.type === 'date' ? (
                       renderDateFilter(c.id)
+                    ) : c.type === 'bool' ? (
+                      <select
+                        value={filters[c.id] || ''}
+                        onChange={(e) => setFilters((p) => ({ ...p, [c.id]: e.target.value }))}
+                        className="pp-select"
+                        style={{ width: '100%' }}
+                      >
+                        <option value="">(todos)</option>
+                        <option value="autorizar">Autorizar</option>
+                        <option value="autorizado">Autorizado</option>
+                      </select>
                     ) : (
                       <input
                         value={filters[c.id] || ''}
@@ -1648,7 +1704,11 @@ export default function PreproduccionValoresTable() {
             Página <b>{safePage}</b> / <b>{pageCount}</b>
           </div>
 
-          <button className="btn" onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={safePage >= pageCount}>
+          <button
+            className="btn"
+            onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+            disabled={safePage >= pageCount}
+          >
             Siguiente
           </button>
         </div>
@@ -1659,7 +1719,17 @@ export default function PreproduccionValoresTable() {
         </div>
       </div>
 
-      {/* Modales (solo full) */}
+      {/* Modales */}
+      {(accessMode === 'full' || accessMode === 'admin') ? (
+        <AdminAuthModal
+          open={adminModalOpen}
+          row={adminModalRow}
+          busy={adminModalBusy}
+          onClose={closeAdminModal}
+          onSubmit={submitAdminAuth}
+        />
+      ) : null}
+
       {accessMode === 'full' ? (
         <>
           <LogisticaAuthModal
@@ -1668,14 +1738,6 @@ export default function PreproduccionValoresTable() {
             busy={logModalBusy}
             onClose={closeLogModal}
             onSubmit={submitLogisticaAuth}
-          />
-
-          <AdminAuthModal
-            open={adminModalOpen}
-            row={adminModalRow}
-            busy={adminModalBusy}
-            onClose={closeAdminModal}
-            onSubmit={submitAdminAuth}
           />
 
           <ComercialAuthModal
