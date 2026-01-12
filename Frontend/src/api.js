@@ -229,25 +229,26 @@ export const updatePreproduccionValor = (id, patch) =>
   api.put(`/preproduccion-valores/${id}`, { patch });
 
 // --------------------
-// USERS / SCOPES
+// --------------------
+// ADMIN USERS / SCOPES
 // --------------------
 export function fetchUsers() {
-  return api.get('/users');
+  return api.get('/admin/users');
 }
 
 export function createUser(payload) {
-  return api.post('/users', payload);
+  return api.post('/admin/users', payload);
 }
 
 export function updateUser(id, patch) {
-  return api.patch(`/users/${id}`, patch);
+  return api.patch(`/admin/users/${id}`, patch);
 }
 
 export function setUserPassword(id, payload) {
   // payload: { password: '...' }
-  return api.post(`/users/${id}/password`, payload);
+  return api.post(`/admin/users/${id}/password`, payload);
 }
 
 export function fetchScopes() {
-  return api.get('/scopes');
+  return api.get('/admin/scopes');
 }

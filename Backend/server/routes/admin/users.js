@@ -21,43 +21,56 @@ router.get('/users', adminAuth, async (_req, res, next) => {
     // /preproduccion-valores, etc.). Para mantener el contrato consistente, acá
     // devolvemos la lista directamente (sin wrapper { ok, users }).
     const { rows } = await pool.query(`
-      select
-        id,
-        username,
-        is_active,
-        coalesce(scopes, '{}'::text[]) as scopes,
-        created_at,
-        updated_at
-      from public.admin_users
-      order by id asc;
-    `);
-    return res.json(rows);
+  select
+    id,
+    username,
+    is_active,
+    coalesce(scopes, '{}'::text[]) as scopes,
+    name,
+    name as full_name,
+    email,
+    created_at,
+    updated_at
+  from public.admin_users
+  order by id asc;
+`);
+return res.json(rows);
   } catch (e) { next(e); }
 });
 
 // POST /admin/users
 router.post('/users', adminAuth, async (req, res, next) => {
   try {
-    const { username, password, is_active, scopes } = req.body || {};
+    const body = req.body || {};
 
-    const un = String(username || '').trim();
-    const pw = String(password || '');
+    const un = String(body.username || '').trim();
+    const pw = String(body.password || '');
+
+    const name = String(body.full_name ?? body.name ?? '').trim() || null;
+    const email = body.email == null ? null : String(body.email).trim() || null;
+
+    // activo: soporta is_active o active
+    const isActive =
+      body.is_active !== undefined ? body.is_active === true
+      : body.active !== undefined ? body.active === true
+      : true;
 
     if (!isNonEmpty(un)) return res.status(400).json({ error: 'username requerido' });
     if (!isNonEmpty(pw) || pw.length < 6) return res.status(400).json({ error: 'password mínimo 6 caracteres' });
 
-    const sc = normalizeScopes(scopes);
+    const sc = normalizeScopes(body.scopes);
     const hash = await bcrypt.hash(pw, 10);
 
     const { rows } = await pool.query(`
-      insert into public.admin_users (username, password_hash, is_active, scopes, created_at, updated_at)
-      values ($1, $2, $3, $4::text[], now(), now())
-      returning id, username, is_active, scopes, created_at, updated_at;
-    `, [un, hash, is_active !== false, sc]);
+      insert into public.admin_users (username, password_hash, is_active, scopes, name, email, created_at, updated_at)
+      values ($1, $2, $3, $4::text[], $5, $6, now(), now())
+      returning id, username, is_active, scopes, name, name as full_name, email, created_at, updated_at;
+    `, [un, hash, isActive, sc, name, email]);
 
     return res.status(201).json(rows[0]);
   } catch (e) { next(e); }
 });
+
 
 // PATCH /admin/users/:id
 router.patch('/users/:id', adminAuth, async (req, res, next) => {
@@ -70,12 +83,29 @@ router.patch('/users/:id', adminAuth, async (req, res, next) => {
     const params = [];
     let idx = 1;
 
-    if (patch.is_active != null) {
+    // Activo: soporta is_active o active
+    if (patch.is_active !== undefined || patch.active !== undefined) {
+      const v = patch.is_active !== undefined ? patch.is_active : patch.active;
       fields.push(`is_active = $${idx++}`);
-      params.push(patch.is_active === true);
+      params.push(v === true);
     }
 
-    if (patch.scopes != null) {
+    // Name: soporta name o full_name
+    if (patch.name !== undefined || patch.full_name !== undefined) {
+      const nm = String(patch.full_name ?? patch.name ?? '').trim();
+      fields.push(`name = $${idx++}`);
+      params.push(nm || null);
+    }
+
+    // Email
+    if (patch.email !== undefined) {
+      const em = patch.email == null ? null : String(patch.email).trim();
+      fields.push(`email = $${idx++}`);
+      params.push(em || null);
+    }
+
+    // Scopes
+    if (patch.scopes !== undefined) {
       const sc = normalizeScopes(patch.scopes);
       fields.push(`scopes = $${idx++}::text[]`);
       params.push(sc);
@@ -90,7 +120,7 @@ router.patch('/users/:id', adminAuth, async (req, res, next) => {
       update public.admin_users
       set ${fields.join(', ')}
       where id = $${idx}
-      returning id, username, is_active, scopes, created_at, updated_at;
+      returning id, username, is_active, scopes, name, name as full_name, email, created_at, updated_at;
     `, params);
 
     if (!rowCount) return res.status(404).json({ error: 'Usuario no encontrado' });
@@ -98,6 +128,7 @@ router.patch('/users/:id', adminAuth, async (req, res, next) => {
     return res.json(rows[0]);
   } catch (e) { next(e); }
 });
+
 
 // POST /admin/users/:id/password
 router.post('/users/:id/password', adminAuth, async (req, res, next) => {
