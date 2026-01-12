@@ -6,6 +6,7 @@ const { signAdminToken } = require('../../middleware/adminAuth');
 const router = express.Router();
 
 // POST /admin/login
+// POST /admin/login
 router.post('/login', async (req, res, next) => {
   try {
     const { username, password } = req.body || {};
@@ -15,7 +16,12 @@ router.post('/login', async (req, res, next) => {
 
     const { rows } = await pool.query(
       `
-      select id, username, password_hash, is_active
+      select
+        id,
+        username,
+        password_hash,
+        is_active,
+        coalesce(scopes, '{}'::text[]) as scopes
       from public.admin_users
       where username = $1
       limit 1;
@@ -29,12 +35,18 @@ router.post('/login', async (req, res, next) => {
     const ok = await bcrypt.compare(String(password), u.password_hash);
     if (!ok) return res.status(401).json({ error: 'Credenciales inválidas' });
 
-    const token = signAdminToken({ sub: u.id, username: u.username });
+    const token = signAdminToken({
+      sub: String(u.id),
+      username: u.username,
+      scopes: Array.isArray(u.scopes) ? u.scopes : [],
+    });
+
     return res.json({ ok: true, token });
   } catch (err) {
     console.error('admin login error:', err);
     return res.status(500).json({ error: 'Error en login admin', detail: err.message });
   }
 });
+
 
 module.exports = router;
