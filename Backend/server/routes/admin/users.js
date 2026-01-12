@@ -155,7 +155,7 @@ router.post('/users/:id/password', adminAuth, async (req, res, next) => {
 
 // GET /admin/scopes
 router.get('/scopes', adminAuth, async (_req, res) => {
-  const scopes = (process.env.ADMIN_SCOPES || 'users:read,users:write,qc:admin,workflow:admin')
+  const scopes = (process.env.ADMIN_SCOPES)
     .split(',')
     .map(s => s.trim())
     .filter(Boolean);
