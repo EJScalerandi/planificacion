@@ -5,7 +5,7 @@ const api = axios.create({
   baseURL:
     import.meta.env.VITE_API_URL ||
     import.meta.env.VITE_API_BASE ||
-    //'https://planificacion-6sk9.onrender.com'
+    // 'https://planificacion-6sk9.onrender.com'
     'http://localhost:4000',
   timeout: 15000,
 });
@@ -186,8 +186,21 @@ export async function qcHistory({ line, item_id }) {
   return data;
 }
 
+// ✅ NUEVO: Summary QC (batch) -> POST /qc/summary
+export async function qcSummary({ line, item_ids, stage_key } = {}) {
+  const payload = {
+    line: String(line || '').trim(),
+    item_ids: Array.isArray(item_ids)
+      ? item_ids.map((n) => Number(n)).filter((n) => Number.isInteger(n))
+      : [],
+    stage_key: stage_key == null ? null : String(stage_key).trim(),
+  };
 
-
+  const { data } = await api.post('/qc/summary', payload, {
+    headers: { 'Cache-Control': 'no-cache' },
+  });
+  return data;
+}
 
 /* ============ ADMIN QC (CRUD usuarios + motivos) ============ */
 
@@ -244,7 +257,6 @@ export const updatePreproduccionValor = (id, patch) =>
   api.put(`/preproduccion-valores/${id}`, { patch });
 
 // --------------------
-// --------------------
 // ADMIN USERS / SCOPES
 // --------------------
 export function fetchUsers() {
@@ -260,28 +272,9 @@ export function updateUser(id, patch) {
 }
 
 export function setUserPassword(id, payload) {
-  // payload: { password: '...' }
   return api.post(`/admin/users/${id}/password`, payload);
 }
 
 export function fetchScopes() {
   return api.get('/admin/scopes');
-}
-/* ============ QC (CALIDAD) ============ */
-
-// ... (qcGetMotives, qcAuthorize, qcHistory)
-
-export async function qcSummary({ line, item_ids, stage_key } = {}) {
-  const payload = {
-    line: String(line || '').trim(),
-    item_ids: Array.isArray(item_ids)
-      ? item_ids.map((n) => Number(n)).filter((n) => Number.isInteger(n))
-      : [],
-    stage_key: stage_key == null ? null : String(stage_key).trim(),
-  };
-
-  const { data } = await api.post('/qc/summary', payload, {
-    headers: { 'Cache-Control': 'no-cache' },
-  });
-  return data;
 }

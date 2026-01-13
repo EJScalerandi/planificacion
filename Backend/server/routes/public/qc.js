@@ -170,63 +170,63 @@ router.get('/qc/history/:line/:itemId', async (req, res) => {
 // POST /qc/summary
 // body: { line: 'portones'|'ipanel', item_ids: number[], stage_key?: string|null }
 // resp: [{ item_id, has_obs, latest_stage_status, latest_stage_at }]
-router.post('/qc/summary', async (req, res) => {
-  try {
-    const { line, item_ids, stage_key } = req.body || {};
+// router.post('/qc/summary', async (req, res) => {
+//   try {
+//     const { line, item_ids, stage_key } = req.body || {};
 
-    const sLine = String(line || '').trim();
-    if (!isValidLine(sLine)) return res.status(400).json({ error: 'line inválida' });
+//     const sLine = String(line || '').trim();
+//     if (!isValidLine(sLine)) return res.status(400).json({ error: 'line inválida' });
 
-    const ids = Array.isArray(item_ids)
-      ? item_ids.map((x) => Number(x)).filter((n) => Number.isInteger(n))
-      : [];
+//     const ids = Array.isArray(item_ids)
+//       ? item_ids.map((x) => Number(x)).filter((n) => Number.isInteger(n))
+//       : [];
 
-    if (!ids.length) return res.json([]); // nada que resumir
+//     if (!ids.length) return res.json([]); // nada que resumir
 
-    // límite defensivo para no matar la DB si alguien manda 50k ids
-    if (ids.length > 500) return res.status(400).json({ error: 'item_ids demasiado grande (max 500)' });
+//     // límite defensivo para no matar la DB si alguien manda 50k ids
+//     if (ids.length > 500) return res.status(400).json({ error: 'item_ids demasiado grande (max 500)' });
 
-    const stageKey = stage_key == null ? null : String(stage_key).trim();
+//     const stageKey = stage_key == null ? null : String(stage_key).trim();
 
-    const { rows } = await pool.query(
-      `
-      with ids as (
-        select unnest($2::int[]) as item_id
-      )
-      select
-        ids.item_id,
-        coalesce(obs.has_obs, false) as has_obs,
-        ls.qc_status as latest_stage_status,
-        ls.created_at as latest_stage_at
-      from ids
-      left join lateral (
-        select true as has_obs
-        from public.qc_event e
-        where e.line = $1
-          and e.item_id = ids.item_id
-          and e.qc_status = 'OBSERVADO'
-        limit 1
-      ) obs on true
-      left join lateral (
-        select e.qc_status, e.created_at
-        from public.qc_event e
-        where e.line = $1
-          and e.item_id = ids.item_id
-          and ($3::text is null or e.stage_key = $3::text)
-        order by e.created_at desc
-        limit 1
-      ) ls on true
-      order by ids.item_id;
-      `,
-      [sLine, ids, stageKey]
-    );
+//     const { rows } = await pool.query(
+//       `
+//       with ids as (
+//         select unnest($2::int[]) as item_id
+//       )
+//       select
+//         ids.item_id,
+//         coalesce(obs.has_obs, false) as has_obs,
+//         ls.qc_status as latest_stage_status,
+//         ls.created_at as latest_stage_at
+//       from ids
+//       left join lateral (
+//         select true as has_obs
+//         from public.qc_event e
+//         where e.line = $1
+//           and e.item_id = ids.item_id
+//           and e.qc_status = 'OBSERVADO'
+//         limit 1
+//       ) obs on true
+//       left join lateral (
+//         select e.qc_status, e.created_at
+//         from public.qc_event e
+//         where e.line = $1
+//           and e.item_id = ids.item_id
+//           and ($3::text is null or e.stage_key = $3::text)
+//         order by e.created_at desc
+//         limit 1
+//       ) ls on true
+//       order by ids.item_id;
+//       `,
+//       [sLine, ids, stageKey]
+//     );
 
-    return res.json(rows);
-  } catch (err) {
-    console.error('qc summary error:', err);
-    return res.status(500).json({ error: 'Error leyendo resumen QC', detail: err.message });
-  }
-});
+//     return res.json(rows);
+//   } catch (err) {
+//     console.error('qc summary error:', err);
+//     return res.status(500).json({ error: 'Error leyendo resumen QC', detail: err.message });
+//   }
+// });
 
 
 // POST /qc/authorize
@@ -441,5 +441,93 @@ await client.query('commit');
     client.release();
   }
 });
+
+// POST /qc/summary
+// body: { line: 'portones'|'ipanel', item_ids: number[], stage_key?: string|null }
+router.post('/qc/summary', async (req, res) => {
+  try {
+    const line = String(req.body?.line || '').trim();
+    const stageKey = req.body?.stage_key == null || req.body?.stage_key === ''
+      ? null
+      : String(req.body.stage_key).trim();
+
+    const itemIds = Array.isArray(req.body?.item_ids)
+      ? req.body.item_ids.map((n) => Number(n)).filter((n) => Number.isInteger(n))
+      : [];
+
+    if (!isValidLine(line)) return res.status(400).json({ error: 'line inválida' });
+    if (!itemIds.length) return res.json({ ok: true, items: {} });
+
+    // 1) Último QC por item_id + stage_key (si stageKey viene filtramos; si no, traemos todas las stages)
+    const latestQ = await pool.query(
+      `
+      with ranked as (
+        select
+          item_id,
+          stage_key,
+          qc_status,
+          created_at,
+          row_number() over (
+            partition by item_id, stage_key
+            order by created_at desc
+          ) as rn
+        from public.qc_event
+        where line = $1
+          and item_id = any($2::int8[])
+          and ($3::text is null or stage_key = $3::text)
+      )
+      select item_id, stage_key, qc_status
+      from ranked
+      where rn = 1;
+      `,
+      [line, itemIds, stageKey]
+    );
+
+    // 2) Tiene OBSERVADO en cualquier etapa (para mostrar "!" global)
+    const obsQ = await pool.query(
+      `
+      select
+        item_id,
+        bool_or(upper(qc_status) = 'OBSERVADO') as has_obs
+      from public.qc_event
+      where line = $1
+        and item_id = any($2::int8[])
+      group by item_id;
+      `,
+      [line, itemIds]
+    );
+
+    const hasObsById = new Map(
+      obsQ.rows.map((r) => [Number(r.item_id), Boolean(r.has_obs)])
+    );
+
+    // Armamos: items[item_id] = { has_obs, latest_by_stage: { stage_key: QC_STATUS } }
+    const items = {};
+    for (const id of itemIds) {
+      items[String(id)] = { has_obs: hasObsById.get(id) || false, latest_by_stage: {} };
+    }
+
+    for (const r of latestQ.rows) {
+      const id = Number(r.item_id);
+      const st = String(r.stage_key || '').trim();
+      const qc = String(r.qc_status || '').trim().toUpperCase();
+
+      if (!Number.isInteger(id) || !st) continue;
+      const key = String(id);
+
+      if (!items[key]) items[key] = { has_obs: hasObsById.get(id) || false, latest_by_stage: {} };
+      items[key].latest_by_stage[st] = qc;
+
+      // Si justo esta última por stage es OBSERVADO, aseguramos flag
+      if (qc === 'OBSERVADO') items[key].has_obs = true;
+    }
+
+    return res.json({ ok: true, items });
+  } catch (err) {
+    console.error('qc summary error:', err);
+    return res.status(500).json({ error: 'Error leyendo resumen QC', detail: err.message });
+  }
+});
+
 
 module.exports = router;

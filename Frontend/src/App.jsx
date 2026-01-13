@@ -1,3 +1,4 @@
+// src/App.jsx
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import usePortones from './hooks/usePortones';
@@ -229,7 +230,6 @@ function Board({ stages }) {
         .map((p) => Number(p?.nv))
         .filter((n) => Number.isInteger(n));
 
-      // Limpieza rápida si no hay ids
       if (!pIds.length) setQcSumPortones({});
       if (!iIds.length) setQcSumIpanel({});
 
@@ -253,7 +253,6 @@ function Board({ stages }) {
       setQcSumIpanel(iMap);
     } catch (e) {
       console.warn('No se pudo cargar qcSummary:', e?.message || e);
-      // No rompemos UI: simplemente se verá más, pero no se cae.
     }
   }, [portones, ipanels]);
 
@@ -318,11 +317,7 @@ function Board({ stages }) {
               onStart={isIpanel ? handleStartIpanel : handleStart}
               onStop={isIpanel ? handleStopIpanel : handleStop}
               disabledId={busyId}
-
-              // ✅ NUEVO: summary batch para ocultar finalizados instantáneo
               qcSummaryMap={qcMap}
-
-              // ✅ NUEVO: cuando guardás QC, refrescamos summary
               onQcSaved={refreshQcSummary}
             />
           );
