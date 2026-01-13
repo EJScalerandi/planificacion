@@ -208,11 +208,7 @@ export default function IndexPage({ routes = [] }) {
           <span className="idx-pill">Menú principal</span>
         </div>
 
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button className="btn" type="button" onClick={logout}>
-            Salir
-          </button>
-        </div>
+
       </div>
 
       {!hasAny ? (

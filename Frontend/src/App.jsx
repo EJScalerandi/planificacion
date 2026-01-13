@@ -1,9 +1,8 @@
-// src/App.jsx
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import usePortones from './hooks/usePortones';
 import useIpanel from './hooks/useIpanels';
-import { startStage, stopStage, startIpanelStage, stopIpanelStage } from './api';
+import { startStage, stopStage, startIpanelStage, stopIpanelStage, qcSummary } from './api';
 import StageColumn from './components/StageColumn';
 
 import StatusGatePage from '../src/components/StatusGatePage';
@@ -22,8 +21,8 @@ import AdminQcPage from '../pages/admin/AdminQcPage';
 import PreproduccionValoresTable from '../src/components/PreproduccionValoresTable';
 import UserAdminDashboard from './components/UserAdminDashboard';
 
-// ✅ nuevo index modular
 import IndexPage from '../pages/IndexPage';
+import NonProductionLayout from './components/NonProductionLayout';
 
 const color = 'var(--brand)';
 
@@ -92,6 +91,12 @@ function canAppearInStage({ item, stageKey, reqIndex }) {
   return true;
 }
 
+function chunk(arr, size) {
+  const out = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
 function Board({ stages }) {
   const { data: portones, loading, err, replaceItem, refresh, refreshing } =
     usePortones({ pollMs: 300000 });
@@ -104,6 +109,10 @@ function Board({ stages }) {
 
   const [wfPortones, setWfPortones] = useState(null);
   const [wfIpanel, setWfIpanel] = useState(null);
+
+  // ✅ QC Summary caches (instantáneo para StageColumn)
+  const [qcSumPortones, setQcSumPortones] = useState({});
+  const [qcSumIpanel, setQcSumIpanel] = useState({});
 
   useEffect(() => {
     let cancelled = false;
@@ -209,6 +218,49 @@ function Board({ stages }) {
     }
   };
 
+  // ✅ carga QC Summary (batch) cuando cambian portones/ipanels
+  const refreshQcSummary = useCallback(async () => {
+    try {
+      const pIds = (Array.isArray(portones) ? portones : [])
+        .map((p) => Number(p?.nv))
+        .filter((n) => Number.isInteger(n));
+
+      const iIds = (Array.isArray(ipanels) ? ipanels : [])
+        .map((p) => Number(p?.nv))
+        .filter((n) => Number.isInteger(n));
+
+      // Limpieza rápida si no hay ids
+      if (!pIds.length) setQcSumPortones({});
+      if (!iIds.length) setQcSumIpanel({});
+
+      async function loadLine(line, ids) {
+        const out = {};
+        const parts = chunk(ids, 200);
+        for (const part of parts) {
+          const resp = await qcSummary({ line, item_ids: part });
+          const items = resp?.items || {};
+          for (const k of Object.keys(items)) out[k] = items[k];
+        }
+        return out;
+      }
+
+      const [pMap, iMap] = await Promise.all([
+        pIds.length ? loadLine('portones', pIds) : Promise.resolve({}),
+        iIds.length ? loadLine('ipanel', iIds) : Promise.resolve({}),
+      ]);
+
+      setQcSumPortones(pMap);
+      setQcSumIpanel(iMap);
+    } catch (e) {
+      console.warn('No se pudo cargar qcSummary:', e?.message || e);
+      // No rompemos UI: simplemente se verá más, pero no se cae.
+    }
+  }, [portones, ipanels]);
+
+  useEffect(() => {
+    refreshQcSummary();
+  }, [refreshQcSummary]);
+
   if (loading) return <div className="container">Cargando…</div>;
   if (err) return <div className="container" style={{ color: 'crimson' }}>Error: {err}</div>;
 
@@ -218,7 +270,7 @@ function Board({ stages }) {
         <h2 className="h1" style={{ borderColor: color }}>DE GRANDIS PORTONES</h2>
         <button
           className="btn btn--brand"
-          onClick={() => { refresh(); refreshIpanel(); }}
+          onClick={() => { refresh(); refreshIpanel(); refreshQcSummary(); }}
           disabled={refreshing}
         >
           {refreshing ? 'Actualizando…' : 'Refrescar'}
@@ -254,6 +306,8 @@ function Board({ stages }) {
             canAppearInStage({ item, stageKey: s.key, reqIndex })
           );
 
+          const qcMap = isIpanel ? qcSumIpanel : qcSumPortones;
+
           return (
             <StageColumn
               key={`${s.mode || 'porton'}-${s.key}-${s.label}`}
@@ -264,6 +318,12 @@ function Board({ stages }) {
               onStart={isIpanel ? handleStartIpanel : handleStart}
               onStop={isIpanel ? handleStopIpanel : handleStop}
               disabledId={busyId}
+
+              // ✅ NUEVO: summary batch para ocultar finalizados instantáneo
+              qcSummaryMap={qcMap}
+
+              // ✅ NUEVO: cuando guardás QC, refrescamos summary
+              onQcSaved={refreshQcSummary}
             />
           );
         })}
@@ -274,7 +334,6 @@ function Board({ stages }) {
 
 const ONE = (key, label) => [{ key, label, mode: 'porton' }];
 
-// OJO: ya no usamos "/" para el tablero, lo movemos a "/board"
 const ROUTES = [
   {
     path: '/board',
@@ -391,18 +450,24 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* index central */}
-        <Route path="/index" element={<IndexPage routes={ROUTES} />} />
-
-        {/* "/" siempre al login */}
         <Route path="/" element={<Navigate to="/admin/login" replace />} />
+        <Route path="/admin/login" element={<AdminLoginPage />} />
 
-        {/* Boards / Producción */}
+        <Route element={<NonProductionLayout />}>
+          <Route path="/index" element={<IndexPage routes={ROUTES} />} />
+
+          <Route path="/admin" element={<AdminHomePage />} />
+          <Route path="/admin/qc" element={<AdminQcPage />} />
+          <Route path="/admin/workflow" element={<WorkflowDesignerPage />} />
+
+          <Route path="/a" element={<PreproduccionValoresTable />} />
+          <Route path="/b" element={<UserAdminDashboard />} />
+        </Route>
+
         {ROUTES.map((r) => (
           <Route key={r.path} path={r.path} element={<Board stages={r.stages} />} />
         ))}
 
-        {/* Vistas varias */}
         <Route path="/ipanel" element={<IpanelReadOnlyPage />} />
         <Route path="/Diseño" element={<Navigate to="/diseno" replace />} />
         <Route path="/statusGate" element={<StatusGatePage />} />
@@ -412,17 +477,6 @@ export default function App() {
         <Route path="/statusIpanels" element={<StatusIpanelsPage />} />
         <Route path="/stats/portones" element={<PortonesStatsPage />} />
 
-        {/* Admin */}
-        <Route path="/admin/login" element={<AdminLoginPage />} />
-        <Route path="/admin" element={<AdminHomePage />} />
-        <Route path="/admin/qc" element={<AdminQcPage />} />
-        <Route path="/admin/workflow" element={<WorkflowDesignerPage />} />
-
-        {/* Preproducción / Autorizaciones */}
-        <Route path="/a" element={<PreproduccionValoresTable />} />
-        <Route path="/b" element={<UserAdminDashboard />} />
-
-        {/* catch-all */}
         <Route path="*" element={<Navigate to="/admin/login" replace />} />
       </Routes>
     </BrowserRouter>

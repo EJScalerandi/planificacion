@@ -1,5 +1,4 @@
-// src/components/StageColumn.jsx
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { qcAuthorize, qcGetMotives, qcHistory } from '../api';
 
 const bordo = '#008241ff';
@@ -7,17 +6,14 @@ const bordo = '#008241ff';
 function low(v) {
   return String(v ?? '').toLowerCase();
 }
-
 function up(v) {
   return String(v ?? '').trim().toUpperCase();
 }
-
 function fmt(dt) {
   return dt
     ? new Date(dt).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })
     : '';
 }
-
 function mapModeToLine(mode) {
   return mode === 'ipanel' ? 'ipanel' : 'portones';
 }
@@ -45,7 +41,6 @@ function getQcItemId(item, line) {
 function pad2(n) {
   return String(n).padStart(2, '0');
 }
-
 function toISODate10(v) {
   if (!v) return '';
   const s = String(v).trim();
@@ -72,7 +67,6 @@ function toISODate10(v) {
 
   return '';
 }
-
 function todayISO10Utc() {
   const now = new Date();
   const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
@@ -101,8 +95,6 @@ function mondayBeforeISO10(dateLike) {
 
 /**
  * Fecha de producción del ítem (ISO10 si se puede).
- * En portones suele venir como `fecha_prod`.
- * Dejamos fallback por si el backend usa otro nombre.
  */
 function getProdDate10(item) {
   const raw =
@@ -122,8 +114,8 @@ function getProdDate10(item) {
 /**
  * Regla de cola:
  * - Debe aparecer (pendiente/finalizado) a partir del lunes anterior a su fecha_prod.
- * - Si no hay fecha_prod válida, NO lo bloqueamos (para no “perder” items).
- * - Si ya está "en proceso", siempre visible (ya entró).
+ * - Si no hay fecha_prod válida, NO lo bloqueamos.
+ * - Si ya está "en proceso", siempre visible.
  */
 function canEnterQueue(item, effKey) {
   const st = low(item?.[effKey]);
@@ -139,10 +131,51 @@ function canEnterQueue(item, effKey) {
   return today10 >= allowFrom;
 }
 
+// ===== autorización administración (para Despacho) =====
+function truthyAuth(v) {
+  if (v === true) return true;
+  if (v === false || v == null) return false;
+
+  if (typeof v === 'number') return v !== 0;
+
+  const s = String(v).trim().toUpperCase();
+  if (!s) return false;
+
+  if (s === '1' || s === 'SI' || s === 'S' || s === 'OK' || s === 'APROBADO' || s === 'AUTORIZADO' || s === 'TRUE')
+    return true;
+
+  if (s === '0' || s === 'NO' || s === 'N' || s === 'PENDIENTE' || s === 'FALSE')
+    return false;
+
+  return !s.includes('NO') && !s.includes('PEND');
+}
+
+function isAdminAuthorized(item) {
+  const candidates = [
+    item?.aut_admin,
+    item?.autorizacion_admin,
+    item?.autorizacion_adm,
+    item?.aut_adm,
+    item?.admin_ok,
+    item?.aprobado_admin,
+    item?.aprobado_adm,
+    item?.autorizado_admin,
+    item?.autorizado_adm,
+    item?.administracion_ok,
+  ];
+
+  if (candidates.some((v) => truthyAuth(v) === true)) return true;
+
+  const anyDefined = candidates.some((v) => v !== undefined);
+  if (!anyDefined) return true;
+
+  return false;
+}
+
 // =====================
 // Modal QC
 // =====================
-function QcModal({ open, onClose, item, line, stageKey, title }) {
+function QcModal({ open, onClose, item, line, stageKey, title, onSaved }) {
   const [pin, setPin] = useState('');
   const [status, setStatus] = useState('APROBADO');
   const [motiveId, setMotiveId] = useState('');
@@ -199,9 +232,7 @@ function QcModal({ open, onClose, item, line, stageKey, title }) {
     }
 
     run();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [open, status, item, line, stageKey]);
 
   const submit = async () => {
@@ -244,6 +275,7 @@ function QcModal({ open, onClose, item, line, stageKey, title }) {
       const uname = resp?.user?.name ? ` (${resp.user.name})` : '';
 
       alert(`QC registrado: ${qc_status}${uname}`);
+      onSaved?.(); // para que el Board refresque qcSummary si querés
       onClose?.();
     } catch (e) {
       setErr(e?.response?.data?.error || e.message);
@@ -258,9 +290,7 @@ function QcModal({ open, onClose, item, line, stageKey, title }) {
     <div
       role="dialog"
       aria-modal="true"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose?.();
-      }}
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
       style={{
         position: 'fixed',
         inset: 0,
@@ -294,9 +324,7 @@ function QcModal({ open, onClose, item, line, stageKey, title }) {
           }}
         >
           <div style={{ fontWeight: 900 }}>QC – {title}</div>
-          <button className="btn" type="button" onClick={onClose}>
-            Cerrar
-          </button>
+          <button className="btn" type="button" onClick={onClose}>Cerrar</button>
         </div>
 
         <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -328,7 +356,9 @@ function QcModal({ open, onClose, item, line, stageKey, title }) {
 
           {needsMotive && (
             <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 12 }}>
-              <div style={{ fontWeight: 900, marginBottom: 8 }}>Motivo ({String(status).toUpperCase()})</div>
+              <div style={{ fontWeight: 900, marginBottom: 8 }}>
+                Motivo ({String(status).toUpperCase()})
+              </div>
 
               {loadingMotives ? (
                 <div style={{ opacity: 0.8 }}>Cargando motivos…</div>
@@ -366,9 +396,46 @@ function QcModal({ open, onClose, item, line, stageKey, title }) {
 }
 
 // =====================
-// ✅ Modal Observaciones
+// Modal Observaciones (carga on-demand)
 // =====================
-function ObservacionesModal({ open, onClose, title, item, observations = [] }) {
+function ObservacionesModal({ open, onClose, title, item, line }) {
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+  const [observations, setObservations] = useState([]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function run() {
+      if (!open || !item) return;
+
+      const qcId = getQcItemId(item, line);
+      if (!Number.isInteger(qcId)) {
+        setObservations([]);
+        return;
+      }
+
+      try {
+        setErr('');
+        setLoading(true);
+        const resp = await qcHistory({ line, item_id: qcId });
+        const arr = Array.isArray(resp) ? resp : [];
+        const onlyObs = arr.filter((x) => up(x?.qc_status) === 'OBSERVADO');
+        if (cancelled) return;
+        setObservations(onlyObs);
+      } catch (e) {
+        if (cancelled) return;
+        setErr(e?.response?.data?.error || e.message);
+        setObservations([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    run();
+    return () => { cancelled = true; };
+  }, [open, item, line]);
+
   if (!open || !item) return null;
 
   const nv = item?.nv != null ? `NV ${item.nv}` : '';
@@ -388,9 +455,7 @@ function ObservacionesModal({ open, onClose, title, item, observations = [] }) {
     <div
       role="dialog"
       aria-modal="true"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose?.();
-      }}
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
       style={{
         position: 'fixed',
         inset: 0,
@@ -424,13 +489,15 @@ function ObservacionesModal({ open, onClose, title, item, observations = [] }) {
           }}
         >
           <div style={{ fontWeight: 900, color: '#991b1b' }}>Observaciones · {head}</div>
-          <button className="btn" type="button" onClick={onClose}>
-            Cerrar
-          </button>
+          <button className="btn" type="button" onClick={onClose}>Cerrar</button>
         </div>
 
         <div style={{ padding: 14 }}>
-          {rows.length === 0 ? (
+          {err && <div style={{ color: 'crimson', fontWeight: 800, marginBottom: 10 }}>{err}</div>}
+
+          {loading ? (
+            <div style={{ opacity: 0.8 }}>Cargando observaciones…</div>
+          ) : rows.length === 0 ? (
             <div style={{ opacity: 0.75 }}>No hay observaciones registradas.</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -444,19 +511,13 @@ function ObservacionesModal({ open, onClose, title, item, observations = [] }) {
                     padding: 12,
                   }}
                 >
-                  <div style={{ fontWeight: 900, color: '#7f1d1d', marginBottom: 6 }}>{r.status || 'OBSERVADO'}</div>
-                  <div style={{ fontSize: 13 }}>
-                    <b>Sector:</b> {r.sector}
+                  <div style={{ fontWeight: 900, color: '#7f1d1d', marginBottom: 6 }}>
+                    {r.status || 'OBSERVADO'}
                   </div>
-                  <div style={{ fontSize: 13 }}>
-                    <b>Fecha:</b> {r.fecha ? fmt(r.fecha) : '-'}
-                  </div>
-                  <div style={{ fontSize: 13 }}>
-                    <b>Motivo:</b> {r.motivo}
-                  </div>
-                  <div style={{ fontSize: 13 }}>
-                    <b>Quién puso el PIN:</b> {r.quien}
-                  </div>
+                  <div style={{ fontSize: 13 }}><b>Sector:</b> {r.sector}</div>
+                  <div style={{ fontSize: 13 }}><b>Fecha:</b> {r.fecha ? fmt(r.fecha) : '-'}</div>
+                  <div style={{ fontSize: 13 }}><b>Motivo:</b> {r.motivo}</div>
+                  <div style={{ fontSize: 13 }}><b>Quién puso el PIN:</b> {r.quien}</div>
                 </div>
               ))}
             </div>
@@ -476,6 +537,12 @@ export default function StageColumn({
   onStop,
   disabledId,
   pdfBaseUrl = 'https://integrador-six-zeta.vercel.app',
+
+  // ✅ NUEVO: mapa QC summary batch (item_id -> {has_obs, latest_by_stage})
+  qcSummaryMap = {},
+
+  // ✅ opcional: para pedir al Board que refresque summary luego de un QC
+  onQcSaved,
 }) {
   // QC modal
   const [qcOpen, setQcOpen] = useState(false);
@@ -485,49 +552,29 @@ export default function StageColumn({
   const [obsOpen, setObsOpen] = useState(false);
   const [obsTarget, setObsTarget] = useState(null);
 
-  // cache por qcItemId:
-  // {
-  //   loaded, loading, error,
-  //   hasObs, list (solo OBSERVADO),
-  //   latestStageStatus (último QC de ESTA etapa)
-  // }
-  const [obsById, setObsById] = useState({});
-  const obsByIdRef = useRef(obsById);
-  useEffect(() => {
-    obsByIdRef.current = obsById;
-  }, [obsById]);
-
   const effKey = mode === 'ipanel' && stageKey === 'plegadora' ? 'plegado' : stageKey;
   const line = mapModeToLine(mode);
 
-  // ✅ regla de ocultado para FINALIZADO
-  // Se oculta SOLO si FINALIZADO y último QC de esta etapa es APROBADO u OBSERVADO.
-  // Si RECHAZADO o no hay QC => se muestra.
+  const isDespachoColumn = String(effKey || '').trim() === 'despacho';
+
+  // ✅ ocultado para FINALIZADO (instantáneo: no llama qcHistory)
   function shouldHideFinalizado(p) {
     const qcId = getQcItemId(p, line);
     if (!Number.isInteger(qcId)) return false;
 
-    const latest = up(obsByIdRef.current?.[qcId]?.latestStageStatus);
-    if (!latest) return false; // sin QC => visible
+    const info = qcSummaryMap?.[qcId];
+    const latest = up(info?.latest_by_stage?.[String(effKey || '').trim()] || '');
+    if (!latest) return false;
 
     return latest === 'APROBADO' || latest === 'OBSERVADO';
   }
 
   // ✅ orden estable + cola por fecha de producción
-  // - Se consideran: pendiente / en proceso / finalizado
-  // - Se muestran (pendiente/finalizado) a partir del lunes anterior a fecha_prod
-  // - Orden:
-  //    1) en proceso
-  //    2) pendiente
-  //    3) finalizado
-  //   Dentro del grupo: fecha_prod ASC (más antigua arriba). Sin fecha => al final del grupo.
   const ordered = useMemo(() => {
     const filtered = (items || [])
       .filter((p) => {
         const st = low(p?.[effKey]);
         if (!(st === 'pendiente' || st === 'en proceso' || st === 'finalizado')) return false;
-
-        // cola: a partir del lunes anterior (excepto en proceso, que siempre visible)
         return canEnterQueue(p, effKey);
       })
       .slice();
@@ -535,7 +582,7 @@ export default function StageColumn({
     const groupRank = (st) => {
       if (st === 'en proceso') return 0;
       if (st === 'pendiente') return 1;
-      return 2; // finalizado
+      return 2;
     };
 
     const dateRank = (prod10) => (prod10 ? prod10 : '9999-12-31');
@@ -558,94 +605,12 @@ export default function StageColumn({
     return filtered;
   }, [items, effKey]);
 
-  const visibleQcIdsKey = useMemo(() => {
-    const ids = ordered.map((p) => getQcItemId(p, line)).filter((x) => Number.isInteger(x));
-    return ids.join(',');
-  }, [ordered, line]);
-
-  // Prefetch QC (usamos history completo):
-  // - hasObs/list: solo OBSERVADO (para el "!")
-  // - latestStageStatus: último QC para effKey (para ocultar finalizados cuando corresponde)
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadChunk(chunk) {
-      setObsById((prev) => {
-        const next = { ...prev };
-        for (const id of chunk) {
-          const curr = next[id] || {};
-          next[id] = { ...curr, loading: true, loaded: Boolean(curr.loaded), error: '' };
-        }
-        return next;
-      });
-
-      const results = await Promise.allSettled(
-        chunk.map(async (id) => {
-          const resp = await qcHistory({ line, item_id: id });
-          const arr = Array.isArray(resp) ? resp : [];
-
-          // OBSERVADO para el "!"
-          const obs = arr.filter((x) => up(x?.qc_status) === 'OBSERVADO');
-
-          // Último QC de ESTA etapa (arr viene desc, así que el primero que matchee es el último)
-          const latestForStage = arr.find((x) => String(x?.stage_key || '').trim() === String(effKey || '').trim());
-          const latestStageStatus = latestForStage?.qc_status ? up(latestForStage.qc_status) : '';
-
-          return { id, obs, latestStageStatus };
-        })
-      );
-
-      if (cancelled) return;
-
-      setObsById((prev) => {
-        const next = { ...prev };
-        for (const r of results) {
-          if (r.status === 'fulfilled') {
-            next[r.value.id] = {
-              loaded: true,
-              loading: false,
-              error: '',
-              hasObs: r.value.obs.length > 0,
-              list: r.value.obs,
-              latestStageStatus: r.value.latestStageStatus || '',
-            };
-          }
-        }
-        return next;
-      });
-    }
-
-    const ids = (visibleQcIdsKey || '')
-      .split(',')
-      .map((x) => Number(x))
-      .filter((x) => Number.isInteger(x));
-
-    const missing = ids.filter((id) => {
-      const curr = obsByIdRef.current?.[id];
-      return !(curr?.loaded === true) && !(curr?.loading === true);
-    });
-
-    if (!missing.length) return;
-
-    (async () => {
-      const chunkSize = 6;
-      for (let i = 0; i < missing.length; i += chunkSize) {
-        await loadChunk(missing.slice(i, i + chunkSize));
-        if (cancelled) return;
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [line, visibleQcIdsKey, effKey]);
-
   const openQc = (p) => {
     setQcTarget(p);
     setQcOpen(true);
   };
 
-  // PDFs (mantengo lo tuyo)
+  // PDFs
   const showPdfButtons = mode !== 'ipanel';
   const canPdfBase = !!String(pdfBaseUrl || '').trim();
   const pdfButtons = useMemo(
@@ -701,13 +666,7 @@ export default function StageColumn({
         {ordered
           .filter((p) => {
             const st = low(p?.[effKey]);
-
-            if (st === 'finalizado') {
-              // ✅ solo ocultar si finalizado + QC OK (APROBADO/OBSERVADO)
-              return !shouldHideFinalizado(p);
-            }
-
-            // pendiente / en proceso => siempre visibles (ya pasaron por cola arriba)
+            if (st === 'finalizado') return !shouldHideFinalizado(p);
             return st === 'pendiente' || st === 'en proceso';
           })
           .map((p) => {
@@ -716,23 +675,26 @@ export default function StageColumn({
             const canStart = st === 'pendiente';
 
             const qcId = getQcItemId(p, line);
-            const obsInfo = Number.isInteger(qcId) ? obsById[qcId] : null;
-            const hasObs = Boolean(obsInfo?.hasObs);
+            const info = Number.isInteger(qcId) ? qcSummaryMap?.[qcId] : null;
+            const hasObs = Boolean(info?.has_obs);
 
             const prod10 = getProdDate10(p);
+
+            // ✅ Despacho: si NO está autorizado por administración => recuadro rojo
+            const needsAdminAuthRed = isDespachoColumn && !isAdminAuthorized(p);
 
             return (
               <div
                 key={`${mode}-${p?.id ?? `${p?.nv}-${p?.nlista}-${p?.partida}`}`}
                 style={{
-                  border: '1px solid var(--border)',
+                  border: needsAdminAuthRed ? '2px solid #ef4444' : '1px solid var(--border)',
                   borderRadius: 12,
                   padding: '10px 12px',
-                  background: 'var(--surface)',
+                  background: needsAdminAuthRed ? '#fff5f5' : 'var(--surface)',
                   position: 'relative',
+                  boxShadow: needsAdminAuthRed ? '0 8px 22px rgba(239,68,68,0.16)' : undefined,
                 }}
               >
-                {/* ✅ CLICK: abre modal con Sector/Fecha/Motivo/Usuario */}
                 {hasObs ? (
                   <button
                     type="button"
@@ -772,6 +734,12 @@ export default function StageColumn({
                     <>
                       {' '}
                       · Producción: <b>{prod10}</b>
+                    </>
+                  ) : null}
+                  {needsAdminAuthRed ? (
+                    <>
+                      {' '}
+                      · <b style={{ color: '#b91c1c' }}>Falta autorización Administración</b>
                     </>
                   ) : null}
                 </div>
@@ -829,6 +797,7 @@ export default function StageColumn({
         line={line}
         stageKey={effKey}
         title={title}
+        onSaved={() => onQcSaved?.()}
       />
 
       {/* Modal Observaciones */}
@@ -840,10 +809,7 @@ export default function StageColumn({
         }}
         title={title}
         item={obsTarget}
-        observations={(() => {
-          const qcId = getQcItemId(obsTarget, line);
-          return Number.isInteger(qcId) ? obsById[qcId]?.list || [] : [];
-        })()}
+        line={line}
       />
     </div>
   );
