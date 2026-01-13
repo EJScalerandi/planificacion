@@ -267,3 +267,21 @@ export function setUserPassword(id, payload) {
 export function fetchScopes() {
   return api.get('/admin/scopes');
 }
+/* ============ QC (CALIDAD) ============ */
+
+// ... (qcGetMotives, qcAuthorize, qcHistory)
+
+export async function qcSummary({ line, item_ids, stage_key } = {}) {
+  const payload = {
+    line: String(line || '').trim(),
+    item_ids: Array.isArray(item_ids)
+      ? item_ids.map((n) => Number(n)).filter((n) => Number.isInteger(n))
+      : [],
+    stage_key: stage_key == null ? null : String(stage_key).trim(),
+  };
+
+  const { data } = await api.post('/qc/summary', payload, {
+    headers: { 'Cache-Control': 'no-cache' },
+  });
+  return data;
+}

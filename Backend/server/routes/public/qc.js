@@ -167,6 +167,67 @@ router.get('/qc/history/:line/:itemId', async (req, res) => {
     return res.status(500).json({ error: 'Error leyendo historial QC', detail: err.message });
   }
 });
+// POST /qc/summary
+// body: { line: 'portones'|'ipanel', item_ids: number[], stage_key?: string|null }
+// resp: [{ item_id, has_obs, latest_stage_status, latest_stage_at }]
+router.post('/qc/summary', async (req, res) => {
+  try {
+    const { line, item_ids, stage_key } = req.body || {};
+
+    const sLine = String(line || '').trim();
+    if (!isValidLine(sLine)) return res.status(400).json({ error: 'line inválida' });
+
+    const ids = Array.isArray(item_ids)
+      ? item_ids.map((x) => Number(x)).filter((n) => Number.isInteger(n))
+      : [];
+
+    if (!ids.length) return res.json([]); // nada que resumir
+
+    // límite defensivo para no matar la DB si alguien manda 50k ids
+    if (ids.length > 500) return res.status(400).json({ error: 'item_ids demasiado grande (max 500)' });
+
+    const stageKey = stage_key == null ? null : String(stage_key).trim();
+
+    const { rows } = await pool.query(
+      `
+      with ids as (
+        select unnest($2::int[]) as item_id
+      )
+      select
+        ids.item_id,
+        coalesce(obs.has_obs, false) as has_obs,
+        ls.qc_status as latest_stage_status,
+        ls.created_at as latest_stage_at
+      from ids
+      left join lateral (
+        select true as has_obs
+        from public.qc_event e
+        where e.line = $1
+          and e.item_id = ids.item_id
+          and e.qc_status = 'OBSERVADO'
+        limit 1
+      ) obs on true
+      left join lateral (
+        select e.qc_status, e.created_at
+        from public.qc_event e
+        where e.line = $1
+          and e.item_id = ids.item_id
+          and ($3::text is null or e.stage_key = $3::text)
+        order by e.created_at desc
+        limit 1
+      ) ls on true
+      order by ids.item_id;
+      `,
+      [sLine, ids, stageKey]
+    );
+
+    return res.json(rows);
+  } catch (err) {
+    console.error('qc summary error:', err);
+    return res.status(500).json({ error: 'Error leyendo resumen QC', detail: err.message });
+  }
+});
+
 
 // POST /qc/authorize
 router.post('/qc/authorize', async (req, res) => {
