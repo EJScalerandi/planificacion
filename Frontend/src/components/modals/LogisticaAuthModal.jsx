@@ -1,3 +1,4 @@
+// src/components/modals/LogisticaAuthModal.jsx
 import React, { useEffect, useMemo, useState } from 'react';
 import BaseModal from './BaseModal';
 
@@ -18,7 +19,7 @@ function isUrlLike(s) {
   }
 }
 
-export default function LogisticaAuthModal({ open, row, onClose, onSubmit, busy }) {
+export default function LogisticaAuthModal({ open, row, onClose, onSubmit, busy, recommendations }) {
   const data = row?.data || {};
 
   // Keys donde vamos a guardar (persistencia en preproduccion via patch)
@@ -40,6 +41,8 @@ export default function LogisticaAuthModal({ open, row, onClose, onSubmit, busy 
   const [touched, setTouched] = useState({});
   const [formError, setFormError] = useState('');
 
+  const [replaceAll, setReplaceAll] = useState(false);
+
   // Prefill cuando abre
   useEffect(() => {
     if (!open) return;
@@ -51,7 +54,20 @@ export default function LogisticaAuthModal({ open, row, onClose, onSubmit, busy 
 
     setTouched({});
     setFormError('');
+    setReplaceAll(false);
   }, [open, row, KEYS, data]);
+
+  const applyRecommendations = () => {
+    const rec = recommendations || null;
+    if (!rec) return;
+
+    const shouldSet = (curr) => replaceAll || !String(curr || '').trim();
+
+    if (shouldSet(nombreCliente) && rec.nombreCliente) setNombreCliente(rec.nombreCliente);
+    if (shouldSet(fechaContacto) && rec.fechaContacto) setFechaContacto(rec.fechaContacto);
+    if (shouldSet(mapsUrl) && rec.mapsUrl) setMapsUrl(rec.mapsUrl);
+    if (shouldSet(email) && rec.email) setEmail(rec.email);
+  };
 
   const errors = useMemo(() => {
     const e = {};
@@ -115,6 +131,46 @@ export default function LogisticaAuthModal({ open, row, onClose, onSubmit, busy 
           submit();
         }}
       >
+        {recommendations ? (
+          <div
+            style={{
+              border: '1px solid #e5e7eb',
+              background: '#f9fafb',
+              padding: 10,
+              borderRadius: 12,
+              marginBottom: 10,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 800 }}>Recomendados por distribuidor</div>
+              <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12 }}>
+                  <input type="checkbox" checked={replaceAll} onChange={(e) => setReplaceAll(e.target.checked)} />
+                  Reemplazar todo
+                </label>
+                <button type="button" className="btn btn--brand pp-btnCell" onClick={applyRecommendations} disabled={busy}>
+                  Aplicar recomendados
+                </button>
+              </div>
+            </div>
+
+            <div style={{ marginTop: 8, fontSize: 12, color: '#374151', display: 'grid', gap: 4 }}>
+              <div>
+                <b>Nombre:</b> {recommendations.nombreCliente || <span style={{ color: '#9ca3af' }}>(vacío)</span>}
+              </div>
+              <div>
+                <b>Fecha contacto:</b> {recommendations.fechaContacto || <span style={{ color: '#9ca3af' }}>(vacío)</span>}
+              </div>
+              <div>
+                <b>Maps:</b> {recommendations.mapsUrl || <span style={{ color: '#9ca3af' }}>(vacío)</span>}
+              </div>
+              <div>
+                <b>Email:</b> {recommendations.email || <span style={{ color: '#9ca3af' }}>(vacío)</span>}
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         <div className="pp-field">
           <div className="pp-label">
             Nombre del cliente <span className="pp-req">*</span>

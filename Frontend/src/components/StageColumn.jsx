@@ -23,14 +23,14 @@ function mapModeToLine(mode) {
  * => usamos NV como item_id por defecto.
  */
 function getQcItemId(item, line) {
-  const nv = Number(item?.nv);
+  const nv = Number(item?.nv ?? item?.NV);
   if (Number.isInteger(nv)) return nv;
 
   if (line === 'portones') {
-    const nl = Number(item?.nlista);
+    const nl = Number(item?.nlista ?? item?.NLista);
     if (Number.isInteger(nl)) return nl;
   }
-  const pa = Number(item?.partida);
+  const pa = Number(item?.partida ?? item?.PARTIDA);
   if (Number.isInteger(pa)) return pa;
 
   return null;
@@ -58,19 +58,23 @@ function toISODate10(v) {
 
   const d = new Date(s);
   if (!Number.isNaN(d.getTime())) {
-    const yyyy = d.getUTCFullYear();
-    const mm = pad2(d.getUTCMonth() + 1);
-    const dd = pad2(d.getUTCDate());
+    // usamos fecha local, no UTC
+    const yyyy = d.getFullYear();
+    const mm = pad2(d.getMonth() + 1);
+    const dd = pad2(d.getDate());
     return `${yyyy}-${mm}-${dd}`;
   }
 
   return '';
 }
-function todayISO10Utc() {
-  const now = new Date();
-  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
+
+// ✅ hoy local (Argentina)
+function todayISO10Local() {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
+
+// lunes anterior a la semana de producción (para cola)
 function mondayBeforeISO10(dateLike) {
   const date10 = toISODate10(dateLike);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date10)) return '';
@@ -85,6 +89,7 @@ function mondayBeforeISO10(dateLike) {
 
   return `${mondayPrev.getUTCFullYear()}-${pad2(mondayPrev.getUTCMonth() + 1)}-${pad2(mondayPrev.getUTCDate())}`;
 }
+
 function getProdDate10(item) {
   const raw =
     item?.fecha_prod ??
@@ -99,6 +104,7 @@ function getProdDate10(item) {
 
   return toISODate10(raw);
 }
+
 function canEnterQueue(item, effKey) {
   const st = low(item?.[effKey]);
   if (st === 'en proceso') return true;
@@ -109,48 +115,35 @@ function canEnterQueue(item, effKey) {
   const allowFrom = mondayBeforeISO10(prod10);
   if (!allowFrom) return true;
 
-  const today10 = todayISO10Utc();
+  const today10 = todayISO10Local();
   return today10 >= allowFrom;
 }
 
-// ===== autorización administración (para Despacho) =====
-function truthyAuth(v) {
-  if (v === true) return true;
-  if (v === false || v == null) return false;
+/**
+ * ✅ Fecha salida/entrega para la regla de despacho
+ * Priorizamos lo que vos tenés: fecha_salida_imput
+ */
+function getSalidaDate10(item) {
+  const raw =
+    item?.fecha_salida_imput ??
+    item?.Fecha_Salida_Imput ??
+    item?.fecha_salida ??
+    item?.Fecha_Salida ??
+    item?.fecha_entrega_imput ??
+    item?.Fecha_Entrega_Imput ??
+    item?.fecha_entrega ??
+    item?.Fecha_Entrega ??
+    null;
 
-  if (typeof v === 'number') return v !== 0;
-
-  const s = String(v).trim().toUpperCase();
-  if (!s) return false;
-
-  if (s === '1' || s === 'SI' || s === 'S' || s === 'OK' || s === 'APROBADO' || s === 'AUTORIZADO' || s === 'TRUE')
-    return true;
-
-  if (s === '0' || s === 'NO' || s === 'N' || s === 'PENDIENTE' || s === 'FALSE')
-    return false;
-
-  return !s.includes('NO') && !s.includes('PEND');
+  return toISODate10(raw);
 }
-function isAdminAuthorized(item) {
-  const candidates = [
-    item?.aut_admin,
-    item?.autorizacion_admin,
-    item?.autorizacion_adm,
-    item?.aut_adm,
-    item?.admin_ok,
-    item?.aprobado_admin,
-    item?.aprobado_adm,
-    item?.autorizado_admin,
-    item?.autorizado_adm,
-    item?.administracion_ok,
-  ];
 
-  if (candidates.some((v) => truthyAuth(v) === true)) return true;
-
-  const anyDefined = candidates.some((v) => v !== undefined);
-  if (!anyDefined) return true;
-
-  return false;
+/**
+ * ✅ Estado “cliente en regla” (modal)
+ * Requisito: si NO existe o es false => NO está en regla.
+ */
+function isClienteEnRegla(item) {
+  return item?.admin_cliente_en_regla === true;
 }
 
 // =====================
@@ -612,7 +605,7 @@ export default function StageColumn({
   stageKey,
   mode = 'porton',
   items = [],
-  allItems = [], // ✅ para historial (lista completa)
+  allItems = [],
   onStart,
   onStop,
   disabledId,
@@ -626,19 +619,20 @@ export default function StageColumn({
   const [obsOpen, setObsOpen] = useState(false);
   const [obsTarget, setObsTarget] = useState(null);
 
-  // ✅ historial modal
   const [histOpen, setHistOpen] = useState(false);
 
   const effKey = mode === 'ipanel' && stageKey === 'plegadora' ? 'plegado' : stageKey;
   const line = mapModeToLine(mode);
-  const isDespachoColumn = String(effKey || '').trim() === 'despacho';
+
+  const keyTrim = String(effKey || '').trim();
+  const isDespachoColumn = keyTrim === 'despacho';
 
   function shouldHideFinalizado(p) {
     const qcId = getQcItemId(p, line);
     if (!Number.isInteger(qcId)) return false;
 
     const info = qcSummaryMap?.[qcId];
-    const latest = up(info?.latest_by_stage?.[String(effKey || '').trim()] || '');
+    const latest = up(info?.latest_by_stage?.[keyTrim] || '');
     if (!latest) return false;
 
     return latest === 'APROBADO' || latest === 'OBSERVADO';
@@ -684,14 +678,11 @@ export default function StageColumn({
     setQcOpen(true);
   };
 
-  // =====================
-  // PDFs por sector
-  // =====================
   const showPdfButtons = mode !== 'ipanel';
   const canPdfBase = !!String(pdfBaseUrl || '').trim();
 
   const pdfButtons = useMemo(() => {
-    const k = String(effKey || '').trim();
+    const k = String(keyTrim || '').trim();
 
     if (k === 'diseno' || k === 'laser') {
       return [{ tipo: 'diseno', label: 'Diseño', title: 'PDF Diseño', icon: '📐' }];
@@ -713,7 +704,7 @@ export default function StageColumn({
     }
 
     return [{ tipo: 'arm-primario', label: 'AP', title: 'PDF Armado Primario (por NV)', icon: '🧰' }];
-  }, [effKey]);
+  }, [keyTrim]);
 
   function openPdf(tipo, { partida, nv }) {
     const base = (pdfBaseUrl || '').trim();
@@ -731,14 +722,10 @@ export default function StageColumn({
     window.open(url, '_blank', 'noopener,noreferrer');
   }
 
-  // =====================
-  // ✅ Historial últimos 10 (para modal)
-  // =====================
   const historyLast10 = useMemo(() => {
-    // pedido: historial por sector de portones
     if (mode === 'ipanel') return [];
 
-    const key = String(effKey || '').trim();
+    const key = String(keyTrim || '').trim();
     const finKey = `${key}_fin`;
 
     const src = Array.isArray(allItems) ? allItems : [];
@@ -782,7 +769,7 @@ export default function StageColumn({
         qcLatest,
       };
     });
-  }, [mode, effKey, allItems, qcSummaryMap]);
+  }, [mode, keyTrim, allItems, qcSummaryMap]);
 
   return (
     <div
@@ -810,7 +797,6 @@ export default function StageColumn({
       >
         <div>{title}</div>
 
-        {/* ✅ Botón historial */}
         {mode !== 'ipanel' ? (
           <button
             type="button"
@@ -847,7 +833,21 @@ export default function StageColumn({
             const hasObs = Boolean(info?.has_obs);
 
             const prod10 = getProdDate10(p);
-            const needsAdminAuthRed = isDespachoColumn && !isAdminAuthorized(p);
+
+            // ✅ NUEVO: regla despacho (fecha salida + admin_cliente_en_regla)
+            const salida10 = getSalidaDate10(p);
+            const today10 = todayISO10Local();
+            const vencida = salida10 ? (salida10 <= today10) : false;
+
+            const enRegla = isClienteEnRegla(p);
+
+            // Si querés que también tome auth_admin como “válido”, descomentá:
+            // const enRegla = isClienteEnRegla(p) || p?.auth_admin === true;
+            if (isDespachoColumn && (p?.nv === 2633 || p?.NV === 2633 || p?.nlista === 2633)) {
+  console.log('DESPACHO ITEM', p);
+}
+
+            const needsAdminAuthRed = isDespachoColumn && vencida && !enRegla;
 
             return (
               <div
@@ -890,9 +890,9 @@ export default function StageColumn({
                   </button>
                 ) : null}
 
-                <div style={{ fontWeight: 900 }}>N° Portón {p?.nlista}</div>
-                <div>Partida {p?.partida}</div>
-                <div>NV {p?.nv}</div>
+                <div style={{ fontWeight: 900 }}>N° Portón {p?.nlista ?? p?.NLista ?? '-'}</div>
+                <div>Partida {p?.partida ?? p?.PARTIDA ?? '-'}</div>
+                <div>NV {p?.nv ?? p?.NV ?? '-'}</div>
 
                 <div style={{ fontSize: 12, opacity: 0.75 }}>
                   Estado: {p?.[effKey] || ''}
@@ -902,10 +902,20 @@ export default function StageColumn({
                       · Producción: <b>{prod10}</b>
                     </>
                   ) : null}
+
+                  {isDespachoColumn && salida10 ? (
+                    <>
+                      {' '}
+                      · Salida: <b>{salida10}</b>
+                    </>
+                  ) : null}
+
                   {needsAdminAuthRed ? (
                     <>
                       {' '}
-                      · <b style={{ color: '#b91c1c' }}>Falta autorización Administración</b>
+                      · <b style={{ color: '#b91c1c' }}>
+                        Cliente NO en regla (Administración)
+                      </b>
                     </>
                   ) : null}
                 </div>
@@ -952,7 +962,6 @@ export default function StageColumn({
           })}
       </div>
 
-      {/* ✅ Modal Historial */}
       <HistoryModal
         open={histOpen}
         onClose={() => setHistOpen(false)}
@@ -961,7 +970,6 @@ export default function StageColumn({
         rows={historyLast10}
       />
 
-      {/* Modal QC */}
       <QcModal
         open={qcOpen}
         onClose={() => {
@@ -975,7 +983,6 @@ export default function StageColumn({
         onSaved={() => onQcSaved?.()}
       />
 
-      {/* Modal Observaciones */}
       <ObservacionesModal
         open={obsOpen}
         onClose={() => {

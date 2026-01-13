@@ -293,6 +293,10 @@ body {
   border-radius: 14px;
   background: var(--surface);
   scrollbar-gutter: stable both-edges;
+
+  /* ✅ clave para overlays: crea stacking + referencia */
+  position: relative;
+  z-index: 1;
 }
 
 /* Cuando lo queremos “hasta borde” (sin bordes laterales ni radius) */
@@ -350,10 +354,13 @@ body {
   border-right: none;
 }
 
+/* ===============================
+   ✅ Sticky headers (ajuste z-index)
+   =============================== */
 .pp-th{
   position: sticky;
   top: 0;
-  z-index: 50;
+  z-index: 30; /* antes 50 */
   background: linear-gradient(180deg, var(--surface-muted), #fff);
   background-clip: padding-box;
   text-align: left;
@@ -365,7 +372,7 @@ body {
 .pp-th--filter{
   position: sticky;
   top: var(--pp-head-h);
-  z-index: 40;
+  z-index: 20; /* antes 40 */
   background: color-mix(in srgb, var(--surface-muted) 85%, #fff);
   box-shadow: inset 0 0 0 1px #d1d5db;
   padding: 8px 10px;
@@ -460,7 +467,13 @@ body {
   color: var(--state-pending-ink);
 }
 
-.pp-panelWrap{ position: relative; }
+/* ===============================
+   ✅ Panel Columnas (NO se solapa)
+   =============================== */
+.pp-panelWrap{
+  position: relative;
+  z-index: 3000; /* crea capa arriba del sticky */
+}
 
 .pp-panel{
   position: absolute;
@@ -474,8 +487,17 @@ body {
   border-radius: 14px;
   box-shadow: 0 18px 45px rgba(15, 23, 42, .14);
   padding: 10px;
-  z-index: 200;
+
+  z-index: 4000; /* arriba del header/filtros */
 }
+
+/* Si el panel lo abre un botón y querés evitar que quede “tapado” por el scroll,
+   podés reforzar también el botón, opcional:
+.pp-panelWrap > .btn{
+  position: relative;
+  z-index: 4001;
+}
+*/
 
 .pp-panelTitle{
   font-size: 12px;
@@ -530,8 +552,8 @@ body {
   }
   :root{ --pp-head-h: 46px; }
 }
-/* --- dentro de tu bloque "PreproduccionValoresTable — estilos globales" --- */
 
+/* --- dentro de tu bloque "PreproduccionValoresTable — estilos globales" --- */
 .pp-dateChecks{
   display: flex;
   align-items: center;
@@ -547,6 +569,7 @@ body {
   color: var(--ink);
   font-weight: 800;
 }
+
 /* ===========================
    Preproducción — Modal / Forms
    =========================== */
@@ -713,6 +736,7 @@ body {
   border-color: #ef4444;
   color: #991b1b;
 }
+
 /* ===========================
    Preproducción — Modales
    =========================== */
@@ -767,6 +791,7 @@ body {
   opacity: .6;
   cursor: not-allowed;
 }
+
 /* ===== Preproducción: Modal base ===== */
 .pp-modalOverlay{
   position: fixed;
@@ -1089,6 +1114,7 @@ body {
 .ua-modalBody {
   padding: 12px
 }
+
 /* =========================================================
    Index agrupado (Admin / Producción / Informativo)
    ========================================================= */
@@ -1242,6 +1268,7 @@ body {
   font-weight: 900;
   font-size: 18px;
 }
+
 /* =========================================================
    /a (Preproducción) full-bleed aunque el layout tenga max-width
    ========================================================= */

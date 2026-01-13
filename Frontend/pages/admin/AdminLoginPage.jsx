@@ -87,7 +87,7 @@ export default function AdminLoginPage() {
   return (
     <div className="container" style={{ maxWidth: 520 }}>
       <div className="header-row" style={{ alignItems: 'center' }}>
-        <h2 className="h1">Admin Login</h2>
+  
 
         {/* "/" ahora manda a /admin/login, así que "Inicio" debería ir a /index */}
         <Link className="btn" to="/index">Inicio</Link>

@@ -11,6 +11,18 @@ import {
 import LogisticaAuthModal from './modals/LogisticaAuthModal';
 import AdminAuthModal from './modals/AdminAuthModal';
 
+// ✅ NUEVO: Presets por distribuidor (RazSoc) + reglas por Sistemas
+import PreproduccionLogisticaPresets, {
+  loadLogisticaPresets,
+  resolveLogisticaPresetByDistribuidor,
+  buildLogisticaRecommendationsFromPreset,
+} from './PreproduccionLogisticaPresets';
+
+import PreproduccionSistemaFechaSalidaRules, {
+  loadSistemaFechaSalidaRules,
+  resolveRecommendedFechaSalidaISO10,
+} from './PreproduccionSistemaFechaSalidaRules';
+
 // =====================
 // NV bloqueados (no deben aparecer) - desde TXT público
 // =====================
@@ -698,6 +710,22 @@ export default function PreproduccionValoresTable() {
     savePdfFieldsToStorage(pdfFields);
   }, [pdfFields, PDF_DEFS, accessMode]);
 
+  // ✅ NUEVO: panel presets logística + reglas sistema->fecha salida (solo full)
+  const [showLogisticaPresets, setShowLogisticaPresets] = useState(false);
+  const [showSistemaRules, setShowSistemaRules] = useState(false);
+
+  const [logisticaPresets, setLogisticaPresets] = useState(() => loadLogisticaPresets());
+  const [sistemaRules, setSistemaRules] = useState(() => loadSistemaFechaSalidaRules());
+
+  const closeLogisticaPresets = () => {
+    setShowLogisticaPresets(false);
+    setLogisticaPresets(loadLogisticaPresets());
+  };
+  const closeSistemaRules = () => {
+    setShowSistemaRules(false);
+    setSistemaRules(loadSistemaFechaSalidaRules());
+  };
+
   // ===== Modales =====
   // Admin: full + admin
   const [adminModalOpen, setAdminModalOpen] = useState(false);
@@ -868,6 +896,29 @@ export default function PreproduccionValoresTable() {
       return date10 <= cutoff; // deja TODO lo pasado + hasta viernes semana siguiente
     });
   }, [rowsAfterNvExclusion, accessMode, ALL_COLS]);
+
+  // ✅ NUEVO: lista de distribuidores (RazSoc) para el dropdown de presets (sin repetidos)
+  const distributorsList = useMemo(() => {
+    const map = new Map();
+    const base = rowsAfterAccessWindow || [];
+    for (const r of base) {
+      const d = r?.data || {};
+      const rs = String(d.RazSoc ?? d.razsoc ?? '').trim();
+      if (!rs) continue;
+      const k = rs.toLowerCase();
+      if (!map.has(k)) map.set(k, rs);
+    }
+    return Array.from(map.values()).sort((a, b) => a.localeCompare(b));
+  }, [rowsAfterAccessWindow]);
+
+  // ✅ NUEVO: recomendaciones por distribuidor para el modal logística
+  const logisticaRecommendations = useMemo(() => {
+    if (!logModalRow) return null;
+    const d = logModalRow?.data || {};
+    const razSoc = d.RazSoc ?? d.razsoc ?? '';
+    const preset = resolveLogisticaPresetByDistribuidor(razSoc, logisticaPresets);
+    return buildLogisticaRecommendationsFromPreset(preset);
+  }, [logModalRow, logisticaPresets]);
 
   // ====== Estado acciones (solo full) ======
   // Regla nueva:
@@ -1402,21 +1453,51 @@ export default function PreproduccionValoresTable() {
       const v = data[col.patchKey] ?? '';
 
       if (col.type === 'date') {
+        // ✅ NUEVO: "Recomendar" fecha salida basado en Sistemas (solo para fecha_salida_imput)
+        const isFechaSalida = col.patchKey === 'fecha_salida_imput';
+        const sistemas = String(
+          data.Sistemas ?? data.sistemas ?? data.Sistema ?? data.sistema ?? data.SISTEMAS ?? ''
+        ).trim();
+
+        const recommended = isFechaSalida ? resolveRecommendedFechaSalidaISO10(sistemas, sistemaRules) : '';
+        const current = normalizeDate10(v);
+        const showRecommend = Boolean(isFechaSalida && recommended && recommended !== current);
+
         return (
-          <input
-            type="date"
-            value={normalizeDate10(v)}
-            disabled={isBusy}
-            onChange={(e) => {
-              const next = e.target.value;
-              setRows((prev) =>
-                prev.map((r) => (r.id === id ? { ...r, data: { ...(r.data || {}), [col.patchKey]: next } } : r))
-              );
-            }}
-            onBlur={() => onPatch(id, { [col.patchKey]: normalizeDate10(data[col.patchKey] ?? '') || null })}
-            className="pp-input"
-            style={{ width: 150 }}
-          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input
+              type="date"
+              value={normalizeDate10(v)}
+              disabled={isBusy}
+              onChange={(e) => {
+                const next = e.target.value;
+                setRows((prev) =>
+                  prev.map((r) => (r.id === id ? { ...r, data: { ...(r.data || {}), [col.patchKey]: next } } : r))
+                );
+              }}
+              onBlur={() => onPatch(id, { [col.patchKey]: normalizeDate10(data[col.patchKey] ?? '') || null })}
+              className="pp-input"
+              style={{ width: 150 }}
+            />
+
+            {showRecommend ? (
+              <button
+                type="button"
+                className="pp-btnCell"
+                disabled={isBusy}
+                title={`Recomendar ${formatDMY(recommended)} según Sistemas`}
+                onClick={async () => {
+                  const next = recommended;
+                  setRows((prev) =>
+                    prev.map((r) => (r.id === id ? { ...r, data: { ...(r.data || {}), [col.patchKey]: next } } : r))
+                  );
+                  await onPatch(id, { [col.patchKey]: next || null });
+                }}
+              >
+                Recomendar
+              </button>
+            ) : null}
+          </div>
         );
       }
 
@@ -1482,6 +1563,18 @@ export default function PreproduccionValoresTable() {
           <button onClick={load} disabled={loading} className="btn">
             Recargar
           </button>
+
+          {/* ✅ NUEVO: accesos a presets/reglas (solo full) */}
+          {accessMode === 'full' ? (
+            <>
+              <button onClick={() => setShowLogisticaPresets(true)} disabled={loading} className="btn">
+                Presets Logística
+              </button>
+              <button onClick={() => setShowSistemaRules(true)} disabled={loading} className="btn">
+                Reglas Sistema→Salida
+              </button>
+            </>
+          ) : null}
 
           {accessMode === 'full' && portonesIndexState === 'error' ? (
             <div style={{ background: '#fff5f5', border: '1px solid #fecaca', padding: 8, borderRadius: 10 }}>
@@ -1828,7 +1921,11 @@ export default function PreproduccionValoresTable() {
             Página <b>{safePage}</b> / <b>{pageCount}</b>
           </div>
 
-          <button className="btn" onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={safePage >= pageCount}>
+          <button
+            className="btn"
+            onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+            disabled={safePage >= pageCount}
+          >
             Siguiente
           </button>
         </div>
@@ -1838,6 +1935,18 @@ export default function PreproduccionValoresTable() {
           intervalo + “Sin fecha” trae <i>intervalo OR sin fecha</i>.
         </div>
       </div>
+
+      {/* ✅ NUEVO: paneles (solo full) */}
+      {accessMode === 'full' ? (
+        <>
+          <PreproduccionLogisticaPresets
+            open={showLogisticaPresets}
+            onClose={closeLogisticaPresets}
+            distributors={distributorsList}
+          />
+          <PreproduccionSistemaFechaSalidaRules open={showSistemaRules} onClose={closeSistemaRules} />
+        </>
+      ) : null}
 
       {/* Modales */}
       {(accessMode === 'full' || accessMode === 'admin') ? (
@@ -1857,6 +1966,9 @@ export default function PreproduccionValoresTable() {
           busy={logModalBusy}
           onClose={closeLogModal}
           onSubmit={submitLogisticaAuth}
+          // ⚠️ Si tu LogisticaAuthModal aún no soporta este prop, no rompe.
+          // Para que aplique el prefill, hay que agregarlo en el modal (te lo paso si querés).
+          recommendations={logisticaRecommendations}
         />
       ) : null}
     </div>
