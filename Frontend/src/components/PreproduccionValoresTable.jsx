@@ -1141,6 +1141,71 @@ export default function PreproduccionValoresTable() {
     setPdfFields(map);
   };
 
+  // ============================================================
+  // ✅ Scrollbar horizontal SIEMPRE visible (espejo sticky)
+  // ============================================================
+  const tableWrapRef = useRef(null);
+  const xscrollRef = useRef(null);
+  const xscrollSpacerRef = useRef(null);
+
+  useEffect(() => {
+    const tw = tableWrapRef.current;
+    const xs = xscrollRef.current;
+    const sp = xscrollSpacerRef.current;
+    if (!tw || !xs || !sp) return;
+
+    let raf = 0;
+
+    const syncSpacer = () => {
+      // Ancho real scrolleable de la tabla (incluye columnas ocultas/visibles, etc.)
+      const w = tw.scrollWidth;
+      sp.style.width = `${w}px`;
+      // Mantener espejo alineado
+      xs.scrollLeft = tw.scrollLeft;
+    };
+
+    const onTwScroll = () => {
+      if (raf) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        xs.scrollLeft = tw.scrollLeft;
+      });
+    };
+
+    const onXsScroll = () => {
+      if (raf) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        tw.scrollLeft = xs.scrollLeft;
+      });
+    };
+
+    tw.addEventListener('scroll', onTwScroll, { passive: true });
+    xs.addEventListener('scroll', onXsScroll, { passive: true });
+
+    // ResizeObserver para cambios de ancho de columnas / tabla
+    let ro = null;
+    if (window.ResizeObserver) {
+      ro = new ResizeObserver(() => syncSpacer());
+      ro.observe(tw);
+      const t = tw.querySelector('table');
+      if (t) ro.observe(t);
+    }
+
+    // Fallback por si cambia layout sin RO (o para móviles)
+    window.addEventListener('resize', syncSpacer);
+
+    // Inicial
+    syncSpacer();
+
+    return () => {
+      tw.removeEventListener('scroll', onTwScroll);
+      xs.removeEventListener('scroll', onXsScroll);
+      window.removeEventListener('resize', syncSpacer);
+      if (ro) ro.disconnect();
+      if (raf) cancelAnimationFrame(raf);
+    };
+    // Re-sincroniza cuando cambia el contenido visible
+  }, [visibleColsList.length, pagedRows.length, total]);
+
   const renderDateFilter = (colId) => {
     const curr =
       filters[colId] && typeof filters[colId] === 'object'
@@ -1618,127 +1683,120 @@ export default function PreproduccionValoresTable() {
           </div>
         ) : null}
 
-        <div style={{ overflow: 'auto', border: '1px solid #e5e7eb', borderRadius: 12, background: '#fff' }}>
-          <table style={{ borderCollapse: 'separate', borderSpacing: 0, width: '100%' }}>
-            <thead>
-              <tr>
-                {visibleColsList.map((c) => (
-                  <th
-                    key={c.id}
-                    style={{
-                      position: 'sticky',
-                      top: 0,
-                      background: '#f9fafb',
-                      borderBottom: '1px solid #e5e7eb',
-                      padding: 10,
-                      textAlign: 'left',
-                      fontSize: 12,
-                      whiteSpace: 'nowrap',
-                      zIndex: 3,
-                      color: '#111827',
-                    }}
-                  >
-                    {c.label}
-                  </th>
-                ))}
-              </tr>
-
-              <tr>
-                {visibleColsList.map((c) => (
-                  <th
-                    key={`${c.id}_filter`}
-                    style={{
-                      position: 'sticky',
-                      top: 40,
-                      background: '#f3f4f6',
-                      borderBottom: '2px solid #d1d5db',
-                      padding: 8,
-                      zIndex: 2,
-                      boxShadow: 'inset 0 0 0 1px #d1d5db',
-                    }}
-                  >
-                    {c.type === 'actions' ? (
-                      <select
-                        value={filters[c.id] || ''}
-                        onChange={(e) => setFilters((p) => ({ ...p, [c.id]: e.target.value }))}
-                        className="pp-select"
-                        style={{ width: '100%' }}
-                      >
-                        <option value="">(todos)</option>
-                        <option value="pendiente">Pendiente</option>
-                        <option value="listo">Listo</option>
-                        <option value="produccion">En producción</option>
-                      </select>
-                    ) : c.type === 'day' ? (
-                      <select
-                        value={filters[c.id] || ''}
-                        onChange={(e) => setFilters((p) => ({ ...p, [c.id]: e.target.value }))}
-                        className="pp-select"
-                        style={{ width: '100%' }}
-                      >
-                        <option value="">(todos)</option>
-                        {DAYS.map((d) => (
-                          <option key={d} value={d}>
-                            {d}
-                          </option>
-                        ))}
-                      </select>
-                    ) : c.type === 'date' ? (
-                      renderDateFilter(c.id)
-                    ) : c.type === 'bool' ? (
-                      <select
-                        value={filters[c.id] || ''}
-                        onChange={(e) => setFilters((p) => ({ ...p, [c.id]: e.target.value }))}
-                        className="pp-select"
-                        style={{ width: '100%' }}
-                      >
-                        <option value="">(todos)</option>
-                        <option value="autorizar">Autorizar</option>
-                        <option value="autorizado">Autorizado</option>
-                      </select>
-                    ) : (
-                      <input
-                        value={filters[c.id] || ''}
-                        onChange={(e) => setFilters((p) => ({ ...p, [c.id]: e.target.value }))}
-                        placeholder="Filtrar…"
-                        className="pp-input"
-                      />
-                    )}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-
-            <tbody>
-              {pagedRows.map((row) => (
-                <tr key={row.id}>
-                  {visibleColsList.map((col) => (
-                    <td
-                      key={`${row.id}_${col.id}`}
+        {/* =======================
+            ✅ TABLA FULL-BLEED + SCROLLBAR SIEMPRE VISIBLE
+           ======================= */}
+        <div className="pp-bleed">
+          <div className="pp-tableWrap pp-tableWrap--edge" ref={tableWrapRef}>
+            <table className="pp-table">
+              <thead>
+                <tr>
+                  {visibleColsList.map((c) => (
+                    <th
+                      key={c.id}
+                      className="pp-th"
                       style={{
-                        borderBottom: '1px solid #f0f0f0',
-                        padding: 8,
-                        fontSize: 12,
+                        textAlign: 'left',
                         whiteSpace: 'nowrap',
-                        verticalAlign: 'top',
                         color: '#111827',
                       }}
                     >
-                      {renderCell(row, col)}
-                    </td>
+                      {c.label}
+                    </th>
                   ))}
                 </tr>
-              ))}
 
-              {!loading && pagedRows.length === 0 ? (
                 <tr>
-                  <td colSpan={visibleColsList.length || 1} style={{ padding: 12, color: '#6b7280', fontSize: 12 }}>
-                    No hay filas para mostrar (revisá filtros o datos).
-                  </td>
+                  {visibleColsList.map((c) => (
+                    <th key={`${c.id}_filter`} className="pp-th pp-th--filter">
+                      {c.type === 'actions' ? (
+                        <select
+                          value={filters[c.id] || ''}
+                          onChange={(e) => setFilters((p) => ({ ...p, [c.id]: e.target.value }))}
+                          className="pp-select"
+                          style={{ width: '100%' }}
+                        >
+                          <option value="">(todos)</option>
+                          <option value="pendiente">Pendiente</option>
+                          <option value="listo">Listo</option>
+                          <option value="produccion">En producción</option>
+                        </select>
+                      ) : c.type === 'day' ? (
+                        <select
+                          value={filters[c.id] || ''}
+                          onChange={(e) => setFilters((p) => ({ ...p, [c.id]: e.target.value }))}
+                          className="pp-select"
+                          style={{ width: '100%' }}
+                        >
+                          <option value="">(todos)</option>
+                          {DAYS.map((d) => (
+                            <option key={d} value={d}>
+                              {d}
+                            </option>
+                          ))}
+                        </select>
+                      ) : c.type === 'date' ? (
+                        renderDateFilter(c.id)
+                      ) : c.type === 'bool' ? (
+                        <select
+                          value={filters[c.id] || ''}
+                          onChange={(e) => setFilters((p) => ({ ...p, [c.id]: e.target.value }))}
+                          className="pp-select"
+                          style={{ width: '100%' }}
+                        >
+                          <option value="">(todos)</option>
+                          <option value="autorizar">Autorizar</option>
+                          <option value="autorizado">Autorizado</option>
+                        </select>
+                      ) : (
+                        <input
+                          value={filters[c.id] || ''}
+                          onChange={(e) => setFilters((p) => ({ ...p, [c.id]: e.target.value }))}
+                          placeholder="Filtrar…"
+                          className="pp-input"
+                        />
+                      )}
+                    </th>
+                  ))}
                 </tr>
-              ) : null}
-            </tbody>
-          </table>
+              </thead>
+
+              <tbody>
+                {pagedRows.map((row) => (
+                  <tr key={row.id}>
+                    {visibleColsList.map((col) => (
+                      <td
+                        key={`${row.id}_${col.id}`}
+                        style={{
+                          borderBottom: '1px solid #f0f0f0',
+                          padding: 8,
+                          fontSize: 12,
+                          whiteSpace: 'nowrap',
+                          verticalAlign: 'top',
+                          color: '#111827',
+                        }}
+                      >
+                        {renderCell(row, col)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+
+                {!loading && pagedRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={visibleColsList.length || 1} style={{ padding: 12, color: '#6b7280', fontSize: 12 }}>
+                      No hay filas para mostrar (revisá filtros o datos).
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Scrollbar espejo: SIEMPRE visible (sticky abajo) */}
+          <div className="pp-xscroll" ref={xscrollRef} aria-hidden="true">
+            <div className="pp-xscroll__spacer" ref={xscrollSpacerRef} />
+          </div>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>

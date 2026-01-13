@@ -98,6 +98,14 @@ function chunk(arr, size) {
   return out;
 }
 
+/**
+ * Wrapper “full-bleed” para páginas que deben ocupar TODO el ancho de viewport
+ * aunque estén dentro de layouts con max-width.
+ */
+function FullBleed({ children }) {
+  return <div className="route-fullbleed">{children}</div>;
+}
+
 function Board({ stages }) {
   const { data: portones, loading, err, replaceItem, refresh, refreshing } =
     usePortones({ pollMs: 300000 });
@@ -111,7 +119,6 @@ function Board({ stages }) {
   const [wfPortones, setWfPortones] = useState(null);
   const [wfIpanel, setWfIpanel] = useState(null);
 
-  // ✅ QC Summary caches (instantáneo para StageColumn)
   const [qcSumPortones, setQcSumPortones] = useState({});
   const [qcSumIpanel, setQcSumIpanel] = useState({});
 
@@ -219,7 +226,6 @@ function Board({ stages }) {
     }
   };
 
-  // ✅ carga QC Summary (batch) cuando cambian portones/ipanels
   const refreshQcSummary = useCallback(async () => {
     try {
       const pIds = (Array.isArray(portones) ? portones : [])
@@ -317,6 +323,7 @@ function Board({ stages }) {
               onStart={isIpanel ? handleStartIpanel : handleStart}
               onStop={isIpanel ? handleStopIpanel : handleStop}
               disabledId={busyId}
+              allItems={isIpanel ? ipanels : portones}
               qcSummaryMap={qcMap}
               onQcSaved={refreshQcSummary}
             />
@@ -366,7 +373,6 @@ const ROUTES = [
       { key: 'despacho', label: 'Despacho (iPanel)', mode: 'ipanel' },
     ],
   },
-
   {
     path: '/diseno',
     label: 'Producción · Diseño',
@@ -375,9 +381,7 @@ const ROUTES = [
       { key: 'diseno', label: 'Diseño (iPanel)', mode: 'ipanel' },
     ],
   },
-
   { path: '/laser', label: 'Producción · Laser', stages: ONE('laser', 'Laser') },
-
   {
     path: '/corte',
     label: 'Producción · Corte',
@@ -387,7 +391,6 @@ const ROUTES = [
       { key: 'guillotina', label: 'Corte Ipanel', mode: 'ipanel' },
     ],
   },
-
   {
     path: '/plegado',
     label: 'Producción · Plegado',
@@ -397,7 +400,6 @@ const ROUTES = [
       { key: 'plegado', label: 'Plegado Ipanel', mode: 'ipanel' },
     ],
   },
-
   {
     path: '/prefabricados',
     label: 'Producción · Prefabricados / Armado',
@@ -407,9 +409,7 @@ const ROUTES = [
       { key: 'armado_hojas', label: 'Armado de hoja', mode: 'porton' },
     ],
   },
-
   { path: '/armado-primario', label: 'Producción · Armado Primario', stages: ONE('armado_primario', 'Armado Primario') },
-
   {
     path: '/pintura',
     label: 'Producción · Pintura',
@@ -418,7 +418,6 @@ const ROUTES = [
       { key: 'pintura', label: 'Pintura (Ipanels)', mode: 'ipanel' },
     ],
   },
-
   {
     path: '/inyeccion',
     label: 'Producción · Inyección',
@@ -427,10 +426,8 @@ const ROUTES = [
       { key: 'inyeccion', label: 'Inyeccion Ipanel', mode: 'ipanel' },
     ],
   },
-
   { path: '/revestimiento', label: 'Producción · Revestimiento', stages: ONE('revestimiento', 'Revestimiento') },
   { path: '/armado-final', label: 'Producción · Armado Final', stages: ONE('armado_final', 'Armado Final') },
-
   {
     path: '/despacho',
     label: 'Producción · Despacho',
@@ -455,7 +452,16 @@ export default function App() {
           <Route path="/admin/qc" element={<AdminQcPage />} />
           <Route path="/admin/workflow" element={<WorkflowDesignerPage />} />
 
-          <Route path="/a" element={<PreproduccionValoresTable />} />
+          {/* ✅ FULL BLEED SOLO para /a */}
+          <Route
+            path="/a"
+            element={
+              <FullBleed>
+                <PreproduccionValoresTable />
+              </FullBleed>
+            }
+          />
+
           <Route path="/b" element={<UserAdminDashboard />} />
         </Route>
 

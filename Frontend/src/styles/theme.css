@@ -269,13 +269,57 @@ body {
   font-weight: 800;
 }
 
+/* =========================================================
+   ✅ Preproducción: full-bleed + scrollbar fijo
+   ========================================================= */
+
+/* “Sangrado” horizontal: compensa padding exterior (tu page usa 16px) */
+.pp-bleed{
+  margin-left: -16px;
+  margin-right: -16px;
+}
+@media (max-width: 640px){
+  .pp-bleed{
+    margin-left: -12px;
+    margin-right: -12px;
+  }
+}
+
+/* Wrap scrolleable principal */
 .pp-tableWrap{
-  overflow: auto;
+  overflow-x: scroll;       /* fuerza scrollbar horizontal */
+  overflow-y: auto;
   border: 1px solid #e5e7eb;
   border-radius: 14px;
   background: var(--surface);
   scrollbar-gutter: stable both-edges;
 }
+
+/* Cuando lo queremos “hasta borde” (sin bordes laterales ni radius) */
+.pp-tableWrap--edge{
+  border-left: 0;
+  border-right: 0;
+  border-radius: 0;
+}
+
+/* Scrollbar espejo SIEMPRE visible (sticky abajo de viewport) */
+.pp-xscroll{
+  position: sticky;
+  bottom: 0;
+  height: 14px;
+  overflow-x: scroll;
+  overflow-y: hidden;
+  scrollbar-gutter: stable;
+  background: var(--surface);
+  border-top: 1px solid #e5e7eb;
+  /* para que no “tape” sombras/elementos */
+  z-index: 20;
+}
+.pp-xscroll__spacer{
+  height: 1px; /* no importa el alto, solo el width */
+}
+
+/* ========================================================= */
 
 .pp-table{
   width: 100%;
@@ -1197,4 +1241,39 @@ body {
 .idx-kpiValue {
   font-weight: 900;
   font-size: 18px;
+}
+/* =========================================================
+   /a (Preproducción) full-bleed aunque el layout tenga max-width
+   ========================================================= */
+.route-fullbleed{
+  /* Escapa cualquier container centrado */
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+
+  /* Mantiene padding razonable a los lados */
+  padding-left: 16px;
+  padding-right: 16px;
+
+  /* Evita que este wrapper genere overflow propio */
+  overflow-x: clip;
+  max-width: 100vw;
+}
+
+/* Evita scrollbar horizontal del body por el 100vw (típico “pixel extra”) */
+html, body{
+  overflow-x: clip;
+}
+
+/* =========================================================
+   Si tenés “scrollbar espejo” siempre visible:
+   ocultá la scrollbar REAL del contenedor de la tabla
+   (así no quedan 2 barras)
+   ========================================================= */
+.route-fullbleed .pp-tableWrap{
+  /* sigue scrolleando, pero sin scrollbar visible */
+  scrollbar-width: none;             /* Firefox */
+}
+.route-fullbleed .pp-tableWrap::-webkit-scrollbar{
+  height: 0;                         /* Chrome/Safari/Edge */
 }
