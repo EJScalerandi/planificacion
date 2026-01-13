@@ -1,13 +1,11 @@
 // src/App.jsx
-import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect, useMemo, useState } from 'react';
 import usePortones from './hooks/usePortones';
 import useIpanel from './hooks/useIpanels';
-import {
-  startStage, stopStage,
-  startIpanelStage, stopIpanelStage
-} from './api';
+import { startStage, stopStage, startIpanelStage, stopIpanelStage } from './api';
 import StageColumn from './components/StageColumn';
+
 import StatusGatePage from '../src/components/StatusGatePage';
 import CreateGatePage from '../pages/CreateGatePage';
 import PlantaReadOnlyPage from '../pages/PlantaOnlyDearPage';
@@ -15,12 +13,17 @@ import IpanelReadOnlyPage from '../pages/IpanelReadOnlyPage';
 import PlantaReadOnlySimplePage from '../pages/PlantaReadyOnlySimplePage';
 import StatusIpanelsPage from '../pages/StatusIpanelsPage';
 import PortonesStatsPage from '../pages/PortonesStatsPage';
+
 import AdminLoginPage from '../pages/admin/AdminLoginPage';
 import AdminHomePage from '../pages/admin/AdminHomePage';
 import WorkflowDesignerPage from '../pages/admin/WorkflowDesignerPage';
 import AdminQcPage from '../pages/admin/AdminQcPage';
+
 import PreproduccionValoresTable from '../src/components/PreproduccionValoresTable';
 import UserAdminDashboard from './components/UserAdminDashboard';
+
+// ✅ nuevo index modular
+import IndexPage from '../pages/IndexPage';
 
 const color = 'var(--brand)';
 
@@ -34,16 +37,13 @@ function apiBase() {
   const v = import.meta.env.VITE_API_URL || '';
   return String(v || '').replace(/\/$/, '');
 }
-
 function low(v) { return String(v ?? '').toLowerCase(); }
 
 function isFinalizadoByKey(item, key) {
-  // key apunta a la columna status (ej: diseno, laser, etc)
   return low(item?.[key]) === low(STATUS.FINALIZADO);
 }
 
 function buildReqIndex(requirements) {
-  // requirements: [{stage_key, type, group_id, required_key}, ...]
   const idx = new Map();
   for (const r of requirements || []) {
     const stageKey = String(r?.stage_key || '').trim();
@@ -53,9 +53,7 @@ function buildReqIndex(requirements) {
 
     if (!stageKey || !type || !requiredKey) continue;
 
-    if (!idx.has(stageKey)) {
-      idx.set(stageKey, { all: new Set(), anyGroups: new Map() });
-    }
+    if (!idx.has(stageKey)) idx.set(stageKey, { all: new Set(), anyGroups: new Map() });
     const bucket = idx.get(stageKey);
 
     if (type === 'ALL') {
@@ -71,33 +69,23 @@ function buildReqIndex(requirements) {
 
 function canAppearInStage({ item, stageKey, reqIndex }) {
   const st = item?.[stageKey];
-
-  // Si no tiene status en esa columna, no debería estar en esa etapa
   if (st == null) return false;
 
-  // Si ya está en proceso o finalizado, se muestra igual (no debería pasar con requisitos rotos,
-  // pero es más seguro no ocultar trabajo en curso).
   const stLow = low(st);
   if (stLow === low(STATUS.EN_PROCESO) || stLow === low(STATUS.FINALIZADO)) return true;
-
-  // Solo gateamos el caso Pendiente
   if (stLow !== low(STATUS.PENDIENTE)) return true;
 
-  // Si no hay requisitos cargados, fallback: mostrar como antes
   if (!reqIndex) return true;
-
   const req = reqIndex.get(stageKey);
-  if (!req) return true; // sin requisitos para esa etapa
+  if (!req) return true;
 
-  // ALL
   for (const k of req.all) {
     if (!isFinalizadoByKey(item, k)) return false;
   }
 
-  // ANY_GROUP: cada grupo debe tener al menos uno finalizado
   for (const [, set] of req.anyGroups.entries()) {
     const keys = Array.from(set);
-    const ok = keys.some(k => isFinalizadoByKey(item, k));
+    const ok = keys.some((k) => isFinalizadoByKey(item, k));
     if (!ok) return false;
   }
 
@@ -111,12 +99,10 @@ function Board({ stages }) {
     useIpanel({ pollMs: 300000 });
 
   const [busyId, setBusyId] = useState(null);
-
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState(null);
 
-  // Workflow config (public read-only)
-  const [wfPortones, setWfPortones] = useState(null); // {stages, edges, requirements}
+  const [wfPortones, setWfPortones] = useState(null);
   const [wfIpanel, setWfIpanel] = useState(null);
 
   useEffect(() => {
@@ -134,17 +120,11 @@ function Board({ stages }) {
 
     (async () => {
       try {
-        const [p, i] = await Promise.all([
-          loadWorkflow('portones'),
-          loadWorkflow('ipanel'),
-        ]);
-
+        const [p, i] = await Promise.all([loadWorkflow('portones'), loadWorkflow('ipanel')]);
         if (cancelled) return;
-
         setWfPortones(p?.ok ? p : null);
         setWfIpanel(i?.ok ? i : null);
       } catch (e) {
-        // Si falla, no rompemos el tablero: simplemente queda el comportamiento anterior
         console.warn('No se pudo cargar workflow public config:', e?.message || e);
         if (!cancelled) {
           setWfPortones(null);
@@ -156,28 +136,29 @@ function Board({ stages }) {
     return () => { cancelled = true; };
   }, []);
 
-  const reqIndexPortones = useMemo(() => {
-    return wfPortones?.requirements ? buildReqIndex(wfPortones.requirements) : null;
-  }, [wfPortones]);
-
-  const reqIndexIpanel = useMemo(() => {
-    return wfIpanel?.requirements ? buildReqIndex(wfIpanel.requirements) : null;
-  }, [wfIpanel]);
+  const reqIndexPortones = useMemo(
+    () => (wfPortones?.requirements ? buildReqIndex(wfPortones.requirements) : null),
+    [wfPortones]
+  );
+  const reqIndexIpanel = useMemo(
+    () => (wfIpanel?.requirements ? buildReqIndex(wfIpanel.requirements) : null),
+    [wfIpanel]
+  );
 
   const filteredPortones = useMemo(() => {
     if (!Array.isArray(portones)) return [];
-    if (filter === null || filter === '') return portones;
+    if (filter == null || filter === '') return portones;
     const n = Number(filter);
     if (Number.isNaN(n)) return portones;
-    return portones.filter(p => p.nv === n || p.nlista === n || p.partida === n);
+    return portones.filter((p) => p.nv === n || p.nlista === n || p.partida === n);
   }, [portones, filter]);
 
   const filteredIpanels = useMemo(() => {
     if (!Array.isArray(ipanels)) return [];
-    if (filter === null || filter === '') return ipanels;
+    if (filter == null || filter === '') return ipanels;
     const n = Number(filter);
     if (Number.isNaN(n)) return ipanels;
-    return ipanels.filter(ip => ip.nv === n || ip.partida === n);
+    return ipanels.filter((ip) => ip.nv === n || ip.partida === n);
   }, [ipanels, filter]);
 
   const handleStart = async (id, stage) => {
@@ -191,6 +172,7 @@ function Board({ stages }) {
       setBusyId(null);
     }
   };
+
   const handleStop = async (id, stage) => {
     try {
       setBusyId(id);
@@ -214,6 +196,7 @@ function Board({ stages }) {
       setBusyId(null);
     }
   };
+
   const handleStopIpanel = async (id, stage) => {
     try {
       setBusyId(id);
@@ -256,25 +239,18 @@ function Board({ stages }) {
           inputMode="numeric"
         />
         <button className="btn btn--brand" type="submit">Buscar</button>
-        <button
-          className="btn"
-          type="button"
-          onClick={() => { setQ(''); setFilter(null); }}
-        >
+        <button className="btn" type="button" onClick={() => { setQ(''); setFilter(null); }}>
           Limpiar
         </button>
       </form>
 
       <div className="stage-grid">
-        {stages.map(s => {
+        {stages.map((s) => {
           const isIpanel = s.mode === 'ipanel';
-
           const baseItems = isIpanel ? filteredIpanels : filteredPortones;
           const reqIndex = isIpanel ? reqIndexIpanel : reqIndexPortones;
 
-          // ✅ Filtro por requisitos: solo aparecen los "Pendiente" que cumplan,
-          // y siempre dejamos ver los "En Proceso" / "Finalizado"
-          const itemsForStage = baseItems.filter(item =>
+          const itemsForStage = baseItems.filter((item) =>
             canAppearInStage({ item, stageKey: s.key, reqIndex })
           );
 
@@ -298,10 +274,11 @@ function Board({ stages }) {
 
 const ONE = (key, label) => [{ key, label, mode: 'porton' }];
 
+// OJO: ya no usamos "/" para el tablero, lo movemos a "/board"
 const ROUTES = [
   {
-    path: '/',
-    label: 'Inicio (Tablero completo)',
+    path: '/board',
+    label: 'Producción · Tablero completo',
     stages: [
       { key: 'diseno', label: 'Diseño (Portones)', mode: 'porton' },
       { key: 'diseno', label: 'Diseño (iPanel)', mode: 'ipanel' },
@@ -333,145 +310,99 @@ const ROUTES = [
 
       { key: 'despacho', label: 'Despacho (Portones)', mode: 'porton' },
       { key: 'despacho', label: 'Despacho (iPanel)', mode: 'ipanel' },
-    ]
+    ],
   },
 
   {
     path: '/diseno',
-    label: 'Diseño',
+    label: 'Producción · Diseño',
     stages: [
       { key: 'diseno', label: 'Diseño (Portones)', mode: 'porton' },
       { key: 'diseno', label: 'Diseño (iPanel)', mode: 'ipanel' },
-    ]
+    ],
   },
 
-  { path: '/laser', label: 'Laser', stages: ONE('laser', 'Laser') },
+  { path: '/laser', label: 'Producción · Laser', stages: ONE('laser', 'Laser') },
 
   {
     path: '/corte',
-    label: 'Corte',
+    label: 'Producción · Corte',
     stages: [
       { key: 'guillotina', label: 'Corte piernas', mode: 'porton' },
       { key: 'corte_revest', label: 'Corte revestimiento', mode: 'porton' },
       { key: 'guillotina', label: 'Corte Ipanel', mode: 'ipanel' },
-    ]
+    ],
   },
 
   {
     path: '/plegado',
-    label: 'Plegado',
+    label: 'Producción · Plegado',
     stages: [
       { key: 'plegadora', label: 'Plegado Piernas', mode: 'porton' },
       { key: 'plegado_revest', label: 'Plegado Revestimiento', mode: 'porton' },
       { key: 'plegado', label: 'Plegado Ipanel', mode: 'ipanel' },
-    ]
+    ],
   },
 
   {
     path: '/prefabricados',
-    label: 'Prefabricados / Armado',
+    label: 'Producción · Prefabricados / Armado',
     stages: [
       { key: 'armado_piernas', label: 'Prefabricados (Armado de piernas)', mode: 'porton' },
       { key: 'armado_marco_piernas', label: 'Armado de marcos piernas', mode: 'porton' },
       { key: 'armado_hojas', label: 'Armado de hoja', mode: 'porton' },
-    ]
+    ],
   },
 
-  { path: '/armado-primario', label: 'Armado Primario', stages: ONE('armado_primario', 'Armado Primario') },
+  { path: '/armado-primario', label: 'Producción · Armado Primario', stages: ONE('armado_primario', 'Armado Primario') },
 
   {
     path: '/pintura',
-    label: 'Pintura',
+    label: 'Producción · Pintura',
     stages: [
       { key: 'pintura', label: 'Pintura Portones', mode: 'porton' },
       { key: 'pintura', label: 'Pintura (Ipanels)', mode: 'ipanel' },
-    ]
+    ],
   },
 
   {
     path: '/inyeccion',
-    label: 'Inyección',
+    label: 'Producción · Inyección',
     stages: [
       { key: 'inyeccion', label: 'Inyeccion (Portones)', mode: 'porton' },
       { key: 'inyeccion', label: 'Inyeccion Ipanel', mode: 'ipanel' },
-    ]
+    ],
   },
 
-  { path: '/revestimiento', label: 'Revestimiento', stages: ONE('revestimiento', 'Revestimiento') },
-  { path: '/armado-final', label: 'Armado Final', stages: ONE('armado_final', 'Armado Final') },
+  { path: '/revestimiento', label: 'Producción · Revestimiento', stages: ONE('revestimiento', 'Revestimiento') },
+  { path: '/armado-final', label: 'Producción · Armado Final', stages: ONE('armado_final', 'Armado Final') },
 
   {
     path: '/despacho',
-    label: 'Despacho',
+    label: 'Producción · Despacho',
     stages: [
       { key: 'despacho', label: 'Despacho (Portones)', mode: 'porton' },
       { key: 'despacho', label: 'Despacho (iPanel)', mode: 'ipanel' },
-    ]
+    ],
   },
 ];
-
-function IndexPage() {
-  const extraRoutes = [
-    { path: '/ipanel', label: 'iPanel (solo lectura)' },
-    { path: '/statusGate', label: 'Status Portones' },
-    { path: '/createGate', label: 'CreateGate (carga / planificación)' },
-    { path: '/planta', label: 'Planta (solo lectura – detalle)' },
-    { path: '/plantasimple', label: 'Planta simple (resumen)' },
-    { path: '/statusIpanels', label: 'Status iPanels' },
-    { path: '/admin/login', label: 'Admin Login' },
-    { path: '/admin', label: 'Admin - Menú' },
-    { path: '/admin/qc', label: 'Admin - Usuarios QC' },
-    { path: '/admin/workflow', label: 'Admin - Workflow Designer' },
-  ];
-
-  const routeLinks = [...ROUTES, ...extraRoutes];
-
-  return (
-    <div className="container">
-      <h1 className="h1" style={{ marginBottom: 16 }}>Índice de tableros</h1>
-
-      <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {routeLinks.map(r => (
-          <li
-            key={r.path}
-            style={{
-              border: '1px solid #ddd',
-              borderRadius: 8,
-              padding: '8px 12px',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              flexWrap: 'wrap',
-              gap: 8
-            }}
-          >
-            <div>
-              <Link to={r.path} style={{ fontWeight: 600, textDecoration: 'none', color: 'var(--brand)' }}>
-                {r.label}
-              </Link>
-              <div style={{ fontSize: 12, opacity: .7 }}>
-                Ruta: <code>{r.path}</code>
-              </div>
-            </div>
-            <Link to={r.path} className="btn btn--brand">Ir</Link>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/index" element={<IndexPage />} />
+        {/* index central */}
+        <Route path="/index" element={<IndexPage routes={ROUTES} />} />
 
-        <Route path="/" element={<Board stages={ROUTES.find(r => r.path === '/').stages} />} />
-        {ROUTES.filter(r => r.path !== '/').map(r => (
+        {/* "/" siempre al login */}
+        <Route path="/" element={<Navigate to="/admin/login" replace />} />
+
+        {/* Boards / Producción */}
+        {ROUTES.map((r) => (
           <Route key={r.path} path={r.path} element={<Board stages={r.stages} />} />
         ))}
 
+        {/* Vistas varias */}
         <Route path="/ipanel" element={<IpanelReadOnlyPage />} />
         <Route path="/Diseño" element={<Navigate to="/diseno" replace />} />
         <Route path="/statusGate" element={<StatusGatePage />} />
@@ -486,13 +417,13 @@ export default function App() {
         <Route path="/admin" element={<AdminHomePage />} />
         <Route path="/admin/qc" element={<AdminQcPage />} />
         <Route path="/admin/workflow" element={<WorkflowDesignerPage />} />
-        
 
-        <Route path= "/a" element={<PreproduccionValoresTable />} />
-        <Route path= "/b" element={<UserAdminDashboard />} />
+        {/* Preproducción / Autorizaciones */}
+        <Route path="/a" element={<PreproduccionValoresTable />} />
+        <Route path="/b" element={<UserAdminDashboard />} />
 
-
-        <Route path="*" element={<Navigate to="/" replace />} />
+        {/* catch-all */}
+        <Route path="*" element={<Navigate to="/admin/login" replace />} />
       </Routes>
     </BrowserRouter>
   );

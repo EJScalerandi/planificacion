@@ -41,6 +41,104 @@ function getQcItemId(item, line) {
   return null;
 }
 
+// ===== fechas / cola =====
+function pad2(n) {
+  return String(n).padStart(2, '0');
+}
+
+function toISODate10(v) {
+  if (!v) return '';
+  const s = String(v).trim();
+
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return `${m[1]}-${pad2(m[2])}-${pad2(m[3])}`;
+
+  m = s.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})/);
+  if (m) return `${m[1]}-${pad2(m[2])}-${pad2(m[3])}`;
+
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (m) return `${m[3]}-${pad2(m[2])}-${pad2(m[1])}`;
+
+  m = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (m) return `${m[3]}-${pad2(m[2])}-${pad2(m[1])}`;
+
+  const d = new Date(s);
+  if (!Number.isNaN(d.getTime())) {
+    const yyyy = d.getUTCFullYear();
+    const mm = pad2(d.getUTCMonth() + 1);
+    const dd = pad2(d.getUTCDate());
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  return '';
+}
+
+function todayISO10Utc() {
+  const now = new Date();
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
+}
+
+/**
+ * Lunes anterior a la semana de `date10`.
+ * - Si date10 cae lunes: devuelve el lunes de la semana anterior (date10 - 7d).
+ * - Caso general: busca el lunes de ESA semana y le resta 7d.
+ */
+function mondayBeforeISO10(dateLike) {
+  const date10 = toISODate10(dateLike);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date10)) return '';
+
+  const d = new Date(`${date10}T00:00:00Z`);
+  const dayMon0 = (d.getUTCDay() + 6) % 7; // lunes=0
+  const mondayThisWeek = new Date(d);
+  mondayThisWeek.setUTCDate(d.getUTCDate() - dayMon0);
+
+  const mondayPrev = new Date(mondayThisWeek);
+  mondayPrev.setUTCDate(mondayThisWeek.getUTCDate() - 7);
+
+  return `${mondayPrev.getUTCFullYear()}-${pad2(mondayPrev.getUTCMonth() + 1)}-${pad2(mondayPrev.getUTCDate())}`;
+}
+
+/**
+ * Fecha de producción del ítem (ISO10 si se puede).
+ * En portones suele venir como `fecha_prod`.
+ * Dejamos fallback por si el backend usa otro nombre.
+ */
+function getProdDate10(item) {
+  const raw =
+    item?.fecha_prod ??
+    item?.Fecha_Prod ??
+    item?.fecha_produccion ??
+    item?.Fecha_Produccion ??
+    item?.inicio_prod ??
+    item?.Inicio_Prod ??
+    item?.inicio_prod_imput ??
+    item?.Inicio_Prod_Imput ??
+    null;
+
+  return toISODate10(raw);
+}
+
+/**
+ * Regla de cola:
+ * - Debe aparecer (pendiente/finalizado) a partir del lunes anterior a su fecha_prod.
+ * - Si no hay fecha_prod válida, NO lo bloqueamos (para no “perder” items).
+ * - Si ya está "en proceso", siempre visible (ya entró).
+ */
+function canEnterQueue(item, effKey) {
+  const st = low(item?.[effKey]);
+  if (st === 'en proceso') return true;
+
+  const prod10 = getProdDate10(item);
+  if (!prod10) return true;
+
+  const allowFrom = mondayBeforeISO10(prod10);
+  if (!allowFrom) return true;
+
+  const today10 = todayISO10Utc();
+  return today10 >= allowFrom;
+}
+
 // =====================
 // Modal QC
 // =====================
@@ -101,7 +199,9 @@ function QcModal({ open, onClose, item, line, stageKey, title }) {
     }
 
     run();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [open, status, item, line, stageKey]);
 
   const submit = async () => {
@@ -158,7 +258,9 @@ function QcModal({ open, onClose, item, line, stageKey, title }) {
     <div
       role="dialog"
       aria-modal="true"
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose?.();
+      }}
       style={{
         position: 'fixed',
         inset: 0,
@@ -192,7 +294,9 @@ function QcModal({ open, onClose, item, line, stageKey, title }) {
           }}
         >
           <div style={{ fontWeight: 900 }}>QC – {title}</div>
-          <button className="btn" type="button" onClick={onClose}>Cerrar</button>
+          <button className="btn" type="button" onClick={onClose}>
+            Cerrar
+          </button>
         </div>
 
         <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -224,9 +328,7 @@ function QcModal({ open, onClose, item, line, stageKey, title }) {
 
           {needsMotive && (
             <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 12 }}>
-              <div style={{ fontWeight: 900, marginBottom: 8 }}>
-                Motivo ({String(status).toUpperCase()})
-              </div>
+              <div style={{ fontWeight: 900, marginBottom: 8 }}>Motivo ({String(status).toUpperCase()})</div>
 
               {loadingMotives ? (
                 <div style={{ opacity: 0.8 }}>Cargando motivos…</div>
@@ -286,7 +388,9 @@ function ObservacionesModal({ open, onClose, title, item, observations = [] }) {
     <div
       role="dialog"
       aria-modal="true"
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose?.();
+      }}
       style={{
         position: 'fixed',
         inset: 0,
@@ -319,10 +423,10 @@ function ObservacionesModal({ open, onClose, title, item, observations = [] }) {
             background: '#fff5f5',
           }}
         >
-          <div style={{ fontWeight: 900, color: '#991b1b' }}>
-            Observaciones · {head}
-          </div>
-          <button className="btn" type="button" onClick={onClose}>Cerrar</button>
+          <div style={{ fontWeight: 900, color: '#991b1b' }}>Observaciones · {head}</div>
+          <button className="btn" type="button" onClick={onClose}>
+            Cerrar
+          </button>
         </div>
 
         <div style={{ padding: 14 }}>
@@ -340,13 +444,19 @@ function ObservacionesModal({ open, onClose, title, item, observations = [] }) {
                     padding: 12,
                   }}
                 >
-                  <div style={{ fontWeight: 900, color: '#7f1d1d', marginBottom: 6 }}>
-                    {r.status || 'OBSERVADO'}
+                  <div style={{ fontWeight: 900, color: '#7f1d1d', marginBottom: 6 }}>{r.status || 'OBSERVADO'}</div>
+                  <div style={{ fontSize: 13 }}>
+                    <b>Sector:</b> {r.sector}
                   </div>
-                  <div style={{ fontSize: 13 }}><b>Sector:</b> {r.sector}</div>
-                  <div style={{ fontSize: 13 }}><b>Fecha:</b> {r.fecha ? fmt(r.fecha) : '-'}</div>
-                  <div style={{ fontSize: 13 }}><b>Motivo:</b> {r.motivo}</div>
-                  <div style={{ fontSize: 13 }}><b>Quién puso el PIN:</b> {r.quien}</div>
+                  <div style={{ fontSize: 13 }}>
+                    <b>Fecha:</b> {r.fecha ? fmt(r.fecha) : '-'}
+                  </div>
+                  <div style={{ fontSize: 13 }}>
+                    <b>Motivo:</b> {r.motivo}
+                  </div>
+                  <div style={{ fontSize: 13 }}>
+                    <b>Quién puso el PIN:</b> {r.quien}
+                  </div>
                 </div>
               ))}
             </div>
@@ -383,13 +493,11 @@ export default function StageColumn({
   // }
   const [obsById, setObsById] = useState({});
   const obsByIdRef = useRef(obsById);
-  useEffect(() => { obsByIdRef.current = obsById; }, [obsById]);
+  useEffect(() => {
+    obsByIdRef.current = obsById;
+  }, [obsById]);
 
-  const effKey =
-    mode === 'ipanel' && stageKey === 'plegadora'
-      ? 'plegado'
-      : stageKey;
-
+  const effKey = mode === 'ipanel' && stageKey === 'plegadora' ? 'plegado' : stageKey;
   const line = mapModeToLine(mode);
 
   // ✅ regla de ocultado para FINALIZADO
@@ -402,39 +510,56 @@ export default function StageColumn({
     const latest = up(obsByIdRef.current?.[qcId]?.latestStageStatus);
     if (!latest) return false; // sin QC => visible
 
-    return (latest === 'APROBADO' || latest === 'OBSERVADO');
+    return latest === 'APROBADO' || latest === 'OBSERVADO';
   }
 
-  // ✅ orden estable
-  // Antes filtrabas solo pendiente/en proceso => por eso desaparecía al finalizado.
-  // Ahora incluimos finalizado también, pero el render lo puede ocultar según QC.
+  // ✅ orden estable + cola por fecha de producción
+  // - Se consideran: pendiente / en proceso / finalizado
+  // - Se muestran (pendiente/finalizado) a partir del lunes anterior a fecha_prod
+  // - Orden:
+  //    1) en proceso
+  //    2) pendiente
+  //    3) finalizado
+  //   Dentro del grupo: fecha_prod ASC (más antigua arriba). Sin fecha => al final del grupo.
   const ordered = useMemo(() => {
-    const filtered = (items || []).filter((p) => {
-      const st = low(p?.[effKey]);
-      return st === 'pendiente' || st === 'en proceso' || st === 'finalizado';
-    });
+    const filtered = (items || [])
+      .filter((p) => {
+        const st = low(p?.[effKey]);
+        if (!(st === 'pendiente' || st === 'en proceso' || st === 'finalizado')) return false;
 
-    return filtered.slice().sort((a, b) => {
+        // cola: a partir del lunes anterior (excepto en proceso, que siempre visible)
+        return canEnterQueue(p, effKey);
+      })
+      .slice();
+
+    const groupRank = (st) => {
+      if (st === 'en proceso') return 0;
+      if (st === 'pendiente') return 1;
+      return 2; // finalizado
+    };
+
+    const dateRank = (prod10) => (prod10 ? prod10 : '9999-12-31');
+
+    filtered.sort((a, b) => {
       const aSt = low(a?.[effKey]);
       const bSt = low(b?.[effKey]);
 
-      const aStarted = aSt === 'en proceso';
-      const bStarted = bSt === 'en proceso';
-      if (aStarted !== bStarted) return aStarted ? -1 : 1;
+      const gA = groupRank(aSt);
+      const gB = groupRank(bSt);
+      if (gA !== gB) return gA - gB;
 
-      // Pendiente antes que finalizado (para que “lo activo” quede arriba)
-      const aPend = aSt === 'pendiente';
-      const bPend = bSt === 'pendiente';
-      if (aPend !== bPend) return aPend ? -1 : 1;
+      const aProd = dateRank(getProdDate10(a));
+      const bProd = dateRank(getProdDate10(b));
+      if (aProd !== bProd) return aProd.localeCompare(bProd);
 
       return (a?.nv || 0) - (b?.nv || 0);
     });
+
+    return filtered;
   }, [items, effKey]);
 
   const visibleQcIdsKey = useMemo(() => {
-    const ids = ordered
-      .map((p) => getQcItemId(p, line))
-      .filter((x) => Number.isInteger(x));
+    const ids = ordered.map((p) => getQcItemId(p, line)).filter((x) => Number.isInteger(x));
     return ids.join(',');
   }, [ordered, line]);
 
@@ -510,7 +635,9 @@ export default function StageColumn({
       }
     })();
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [line, visibleQcIdsKey, effKey]);
 
   const openQc = (p) => {
@@ -521,7 +648,10 @@ export default function StageColumn({
   // PDFs (mantengo lo tuyo)
   const showPdfButtons = mode !== 'ipanel';
   const canPdfBase = !!String(pdfBaseUrl || '').trim();
-  const pdfButtons = useMemo(() => [{ tipo: 'arm-primario', label: 'AP', title: 'PDF Armado Primario (por NV)', icon: '🧰' }], []);
+  const pdfButtons = useMemo(
+    () => [{ tipo: 'arm-primario', label: 'AP', title: 'PDF Armado Primario (por NV)', icon: '🧰' }],
+    []
+  );
 
   function openPdf(tipo, { partida, nv }) {
     const base = (pdfBaseUrl || '').trim();
@@ -577,7 +707,7 @@ export default function StageColumn({
               return !shouldHideFinalizado(p);
             }
 
-            // pendiente / en proceso => siempre visibles
+            // pendiente / en proceso => siempre visibles (ya pasaron por cola arriba)
             return st === 'pendiente' || st === 'en proceso';
           })
           .map((p) => {
@@ -588,6 +718,8 @@ export default function StageColumn({
             const qcId = getQcItemId(p, line);
             const obsInfo = Number.isInteger(qcId) ? obsById[qcId] : null;
             const hasObs = Boolean(obsInfo?.hasObs);
+
+            const prod10 = getProdDate10(p);
 
             return (
               <div
@@ -633,8 +765,15 @@ export default function StageColumn({
                 <div style={{ fontWeight: 900 }}>N° Portón {p?.nlista}</div>
                 <div>Partida {p?.partida}</div>
                 <div>NV {p?.nv}</div>
+
                 <div style={{ fontSize: 12, opacity: 0.75 }}>
                   Estado: {p?.[effKey] || ''}
+                  {prod10 ? (
+                    <>
+                      {' '}
+                      · Producción: <b>{prod10}</b>
+                    </>
+                  ) : null}
                 </div>
 
                 <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
@@ -682,7 +821,10 @@ export default function StageColumn({
       {/* Modal QC */}
       <QcModal
         open={qcOpen}
-        onClose={() => { setQcOpen(false); setQcTarget(null); }}
+        onClose={() => {
+          setQcOpen(false);
+          setQcTarget(null);
+        }}
         item={qcTarget}
         line={line}
         stageKey={effKey}
@@ -692,12 +834,15 @@ export default function StageColumn({
       {/* Modal Observaciones */}
       <ObservacionesModal
         open={obsOpen}
-        onClose={() => { setObsOpen(false); setObsTarget(null); }}
+        onClose={() => {
+          setObsOpen(false);
+          setObsTarget(null);
+        }}
         title={title}
         item={obsTarget}
         observations={(() => {
           const qcId = getQcItemId(obsTarget, line);
-          return Number.isInteger(qcId) ? (obsById[qcId]?.list || []) : [];
+          return Number.isInteger(qcId) ? obsById[qcId]?.list || [] : [];
         })()}
       />
     </div>

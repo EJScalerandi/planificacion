@@ -10,7 +10,6 @@ import {
 
 import LogisticaAuthModal from './modals/LogisticaAuthModal';
 import AdminAuthModal from './modals/AdminAuthModal';
-import ComercialAuthModal from './modals/ComercialAuthModal';
 
 // =====================
 // NV bloqueados (no deben aparecer) - desde TXT público
@@ -109,6 +108,10 @@ function toISODate10(v) {
   m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
   if (m) return `${m[3]}-${pad2(m[2])}-${pad2(m[1])}`;
 
+  // soporte extra: dd-mm-yyyy o d-m-yyyy (tu Fecha_NV viene así: "22-08-2024")
+  m = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (m) return `${m[3]}-${pad2(m[2])}-${pad2(m[1])}`;
+
   const d = new Date(s);
   if (!Number.isNaN(d.getTime())) {
     const yyyy = d.getUTCFullYear();
@@ -135,10 +138,28 @@ function formatDMY(date10) {
   return `${dd}/${mm}/${yyyy}`;
 }
 
+/**
+ * getAny:
+ * - Primero intenta match exacto
+ * - Luego fallback case-insensitive (útil si backend cambió capitalización)
+ */
 function getAny(obj, keys) {
+  if (!obj) return null;
+
+  // 1) match exacto
   for (const k of keys) {
-    if (obj && Object.prototype.hasOwnProperty.call(obj, k) && obj[k] != null) return obj[k];
+    if (Object.prototype.hasOwnProperty.call(obj, k) && obj[k] != null) return obj[k];
   }
+
+  // 2) fallback case-insensitive
+  const map = {};
+  for (const k of Object.keys(obj)) map[String(k).toLowerCase()] = k;
+
+  for (const k of keys) {
+    const realKey = map[String(k).toLowerCase()];
+    if (realKey && obj[realKey] != null) return obj[realKey];
+  }
+
   return null;
 }
 
@@ -287,7 +308,9 @@ function getPdfFieldDefs() {
     { id: 'partida', label: 'Partida', type: 'text', sourceKeys: ['PARTIDA', 'Partida', 'partida'] },
     { id: 'nv', label: 'NV', type: 'text', sourceKeys: ['NV', 'nv'] },
     { id: 'nombre', label: 'Nombre', type: 'text', sourceKeys: ['Nombre'] },
-    { id: 'distribuidor', label: 'Distribuidor', type: 'text', sourceKeys: ['RazSoc', 'RazonSocial', 'Raz_Soc'] },
+
+    // Cambio requerido: etiqueta "Distribuidor" y dato desde RazSoc
+    { id: 'distribuidor', label: 'Distribuidor', type: 'text', sourceKeys: ['RazSoc'] },
 
     { id: 'tipo', label: 'Tipo', type: 'text', patchKey: 'tipo_imput' },
     { id: 'color', label: 'Color', type: 'text', sourceKeys: ['Color', 'Color_Hoja'] },
@@ -446,8 +469,9 @@ const BASE_COLS = [
 
   { id: 'partida', label: 'Partida', sourceKeys: ['PARTIDA', 'Partida', 'partida'] },
   { id: 'nv', label: 'NV', sourceKeys: ['NV', 'nv'] },
+
   { id: 'nombre', label: 'Nombre', sourceKeys: ['Nombre'] },
-  { id: 'distribuidor', label: 'Distribuidor', sourceKeys: ['RazSoc', 'RazonSocial', 'Raz_Soc'] },
+  { id: 'distribuidor', label: 'Distribuidor', sourceKeys: ['RazSoc'] },
 
   { id: 'tipo', label: 'Tipo', patchKey: 'tipo_imput' },
 
@@ -465,7 +489,6 @@ const BASE_COLS = [
 
   { id: 'auth_admin', label: 'Aut. Admin', type: 'bool', patchKey: 'auth_admin' },
   { id: 'auth_logistica', label: 'Aut. Logística', type: 'bool', patchKey: 'auth_logistica' },
-  { id: 'auth_comercial', label: 'Aut. Comercial', type: 'bool', patchKey: 'auth_comercial' },
 ];
 
 const ACTION_COL = { id: 'acciones', label: 'Acciones', type: 'actions' };
@@ -531,7 +554,7 @@ export default function PreproduccionValoresTable() {
   );
   const LIMITED_LABEL_OVERRIDES = useMemo(
     () => ({
-      distribuidor: 'Razón Social',
+      distribuidor: 'Distribuidor',
       inicio_prod: 'Fecha Producción',
       fecha_salida: 'Fecha salida',
     }),
@@ -539,10 +562,13 @@ export default function PreproduccionValoresTable() {
   );
 
   // Admin (preproduccion:admin): campos + autorización admin
-  const ADMIN_COL_IDS = useMemo(() => new Set(['fecha_venta', 'nv', 'nombre', 'distribuidor', 'fecha_salida', 'auth_admin']), []);
+  const ADMIN_COL_IDS = useMemo(
+    () => new Set(['fecha_venta', 'nv', 'nombre', 'distribuidor', 'fecha_salida', 'fecha_llegada', 'auth_admin']),
+    []
+  );
   const ADMIN_LABEL_OVERRIDES = useMemo(
     () => ({
-      distribuidor: 'Razón Social',
+      distribuidor: 'Distribuidor',
       fecha_salida: 'Fecha salida',
       auth_admin: 'Aut. Admin',
     }),
@@ -690,7 +716,7 @@ export default function PreproduccionValoresTable() {
     setAdminModalRow(null);
   };
 
-  // Logística + Comercial: solo full
+  // Logística: solo full
   const [logModalOpen, setLogModalOpen] = useState(false);
   const [logModalRow, setLogModalRow] = useState(null);
   const [logModalBusy, setLogModalBusy] = useState(false);
@@ -703,22 +729,6 @@ export default function PreproduccionValoresTable() {
     if (logModalBusy) return;
     setLogModalOpen(false);
     setLogModalRow(null);
-  };
-
-  const [comModalOpen, setComModalOpen] = useState(false);
-  const [comModalRow, setComModalRow] = useState(null);
-  const [comModalBusy, setComModalBusy] = useState(false);
-
-  const openComModal = (row) => {
-    const d = row?.data || {};
-    if (Boolean(d.auth_comercial)) return;
-    setComModalRow(row);
-    setComModalOpen(true);
-  };
-  const closeComModal = () => {
-    if (comModalBusy) return;
-    setComModalOpen(false);
-    setComModalRow(null);
   };
 
   // Paginado
@@ -834,21 +844,6 @@ export default function PreproduccionValoresTable() {
     [logModalRow, onPatch]
   );
 
-  const submitComercialAuth = useCallback(
-    async (patch) => {
-      const id = comModalRow?.id;
-      if (!id) return;
-      setComModalBusy(true);
-      try {
-        await onPatch(id, patch);
-        closeComModal();
-      } finally {
-        setComModalBusy(false);
-      }
-    },
-    [comModalRow, onPatch]
-  );
-
   // ====== EXCLUSIÓN GLOBAL por NV ======
   const rowsAfterNvExclusion = useMemo(() => {
     return (rows || []).filter((r) => {
@@ -875,16 +870,20 @@ export default function PreproduccionValoresTable() {
   }, [rowsAfterNvExclusion, accessMode, ALL_COLS]);
 
   // ====== Estado acciones (solo full) ======
+  // Regla nueva:
+  // - "En producción" si ya existe en portones
+  // - "Pendiente" si NO está autorizado por logística
+  // - "Listo" si logística ok
+  // (Admin NO bloquea)
   const getAccionesStatus = useCallback(
     (row) => {
       const d = row?.data || {};
-      const okAuth = Boolean(d.auth_admin) && Boolean(d.auth_logistica) && Boolean(d.auth_comercial);
 
       const nv = getNvIntFromRow(row);
       const inPortones = nv != null ? portonesNvSet.has(nv) : false;
 
       if (inPortones) return 'produccion';
-      if (!okAuth) return 'pendiente';
+      if (!Boolean(d.auth_logistica)) return 'pendiente';
       return 'listo';
     },
     [portonesNvSet]
@@ -1007,6 +1006,29 @@ export default function PreproduccionValoresTable() {
   const endIdx = Math.min(total, startIdx + pageSize);
   const pagedRows = useMemo(() => filteredRows.slice(startIdx, endIdx), [filteredRows, startIdx, endIdx]);
 
+  // ===== Reset SOLO autorizaciones (FULL) =====
+  const resetAutorizaciones = useCallback(
+    async (row) => {
+      if (accessMode !== 'full') return;
+
+      const id = row?.id;
+      if (!id) return;
+
+      const ok = window.confirm(
+        'Esto va a quitar SOLO las autorizaciones (Admin y Logística) para este NV.\n\n¿Continuar?'
+      );
+      if (!ok) return;
+
+      await onPatch(id, {
+        auth_admin: false,
+        auth_logistica: false,
+        auth_admin_at: null,
+        auth_logistica_at: null,
+      });
+    },
+    [accessMode, onPatch]
+  );
+
   const sendToProduccion = useCallback(
     async (row) => {
       if (accessMode !== 'full') return;
@@ -1015,7 +1037,9 @@ export default function PreproduccionValoresTable() {
       if (!id) return;
 
       const d = row?.data || {};
-      const okAuth = Boolean(d.auth_admin) && Boolean(d.auth_logistica) && Boolean(d.auth_comercial);
+
+      // Regla nueva: SOLO logística habilita el envío
+      const okAuth = Boolean(d.auth_logistica);
       if (!okAuth) return;
 
       const nv = getNvIntFromRow(row);
@@ -1218,15 +1242,29 @@ export default function PreproduccionValoresTable() {
               onClick={() => sendToProduccion(row)}
               disabled={isBusy}
               className="btn btn--brand pp-btnCell"
-              title="Enviar a producción (requiere 3 autorizaciones)"
+              title="Enviar a producción (requiere autorización de logística)"
             >
               Enviar a producción
             </button>
           ) : (
-            <span className="pp-badge pp-badge--pending" title="Faltan autorizaciones">
+            <span className="pp-badge pp-badge--pending" title="Falta autorización de logística">
               Pendiente
             </span>
           )}
+
+          {/* Reset SOLO autorizaciones - FULL */}
+          {accessMode === 'full' ? (
+            <button
+              type="button"
+              className="pp-btnCell"
+              disabled={isBusy}
+              onClick={() => resetAutorizaciones(row)}
+              title="Quitar autorizaciones (Admin y Logística)"
+              style={{ borderColor: '#ef4444', color: '#991b1b', background: '#fff5f5' }}
+            >
+              Reset auth
+            </button>
+          ) : null}
         </div>
       );
     }
@@ -1281,23 +1319,6 @@ export default function PreproduccionValoresTable() {
               </button>
             )}
           </div>
-        );
-      }
-
-      if (col.patchKey === 'auth_comercial') {
-        const ok = Boolean(data.auth_comercial);
-        if (ok) return <span className="pp-badge pp-badge--ok">Autorizado</span>;
-
-        return (
-          <button
-            type="button"
-            className="pp-btnCell pp-btnCell--brand"
-            onClick={() => openComModal(row)}
-            disabled={isBusy}
-            title="Autorizar comercial (requiere responder la pregunta obligatoria)"
-          >
-            Autorizar
-          </button>
         );
       }
 
@@ -1772,23 +1793,13 @@ export default function PreproduccionValoresTable() {
       ) : null}
 
       {accessMode === 'full' ? (
-        <>
-          <LogisticaAuthModal
-            open={logModalOpen}
-            row={logModalRow}
-            busy={logModalBusy}
-            onClose={closeLogModal}
-            onSubmit={submitLogisticaAuth}
-          />
-
-          <ComercialAuthModal
-            open={comModalOpen}
-            row={comModalRow}
-            busy={comModalBusy}
-            onClose={closeComModal}
-            onSubmit={submitComercialAuth}
-          />
-        </>
+        <LogisticaAuthModal
+          open={logModalOpen}
+          row={logModalRow}
+          busy={logModalBusy}
+          onClose={closeLogModal}
+          onSubmit={submitLogisticaAuth}
+        />
       ) : null}
     </div>
   );

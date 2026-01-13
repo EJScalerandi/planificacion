@@ -1045,3 +1045,156 @@ body {
 .ua-modalBody {
   padding: 12px
 }
+/* =========================================================
+   Index agrupado (Admin / Producción / Informativo)
+   ========================================================= */
+
+.idx-grid {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 14px;
+  margin-top: 12px;
+}
+
+@media (max-width: 980px) {
+  .idx-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.idx-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.idx-section__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 85%, var(--brand-100));
+}
+
+.idx-section__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: .2px;
+}
+
+.idx-section__sub {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.idx-section__body {
+  padding: 12px 14px;
+}
+
+.idx-links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.idx-linkItem {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: var(--surface);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.idx-linkItem:hover {
+  background: color-mix(in srgb, var(--brand) 7%, #fff);
+  border-color: color-mix(in srgb, var(--brand) 25%, var(--border));
+}
+
+.idx-linkText {
+  display: grid;
+  gap: 4px;
+}
+
+.idx-linkTitle {
+  font-weight: 900;
+  color: var(--brand-700);
+  text-decoration: none;
+}
+
+.idx-linkMeta {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.idx-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 75%, var(--brand-100));
+  font-size: 12px;
+  font-weight: 900;
+  color: var(--text);
+}
+
+.idx-section--admin .idx-section__head {
+  background: color-mix(in srgb, var(--brand) 12%, var(--surface));
+}
+
+.idx-section--prod .idx-section__head {
+  background: color-mix(in srgb, var(--state-done) 18%, var(--surface));
+}
+
+.idx-section--info .idx-section__head {
+  background: color-mix(in srgb, var(--state-process) 18%, var(--surface));
+}
+
+.idx-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+@media (max-width: 980px) {
+  .idx-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 520px) {
+  .idx-kpis {
+    grid-template-columns: 1fr;
+  }
+}
+
+.idx-kpi {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  padding: 10px 12px;
+}
+
+.idx-kpiLabel {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+
+.idx-kpiValue {
+  font-weight: 900;
+  font-size: 18px;
+}
