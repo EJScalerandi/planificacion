@@ -121,7 +121,7 @@ function toISODate10(v) {
   m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
   if (m) return `${m[3]}-${pad2(m[2])}-${pad2(m[1])}`;
 
-  // soporte extra: dd-mm-yyyy o d-m-yyyy (tu Fecha_NV viene así: "22-08-2024")
+  // soporte extra: dd-mm-yyyy o d-m-yyyy
   m = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
   if (m) return `${m[3]}-${pad2(m[2])}-${pad2(m[1])}`;
 
@@ -154,17 +154,15 @@ function formatDMY(date10) {
 /**
  * getAny:
  * - Primero intenta match exacto
- * - Luego fallback case-insensitive (útil si backend cambió capitalización)
+ * - Luego fallback case-insensitive
  */
 function getAny(obj, keys) {
   if (!obj) return null;
 
-  // 1) match exacto
   for (const k of keys) {
     if (Object.prototype.hasOwnProperty.call(obj, k) && obj[k] != null) return obj[k];
   }
 
-  // 2) fallback case-insensitive
   const map = {};
   for (const k of Object.keys(obj)) map[String(k).toLowerCase()] = k;
 
@@ -296,7 +294,7 @@ function nextWeekFridayCutoffISO10() {
   mondayThisWeek.setUTCDate(d.getUTCDate() - dayMon0);
 
   const nextWeekFriday = new Date(mondayThisWeek);
-  nextWeekFriday.setUTCDate(mondayThisWeek.getUTCDate() + 11); // lunes + (7 + viernes(4)) = 11
+  nextWeekFriday.setUTCDate(mondayThisWeek.getUTCDate() + 11);
 
   const yyyy = nextWeekFriday.getUTCFullYear();
   const mm = pad2(nextWeekFriday.getUTCMonth() + 1);
@@ -322,7 +320,6 @@ function getPdfFieldDefs() {
     { id: 'nv', label: 'NV', type: 'text', sourceKeys: ['NV', 'nv'] },
     { id: 'nombre', label: 'Nombre', type: 'text', sourceKeys: ['Nombre'] },
 
-    // Cambio requerido: etiqueta "Distribuidor" y dato desde RazSoc
     { id: 'distribuidor', label: 'Distribuidor', type: 'text', sourceKeys: ['RazSoc'] },
 
     { id: 'tipo', label: 'Tipo', type: 'text', patchKey: 'tipo_imput' },
@@ -609,8 +606,8 @@ export default function PreproduccionValoresTable() {
     return (
       <div style={{ padding: 16 }}>
         <div style={{ background: '#fff5f5', border: '1px solid #fecaca', padding: 12, borderRadius: 12 }}>
-          No tenés permisos para ver Preproducción. Pedí que te asignen: <b>preproduccion:full</b>, <b>preproduccion:admin</b>{' '}
-          o <b>preproduccion:comercial_view</b>.
+          No tenés permisos para ver Preproducción. Pedí que te asignen: <b>preproduccion:full</b>,{' '}
+          <b>preproduccion:admin</b> o <b>preproduccion:comercial_view</b>.
         </div>
       </div>
     );
@@ -660,8 +657,6 @@ export default function PreproduccionValoresTable() {
   const [portonesIndexState, setPortonesIndexState] = useState('idle'); // idle|loading|ok|error
 
   // Filtros:
-  // - string para texto / bool / actions / day
-  // - { from:'YYYY-MM-DD', to:'YYYY-MM-DD', has:boolean, empty:boolean } para fechas
   const [filters, setFilters] = useState(() => {
     const o = {};
     for (const c of ALL_COLS) {
@@ -672,8 +667,6 @@ export default function PreproduccionValoresTable() {
   });
 
   // Columnas visibles:
-  // - full: configurable y persistente
-  // - admin/limited: fijo (todas las disponibles del modo)
   const [showColsPanel, setShowColsPanel] = useState(false);
   const colsPanelRef = useRef(null);
 
@@ -712,7 +705,7 @@ export default function PreproduccionValoresTable() {
     savePdfFieldsToStorage(pdfFields);
   }, [pdfFields, PDF_DEFS, accessMode]);
 
-  // ✅ NUEVO: panel presets logística + reglas sistema->fecha salida (solo full)
+  // ✅ panel presets logística + reglas sistema->fecha salida (solo full)
   const [showLogisticaPresets, setShowLogisticaPresets] = useState(false);
   const [showSistemaRules, setShowSistemaRules] = useState(false);
 
@@ -729,7 +722,6 @@ export default function PreproduccionValoresTable() {
   };
 
   // ===== Modales =====
-  // Admin: full + admin
   const [adminModalOpen, setAdminModalOpen] = useState(false);
   const [adminModalRow, setAdminModalRow] = useState(null);
   const [adminModalBusy, setAdminModalBusy] = useState(false);
@@ -794,7 +786,6 @@ export default function PreproduccionValoresTable() {
         const nv = parseInt(String(it?.nv ?? it?.NV ?? it?.nlista ?? it?.NLista ?? '').trim(), 10);
         if (Number.isFinite(nv)) {
           set.add(nv);
-          // si existe id lo guardamos para poder hacer update por id
           const id = it?.id ?? it?.ID ?? null;
           if (id != null) map.set(nv, id);
         }
@@ -831,77 +822,89 @@ export default function PreproduccionValoresTable() {
     load();
   }, [load]);
 
-  const onPatch = useCallback(async (id, patch) => {
-    if (!id) return;
-    setSaving((prev) => new Set(prev).add(id));
-    try {
-      const res = await updatePreproduccionValor(id, patch);
-      const updated = res?.data;
-      setRows((prev) => prev.map((r) => (r.id === id ? updated : r)));
-
-      // ✅ Si el usuario planifica producción (inicio_prod_imput), además de preproduccion_valores
-      // reflejamos esa fecha en PORTONES.fecha_prod para que StageColumn pueda armar links de PDFs.
+  /**
+   * onPatch con options:
+   * - options.skipPortonesSync: evita que el patch de inicio_prod_imput dispare la sync automática a PORTONES.
+   *   Esto es clave para que sendToProduccion controle el orden y haga la sync exactamente una vez.
+   */
+  const onPatch = useCallback(
+    async (id, patch, options = {}) => {
+      if (!id) return;
+      setSaving((prev) => new Set(prev).add(id));
       try {
-        if (accessMode === 'full' && patch && Object.prototype.hasOwnProperty.call(patch, 'inicio_prod_imput')) {
-          const rawFecha = patch?.inicio_prod_imput;
-          const fecha10 = toISODate10(rawFecha);
+        const res = await updatePreproduccionValor(id, patch);
+        const updated = res?.data;
+        setRows((prev) => prev.map((r) => (r.id === id ? updated : r)));
 
-          const d = updated?.data && typeof updated.data === 'object' ? updated.data : {};
-          const nv = Number(d?.NV ?? d?.nv ?? updated?.nv ?? updated?.NV);
+        // Sync automática a PORTONES cuando se planifica producción (inicio_prod_imput),
+        // a menos que se pida explícitamente skipPortonesSync.
+        try {
+          const skipPortonesSync = Boolean(options?.skipPortonesSync);
 
-          if (Number.isInteger(nv)) {
-            const existingId = portonesNvToId?.get(nv) ?? null;
+          if (
+            accessMode === 'full' &&
+            !skipPortonesSync &&
+            patch &&
+            Object.prototype.hasOwnProperty.call(patch, 'inicio_prod_imput')
+          ) {
+            const rawFecha = patch?.inicio_prod_imput;
+            const fecha10 = toISODate10(rawFecha);
 
-            if (existingId != null) {
-              await setFechaProd(existingId, fecha10 || null);
-            } else {
-              const partida = Number(d?.PARTIDA ?? d?.partida);
-              const payload = {
-                nv,
-                // si no hay nlista en data, igualamos a nv (criterio histórico)
-                nlista: Number(d?.NLista ?? d?.nlista) || nv,
-                partida: Number.isInteger(partida) ? partida : 800,
-                fecha_prod: fecha10 || null,
-              };
+            const d = updated?.data && typeof updated.data === 'object' ? updated.data : {};
+            const nv = Number(d?.NV ?? d?.nv ?? updated?.nv ?? updated?.NV);
 
-              const cr = await createPorton(payload);
-              const created = cr?.data || null;
-              const createdId = created?.id ?? created?.ID ?? null;
+            if (Number.isInteger(nv)) {
+              const existingId = portonesNvToId?.get(nv) ?? null;
 
-              // actualizamos índice local para que el UI (botón PDF) se habilite sin recargar
-              setPortonesNvSet((prev) => {
-                const n = new Set(prev);
-                n.add(nv);
-                return n;
-              });
-              if (createdId != null) {
-                setPortonesNvToId((prev) => {
-                  const m = new Map(prev);
-                  m.set(nv, createdId);
-                  return m;
+              if (existingId != null) {
+                await setFechaProd(existingId, fecha10 || null);
+              } else {
+                const partida = Number(d?.PARTIDA ?? d?.partida);
+                const payload = {
+                  nv,
+                  nlista: Number(d?.NLista ?? d?.nlista) || nv,
+                  partida: Number.isInteger(partida) ? partida : 800,
+                  fecha_prod: fecha10 || null,
+                };
+
+                const cr = await createPorton(payload);
+                const created = cr?.data || null;
+                const createdId = created?.id ?? created?.ID ?? null;
+
+                setPortonesNvSet((prev) => {
+                  const n = new Set(prev);
+                  n.add(nv);
+                  return n;
                 });
+                if (createdId != null) {
+                  setPortonesNvToId((prev) => {
+                    const m = new Map(prev);
+                    m.set(nv, createdId);
+                    return m;
+                  });
+                }
               }
             }
           }
+        } catch (e) {
+          console.warn('No se pudo sincronizar fecha_prod en PORTONES:', e?.message || e);
         }
-      } catch (e) {
-        // no bloqueamos el guardado principal si PORTONES falla
-        console.warn('No se pudo sincronizar fecha_prod en PORTONES:', e?.message || e);
-      }
 
-      return updated;
-    } catch (e) {
-      const msg = e?.response?.data?.error || e?.message || 'Error guardando';
-      alert(msg);
-      throw e;
-    } finally {
-      setSaving((prev) => {
-        const n = new Set(prev);
-        n.delete(id);
-        return n;
-      });
-    }
-  }, [accessMode, portonesNvToId, createPorton, setFechaProd]);
+        return updated;
+      } catch (e) {
+        const msg = e?.response?.data?.error || e?.message || 'Error guardando';
+        alert(msg);
+        throw e;
+      } finally {
+        setSaving((prev) => {
+          const n = new Set(prev);
+          n.delete(id);
+          return n;
+        });
+      }
+    },
+    [accessMode, portonesNvToId]
+  );
 
   const submitAdminAuth = useCallback(
     async (patch) => {
@@ -953,12 +956,12 @@ export default function PreproduccionValoresTable() {
         ? getCellValue(row, colFechaSalida)
         : row?.data?.fecha_salida_imput ?? row?.data?.Fecha_Salida_Imput;
       const date10 = toISODate10(raw);
-      if (!isISODate10(date10)) return false; // en admin, si no hay fecha salida: no mostramos
-      return date10 <= cutoff; // deja TODO lo pasado + hasta viernes semana siguiente
+      if (!isISODate10(date10)) return false;
+      return date10 <= cutoff;
     });
   }, [rowsAfterNvExclusion, accessMode, ALL_COLS]);
 
-  // ✅ NUEVO: lista de distribuidores (RazSoc) para el dropdown de presets (sin repetidos)
+  // ✅ lista de distribuidores (RazSoc)
   const distributorsList = useMemo(() => {
     const map = new Map();
     const base = rowsAfterAccessWindow || [];
@@ -972,7 +975,7 @@ export default function PreproduccionValoresTable() {
     return Array.from(map.values()).sort((a, b) => a.localeCompare(b));
   }, [rowsAfterAccessWindow]);
 
-  // ✅ NUEVO: recomendaciones por distribuidor para el modal logística
+  // ✅ recomendaciones por distribuidor para el modal logística
   const logisticaRecommendations = useMemo(() => {
     if (!logModalRow) return null;
     const d = logModalRow?.data || {};
@@ -982,24 +985,24 @@ export default function PreproduccionValoresTable() {
   }, [logModalRow, logisticaPresets]);
 
   // ====== Estado acciones (solo full) ======
-  // Regla nueva:
-  // - "En producción" si ya existe en portones
+  // ✅ CORREGIDO:
+  // - "Enviado" depende de fecha_envio_produccion (flag real), NO de "existe en portones"
   // - "Pendiente" si NO está autorizado por logística
   // - "Listo" si logística ok
-  // (Admin NO bloquea)
-  const getAccionesStatus = useCallback(
-    (row) => {
-      const d = row?.data || {};
+  const getAccionesStatus = useCallback((row) => {
+    const d = row?.data || {};
 
-      const nv = getNvIntFromRow(row);
-      const inPortones = nv != null ? portonesNvSet.has(nv) : false;
+    const alreadySent = Boolean(
+      d.fecha_envio_produccion ??
+        d.Fecha_Envio_Produccion ??
+        d.fecha_envio_prod ??
+        d.Fecha_Envio_Prod
+    );
 
-      if (inPortones) return 'produccion';
-      if (!Boolean(d.auth_logistica)) return 'pendiente';
-      return 'listo';
-    },
-    [portonesNvSet]
-  );
+    if (alreadySent) return 'produccion';
+    if (!Boolean(d.auth_logistica)) return 'pendiente';
+    return 'listo';
+  }, []);
 
   // =====================
   // Date filter: intervalo + con fecha + sin fecha
@@ -1093,11 +1096,9 @@ export default function PreproduccionValoresTable() {
           const needle = String(fval).toLowerCase().trim();
           if (!needle) return true;
 
-          // UI: Autorizar / Autorizado
           if (needle === 'autorizado') return b === true;
           if (needle === 'autorizar') return b === false;
 
-          // compatibilidad anterior
           if (['si', 'sí', 'true', '1'].includes(needle)) return b === true;
           if (['no', 'false', '0'].includes(needle)) return b === false;
 
@@ -1141,6 +1142,13 @@ export default function PreproduccionValoresTable() {
     [accessMode, onPatch]
   );
 
+  // ✅ CORREGIDO:
+  // - Permite enviar aunque el NV ya exista en PORTONES (no es "enviado" automáticamente)
+  // - Requiere fecha de producción (opción 3)
+  // - Persiste:
+  //   1) preproduccion_valores.inicio_prod_imput
+  //   2) portones.fecha_prod (update si existe / create si no existe)
+  //   3) marca fecha_envio_produccion (flag)
   const sendToProduccion = useCallback(
     async (row) => {
       if (accessMode !== 'full') return;
@@ -1150,7 +1158,7 @@ export default function PreproduccionValoresTable() {
 
       const d = row?.data || {};
 
-      // Regla nueva: SOLO logística habilita el envío
+      // SOLO logística habilita el envío
       const okAuth = Boolean(d.auth_logistica);
       if (!okAuth) return;
 
@@ -1160,31 +1168,59 @@ export default function PreproduccionValoresTable() {
         return;
       }
 
-      if (portonesNvSet.has(nv)) return;
-
       const dateOrNull = (v) => {
         const x = normalizeDate10(v);
         return x ? x : null;
       };
 
-      const payload = {
-        nv,
-        nlista: nv,
-        partida: 800,
-        fecha_plan: dateOrNull(d.fecha_salida_imput ?? d.Fecha_Salida_Imput ?? null),
-        fecha_prod: dateOrNull(d.inicio_prod_imput ?? d.Inicio_Prod_Imput ?? null),
-        fecha_nv: dateOrNull(getAny(d, ['Fecha_NV', 'fecha_nv', 'Fecha_Venta', 'fecha_venta'])),
-        fecha_med: dateOrNull(d.fecha_medicion_imput ?? d.Fecha_Medicion_Imput ?? null),
-      };
+      const prodDate10 = dateOrNull(d.inicio_prod_imput ?? d.Inicio_Prod_Imput ?? null);
+
+      // ✅ OPCIÓN 3: bloquear envío si falta fecha producción
+      if (!prodDate10) {
+        alert('No se puede enviar: falta Fecha Producción (inicio_prod_imput).');
+        return;
+      }
 
       try {
-        await createPorton(payload);
-        setPortonesNvSet((prev) => {
-          const next = new Set(prev);
-          next.add(nv);
-          return next;
-        });
+        // 1) Persistir en preproducción (sin sync automática a portones, porque la controlamos abajo)
+        await onPatch(id, { inicio_prod_imput: prodDate10 }, { skipPortonesSync: true });
 
+        // 2) Persistir en PORTONES.fecha_prod
+        const existingId = portonesNvToId?.get(nv) ?? null;
+
+        if (existingId != null) {
+          await setFechaProd(existingId, prodDate10);
+        } else {
+          const payload = {
+            nv,
+            nlista: nv,
+            partida: 800,
+            fecha_plan: dateOrNull(d.fecha_salida_imput ?? d.Fecha_Salida_Imput ?? null),
+            fecha_prod: prodDate10,
+            fecha_nv: dateOrNull(getAny(d, ['Fecha_NV', 'fecha_nv', 'Fecha_Venta', 'fecha_venta'])),
+            fecha_med: dateOrNull(d.fecha_medicion_imput ?? d.Fecha_Medicion_Imput ?? null),
+          };
+
+          const cr = await createPorton(payload);
+          const created = cr?.data || null;
+          const createdId = created?.id ?? created?.ID ?? null;
+
+          setPortonesNvSet((prev) => {
+            const next = new Set(prev);
+            next.add(nv);
+            return next;
+          });
+
+          if (createdId != null) {
+            setPortonesNvToId((prev) => {
+              const m = new Map(prev);
+              m.set(nv, createdId);
+              return m;
+            });
+          }
+        }
+
+        // 3) Marcar como enviado (flag)
         await onPatch(id, { fecha_envio_produccion: new Date().toISOString() });
       } catch (e) {
         const status = e?.response?.status;
@@ -1196,19 +1232,24 @@ export default function PreproduccionValoresTable() {
           String(msg).toLowerCase().includes('unique') ||
           String(msg).toLowerCase().includes('portones_nv_nlista_uniq');
 
+        // Si fue duplicado al crear, igual podés seguir marcando enviado.
         if (isDuplicate) {
           setPortonesNvSet((prev) => {
             const next = new Set(prev);
             next.add(nv);
             return next;
           });
+          // Intento marcar enviado igual (sin bloquear)
+          try {
+            await onPatch(id, { fecha_envio_produccion: new Date().toISOString() });
+          } catch {}
           return;
         }
 
         alert(msg);
       }
     },
-    [onPatch, portonesNvSet, accessMode]
+    [onPatch, portonesNvToId, accessMode]
   );
 
   // ======= PDF helpers =======
@@ -1269,10 +1310,8 @@ export default function PreproduccionValoresTable() {
     let raf = 0;
 
     const syncSpacer = () => {
-      // Ancho real scrolleable de la tabla (incluye columnas ocultas/visibles, etc.)
       const w = tw.scrollWidth;
       sp.style.width = `${w}px`;
-      // Mantener espejo alineado
       xs.scrollLeft = tw.scrollLeft;
     };
 
@@ -1293,7 +1332,6 @@ export default function PreproduccionValoresTable() {
     tw.addEventListener('scroll', onTwScroll, { passive: true });
     xs.addEventListener('scroll', onXsScroll, { passive: true });
 
-    // ResizeObserver para cambios de ancho de columnas / tabla
     let ro = null;
     if (window.ResizeObserver) {
       ro = new ResizeObserver(() => syncSpacer());
@@ -1302,10 +1340,8 @@ export default function PreproduccionValoresTable() {
       if (t) ro.observe(t);
     }
 
-    // Fallback por si cambia layout sin RO (o para móviles)
     window.addEventListener('resize', syncSpacer);
 
-    // Inicial
     syncSpacer();
 
     return () => {
@@ -1315,7 +1351,6 @@ export default function PreproduccionValoresTable() {
       if (ro) ro.disconnect();
       if (raf) cancelAnimationFrame(raf);
     };
-    // Re-sincroniza cuando cambia el contenido visible
   }, [visibleColsList.length, pagedRows.length, total]);
 
   const renderDateFilter = (colId) => {
@@ -1514,7 +1549,6 @@ export default function PreproduccionValoresTable() {
       const v = data[col.patchKey] ?? '';
 
       if (col.type === 'date') {
-        // ✅ NUEVO: "Recomendar" fecha salida basado en Sistemas (solo para fecha_salida_imput)
         const isFechaSalida = col.patchKey === 'fecha_salida_imput';
         const sistemas = String(
           data.Sistemas ?? data.sistemas ?? data.Sistema ?? data.sistema ?? data.SISTEMAS ?? ''
@@ -1616,8 +1650,7 @@ export default function PreproduccionValoresTable() {
       <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 12 }}>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800 }}>
-            Preproducción{' '}
-            {accessMode === 'limited' ? <span style={{ fontSize: 12, fontWeight: 700 }}>(Vista)</span> : null}
+            Preproducción {accessMode === 'limited' ? <span style={{ fontSize: 12, fontWeight: 700 }}>(Vista)</span> : null}
             {accessMode === 'admin' ? <span style={{ fontSize: 12, fontWeight: 700 }}>(Administración)</span> : null}
           </h2>
 
@@ -1625,7 +1658,6 @@ export default function PreproduccionValoresTable() {
             Recargar
           </button>
 
-          {/* ✅ NUEVO: accesos a presets/reglas (solo full) */}
           {accessMode === 'full' ? (
             <>
               <button onClick={() => setShowLogisticaPresets(true)} disabled={loading} className="btn">
@@ -1809,7 +1841,6 @@ export default function PreproduccionValoresTable() {
             </div>
           ) : null}
 
-          {/* hint admin cutoff */}
           {accessMode === 'admin' ? (
             <div style={{ fontSize: 12, color: '#374151' }}>
               Mostrando hasta: <b>{formatDMY(nextWeekFridayCutoffISO10())}</b>
@@ -1837,9 +1868,7 @@ export default function PreproduccionValoresTable() {
           </div>
         ) : null}
 
-        {/* =======================
-            ✅ TABLA FULL-BLEED + SCROLLBAR SIEMPRE VISIBLE
-           ======================= */}
+        {/* TABLA FULL-BLEED + SCROLLBAR SIEMPRE VISIBLE */}
         <div className="pp-bleed">
           <div className="pp-tableWrap pp-tableWrap--edge" ref={tableWrapRef}>
             <table className="pp-table">
@@ -1873,7 +1902,7 @@ export default function PreproduccionValoresTable() {
                           <option value="">(todos)</option>
                           <option value="pendiente">Pendiente</option>
                           <option value="listo">Listo</option>
-                          <option value="produccion">En producción</option>
+                          <option value="produccion">Enviado</option>
                         </select>
                       ) : c.type === 'day' ? (
                         <select
@@ -1947,7 +1976,7 @@ export default function PreproduccionValoresTable() {
             </table>
           </div>
 
-          {/* Scrollbar espejo: SIEMPRE visible (sticky abajo) */}
+          {/* Scrollbar espejo */}
           <div className="pp-xscroll" ref={xscrollRef} aria-hidden="true">
             <div className="pp-xscroll__spacer" ref={xscrollSpacerRef} />
           </div>
@@ -1997,7 +2026,7 @@ export default function PreproduccionValoresTable() {
         </div>
       </div>
 
-      {/* ✅ NUEVO: paneles (solo full) */}
+      {/* paneles (solo full) */}
       {accessMode === 'full' ? (
         <>
           <PreproduccionLogisticaPresets
@@ -2010,7 +2039,7 @@ export default function PreproduccionValoresTable() {
       ) : null}
 
       {/* Modales */}
-      {(accessMode === 'full' || accessMode === 'admin') ? (
+      {accessMode === 'full' || accessMode === 'admin' ? (
         <AdminAuthModal
           open={adminModalOpen}
           row={adminModalRow}
@@ -2027,8 +2056,6 @@ export default function PreproduccionValoresTable() {
           busy={logModalBusy}
           onClose={closeLogModal}
           onSubmit={submitLogisticaAuth}
-          // ⚠️ Si tu LogisticaAuthModal aún no soporta este prop, no rompe.
-          // Para que aplique el prefill, hay que agregarlo en el modal (te lo paso si querés).
           recommendations={logisticaRecommendations}
         />
       ) : null}

@@ -41,27 +41,21 @@ export const fetchPortones = () => api.get('/portones');
 
 export const createPorton = (payload) => api.post('/portones', payload);
 
-export const startStage = (id, stage) =>
-  api.post(`/portones/${id}/stage`, { stage, action: 'start' });
+export const startStage = (id, stage) => api.post(`/portones/${id}/stage`, { stage, action: 'start' });
 
-export const stopStage = (id, stage) =>
-  api.post(`/portones/${id}/stage`, { stage, action: 'stop' });
+export const stopStage = (id, stage) => api.post(`/portones/${id}/stage`, { stage, action: 'stop' });
 
 // Fecha de entrega planificada (YYYY-MM-DD o null)
-export const setFechaPlan = (id, fechaOrNull) =>
-  api.post(`/portones/${id}/fecha-plan`, { fecha_plan: fechaOrNull });
+export const setFechaPlan = (id, fechaOrNull) => api.post(`/portones/${id}/fecha-plan`, { fecha_plan: fechaOrNull });
 
 // Fecha de inicio de producción (YYYY-MM-DD o null)
-export const setFechaProd = (id, fechaOrNull) =>
-  api.post(`/portones/${id}/fecha-prod`, { fecha_prod: fechaOrNull });
+export const setFechaProd = (id, fechaOrNull) => api.post(`/portones/${id}/fecha-prod`, { fecha_prod: fechaOrNull });
 
 // Fecha de venta (NV) (YYYY-MM-DD o null)
-export const setFechaNV = (id, fechaOrNull) =>
-  api.post(`/portones/${id}/fecha-nv`, { fecha_nv: fechaOrNull });
+export const setFechaNV = (id, fechaOrNull) => api.post(`/portones/${id}/fecha-nv`, { fecha_nv: fechaOrNull });
 
 // Fecha de medición (YYYY-MM-DD o null)
-export const setFechaMed = (id, fechaOrNull) =>
-  api.post(`/portones/${id}/fecha-med`, { fecha_med: fechaOrNull });
+export const setFechaMed = (id, fechaOrNull) => api.post(`/portones/${id}/fecha-med`, { fecha_med: fechaOrNull });
 
 // Fecha planificada llegada (YYYY-MM-DD o null)
 export const setFechaPlanEntrega = (id, fechaOrNull) =>
@@ -72,45 +66,36 @@ export const setFechaPlanEntrega = (id, fechaOrNull) =>
 /* ========= Observaciones Portones ========= */
 
 // GET observaciones de un portón
-export const getPortonObservaciones = (id) =>
-  api.get(`/portones/${id}/observaciones`);
+export const getPortonObservaciones = (id) => api.get(`/portones/${id}/observaciones`);
 
 // POST observaciones (crear/actualizar – tu backend hace UPDATE)
-export const savePortonObservaciones = (id, observaciones) =>
-  api.post(`/portones/${id}/observaciones`, { observaciones });
+export const savePortonObservaciones = (id, observaciones) => api.post(`/portones/${id}/observaciones`, { observaciones });
 
 // PUT observaciones (idempotente)
 export const updatePortonObservaciones = (id, observaciones) =>
   api.put(`/portones/${id}/observaciones`, { observaciones });
 
 // ✅ Alias de compatibilidad
-export const setPortonObservaciones = (id, observaciones) =>
-  updatePortonObservaciones(id, observaciones);
+export const setPortonObservaciones = (id, observaciones) => updatePortonObservaciones(id, observaciones);
 
 /* ========= iPanels ========= */
 export const fetchIpanels = () => api.get('/ipanel');
 
 export const createIpanel = (payload) => api.post('/ipanel', payload);
 
-export const startIpanelStage = (id, stage) =>
-  api.post(`/ipanel/${id}/stage`, { stage, action: 'start' });
+export const startIpanelStage = (id, stage) => api.post(`/ipanel/${id}/stage`, { stage, action: 'start' });
 
-export const stopIpanelStage = (id, stage) =>
-  api.post(`/ipanel/${id}/stage`, { stage, action: 'stop' });
+export const stopIpanelStage = (id, stage) => api.post(`/ipanel/${id}/stage`, { stage, action: 'stop' });
 
 /* ========= Fechas iPanels ========= */
 
-export const setIpanelFechaProd = (id, fechaOrNull) =>
-  api.post(`/ipanel/${id}/fecha-prod`, { fecha_prod: fechaOrNull });
+export const setIpanelFechaProd = (id, fechaOrNull) => api.post(`/ipanel/${id}/fecha-prod`, { fecha_prod: fechaOrNull });
 
-export const setIpanelFechaNV = (id, fechaOrNull) =>
-  api.post(`/ipanel/${id}/fecha-nv`, { fecha_nv: fechaOrNull });
+export const setIpanelFechaNV = (id, fechaOrNull) => api.post(`/ipanel/${id}/fecha-nv`, { fecha_nv: fechaOrNull });
 
-export const setIpanelFechaMed = (id, fechaOrNull) =>
-  api.post(`/ipanel/${id}/fecha-med`, { fecha_med: fechaOrNull });
+export const setIpanelFechaMed = (id, fechaOrNull) => api.post(`/ipanel/${id}/fecha-med`, { fecha_med: fechaOrNull });
 
-export const setIpanelFechaPlan = (id, fechaOrNull) =>
-  api.post(`/ipanel/${id}/fecha-plan`, { fecha_plan: fechaOrNull });
+export const setIpanelFechaPlan = (id, fechaOrNull) => api.post(`/ipanel/${id}/fecha-plan`, { fecha_plan: fechaOrNull });
 
 export const setIpanelFechaPlanEntrega = (id, fechaOrNull) =>
   api.post(`/ipanel/${id}/fecha-plan-entrega`, {
@@ -119,17 +104,13 @@ export const setIpanelFechaPlanEntrega = (id, fechaOrNull) =>
 
 /* ========= Observaciones iPanels ========= */
 
-export const getIpanelObservaciones = (id) =>
-  api.get(`/ipanel/${id}/observaciones`);
+export const getIpanelObservaciones = (id) => api.get(`/ipanel/${id}/observaciones`);
 
-export const saveIpanelObservaciones = (id, observaciones) =>
-  api.post(`/ipanel/${id}/observaciones`, { observaciones });
+export const saveIpanelObservaciones = (id, observaciones) => api.post(`/ipanel/${id}/observaciones`, { observaciones });
 
-export const updateIpanelObservaciones = (id, observaciones) =>
-  api.put(`/ipanel/${id}/observaciones`, { observaciones });
+export const updateIpanelObservaciones = (id, observaciones) => api.put(`/ipanel/${id}/observaciones`, { observaciones });
 
-export const setIpanelObservaciones = (id, observaciones) =>
-  updateIpanelObservaciones(id, observaciones);
+export const setIpanelObservaciones = (id, observaciones) => updateIpanelObservaciones(id, observaciones);
 
 /* ============ ADMIN WORKFLOW ============ */
 
@@ -148,6 +129,14 @@ export async function getWorkflowConfig(line) {
 
 export async function saveWorkflowConfig(line, payload) {
   const { data } = await api.put('/admin/workflow/config', payload, {
+    params: { line },
+  });
+  return data;
+}
+
+// ✅ NUEVO: campos para armar condiciones (builder)
+export async function getWorkflowConditionFields(line) {
+  const { data } = await api.get('/admin/workflow/condition-fields', {
     params: { line },
   });
   return data;
@@ -173,16 +162,13 @@ export async function qcAuthorize(payload) {
 // ✅ IMPORTANTE: firma por objeto
 export async function qcHistory({ line, item_id }) {
   const t = Date.now(); // cache buster
-  const { data } = await api.get(
-    `/qc/history/${encodeURIComponent(line)}/${encodeURIComponent(item_id)}`,
-    {
-      params: { t },
-      headers: {
-        'Cache-Control': 'no-cache',
-        Pragma: 'no-cache',
-      },
-    }
-  );
+  const { data } = await api.get(`/qc/history/${encodeURIComponent(line)}/${encodeURIComponent(item_id)}`, {
+    params: { t },
+    headers: {
+      'Cache-Control': 'no-cache',
+      Pragma: 'no-cache',
+    },
+  });
   return data;
 }
 
@@ -190,9 +176,7 @@ export async function qcHistory({ line, item_id }) {
 export async function qcSummary({ line, item_ids, stage_key } = {}) {
   const payload = {
     line: String(line || '').trim(),
-    item_ids: Array.isArray(item_ids)
-      ? item_ids.map((n) => Number(n)).filter((n) => Number.isInteger(n))
-      : [],
+    item_ids: Array.isArray(item_ids) ? item_ids.map((n) => Number(n)).filter((n) => Number.isInteger(n)) : [],
     stage_key: stage_key == null ? null : String(stage_key).trim(),
   };
 
@@ -253,8 +237,7 @@ export const getDespacharBases = () => api.get('/despachar/bases');
 /* ========= Preproducción ========= */
 export const fetchPreproduccionValores = () => api.get('/preproduccion-valores');
 
-export const updatePreproduccionValor = (id, patch) =>
-  api.put(`/preproduccion-valores/${id}`, { patch });
+export const updatePreproduccionValor = (id, patch) => api.put(`/preproduccion-valores/${id}`, { patch });
 
 // --------------------
 // ADMIN USERS / SCOPES
