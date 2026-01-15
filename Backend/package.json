@@ -1,22 +1,25 @@
 {
-  "name": "portones-backend",
+  "name": "dflex-sync-backend",
   "version": "1.0.0",
-  "private": true,
-  "main": "server/index.js",
+  "description": "Servicio intermedio entre SQL Server Portones y Odoo 18",
+  "main": "server.js",
   "scripts": {
-    "start": "node server/index.js",
-    "dev": "nodemon server/index.js"
+    "start": "node server.js",
+    "dev": "nodemon server.js"
   },
   "dependencies": {
-    "bcryptjs": "^2.4.3",
+    "@supabase/supabase-js": "^2.89.0",
+    "axios": "^1.13.2",
     "cors": "^2.8.5",
-    "dotenv": "^16.4.5",
-    "express": "^4.19.2",
-    "jsonwebtoken": "^9.0.2",
+    "dotenv": "^16.4.0",
+    "express": "^4.19.0",
     "morgan": "^1.10.0",
-    "pg": "^8.12.0"
+    "mssql": "^10.0.0",
+    "pdf-lib": "^1.17.1",
+    "pdfkit": "^0.17.2",
+    "pg": "^8.16.3"
   },
   "devDependencies": {
-    "nodemon": "^3.1.4"
+    "nodemon": "^3.1.0"
   }
 }
