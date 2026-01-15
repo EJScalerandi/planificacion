@@ -5,6 +5,7 @@ import {
   updatePreproduccionValor,
   createPorton,
   fetchPortones,
+  setFechaProd,
   getAdminToken,
 } from '../api';
 
@@ -655,6 +656,7 @@ export default function PreproduccionValoresTable() {
 
   // ====== Estado basado en PORTONES (solo full) ======
   const [portonesNvSet, setPortonesNvSet] = useState(() => new Set());
+  const [portonesNvToId, setPortonesNvToId] = useState(() => new Map());
   const [portonesIndexState, setPortonesIndexState] = useState('idle'); // idle|loading|ok|error
 
   // Filtros:
@@ -787,14 +789,22 @@ export default function PreproduccionValoresTable() {
       const list = Array.isArray(rr?.data) ? rr.data : rr?.data ? [rr.data] : [];
 
       const set = new Set();
+      const map = new Map();
       for (const it of list) {
         const nv = parseInt(String(it?.nv ?? it?.NV ?? it?.nlista ?? it?.NLista ?? '').trim(), 10);
-        if (Number.isFinite(nv)) set.add(nv);
+        if (Number.isFinite(nv)) {
+          set.add(nv);
+          // si existe id lo guardamos para poder hacer update por id
+          const id = it?.id ?? it?.ID ?? null;
+          if (id != null) map.set(nv, id);
+        }
       }
       setPortonesNvSet(set);
+      setPortonesNvToId(map);
       setPortonesIndexState('ok');
     } catch {
       setPortonesNvSet(new Set());
+      setPortonesNvToId(new Map());
       setPortonesIndexState('error');
     }
   }, []);
@@ -828,6 +838,57 @@ export default function PreproduccionValoresTable() {
       const res = await updatePreproduccionValor(id, patch);
       const updated = res?.data;
       setRows((prev) => prev.map((r) => (r.id === id ? updated : r)));
+
+      // ✅ Si el usuario planifica producción (inicio_prod_imput), además de preproduccion_valores
+      // reflejamos esa fecha en PORTONES.fecha_prod para que StageColumn pueda armar links de PDFs.
+      try {
+        if (accessMode === 'full' && patch && Object.prototype.hasOwnProperty.call(patch, 'inicio_prod_imput')) {
+          const rawFecha = patch?.inicio_prod_imput;
+          const fecha10 = toISODate10(rawFecha);
+
+          const d = updated?.data && typeof updated.data === 'object' ? updated.data : {};
+          const nv = Number(d?.NV ?? d?.nv ?? updated?.nv ?? updated?.NV);
+
+          if (Number.isInteger(nv)) {
+            const existingId = portonesNvToId?.get(nv) ?? null;
+
+            if (existingId != null) {
+              await setFechaProd(existingId, fecha10 || null);
+            } else {
+              const partida = Number(d?.PARTIDA ?? d?.partida);
+              const payload = {
+                nv,
+                // si no hay nlista en data, igualamos a nv (criterio histórico)
+                nlista: Number(d?.NLista ?? d?.nlista) || nv,
+                partida: Number.isInteger(partida) ? partida : 800,
+                fecha_prod: fecha10 || null,
+              };
+
+              const cr = await createPorton(payload);
+              const created = cr?.data || null;
+              const createdId = created?.id ?? created?.ID ?? null;
+
+              // actualizamos índice local para que el UI (botón PDF) se habilite sin recargar
+              setPortonesNvSet((prev) => {
+                const n = new Set(prev);
+                n.add(nv);
+                return n;
+              });
+              if (createdId != null) {
+                setPortonesNvToId((prev) => {
+                  const m = new Map(prev);
+                  m.set(nv, createdId);
+                  return m;
+                });
+              }
+            }
+          }
+        }
+      } catch (e) {
+        // no bloqueamos el guardado principal si PORTONES falla
+        console.warn('No se pudo sincronizar fecha_prod en PORTONES:', e?.message || e);
+      }
+
       return updated;
     } catch (e) {
       const msg = e?.response?.data?.error || e?.message || 'Error guardando';
@@ -840,7 +901,7 @@ export default function PreproduccionValoresTable() {
         return n;
       });
     }
-  }, []);
+  }, [accessMode, portonesNvToId, createPorton, setFechaProd]);
 
   const submitAdminAuth = useCallback(
     async (patch) => {

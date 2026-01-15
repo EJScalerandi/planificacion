@@ -105,6 +105,21 @@ function getProdDate10(item) {
   return toISODate10(raw);
 }
 
+/**
+ * ✅ NUEVO: fecha que ahora usa el sistema de PDFs (link mode) para agrupar portones.
+ * Se basa en `fecha_envio_produccion` (Supabase).
+ */
+function getEnvioProduccionDate10(item) {
+  const raw =
+    item?.fecha_envio_produccion ??
+    item?.Fecha_Envio_Produccion ??
+    item?.fecha_envio_prod ??
+    item?.Fecha_Envio_Prod ??
+    null;
+
+  return toISODate10(raw);
+}
+
 function canEnterQueue(item, effKey) {
   const st = low(item?.[effKey]);
   if (st === 'en proceso') return true;
@@ -206,7 +221,9 @@ function QcModal({ open, onClose, item, line, stageKey, title, onSaved }) {
     }
 
     run();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [open, status, item, line, stageKey]);
 
   const submit = async () => {
@@ -264,7 +281,9 @@ function QcModal({ open, onClose, item, line, stageKey, title, onSaved }) {
     <div
       role="dialog"
       aria-modal="true"
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose?.();
+      }}
       style={{
         position: 'fixed',
         inset: 0,
@@ -298,7 +317,9 @@ function QcModal({ open, onClose, item, line, stageKey, title, onSaved }) {
           }}
         >
           <div style={{ fontWeight: 900 }}>QC – {title}</div>
-          <button className="btn" type="button" onClick={onClose}>Cerrar</button>
+          <button className="btn" type="button" onClick={onClose}>
+            Cerrar
+          </button>
         </div>
 
         <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -407,7 +428,9 @@ function ObservacionesModal({ open, onClose, title, item, line }) {
     }
 
     run();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [open, item, line]);
 
   if (!open || !item) return null;
@@ -429,7 +452,9 @@ function ObservacionesModal({ open, onClose, title, item, line }) {
     <div
       role="dialog"
       aria-modal="true"
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose?.();
+      }}
       style={{
         position: 'fixed',
         inset: 0,
@@ -463,7 +488,9 @@ function ObservacionesModal({ open, onClose, title, item, line }) {
           }}
         >
           <div style={{ fontWeight: 900, color: '#991b1b' }}>Observaciones · {head}</div>
-          <button className="btn" type="button" onClick={onClose}>Cerrar</button>
+          <button className="btn" type="button" onClick={onClose}>
+            Cerrar
+          </button>
         </div>
 
         <div style={{ padding: 14 }}>
@@ -488,10 +515,18 @@ function ObservacionesModal({ open, onClose, title, item, line }) {
                   <div style={{ fontWeight: 900, color: '#7f1d1d', marginBottom: 6 }}>
                     {r.status || 'OBSERVADO'}
                   </div>
-                  <div style={{ fontSize: 13 }}><b>Sector:</b> {r.sector}</div>
-                  <div style={{ fontSize: 13 }}><b>Fecha:</b> {r.fecha ? fmt(r.fecha) : '-'}</div>
-                  <div style={{ fontSize: 13 }}><b>Motivo:</b> {r.motivo}</div>
-                  <div style={{ fontSize: 13 }}><b>Quién puso el PIN:</b> {r.quien}</div>
+                  <div style={{ fontSize: 13 }}>
+                    <b>Sector:</b> {r.sector}
+                  </div>
+                  <div style={{ fontSize: 13 }}>
+                    <b>Fecha:</b> {r.fecha ? fmt(r.fecha) : '-'}
+                  </div>
+                  <div style={{ fontSize: 13 }}>
+                    <b>Motivo:</b> {r.motivo}
+                  </div>
+                  <div style={{ fontSize: 13 }}>
+                    <b>Quién puso el PIN:</b> {r.quien}
+                  </div>
                 </div>
               ))}
             </div>
@@ -512,7 +547,9 @@ function HistoryModal({ open, onClose, title, effKey, rows = [] }) {
     <div
       role="dialog"
       aria-modal="true"
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose?.();
+      }}
       style={{
         position: 'fixed',
         inset: 0,
@@ -548,7 +585,9 @@ function HistoryModal({ open, onClose, title, effKey, rows = [] }) {
           <div style={{ fontWeight: 900 }}>
             Historial · {title} <span style={{ opacity: 0.7, fontWeight: 700 }}>({effKey})</span>
           </div>
-          <button className="btn" type="button" onClick={onClose}>Cerrar</button>
+          <button className="btn" type="button" onClick={onClose}>
+            Cerrar
+          </button>
         </div>
 
         <div style={{ padding: 14 }}>
@@ -578,7 +617,8 @@ function HistoryModal({ open, onClose, title, effKey, rows = [] }) {
                       Fin etapa: <b>{r.fin ? fmt(r.fin) : '-'}</b>
                       {r.prod10 ? (
                         <>
-                          {' '}· Producción: <b>{r.prod10}</b>
+                          {' '}
+                          · Producción: <b>{r.prod10}</b>
                         </>
                       ) : null}
                     </div>
@@ -706,17 +746,56 @@ export default function StageColumn({
     return [{ tipo: 'arm-primario', label: 'AP', title: 'PDF Armado Primario (por NV)', icon: '🧰' }];
   }, [keyTrim]);
 
-  function openPdf(tipo, { partida, nv }) {
+  /**
+   * ✅ Adaptación a “links por fecha”
+   *
+   * - Diseño / Corte / Plegado / Tapajuntas: se abren por fecha (YYYY-MM-DD).
+   *   En la tabla portones guardamos esa fecha como `fecha_prod`.
+   *   En el visor actual, el parámetro se llama `fecha_envio_produccion`, así que lo enviamos
+   *   con el valor de `fecha_prod` para compatibilidad.
+   * - Armado Primario queda por NV (como siempre)
+   */
+  function openPdf(tipo, item) {
     const base = (pdfBaseUrl || '').trim();
     if (!base) return;
 
-    const n = nv != null ? String(nv).trim() : '';
-    const p = partida != null ? String(partida).trim() : '';
+    const t = String(tipo || '').trim();
+
+    const tipoMap =
+      t === 'diseno' ? 'diseno-laser' :
+      (t === 'corte' || t === 'plegado') ? 'corte-plegado' :
+      t === 'tapajuntas' ? 'tapajuntas' :
+      t; // arm-primario
+
+    const nvStr = item?.nv != null ? String(item.nv).trim() : (item?.NV != null ? String(item.NV).trim() : '');
+    const partidaStr =
+      item?.partida != null ? String(item.partida).trim() : (item?.PARTIDA != null ? String(item.PARTIDA).trim() : '');
+
+    // ✅ Fecha guía para PDFs agrupados:
+    // Preferimos fecha_prod (planificación/producción) desde tabla portones,
+    // y dejamos fecha_envio_produccion como fallback por compatibilidad.
+    const fecha10 = getProdDate10(item) || getEnvioProduccionDate10(item);
 
     const params = new URLSearchParams();
-    params.set('pdf', String(tipo));
-    if (n) params.set('nv', n);
-    if (p) params.set('partida', p);
+    params.set('pdf', tipoMap);
+
+    if (tipoMap === 'arm-primario') {
+      // ✅ NO TOCAR: sigue por NV (preferido). Si no hay NV, cae a partida como antes.
+      if (nvStr) params.set('nv', nvStr);
+      else if (partidaStr) params.set('partida', partidaStr);
+    } else {
+      // ✅ Agrupación por fecha
+      if (fecha10) {
+        // Visor actual
+        params.set('fecha_envio_produccion', fecha10);
+        // Compatibilidad futura
+        params.set('fecha_prod', fecha10);
+      } else {
+        // fallback conservador: evitamos abrir un link inválido
+        alert('Este portón no tiene fecha de producción cargada, no se puede abrir el PDF por fecha.');
+        return;
+      }
+    }
 
     const url = `${base}/?${params.toString()}`;
     window.open(url, '_blank', 'noopener,noreferrer');
@@ -837,15 +916,9 @@ export default function StageColumn({
             // ✅ NUEVO: regla despacho (fecha salida + admin_cliente_en_regla)
             const salida10 = getSalidaDate10(p);
             const today10 = todayISO10Local();
-            const vencida = salida10 ? (salida10 <= today10) : false;
+            const vencida = salida10 ? salida10 <= today10 : false;
 
             const enRegla = isClienteEnRegla(p);
-
-            // Si querés que también tome auth_admin como “válido”, descomentá:
-            // const enRegla = isClienteEnRegla(p) || p?.auth_admin === true;
-            if (isDespachoColumn && (p?.nv === 2633 || p?.NV === 2633 || p?.nlista === 2633)) {
-  console.log('DESPACHO ITEM', p);
-}
 
             const needsAdminAuthRed = isDespachoColumn && vencida && !enRegla;
 
@@ -913,9 +986,7 @@ export default function StageColumn({
                   {needsAdminAuthRed ? (
                     <>
                       {' '}
-                      · <b style={{ color: '#b91c1c' }}>
-                        Cliente NO en regla (Administración)
-                      </b>
+                      · <b style={{ color: '#b91c1c' }}>Cliente NO en regla (Administración)</b>
                     </>
                   ) : null}
                 </div>
@@ -923,14 +994,23 @@ export default function StageColumn({
                 <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
                   {showPdfButtons &&
                     pdfButtons.map((b) => {
-                      const enabled = canPdfBase && (p?.nv != null || p?.partida != null);
+                      const enabled =
+                        canPdfBase &&
+                        (b.tipo === 'arm-primario'
+                          ? Boolean(p?.nv != null || p?.NV != null || p?.partida != null || p?.PARTIDA != null)
+                          : Boolean(getProdDate10(p) || getEnvioProduccionDate10(p)));
+
                       return (
                         <button
                           key={b.tipo}
                           className="btn"
-                          onClick={() => openPdf(b.tipo, { partida: p.partida, nv: p.nv })}
+                          onClick={() => openPdf(b.tipo, p)}
                           disabled={!enabled}
-                          title={b.title}
+                          title={
+                            b.tipo === 'arm-primario'
+                              ? b.title
+                              : `${b.title} (por fecha de producción)`
+                          }
                         >
                           {b.icon} {b.label}
                         </button>

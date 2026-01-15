@@ -6,7 +6,8 @@ const router = express.Router();
 // GET /workflow/config (read-only)
 router.get('/workflow/config', async (req, res) => {
   try {
-    const line = String(req.query.line || '').trim();
+    // Compat: si no viene `line`, asumimos `portones` (caso más común).
+    const line = String(req.query.line || 'portones').trim();
     if (!['portones', 'ipanel'].includes(line)) return res.status(400).json({ error: 'line debe ser portones o ipanel' });
 
     const cfg = await getWorkflowConfig(line);

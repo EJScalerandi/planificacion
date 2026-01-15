@@ -24,16 +24,31 @@ const app = express();
 // Para que caches/CDN varíen por Origin
 app.use((req, res, next) => { res.header('Vary', 'Origin'); next(); });
 
-const allowedOrigins = (process.env.FRONTEND_ORIGINS || 'https://planificacion-pi.vercel.app')
+const defaultOrigins = [
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'https://planificacion-pi.vercel.app',
+];
+
+const envOrigins = (process.env.FRONTEND_ORIGINS || '')
   .split(',')
-  .map(s => s.trim().replace(/\/$/, ''))
+  .map((s) => s.trim().replace(/\/$/, ''))
   .filter(Boolean);
 
+const allowedOrigins = Array.from(new Set([...envOrigins, ...defaultOrigins]));
 app.use(cors({
   origin(origin, cb) {
     if (!origin) return cb(null, true);
     const clean = origin.replace(/\/$/, '');
     if (allowedOrigins.includes(clean)) return cb(null, true);
+    // En desarrollo permitimos cualquier localhost/127.0.0.1 (Vite, etc.)
+    if (process.env.NODE_ENV !== 'production') {
+      if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(clean)) {
+        return cb(null, true);
+      }
+    }
     return cb(new Error(`CORS bloqueado para: ${origin}`));
   },
 }));
