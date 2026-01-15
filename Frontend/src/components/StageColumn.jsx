@@ -738,8 +738,13 @@ export default function StageColumn({
 
     if (cortePlegadoKeys.has(k)) {
       return [
-        { tipo: 'corte', label: 'Corte', title: 'PDF Corte', icon: '✂️' },
-        { tipo: 'plegado', label: 'Plegado', title: 'PDF Plegado', icon: '📄' },
+        // ✅ Para estas secciones necesitamos 2 PDFs distintos:
+        // - corte-plegado
+        // - tapajuntas
+        // Antes el 2° botón enviaba `plegado`, que se mapeaba a `corte-plegado`,
+        // por eso ambos abrían el mismo PDF.
+        { tipo: 'corte', label: 'Corte/Plegado', title: 'PDF Corte/Plegado', icon: '✂️' },
+        { tipo: 'tapajuntas', label: 'Tapajuntas', title: 'PDF Tapajuntas', icon: '📏' },
       ];
     }
 
