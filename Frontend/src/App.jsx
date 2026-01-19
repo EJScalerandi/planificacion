@@ -37,7 +37,9 @@ function apiBase() {
   const v = import.meta.env.VITE_API_URL || '';
   return String(v || '').replace(/\/$/, '');
 }
-function low(v) { return String(v ?? '').toLowerCase(); }
+function low(v) {
+  return String(v ?? '').toLowerCase();
+}
 
 function isFinalizadoByKey(item, key) {
   return low(item?.[key]) === low(STATUS.FINALIZADO);
@@ -107,10 +109,8 @@ function FullBleed({ children }) {
 }
 
 function Board({ stages }) {
-  const { data: portones, loading, err, replaceItem, refresh, refreshing } =
-    usePortones({ pollMs: 300000 });
-  const { data: ipanels, refresh: refreshIpanel } =
-    useIpanel({ pollMs: 300000 });
+  const { data: portones, loading, err, replaceItem, refresh, refreshing } = usePortones({ pollMs: 300000 });
+  const { data: ipanels, refresh: refreshIpanel } = useIpanel({ pollMs: 300000 });
 
   const [busyId, setBusyId] = useState(null);
   const [q, setQ] = useState('');
@@ -150,17 +150,16 @@ function Board({ stages }) {
       }
     })();
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const reqIndexPortones = useMemo(
     () => (wfPortones?.requirements ? buildReqIndex(wfPortones.requirements) : null),
     [wfPortones]
   );
-  const reqIndexIpanel = useMemo(
-    () => (wfIpanel?.requirements ? buildReqIndex(wfIpanel.requirements) : null),
-    [wfIpanel]
-  );
+  const reqIndexIpanel = useMemo(() => (wfIpanel?.requirements ? buildReqIndex(wfIpanel.requirements) : null), [wfIpanel]);
 
   const filteredPortones = useMemo(() => {
     if (!Array.isArray(portones)) return [];
@@ -307,9 +306,7 @@ function Board({ stages }) {
           const baseItems = isIpanel ? filteredIpanels : filteredPortones;
           const reqIndex = isIpanel ? reqIndexIpanel : reqIndexPortones;
 
-          const itemsForStage = baseItems.filter((item) =>
-            canAppearInStage({ item, stageKey: s.key, reqIndex })
-          );
+          const itemsForStage = baseItems.filter((item) => canAppearInStage({ item, stageKey: s.key, reqIndex }));
 
           const qcMap = isIpanel ? qcSumIpanel : qcSumPortones;
 
@@ -419,6 +416,10 @@ const ROUTES = [
       { key: 'pintura', label: 'Pintura (Ipanels)', mode: 'ipanel' },
     ],
   },
+
+  // ✅ NUEVO: Ruta dedicada para que aparezca en el índice como sección independiente
+  { path: '/pintura-revestimiento', label: 'Producción · Pintura Revestimiento (Portones)', stages: ONE('pintura_revestimiento', 'Pintura Revestimiento (Portones)') },
+
   {
     path: '/inyeccion',
     label: 'Producción · Inyección',
