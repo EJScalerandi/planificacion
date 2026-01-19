@@ -31,6 +31,27 @@ const PORTON_BASE_COLS_SQL = `
   p.created_at
 `;
 
+// Para condiciones de workflow basadas en campos del JSONB de preproducción
+// (ej: "Sistema", "Color", etc.). El Designer permite usar esos campos.
+// Si no enriquecemos el contexto, reglas como "Sistema != X" matchean mal.
+async function enrichCtxWithPreprod(db, ctx) {
+  try {
+    const nv = ctx?.nv;
+    if (!nv) return ctx;
+    const r = await db.query(
+      'select data from public.preproduccion_valores where nv = $1 limit 1',
+      [nv]
+    );
+    const data = r?.rows?.[0]?.data;
+    if (data && typeof data === 'object') {
+      return { ...ctx, ...data };
+    }
+  } catch (e) {
+    console.warn('enrichCtxWithPreprod failed:', e?.message || e);
+  }
+  return ctx;
+}
+
 async function getPortonShapeById(db, id) {
   const { rows } = await db.query(
     `
@@ -255,7 +276,9 @@ router.post('/portones', async (req, res) => {
     // ruteamos según sus edges (con condiciones).
     // Fallback: si no hay config o no matchea nada, mantenemos el comportamiento anterior.
 
-    const shapedBefore = await getPortonShapeById(client, id);
+    // Contexto enriquecido para poder evaluar condiciones de workflow basadas en
+    // preproduccion_valores.data (ej: "Sistema").
+    const shapedBefore = await enrichCtxWithPreprod(client, await getPortonShapeById(client, id));
 
     let insertedAny = false;
     try {
@@ -299,6 +322,18 @@ router.post('/portones', async (req, res) => {
         [id, STATUS.PENDIENTE]
       );
     }
+
+    // "inicio" es una etapa lógica de arranque: debe quedar Finalizada automáticamente
+    // para que no bloquee requisitos (requirements) de las siguientes etapas.
+    await client.query(
+      `
+      insert into public.porton_etapas_estado(porton_id, etapa, estado)
+      values ($1, 'inicio'::public.porton_etapa, $2)
+      on conflict (porton_id, etapa)
+      do update set estado = excluded.estado;
+      `,
+      [id, STATUS.FINALIZADO]
+    );
 
     const shaped = await getPortonShapeById(client, id);
 

@@ -76,15 +76,17 @@ function evalRule(ctx, rule) {
 
   const actual = getValueByField(ctx, field);
 
+  // Si el campo no existe en el contexto, la regla NO debe matchear.
+  // Esto evita falsos positivos (ej: op "!=" con actual undefined).
+  if (actual === undefined || actual === null) return false;
+
   const asNum = (x) => {
     const n = Number(x);
     return Number.isFinite(n) ? n : null;
   };
 
-    const normStr = (x) => String(x ?? '').trim();
-
-  if (op === '=') return normStr(actual) === normStr(value);
-  if (op === '!=') return normStr(actual) !== normStr(value);
+  if (op === '=') return String(actual) === String(value ?? '');
+  if (op === '!=') return String(actual) !== String(value ?? '');
 
   if (op === '>') {
     const a = asNum(actual);
