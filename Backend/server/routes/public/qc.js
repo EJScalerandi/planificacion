@@ -44,6 +44,24 @@ async function getPortonCtxById(db, id) {
 
   const ctx = { ...pQ.rows[0] };
 
+  // ✅ Traer data (Sistema, Color, etc.) desde preproduccion_valores
+  // (tomamos el registro más reciente para ese NV)
+  if (ctx.nv != null) {
+    const dQ = await db.query(
+      `
+      select data
+      from public.preproduccion_valores
+      where nv = $1 and data is not null
+      order by updated_at desc nulls last, id desc
+      limit 1;
+      `,
+      [ctx.nv]
+    );
+    ctx.data = dQ.rows[0]?.data ?? null;
+  } else {
+    ctx.data = null;
+  }
+
   const sQ = await db.query(
     `
     select etapa::text as k, estado as v
@@ -74,6 +92,7 @@ async function getPortonCtxById(db, id) {
 
   return ctx;
 }
+
 
 async function getIpanelByNv(db, nv) {
   const { rows } = await db.query(
