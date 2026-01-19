@@ -361,7 +361,7 @@ const ROUTES = [
 
       { key: 'revestimiento', label: 'Revestimiento', mode: 'porton' },
 
-      { key: 'pintura', label: 'Pintura Portones', mode: 'porton' },
+      { key: 'pintura', label: 'Pintura Sistemas (Portones)', mode: 'porton' },
       { key: 'pintura', label: 'Pintura (Ipanels)', mode: 'ipanel' },
 
       { key: 'inyeccion', label: 'Inyeccion (Portones)', mode: 'porton' },
@@ -414,7 +414,8 @@ const ROUTES = [
     path: '/pintura',
     label: 'Producción · Pintura',
     stages: [
-      { key: 'pintura', label: 'Pintura Portones', mode: 'porton' },
+      { key: 'pintura', label: 'Pintura Sistemas (Portones)', mode: 'porton' },
+      { key: 'pintura_revestimiento', label: 'Pintura Revestimiento (Portones)', mode: 'porton' },
       { key: 'pintura', label: 'Pintura (Ipanels)', mode: 'ipanel' },
     ],
   },
