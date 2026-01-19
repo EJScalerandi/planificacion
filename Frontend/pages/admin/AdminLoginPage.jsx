@@ -1,9 +1,8 @@
 // pages/admin/AdminLoginPage.jsx
 import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { adminLogin } from '../../src/api';
+import { adminLogin, getAdminToken, clearAdminToken } from '../../src/api';
 
-const LS_TOKEN = 'dg_admin_token';
 const LS_USER = 'dg_admin_user';     // opcional: { id, name, username, scopes }
 const LS_SCOPES = 'dg_admin_scopes'; // opcional: ["qc:admin", "workflow:admin", ...]
 
@@ -21,7 +20,7 @@ export default function AdminLoginPage() {
 
   // Si ya hay token, mandamos al índice
   useEffect(() => {
-    const t = localStorage.getItem(LS_TOKEN);
+    const t = getAdminToken();
     if (t && String(t).trim()) {
       nav('/index', { replace: true });
     }
@@ -49,8 +48,8 @@ export default function AdminLoginPage() {
         return;
       }
 
-      // ✅ Persistimos sesión
-      localStorage.setItem(LS_TOKEN, String(data.token));
+      // Nota: NO guardamos token manualmente acá.
+      // adminLogin() -> setAdminToken() (en src/api.js) ya lo persiste de forma consistente.
 
       // Si tu backend devuelve scopes/usuario, los guardamos (sin romper si no vienen)
       const scopes =
@@ -62,16 +61,13 @@ export default function AdminLoginPage() {
       else localStorage.removeItem(LS_SCOPES);
 
       if (data?.user) localStorage.setItem(LS_USER, JSON.stringify(data.user));
-      else {
-        // si ya había user viejo, lo limpiamos para evitar desfasajes
-        localStorage.removeItem(LS_USER);
-      }
+      else localStorage.removeItem(LS_USER);
 
       // ✅ Después del login, vamos al índice central
       nav('/index', { replace: true });
     } catch (e2) {
       // Ante error, limpiamos token para evitar sesiones “fantasma”
-      localStorage.removeItem(LS_TOKEN);
+      clearAdminToken();
       localStorage.removeItem(LS_USER);
       localStorage.removeItem(LS_SCOPES);
 
@@ -87,9 +83,6 @@ export default function AdminLoginPage() {
   return (
     <div className="container" style={{ maxWidth: 520 }}>
       <div className="header-row" style={{ alignItems: 'center' }}>
-  
-
-        {/* "/" ahora manda a /admin/login, así que "Inicio" debería ir a /index */}
         <Link className="btn" to="/index">Inicio</Link>
       </div>
 
@@ -137,7 +130,6 @@ export default function AdminLoginPage() {
           Luego del login vas al índice (/index) para elegir Producción, Autorizaciones, Usuarios QC o Workflow.
         </div>
 
-        {/* Debug opcional: mostrás scopes cacheados si existieran */}
         {savedScopes.length > 0 && (
           <div style={{ fontSize: 12, opacity: 0.7 }}>
             Scopes guardados: <b>{savedScopes.join(', ')}</b>

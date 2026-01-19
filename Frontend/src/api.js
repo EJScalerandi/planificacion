@@ -11,21 +11,38 @@ const api = axios.create({
 });
 
 // ====== ADMIN TOKEN (localStorage) ======
+// Unificamos clave "real" a dg_admin_token.
+// Compat: si existe admin_token viejo, también lo leemos.
+const ADMIN_TOKEN_KEY = 'dg_admin_token';
+const ADMIN_TOKEN_COMPAT_KEY = 'admin_token';
+
 export function getAdminToken() {
   try {
-    return localStorage.getItem('admin_token') || '';
+    return (
+      localStorage.getItem(ADMIN_TOKEN_KEY) ||
+      localStorage.getItem(ADMIN_TOKEN_COMPAT_KEY) ||
+      ''
+    );
   } catch {
     return '';
   }
 }
+
 export function setAdminToken(t) {
   try {
-    localStorage.setItem('admin_token', t || '');
+    const v = (t || '').toString();
+    localStorage.setItem(ADMIN_TOKEN_KEY, v);
+
+    // Compat opcional: mantener también admin_token
+    // (si querés, en un futuro lo sacás)
+    localStorage.setItem(ADMIN_TOKEN_COMPAT_KEY, v);
   } catch {}
 }
+
 export function clearAdminToken() {
   try {
-    localStorage.removeItem('admin_token');
+    localStorage.removeItem(ADMIN_TOKEN_KEY);
+    localStorage.removeItem(ADMIN_TOKEN_COMPAT_KEY);
   } catch {}
 }
 
