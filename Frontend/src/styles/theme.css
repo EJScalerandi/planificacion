@@ -171,3 +171,1136 @@ body {
 /* Obliga a que las cards usen los tokens del tema */
 .stage-card__grid { background: var(--surface); }
 .stage-card__info { color: var(--text); }
+
+/* =========================================================
+   PreproduccionValoresTable — estilos globales (index.css)
+   ========================================================= */
+
+:root{
+  --pp-head-h: 44px; /* altura aproximada del header sticky del thead */
+}
+
+.pp-page{
+  padding: 16px;
+  background: var(--surface);
+}
+
+.pp-card{
+  background: var(--surface);
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, .08);
+  padding: 12px;
+}
+
+.pp-headerRow{
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.pp-title{
+  margin: 0;
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: .2px;
+  color: var(--ink);
+}
+
+.pp-subInfo{
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--ink-weak);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pp-pill{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid #e5e7eb;
+  background: color-mix(in srgb, var(--surface-muted) 70%, #fff);
+  font-weight: 800;
+  font-feature-settings: "tnum" 1;
+}
+
+.pp-btn{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 800;
+}
+
+.pp-btn--danger{
+  border-color: color-mix(in srgb, var(--state-pending) 35%, #e5e7eb);
+  background: color-mix(in srgb, var(--state-pending) 12%, #fff);
+  color: var(--state-pending-ink);
+}
+
+.btn:disabled,
+.btn[disabled]{
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+.pp-errorBox{
+  background: color-mix(in srgb, var(--state-pending) 10%, #fff);
+  border: 1px solid color-mix(in srgb, var(--state-pending) 35%, #fff);
+  padding: 10px;
+  border-radius: 12px;
+  margin-bottom: 10px;
+  color: var(--state-pending-ink);
+  font-size: 12px;
+}
+
+.pp-warnInline{
+  background: color-mix(in srgb, var(--state-process) 14%, #fff);
+  border: 1px solid color-mix(in srgb, var(--state-process) 40%, #fff);
+  padding: 8px 10px;
+  border-radius: 12px;
+  color: var(--state-process-ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+/* =========================================================
+   ✅ Preproducción: full-bleed + scrollbar fijo
+   ========================================================= */
+
+/* “Sangrado” horizontal: compensa padding exterior (tu page usa 16px) */
+.pp-bleed{
+  margin-left: -16px;
+  margin-right: -16px;
+}
+@media (max-width: 640px){
+  .pp-bleed{
+    margin-left: -12px;
+    margin-right: -12px;
+  }
+}
+
+/* Wrap scrolleable principal */
+.pp-tableWrap{
+  overflow-x: scroll;       /* fuerza scrollbar horizontal */
+  overflow-y: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: var(--surface);
+  scrollbar-gutter: stable both-edges;
+
+  /* ✅ clave para overlays: crea stacking + referencia */
+  position: relative;
+  z-index: 1;
+}
+
+/* Cuando lo queremos “hasta borde” (sin bordes laterales ni radius) */
+.pp-tableWrap--edge{
+  border-left: 0;
+  border-right: 0;
+  border-radius: 0;
+}
+
+/* Scrollbar espejo SIEMPRE visible (sticky abajo de viewport) */
+.pp-xscroll{
+  position: sticky;
+  bottom: 0;
+  height: 14px;
+  overflow-x: scroll;
+  overflow-y: hidden;
+  scrollbar-gutter: stable;
+  background: var(--surface);
+  border-top: 1px solid #e5e7eb;
+  /* para que no “tape” sombras/elementos */
+  z-index: 20;
+}
+.pp-xscroll__spacer{
+  height: 1px; /* no importa el alto, solo el width */
+}
+
+/* ========================================================= */
+
+.pp-table{
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.25;
+  font-feature-settings: "tnum" 1;
+  min-width: 1200px;
+}
+
+.pp-table th,
+.pp-table td{
+  padding: 10px 12px;
+  border-bottom: 1px solid #e5e7eb;
+  white-space: nowrap;
+  vertical-align: top;
+}
+
+.pp-table th,
+.pp-table td{
+  border-right: 1px solid #eef2f7;
+}
+.pp-table th:last-child,
+.pp-table td:last-child{
+  border-right: none;
+}
+
+/* ===============================
+   ✅ Sticky headers (ajuste z-index)
+   =============================== */
+.pp-th{
+  position: sticky;
+  top: 0;
+  z-index: 30; /* antes 50 */
+  background: linear-gradient(180deg, var(--surface-muted), #fff);
+  background-clip: padding-box;
+  text-align: left;
+  font-weight: 900;
+  letter-spacing: .2px;
+  box-shadow: 0 2px 0 rgba(15, 23, 42, .04);
+}
+
+.pp-th--filter{
+  position: sticky;
+  top: var(--pp-head-h);
+  z-index: 20; /* antes 40 */
+  background: color-mix(in srgb, var(--surface-muted) 85%, #fff);
+  box-shadow: inset 0 0 0 1px #d1d5db;
+  padding: 8px 10px;
+}
+
+.pp-table tbody tr:nth-child(even){
+  background: color-mix(in srgb, var(--surface-muted) 55%, #fff);
+}
+.pp-table tbody tr:hover{
+  background: color-mix(in srgb, var(--brand) 10%, #fff);
+}
+
+.pp-input,
+.pp-select{
+  width: 100%;
+  font-size: 12px;
+  padding: 7px 10px;
+  border-radius: 12px;
+  border: 2px solid #d1d5db;
+  outline: none;
+  background: #fff;
+  color: var(--ink);
+}
+
+.pp-input:focus,
+.pp-select:focus{
+  border-color: color-mix(in srgb, var(--brand) 70%, #d1d5db);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand) 18%, transparent);
+}
+
+.pp-input::placeholder{
+  color: color-mix(in srgb, var(--ink-weak) 70%, #fff);
+}
+
+.pp-input--date{ width: 160px; }
+.pp-input--text{ width: 220px; }
+.pp-select--day{ width: 180px; }
+
+.pp-dateFilterBox{
+  display: grid;
+  gap: 8px;
+  min-width: 190px;
+}
+
+.pp-dateRow{
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.pp-dateLabel{
+  font-size: 11px;
+  color: var(--ink-weak);
+  margin-bottom: 4px;
+  font-weight: 900;
+}
+
+.pp-checkRow{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ink);
+}
+
+.pp-actionsCell{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pp-badge{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+  border: 1px solid transparent;
+}
+
+.pp-badge--ok{
+  background: color-mix(in srgb, var(--state-done) 18%, #fff);
+  border-color: color-mix(in srgb, var(--state-done) 40%, #fff);
+  color: var(--state-done-ink);
+}
+
+.pp-badge--pending{
+  background: color-mix(in srgb, var(--state-pending) 14%, #fff);
+  border-color: color-mix(in srgb, var(--state-pending) 40%, #fff);
+  color: var(--state-pending-ink);
+}
+
+/* ===============================
+   ✅ Panel Columnas (NO se solapa)
+   =============================== */
+.pp-panelWrap{
+  position: relative;
+  z-index: 3000; /* crea capa arriba del sticky */
+}
+
+.pp-panel{
+  position: absolute;
+  top: 42px;
+  left: 0;
+  width: 390px;
+  max-height: 480px;
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, .14);
+  padding: 10px;
+
+  z-index: 4000; /* arriba del header/filtros */
+}
+
+/* Si el panel lo abre un botón y querés evitar que quede “tapado” por el scroll,
+   podés reforzar también el botón, opcional:
+.pp-panelWrap > .btn{
+  position: relative;
+  z-index: 4001;
+}
+*/
+
+.pp-panelTitle{
+  font-size: 12px;
+  font-weight: 900;
+  color: var(--ink);
+  margin-bottom: 10px;
+  letter-spacing: .2px;
+}
+
+.pp-panelRow{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 6px;
+  border-radius: 10px;
+}
+
+.pp-panelRow:hover{
+  background: color-mix(in srgb, var(--brand) 8%, #fff);
+}
+
+.pp-panelHint{
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--ink-weak);
+}
+
+.pp-pager{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.pp-pagerInfo{
+  font-size: 12px;
+  color: var(--ink-weak);
+}
+
+.pp-hint{
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--ink-weak);
+}
+
+@media (max-width: 640px){
+  .pp-page{ padding: 12px; }
+  .pp-card{ padding: 10px; }
+  .pp-panel{
+    width: min(92vw, 420px);
+  }
+  :root{ --pp-head-h: 46px; }
+}
+
+/* --- dentro de tu bloque "PreproduccionValoresTable — estilos globales" --- */
+.pp-dateChecks{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.pp-checkRow{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ink);
+  font-weight: 800;
+}
+
+/* ===========================
+   Preproducción — Modal / Forms
+   =========================== */
+
+.pp-modalOverlay{
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, .55);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  z-index: 2000;
+}
+
+.pp-modal{
+  width: min(720px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  box-shadow: 0 20px 70px rgba(15, 23, 42, .35);
+}
+
+.pp-modal__header{
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: linear-gradient(180deg, var(--surface), color-mix(in srgb, var(--surface) 80%, #fff));
+  border-bottom: 1px solid #e5e7eb;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pp-modal__title{
+  margin: 0;
+  font-weight: 900;
+  font-size: 15px;
+  color: var(--ink);
+}
+
+.pp-modal__sub{
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--ink-weak);
+  font-weight: 700;
+}
+
+.pp-modal__close{
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  border-radius: 12px;
+  padding: 8px 10px;
+  cursor: pointer;
+  font-weight: 900;
+  color: var(--ink);
+}
+
+.pp-modal__body{
+  padding: 14px 16px 16px 16px;
+}
+
+.pp-form{
+  display: grid;
+  gap: 12px;
+}
+
+.pp-field{
+  display: grid;
+  gap: 6px;
+}
+
+.pp-label{
+  font-size: 12px;
+  font-weight: 900;
+  color: var(--ink);
+}
+
+.pp-help{
+  font-size: 11px;
+  color: var(--ink-weak);
+  line-height: 1.25;
+}
+
+.pp-req{
+  color: var(--state-pending);
+  font-weight: 900;
+  margin-left: 6px;
+}
+
+.pp-input,
+.pp-select,
+.pp-textarea{
+  width: 100%;
+  font-size: 13px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 2px solid #d1d5db;
+  outline: none;
+  background: #fff;
+  color: var(--ink);
+}
+
+.pp-textarea{
+  min-height: 88px;
+  resize: vertical;
+}
+
+.pp-input:focus,
+.pp-select:focus,
+.pp-textarea:focus{
+  border-color: color-mix(in srgb, var(--brand) 45%, #94a3b8);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand) 18%, transparent);
+}
+
+.pp-input--error,
+.pp-select--error,
+.pp-textarea--error{
+  border-color: color-mix(in srgb, var(--state-pending) 55%, #d1d5db);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--state-pending) 16%, transparent);
+}
+
+.pp-errorText{
+  font-size: 11px;
+  font-weight: 800;
+  color: #991b1b;
+}
+
+.pp-modal__footer{
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding: 12px 16px 16px 16px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.pp-btn--danger{
+  background: #fff5f5;
+  border-color: #ef4444;
+  color: #991b1b;
+}
+
+/* Botón compacto para celdas */
+.pp-btnCell{
+  padding: 7px 10px;
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 900;
+}
+.pp-btnCell--brand{
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #fff;
+}
+.pp-btnCell--danger{
+  background: #fff5f5;
+  border-color: #ef4444;
+  color: #991b1b;
+}
+
+/* ===========================
+   Preproducción — Modales
+   =========================== */
+
+.pp-modal__footer{
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid #e5e7eb;
+  margin-top: 12px;
+}
+
+/* Refuerzo: botón primario visible sí o sí dentro del modal */
+.pp-modal__footer .btn.btn--brand,
+.pp-modal__footer .pp-btnCell.btn--brand{
+  background: var(--brand) !important;
+  color: #fff !important;
+  border-color: var(--brand) !important;
+}
+
+/* Refuerzo: botón secundario visible */
+.pp-modal__footer .btn{
+  background: #f9fafb !important;
+  color: var(--ink) !important;
+  border: 1px solid #e5e7eb !important;
+}
+
+/* Si tenés pp-btnCell como “botón de celda”, aseguro que se vea bien en modal también */
+.pp-btnCell{
+  border-radius: 10px;
+  padding: .6em 1em;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+/* Si usás variantes */
+.pp-btnCell--brand{
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #fff;
+}
+
+.pp-btnCell--danger{
+  background: #fff5f5;
+  border-color: #ef4444;
+  color: #991b1b;
+}
+.pp-modal__footer .btn:disabled{
+  opacity: .6;
+  cursor: not-allowed;
+}
+
+/* ===== Preproducción: Modal base ===== */
+.pp-modalOverlay{
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, .45);
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  z-index: 9999;
+}
+
+.pp-modal{
+  width: min(640px, 100%);
+  background: var(--surface, #fff);
+  color: var(--ink, #0f172a);
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  box-shadow: 0 18px 50px rgba(15, 23, 42, .18);
+  overflow: hidden;
+}
+
+.pp-modalHeader{
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #e5e7eb;
+  background: linear-gradient(180deg, var(--surface-muted, #f3f4f6), #fff);
+}
+
+.pp-modalTitle{
+  font-weight: 900;
+  font-size: 16px;
+}
+
+.pp-modalSub{
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--ink-weak, #334155);
+}
+
+.pp-modalClose{
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.pp-modalBody{
+  padding: 14px 16px;
+}
+
+.pp-modalFooter{
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 16px;
+  border-top: 1px solid #e5e7eb;
+  background: #fff;
+}
+
+.pp-formGroup{ display: grid; gap: 8px; }
+.pp-label{ font-size: 13px; font-weight: 800; }
+.pp-required{ color: #b91c1c; font-weight: 900; }
+
+.pp-radioRow{
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.pp-chip{
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  padding: 10px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.pp-chip--on{
+  border-color: var(--brand, #008241);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand) 18%, transparent);
+}
+
+.pp-inlineWarn{
+  margin-top: 6px;
+  font-size: 12px;
+  color: #92400e;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  padding: 10px 12px;
+  border-radius: 12px;
+}
+
+.pp-inlineOk{
+  margin-top: 10px;
+  font-size: 12px;
+  color: #065f46;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  padding: 10px 12px;
+  border-radius: 12px;
+}
+
+.pp-btnDisabled{
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+/* =========
+   User Admin (ua-*)
+   ========= */
+
+.ua-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.ua-headerRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.ua-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.ua-headerActions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ua-alert {
+  background: #fff5f5;
+  border: 1px solid #fecaca;
+  padding: 10px;
+  border-radius: 10px;
+  margin-bottom: 10px;
+  color: #7f1d1d;
+  font-size: 12px;
+}
+
+.ua-filtersRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.ua-input, .ua-select {
+  border: 1px solid #d1d5db;
+  background: #fff;
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 12px;
+  outline: none;
+}
+
+.ua-input:focus, .ua-select:focus {
+  border-color: #9ca3af;
+}
+
+.ua-toggle {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  color: #111827;
+}
+
+.ua-tableWrap {
+  overflow: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.ua-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.ua-table thead th {
+  position: sticky;
+  top: 0;
+  background: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
+  padding: 10px;
+  text-align: left;
+  font-size: 12px;
+  white-space: nowrap;
+  z-index: 2;
+  color: #111827;
+}
+
+.ua-table tbody td {
+  border-bottom: 1px solid #f0f0f0;
+  padding: 8px;
+  font-size: 12px;
+  vertical-align: top;
+  color: #111827;
+  white-space: nowrap;
+}
+
+.ua-empty {
+  padding: 12px;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.ua-footerRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.ua-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ua-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  color: #374151;
+}
+
+.ua-badge--ok {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+  color: #065f46;
+}
+
+.ua-muted {
+  color: #6b7280;
+}
+
+.ua-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.ua-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  font-size: 12px;
+  color: #374151;
+}
+
+.ua-scopesInline {
+  display: inline-flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* ===== Modales ===== */
+.ua-modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(17, 24, 39, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px;
+  z-index: 50;
+}
+
+.ua-modal {
+  width: min(760px, 100%);
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  box-shadow: 0 18px 50px rgba(0,0,0,0.18);
+  overflow: hidden;
+}
+
+.ua-modalHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #fafafa;
+}
+
+.ua-modalTitle {
+  font-size: 14px;
+  font-weight: 900;
+  color: #111827;
+}
+
+.ua-modalBody {
+  padding: 12px
+}
+
+/* =========================================================
+   Index agrupado (Admin / Producción / Informativo)
+   ========================================================= */
+
+.idx-grid {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 14px;
+  margin-top: 12px;
+}
+
+@media (max-width: 980px) {
+  .idx-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.idx-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.idx-section__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 85%, var(--brand-100));
+}
+
+.idx-section__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: .2px;
+}
+
+.idx-section__sub {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.idx-section__body {
+  padding: 12px 14px;
+}
+
+.idx-links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.idx-linkItem {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: var(--surface);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.idx-linkItem:hover {
+  background: color-mix(in srgb, var(--brand) 7%, #fff);
+  border-color: color-mix(in srgb, var(--brand) 25%, var(--border));
+}
+
+.idx-linkText {
+  display: grid;
+  gap: 4px;
+}
+
+.idx-linkTitle {
+  font-weight: 900;
+  color: var(--brand-700);
+  text-decoration: none;
+}
+
+.idx-linkMeta {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.idx-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 75%, var(--brand-100));
+  font-size: 12px;
+  font-weight: 900;
+  color: var(--text);
+}
+
+.idx-section--admin .idx-section__head {
+  background: color-mix(in srgb, var(--brand) 12%, var(--surface));
+}
+
+.idx-section--prod .idx-section__head {
+  background: color-mix(in srgb, var(--state-done) 18%, var(--surface));
+}
+
+.idx-section--info .idx-section__head {
+  background: color-mix(in srgb, var(--state-process) 18%, var(--surface));
+}
+
+.idx-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+@media (max-width: 980px) {
+  .idx-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 520px) {
+  .idx-kpis {
+    grid-template-columns: 1fr;
+  }
+}
+
+.idx-kpi {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  padding: 10px 12px;
+}
+
+.idx-kpiLabel {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+
+.idx-kpiValue {
+  font-weight: 900;
+  font-size: 18px;
+}
+
+/* =========================================================
+   /a (Preproducción) full-bleed aunque el layout tenga max-width
+   ========================================================= */
+.route-fullbleed{
+  /* Escapa cualquier container centrado */
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+
+  /* Mantiene padding razonable a los lados */
+  padding-left: 16px;
+  padding-right: 16px;
+
+  /* Evita que este wrapper genere overflow propio */
+  overflow-x: clip;
+  max-width: 100vw;
+}
+
+/* Evita scrollbar horizontal del body por el 100vw (típico “pixel extra”) */
+html, body{
+  overflow-x: clip;
+}
+
+/* =========================================================
+   Si tenés “scrollbar espejo” siempre visible:
+   ocultá la scrollbar REAL del contenedor de la tabla
+   (así no quedan 2 barras)
+   ========================================================= */
+.route-fullbleed .pp-tableWrap{
+  /* sigue scrolleando, pero sin scrollbar visible */
+  scrollbar-width: none;             /* Firefox */
+}
+.route-fullbleed .pp-tableWrap::-webkit-scrollbar{
+  height: 0;                         /* Chrome/Safari/Edge */
+}

@@ -4,38 +4,172 @@ import { qcAuthorize, qcGetMotives, qcHistory } from '../api';
 const bordo = '#008241ff';
 
 function low(v) {
-  return (v || '').toLowerCase();
+  return String(v ?? '').toLowerCase();
 }
-
+function up(v) {
+  return String(v ?? '').trim().toUpperCase();
+}
 function fmt(dt) {
   return dt
     ? new Date(dt).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })
     : '';
 }
-
-function safeStr(v) {
-  if (v === null || v === undefined) return '';
-  return String(v).trim();
-}
-
 function mapModeToLine(mode) {
   return mode === 'ipanel' ? 'ipanel' : 'portones';
 }
 
-function QcModal({
-  open,
-  onClose,
-  item,
-  line,
-  stageKey,
-  title,
-}) {
+/**
+ * ID que usa QC. En tu caso: /qc/history/portones/2633 (NV)
+ * => usamos NV como item_id por defecto.
+ */
+function getQcItemId(item, line) {
+  const nv = Number(item?.nv ?? item?.NV);
+  if (Number.isInteger(nv)) return nv;
+
+  if (line === 'portones') {
+    const nl = Number(item?.nlista ?? item?.NLista);
+    if (Number.isInteger(nl)) return nl;
+  }
+  const pa = Number(item?.partida ?? item?.PARTIDA);
+  if (Number.isInteger(pa)) return pa;
+
+  return null;
+}
+
+// ===== fechas / cola =====
+function pad2(n) {
+  return String(n).padStart(2, '0');
+}
+function toISODate10(v) {
+  if (!v) return '';
+  const s = String(v).trim();
+
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return `${m[1]}-${pad2(m[2])}-${pad2(m[3])}`;
+
+  m = s.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})/);
+  if (m) return `${m[1]}-${pad2(m[2])}-${pad2(m[3])}`;
+
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (m) return `${m[3]}-${pad2(m[2])}-${pad2(m[1])}`;
+
+  m = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (m) return `${m[3]}-${pad2(m[2])}-${pad2(m[1])}`;
+
+  const d = new Date(s);
+  if (!Number.isNaN(d.getTime())) {
+    // usamos fecha local, no UTC
+    const yyyy = d.getFullYear();
+    const mm = pad2(d.getMonth() + 1);
+    const dd = pad2(d.getDate());
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  return '';
+}
+
+// ✅ hoy local (Argentina)
+function todayISO10Local() {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+// lunes anterior a la semana de producción (para cola)
+function mondayBeforeISO10(dateLike) {
+  const date10 = toISODate10(dateLike);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date10)) return '';
+
+  const d = new Date(`${date10}T00:00:00Z`);
+  const dayMon0 = (d.getUTCDay() + 6) % 7; // lunes=0
+  const mondayThisWeek = new Date(d);
+  mondayThisWeek.setUTCDate(d.getUTCDate() - dayMon0);
+
+  const mondayPrev = new Date(mondayThisWeek);
+  mondayPrev.setUTCDate(mondayThisWeek.getUTCDate() - 7);
+
+  return `${mondayPrev.getUTCFullYear()}-${pad2(mondayPrev.getUTCMonth() + 1)}-${pad2(mondayPrev.getUTCDate())}`;
+}
+
+function getProdDate10(item) {
+  const raw =
+    item?.fecha_prod ??
+    item?.Fecha_Prod ??
+    item?.fecha_produccion ??
+    item?.Fecha_Produccion ??
+    item?.inicio_prod ??
+    item?.Inicio_Prod ??
+    item?.inicio_prod_imput ??
+    item?.Inicio_Prod_Imput ??
+    null;
+
+  return toISODate10(raw);
+}
+
+/**
+ * ✅ NUEVO: fecha que ahora usa el sistema de PDFs (link mode) para agrupar portones.
+ * Se basa en `fecha_envio_produccion` (Supabase).
+ */
+function getEnvioProduccionDate10(item) {
+  const raw =
+    item?.fecha_envio_produccion ??
+    item?.Fecha_Envio_Produccion ??
+    item?.fecha_envio_prod ??
+    item?.Fecha_Envio_Prod ??
+    null;
+
+  return toISODate10(raw);
+}
+
+function canEnterQueue(item, effKey) {
+  const st = low(item?.[effKey]);
+  if (st === 'en proceso') return true;
+
+  const prod10 = getProdDate10(item);
+  if (!prod10) return true;
+
+  const allowFrom = mondayBeforeISO10(prod10);
+  if (!allowFrom) return true;
+
+  const today10 = todayISO10Local();
+  return today10 >= allowFrom;
+}
+
+/**
+ * ✅ Fecha salida/entrega para la regla de despacho
+ * Priorizamos lo que vos tenés: fecha_salida_imput
+ */
+function getSalidaDate10(item) {
+  const raw =
+    item?.fecha_salida_imput ??
+    item?.Fecha_Salida_Imput ??
+    item?.fecha_salida ??
+    item?.Fecha_Salida ??
+    item?.fecha_entrega_imput ??
+    item?.Fecha_Entrega_Imput ??
+    item?.fecha_entrega ??
+    item?.Fecha_Entrega ??
+    null;
+
+  return toISODate10(raw);
+}
+
+/**
+ * ✅ Estado “cliente en regla” (modal)
+ * Requisito: si NO existe o es false => NO está en regla.
+ */
+function isClienteEnRegla(item) {
+  return item?.admin_cliente_en_regla === true;
+}
+
+// =====================
+// Modal QC
+// =====================
+function QcModal({ open, onClose, item, line, stageKey, title, onSaved }) {
   const [pin, setPin] = useState('');
-  const [status, setStatus] = useState('APROBADO'); // APROBADO | OBSERVADO | RECHAZADO
+  const [status, setStatus] = useState('APROBADO');
   const [motiveId, setMotiveId] = useState('');
   const [motives, setMotives] = useState([]);
   const [loadingMotives, setLoadingMotives] = useState(false);
-
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
 
@@ -43,7 +177,8 @@ function QcModal({
     String(status || '').toUpperCase() === 'OBSERVADO' ||
     String(status || '').toUpperCase() === 'RECHAZADO';
 
-  // reset al abrir/cambiar item
+  const qcItemId = useMemo(() => getQcItemId(item, line), [item, line]);
+
   useEffect(() => {
     if (!open) return;
     setErr('');
@@ -53,15 +188,13 @@ function QcModal({
     setMotives([]);
     setLoadingMotives(false);
     setSaving(false);
-  }, [open, item?.id, stageKey, line]);
+  }, [open, item?.id, item?.nv, item?.nlista, item?.partida, stageKey, line]);
 
-  // cargar motivos solo si OBSERVADO o RECHAZADO
   useEffect(() => {
     let cancelled = false;
 
     async function run() {
-      if (!open) return;
-      if (!item?.id) return;
+      if (!open || !item) return;
 
       const st = String(status || '').toUpperCase();
       if (!(st === 'OBSERVADO' || st === 'RECHAZADO')) {
@@ -73,14 +206,10 @@ function QcModal({
       try {
         setLoadingMotives(true);
         setErr('');
-        const data = await qcGetMotives({
-          line,
-          kind: st,       // backend: OBSERVADO | RECHAZADO
-          stage: stageKey // stage_key o null
-        });
+        const data = await qcGetMotives({ line, kind: st, stage: stageKey });
         if (cancelled) return;
         setMotives(Array.isArray(data) ? data : []);
-        setMotiveId(''); // fuerza selección explícita
+        setMotiveId('');
       } catch (e) {
         if (cancelled) return;
         setErr(e?.response?.data?.error || e.message);
@@ -92,12 +221,12 @@ function QcModal({
     }
 
     run();
-    return () => { cancelled = true; };
-  }, [open, status, item?.id, line, stageKey]);
+    return () => {
+      cancelled = true;
+    };
+  }, [open, status, item, line, stageKey]);
 
   const submit = async () => {
-    if (!item?.id) return;
-
     const pinStr = String(pin || '').trim();
     const qc_status = String(status || '').trim().toUpperCase();
 
@@ -105,6 +234,11 @@ function QcModal({
 
     if (!/^\d{3,10}$/.test(pinStr)) {
       setErr('PIN inválido (solo numérico, 3 a 10 dígitos).');
+      return;
+    }
+
+    if (!Number.isInteger(qcItemId)) {
+      setErr('Item QC inválido: no se pudo resolver un ID numérico (NV/NLista/Partida).');
       return;
     }
 
@@ -118,7 +252,7 @@ function QcModal({
 
       const payload = {
         line,
-        item_id: item.id,
+        item_id: qcItemId,
         stage_key: stageKey,
         qc_status,
         pin: pinStr,
@@ -132,6 +266,7 @@ function QcModal({
       const uname = resp?.user?.name ? ` (${resp.user.name})` : '';
 
       alert(`QC registrado: ${qc_status}${uname}`);
+      onSaved?.();
       onClose?.();
     } catch (e) {
       setErr(e?.response?.data?.error || e.message);
@@ -141,16 +276,6 @@ function QcModal({
   };
 
   if (!open || !item) return null;
-
-  const headline = (modeLabel) => {
-    const nv = item?.nv != null ? `NV ${item.nv}` : '';
-    const nlista = item?.nlista != null ? `Portón ${item.nlista}` : '';
-    const partida = item?.partida != null ? `Partida ${item.partida}` : '';
-    const parts = [modeLabel, nv, nlista, partida].filter(Boolean);
-    return parts.join(' · ');
-  };
-
-  const modeLabel = line === 'ipanel' ? 'iPanel' : 'Portón';
 
   return (
     <div
@@ -180,7 +305,6 @@ function QcModal({
           overflow: 'hidden',
         }}
       >
-        {/* Header */}
         <div
           style={{
             padding: '12px 14px',
@@ -192,67 +316,39 @@ function QcModal({
             background: '#f8fafc',
           }}
         >
-          <div style={{ fontWeight: 900 }}>
-            QC – {title} · {headline(modeLabel)}
-          </div>
-
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button className="btn" type="button" onClick={onClose} title="Cerrar">
-              Cerrar
-            </button>
-          </div>
+          <div style={{ fontWeight: 900 }}>QC – {title}</div>
+          <button className="btn" type="button" onClick={onClose}>
+            Cerrar
+          </button>
         </div>
 
-        {/* Body */}
         <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {err && (
-            <div style={{ color: 'crimson', fontWeight: 800 }}>
-              {err}
-            </div>
-          )}
+          {err && <div style={{ color: 'crimson', fontWeight: 800 }}>{err}</div>}
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <span style={{ fontWeight: 800 }}>PIN</span>
               <input
                 className="btn"
-                type="password"          // ✅ se muestra como *
+                type="password"
                 value={pin}
                 onChange={(e) => setPin(e.target.value)}
                 inputMode="numeric"
                 autoComplete="off"
                 placeholder="Ej: 1234"
               />
-              <span style={{ fontSize: 12, opacity: 0.7 }}>
-                Requerido para registrar QC.
-              </span>
             </label>
 
             <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <span style={{ fontWeight: 800 }}>Estado</span>
-              <select
-                className="btn"
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-              >
+              <select className="btn" value={status} onChange={(e) => setStatus(e.target.value)}>
                 <option value="APROBADO">Autorizar</option>
                 <option value="OBSERVADO">Observar</option>
                 <option value="RECHAZADO">Rechazar</option>
               </select>
-
-              {needsMotive ? (
-                <span style={{ fontSize: 12, opacity: 0.7 }}>
-                  Para {String(status).toUpperCase()} es obligatorio elegir un motivo.
-                </span>
-              ) : (
-                <span style={{ fontSize: 12, opacity: 0.7 }}>
-                  Autorizar registra APROBADO.
-                </span>
-              )}
             </label>
           </div>
 
-          {/* Motivos (solo si OBSERVADO/RECHAZADO) */}
           {needsMotive && (
             <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 12 }}>
               <div style={{ fontWeight: 900, marginBottom: 8 }}>
@@ -281,16 +377,10 @@ function QcModal({
 
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
             <div style={{ fontSize: 12, opacity: 0.7 }}>
-              Line: <b>{line}</b> · Stage: <b>{stageKey}</b> · Item ID: <b>{item.id}</b>
+              Line: <b>{line}</b> · Stage: <b>{stageKey}</b> · QC Item ID: <b>{qcItemId ?? '-'}</b>
             </div>
 
-            <button
-              className="btn btn--brand"
-              type="button"
-              onClick={submit}
-              disabled={saving}
-              title="Registrar QC"
-            >
+            <button className="btn btn--brand" type="button" onClick={submit} disabled={saving}>
               {saving ? 'Guardando…' : 'Confirmar'}
             </button>
           </div>
@@ -300,236 +390,470 @@ function QcModal({
   );
 }
 
+// =====================
+// Modal Observaciones (carga on-demand)
+// =====================
+function ObservacionesModal({ open, onClose, title, item, line }) {
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+  const [observations, setObservations] = useState([]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function run() {
+      if (!open || !item) return;
+
+      const qcId = getQcItemId(item, line);
+      if (!Number.isInteger(qcId)) {
+        setObservations([]);
+        return;
+      }
+
+      try {
+        setErr('');
+        setLoading(true);
+        const resp = await qcHistory({ line, item_id: qcId });
+        const arr = Array.isArray(resp) ? resp : [];
+        const onlyObs = arr.filter((x) => up(x?.qc_status) === 'OBSERVADO');
+        if (cancelled) return;
+        setObservations(onlyObs);
+      } catch (e) {
+        if (cancelled) return;
+        setErr(e?.response?.data?.error || e.message);
+        setObservations([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, item, line]);
+
+  if (!open || !item) return null;
+
+  const nv = item?.nv != null ? `NV ${item.nv}` : '';
+  const nlista = item?.nlista != null ? `Portón ${item.nlista}` : '';
+  const partida = item?.partida != null ? `Partida ${item.partida}` : '';
+  const head = [title, nv, nlista, partida].filter(Boolean).join(' · ');
+
+  const rows = (observations || []).map((o) => ({
+    sector: o?.stage_key || o?.sector || o?.stage || '-',
+    fecha: o?.created_at || o?.timestamp || null,
+    motivo: o?.motive_label || o?.motive?.label || '-',
+    quien: o?.user_name || o?.user?.name || '-',
+    status: String(o?.qc_status || '').toUpperCase(),
+  }));
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose?.();
+      }}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(15,23,42,0.55)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 16,
+        zIndex: 9999,
+      }}
+    >
+      <div
+        style={{
+          width: 'min(860px, 100%)',
+          background: '#fff',
+          borderRadius: 14,
+          border: '1px solid #e5e7eb',
+          boxShadow: '0 18px 55px rgba(0,0,0,0.25)',
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            padding: '12px 14px',
+            borderBottom: '1px solid #e5e7eb',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 10,
+            background: '#fff5f5',
+          }}
+        >
+          <div style={{ fontWeight: 900, color: '#991b1b' }}>Observaciones · {head}</div>
+          <button className="btn" type="button" onClick={onClose}>
+            Cerrar
+          </button>
+        </div>
+
+        <div style={{ padding: 14 }}>
+          {err && <div style={{ color: 'crimson', fontWeight: 800, marginBottom: 10 }}>{err}</div>}
+
+          {loading ? (
+            <div style={{ opacity: 0.8 }}>Cargando observaciones…</div>
+          ) : rows.length === 0 ? (
+            <div style={{ opacity: 0.75 }}>No hay observaciones registradas.</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {rows.map((r, idx) => (
+                <div
+                  key={`obs-${idx}`}
+                  style={{
+                    border: '1px solid #fecaca',
+                    background: '#fffafa',
+                    borderRadius: 12,
+                    padding: 12,
+                  }}
+                >
+                  <div style={{ fontWeight: 900, color: '#7f1d1d', marginBottom: 6 }}>
+                    {r.status || 'OBSERVADO'}
+                  </div>
+                  <div style={{ fontSize: 13 }}>
+                    <b>Sector:</b> {r.sector}
+                  </div>
+                  <div style={{ fontSize: 13 }}>
+                    <b>Fecha:</b> {r.fecha ? fmt(r.fecha) : '-'}
+                  </div>
+                  <div style={{ fontSize: 13 }}>
+                    <b>Motivo:</b> {r.motivo}
+                  </div>
+                  <div style={{ fontSize: 13 }}>
+                    <b>Quién puso el PIN:</b> {r.quien}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// =====================
+// ✅ Modal Historial (últimos 10 del sector)
+// =====================
+function HistoryModal({ open, onClose, title, effKey, rows = [] }) {
+  if (!open) return null;
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose?.();
+      }}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(15,23,42,0.55)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 16,
+        zIndex: 9999,
+      }}
+    >
+      <div
+        style={{
+          width: 'min(900px, 100%)',
+          background: '#fff',
+          borderRadius: 14,
+          border: '1px solid #e5e7eb',
+          boxShadow: '0 18px 55px rgba(0,0,0,0.25)',
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            padding: '12px 14px',
+            borderBottom: '1px solid #e5e7eb',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 10,
+            background: '#f8fafc',
+          }}
+        >
+          <div style={{ fontWeight: 900 }}>
+            Historial · {title} <span style={{ opacity: 0.7, fontWeight: 700 }}>({effKey})</span>
+          </div>
+          <button className="btn" type="button" onClick={onClose}>
+            Cerrar
+          </button>
+        </div>
+
+        <div style={{ padding: 14 }}>
+          {rows.length === 0 ? (
+            <div style={{ opacity: 0.75 }}>Sin historial para mostrar.</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {rows.map((r) => (
+                <div
+                  key={r._key}
+                  style={{
+                    border: '1px solid #e5e7eb',
+                    borderRadius: 12,
+                    padding: 12,
+                    background: '#ffffff',
+                    display: 'grid',
+                    gridTemplateColumns: '1fr auto',
+                    gap: 10,
+                    alignItems: 'center',
+                  }}
+                >
+                  <div style={{ fontSize: 13 }}>
+                    <div style={{ fontWeight: 900 }}>
+                      Portón {r.nlista} · NV {r.nv} · Partida {r.partida}
+                    </div>
+                    <div style={{ opacity: 0.8, marginTop: 2 }}>
+                      Fin etapa: <b>{r.fin ? fmt(r.fin) : '-'}</b>
+                      {r.prod10 ? (
+                        <>
+                          {' '}
+                          · Producción: <b>{r.prod10}</b>
+                        </>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.9 }}>
+                    {r.qcLatest ? `QC: ${r.qcLatest}` : ''}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// =====================
+// StageColumn
+// =====================
 export default function StageColumn({
   title,
   stageKey,
   mode = 'porton',
   items = [],
+  allItems = [],
   onStart,
   onStop,
   disabledId,
   pdfBaseUrl = 'https://integrador-six-zeta.vercel.app',
+  qcSummaryMap = {},
+  onQcSaved,
 }) {
-  const [showHist, setShowHist] = useState(false);
-
-  // historial search
-  const [q, setQ] = useState('');
-  const [searched, setSearched] = useState(false);
-  const [searchResults, setSearchResults] = useState([]);
-  const [selected, setSelected] = useState(null);
-
-  // QC modal (queda, pero NO se expone el botón por ahora)
   const [qcOpen, setQcOpen] = useState(false);
   const [qcTarget, setQcTarget] = useState(null);
 
-  const effKey =
-    mode === 'ipanel' && stageKey === 'plegadora'
-      ? 'plegado'
-      : stageKey;
+  const [obsOpen, setObsOpen] = useState(false);
+  const [obsTarget, setObsTarget] = useState(null);
 
-  // Solo muestra pendientes + en proceso en la columna
-  const filtered = (items || []).filter((p) => {
-    const st = low(p[effKey]);
-    return st === 'pendiente' || st === 'en proceso';
-  });
+  const [histOpen, setHistOpen] = useState(false);
 
-  const ordered = filtered.sort((a, b) => {
-    const aStarted = low(a[effKey]) === 'en proceso';
-    const bStarted = low(b[effKey]) === 'en proceso';
-    if (aStarted !== bStarted) return aStarted ? -1 : 1;
+  const effKey = mode === 'ipanel' && stageKey === 'plegadora' ? 'plegado' : stageKey;
+  const line = mapModeToLine(mode);
 
-    if (aStarted && bStarted) {
-      const ia = a[`${effKey}_inicio`] ? new Date(a[`${effKey}_inicio`]).getTime() : 0;
-      const ib = b[`${effKey}_inicio`] ? new Date(b[`${effKey}_inicio`]).getTime() : 0;
-      if (ia !== ib) return ia - ib;
-      const pa = a.partida != null ? Number(a.partida) : Infinity;
-      const pb = b.partida != null ? Number(b.partida) : Infinity;
-      if (pa !== pb) return pa - pb;
-      return (a.nv || 0) - (b.nv || 0);
-    }
+  const keyTrim = String(effKey || '').trim();
+  const isDespachoColumn = keyTrim === 'despacho';
 
-    const pa = a.partida != null ? Number(a.partida) : Infinity;
-    const pb = b.partida != null ? Number(b.partida) : Infinity;
-    if (pa !== pb) return pa - pb;
+  function shouldHideFinalizado(p) {
+    const qcId = getQcItemId(p, line);
+    if (!Number.isInteger(qcId)) return false;
 
-    if ((a.nv || 0) !== (b.nv || 0)) return (a.nv || 0) - (b.nv || 0);
-    return (a.nlista || 0) - (b.nlista || 0);
-  });
+    const info = qcSummaryMap?.[qcId];
+    const latest = up(info?.latest_by_stage?.[keyTrim] || '');
+    if (!latest) return false;
 
-  // ✅ NO mostrar PDFs en iPanel
-  const showPdfButtons = mode !== 'ipanel';
-
-  function openPdf(tipo, { partida, nv }) {
-    const base = (pdfBaseUrl || '').trim();
-    if (!base) return;
-
-    if (tipo === 'arm-primario') {
-      const n = nv != null ? String(nv).trim() : '';
-      if (!n) return;
-      const url = `${base}/?pdf=${encodeURIComponent(tipo)}&nv=${encodeURIComponent(n)}`;
-      window.open(url, '_blank', 'noopener,noreferrer');
-      return;
-    }
-
-    const p = partida != null ? String(partida).trim() : '';
-    if (!p) return;
-    const url = `${base}/?pdf=${encodeURIComponent(tipo)}&partida=${encodeURIComponent(p)}`;
-    window.open(url, '_blank', 'noopener,noreferrer');
+    return latest === 'APROBADO' || latest === 'OBSERVADO';
   }
 
-  const titleNorm = low(title);
-
-  // ✅ Prefabricados por key técnica
-  const isPrefabricados = effKey === 'armado_piernas';
-
-  const isDisenoLaser =
-    titleNorm.includes('diseño') ||
-    titleNorm.includes('diseno') ||
-    titleNorm.includes('laser');
-
-  const isCortePlegadoTapas =
-    titleNorm.includes('cortes piernas') ||
-    titleNorm.includes('cortes revestimiento') ||
-    titleNorm.includes('plegado piernas') ||
-    titleNorm.includes('plegado revestimiento') ||
-    titleNorm.includes('corte') ||
-    titleNorm.includes('pleg');
-
-  function getPdfButtonsForColumn() {
-    // ✅ Prefabricados: mostrar también Tapajuntas (además del AP)
-    if (isPrefabricados) {
-      return [
-        { tipo: 'arm-primario', label: 'AP', title: 'PDF Armado Primario (por NV)', icon: '🧰' },
-        { tipo: 'tapajuntas', label: 'T', title: 'PDF Tapajuntas', icon: '🧱' },
-      ];
-    }
-
-    if (isDisenoLaser) {
-      return [{ tipo: 'diseno-laser', label: 'D', title: 'PDF Diseño Láser', icon: '🧩' }];
-    }
-
-    if (isCortePlegadoTapas) {
-      return [
-        { tipo: 'corte-plegado', label: 'C/P', title: 'PDF Corte y Plegado', icon: '✂️' },
-        { tipo: 'tapajuntas', label: 'T', title: 'PDF Tapajuntas', icon: '🧱' },
-      ];
-    }
-
-    return [{ tipo: 'arm-primario', label: 'AP', title: 'PDF Armado Primario (por NV)', icon: '🧰' }];
-  }
-
-  const pdfButtons = getPdfButtonsForColumn();
-
-  const allSectorItems = useMemo(() => (items || []).slice(), [items]);
-
-  function getFields(p) {
-    const nv = safeStr(p?.nv ?? p?.NV);
-    const nlista = safeStr(p?.nlista ?? p?.NRO_PORTON ?? p?.porton);
-    const partida = safeStr(p?.partida ?? p?.PARTIDA);
-    return { nv, nlista, partida };
-  }
-
-  function searchByQuery(query) {
-    const qq = safeStr(query);
-    if (!qq) return [];
-
-    const exactPartidaHits = (allSectorItems || []).filter((p) => getFields(p).partida === qq);
-    if (exactPartidaHits.length) return exactPartidaHits;
-
-    const exactNvHits = (allSectorItems || []).filter((p) => getFields(p).nv === qq);
-    if (exactNvHits.length) return exactNvHits;
-
-    const exactPortonHits = (allSectorItems || []).filter((p) => getFields(p).nlista === qq);
-    if (exactPortonHits.length) return exactPortonHits;
-
-    return (allSectorItems || [])
+  const ordered = useMemo(() => {
+    const filtered = (items || [])
       .filter((p) => {
-        const { nv, nlista, partida } = getFields(p);
-        return nv.includes(qq) || nlista.includes(qq) || partida.includes(qq);
+        const st = low(p?.[effKey]);
+        if (!(st === 'pendiente' || st === 'en proceso' || st === 'finalizado')) return false;
+        return canEnterQueue(p, effKey);
       })
-      .slice(0, 50);
-  }
+      .slice();
 
-  function sortResults(list) {
-    const key = effKey;
+    const groupRank = (st) => {
+      if (st === 'en proceso') return 0;
+      if (st === 'pendiente') return 1;
+      return 2;
+    };
 
-    return (list || []).slice().sort((a, b) => {
-      const sa = low(a?.[key]);
-      const sb = low(b?.[key]);
+    const dateRank = (prod10) => (prod10 ? prod10 : '9999-12-31');
 
-      const rank = (s) => {
-        if (s === 'en proceso') return 0;
-        if (s === 'pendiente') return 1;
-        if (s === 'finalizado') return 2;
-        return 3;
-      };
+    filtered.sort((a, b) => {
+      const aSt = low(a?.[effKey]);
+      const bSt = low(b?.[effKey]);
 
-      const ra = rank(sa);
-      const rb = rank(sb);
-      if (ra !== rb) return ra - rb;
+      const gA = groupRank(aSt);
+      const gB = groupRank(bSt);
+      if (gA !== gB) return gA - gB;
 
-      const fa = getFields(a);
-      const fb = getFields(b);
+      const aProd = dateRank(getProdDate10(a));
+      const bProd = dateRank(getProdDate10(b));
+      if (aProd !== bProd) return aProd.localeCompare(bProd);
 
-      const pa = fa.partida ? Number(fa.partida) : Infinity;
-      const pb = fb.partida ? Number(fb.partida) : Infinity;
-      if (pa !== pb) return pa - pb;
-
-      const na = fa.nv ? Number(fa.nv) : Infinity;
-      const nb = fb.nv ? Number(fb.nv) : Infinity;
-      if (na !== nb) return na - nb;
-
-      const la = fa.nlista ? Number(fa.nlista) : Infinity;
-      const lb = fb.nlista ? Number(fb.nlista) : Infinity;
-      if (la !== lb) return la - lb;
-
-      return 0;
+      return (a?.nv || 0) - (b?.nv || 0);
     });
-  }
 
-  function doSearch() {
-    const qq = safeStr(q);
-    setSearched(true);
+    return filtered;
+  }, [items, effKey]);
 
-    if (!qq) {
-      setSearchResults([]);
-      setSelected(null);
-      return;
-    }
-
-    const hits = sortResults(searchByQuery(qq));
-    setSearchResults(hits);
-    setSelected(hits.length ? hits[0] : null);
-  }
-
-  const last10Finalizados = useMemo(() => {
-    const key = effKey;
-
-    return (allSectorItems || [])
-      .filter((p) => {
-        const st = low(p?.[key]);
-        const hasFin = !!p?.[`${key}_fin`];
-        return st === 'finalizado' || st === 'done' || hasFin;
-      })
-      .map((p) => {
-        const finTs = p?.[`${key}_fin`] ? new Date(p[`${key}_fin`]).getTime() : 0;
-        return { ...p, __finTs: Number.isFinite(finTs) ? finTs : 0 };
-      })
-      .sort((a, b) => (b.__finTs || 0) - (a.__finTs || 0))
-      .slice(0, 10);
-  }, [allSectorItems, effKey]);
-
-  const canPdfBase = !!String(pdfBaseUrl || '').trim();
-
-  // ✅ QC deshabilitado por ahora para operadores (dejamos el modal preparado)
-  /*
   const openQc = (p) => {
     setQcTarget(p);
     setQcOpen(true);
   };
-  */
 
-  const line = mapModeToLine(mode);
+  const showPdfButtons = mode !== 'ipanel';
+  const canPdfBase = !!String(pdfBaseUrl || '').trim();
+
+  const pdfButtons = useMemo(() => {
+    const k = String(keyTrim || '').trim();
+
+    if (k === 'diseno' || k === 'laser') {
+      return [{ tipo: 'diseno', label: 'Diseño', title: 'PDF Diseño', icon: '📐' }];
+    }
+
+    const cortePlegadoKeys = new Set([
+      'guillotina',
+      'corte_revest',
+      'plegadora',
+      'plegado_revest',
+      'armado_piernas',
+    ]);
+
+    if (cortePlegadoKeys.has(k)) {
+      return [
+        // ✅ Para estas secciones necesitamos 2 PDFs distintos:
+        // - corte-plegado
+        // - tapajuntas
+        // Antes el 2° botón enviaba `plegado`, que se mapeaba a `corte-plegado`,
+        // por eso ambos abrían el mismo PDF.
+        { tipo: 'corte', label: 'Corte/Plegado', title: 'PDF Corte/Plegado', icon: '✂️' },
+        { tipo: 'tapajuntas', label: 'Tapajuntas', title: 'PDF Tapajuntas', icon: '📏' },
+      ];
+    }
+
+    return [{ tipo: 'arm-primario', label: 'AP', title: 'PDF Armado Primario (por NV)', icon: '🧰' }];
+  }, [keyTrim]);
+
+  /**
+   * ✅ Adaptación a “links por fecha”
+   *
+   * - Diseño / Corte / Plegado / Tapajuntas: se abren por fecha (YYYY-MM-DD).
+   *   En la tabla portones guardamos esa fecha como `fecha_prod`.
+   *   En el visor actual, el parámetro se llama `fecha_envio_produccion`, así que lo enviamos
+   *   con el valor de `fecha_prod` para compatibilidad.
+   * - Armado Primario queda por NV (como siempre)
+   */
+  function openPdf(tipo, item) {
+    const base = (pdfBaseUrl || '').trim();
+    if (!base) return;
+
+    const t = String(tipo || '').trim();
+
+    const tipoMap =
+      t === 'diseno' ? 'diseno-laser' :
+      (t === 'corte' || t === 'plegado') ? 'corte-plegado' :
+      t === 'tapajuntas' ? 'tapajuntas' :
+      t; // arm-primario
+
+    const nvStr = item?.nv != null ? String(item.nv).trim() : (item?.NV != null ? String(item.NV).trim() : '');
+    const partidaStr =
+      item?.partida != null ? String(item.partida).trim() : (item?.PARTIDA != null ? String(item.PARTIDA).trim() : '');
+
+    // ✅ Fecha guía para PDFs agrupados:
+    // Preferimos fecha_prod (planificación/producción) desde tabla portones,
+    // y dejamos fecha_envio_produccion como fallback por compatibilidad.
+    const fecha10 = getProdDate10(item) || getEnvioProduccionDate10(item);
+
+    const params = new URLSearchParams();
+    params.set('pdf', tipoMap);
+
+    if (tipoMap === 'arm-primario') {
+      // ✅ NO TOCAR: sigue por NV (preferido). Si no hay NV, cae a partida como antes.
+      if (nvStr) params.set('nv', nvStr);
+      else if (partidaStr) params.set('partida', partidaStr);
+    } else {
+      // ✅ Agrupación por fecha
+      if (fecha10) {
+        // Visor actual
+        params.set('fecha_envio_produccion', fecha10);
+        // Compatibilidad futura
+        params.set('fecha_prod', fecha10);
+      } else {
+        // fallback conservador: evitamos abrir un link inválido
+        alert('Este portón no tiene fecha de producción cargada, no se puede abrir el PDF por fecha.');
+        return;
+      }
+    }
+
+    const url = `${base}/?${params.toString()}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
+
+  const historyLast10 = useMemo(() => {
+    if (mode === 'ipanel') return [];
+
+    const key = String(keyTrim || '').trim();
+    const finKey = `${key}_fin`;
+
+    const src = Array.isArray(allItems) ? allItems : [];
+
+    const done = src.filter((p) => {
+      const st = low(p?.[key]);
+      if (st !== 'finalizado') return false;
+
+      const qcId = getQcItemId(p, 'portones');
+      const info = Number.isInteger(qcId) ? qcSummaryMap?.[qcId] : null;
+      const latest = up(info?.latest_by_stage?.[key] || '');
+
+      if (latest) return latest === 'APROBADO' || latest === 'OBSERVADO';
+
+      return true;
+    });
+
+    done.sort((a, b) => {
+      const aT = a?.[finKey] ? new Date(a[finKey]).getTime() : 0;
+      const bT = b?.[finKey] ? new Date(b[finKey]).getTime() : 0;
+
+      if (aT && bT && aT !== bT) return bT - aT;
+      if (aT && !bT) return -1;
+      if (!aT && bT) return 1;
+
+      return (Number(b?.nv) || 0) - (Number(a?.nv) || 0);
+    });
+
+    return done.slice(0, 10).map((p) => {
+      const qcId = getQcItemId(p, 'portones');
+      const info = Number.isInteger(qcId) ? qcSummaryMap?.[qcId] : null;
+      const qcLatest = up(info?.latest_by_stage?.[key] || '');
+
+      return {
+        _key: String(p?.id ?? p?.nv ?? `${Math.random()}`),
+        nv: p?.nv ?? '-',
+        nlista: p?.nlista ?? '-',
+        partida: p?.partida ?? '-',
+        fin: p?.[finKey] ?? null,
+        prod10: getProdDate10(p) || '',
+        qcLatest,
+      };
+    });
+  }, [mode, keyTrim, allItems, qcSummaryMap]);
 
   return (
     <div
@@ -543,7 +867,6 @@ export default function StageColumn({
         minHeight: 320,
       }}
     >
-      {/* Header */}
       <div
         style={{
           background: bordo,
@@ -553,468 +876,207 @@ export default function StageColumn({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          gap: 10,
+          gap: 8,
         }}
       >
         <div>{title}</div>
 
-        <button
-          type="button"
-          onClick={() => {
-            setShowHist(true);
-            setSearched(false);
-            setSearchResults([]);
-            setSelected(null);
-            setQ('');
-          }}
-          style={{
-            border: '1px solid rgba(255,255,255,0.6)',
-            background: 'rgba(255,255,255,0.12)',
-            color: '#fff',
-            padding: '6px 10px',
-            borderRadius: 10,
-            cursor: 'pointer',
-            fontWeight: 800,
-          }}
-          title="Abrir historial del sector"
-        >
-          Historial
-        </button>
-      </div>
-
-      {/* Cards */}
-      <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {ordered.map((p) => {
-          const st = low(p[effKey]);
-          const canStop = st === 'en proceso';
-          const canStart = st === 'pendiente';
-
-          const hasPartida = p.partida != null && String(p.partida).trim() !== '';
-          const hasNv = p.nv != null && String(p.nv).trim() !== '';
-
-          return (
-            <div
-              key={`${mode}-${p.id}`}
-              className="stage-card__grid"
-              style={{
-                border: '1px solid var(--border)',
-                borderRadius: 12,
-                padding: '10px 12px',
-                background: 'var(--surface)',
-              }}
-            >
-              <div className="stage-card__info" style={{ color: 'var(--text)' }}>
-                {mode === 'porton' ? (
-                  <>
-                    <div className="stage-card__title" style={{ fontWeight: 900 }}>
-                      N° Portón {p.nlista}
-                    </div>
-                    {p.partida != null && <div className="stage-card__title">Partida {p.partida}</div>}
-                    <div className="stage-card__sub">NV {p.nv}</div>
-                  </>
-                ) : (
-                  <>
-                    <div className="stage-card__title" style={{ fontWeight: 900 }}>
-                      iPanel
-                    </div>
-                    {p.partida != null && <div className="stage-card__title">Partida {p.partida}</div>}
-                    <div className="stage-card__sub">NV {p.nv}</div>
-                  </>
-                )}
-
-                <div style={{ fontSize: 12, opacity: 0.75 }}>Estado: {p[effKey] || ''}</div>
-                {p[`${effKey}_inicio`] && <div style={{ fontSize: 12 }}>Inicio: {fmt(p[`${effKey}_inicio`])}</div>}
-                {p[`${effKey}_fin`] && <div style={{ fontSize: 12 }}>Fin: {fmt(p[`${effKey}_fin`])}</div>}
-              </div>
-
-              <div className="actions" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {showPdfButtons &&
-                  pdfButtons.map((b) => {
-                    const needsNv = b.tipo === 'arm-primario';
-                    const enabled = canPdfBase && (needsNv ? hasNv : hasPartida);
-
-                    return (
-                      <button
-                        key={b.tipo}
-                        className="btn"
-                        onClick={() => openPdf(b.tipo, { partida: p.partida, nv: p.nv })}
-                        disabled={!enabled}
-                        title={
-                          enabled
-                            ? `${b.title}`
-                            : !canPdfBase
-                              ? 'Configurar pdfBaseUrl'
-                              : needsNv
-                                ? 'Sin NV'
-                                : 'Sin partida'
-                        }
-                        style={{ fontSize: 16, padding: '8px 10px', borderRadius: 10 }}
-                      >
-                        {b.icon} {b.label}
-                      </button>
-                    );
-                  })}
-
-                {/* ✅ Botón QC deshabilitado por ahora */}
-                
-                <button
-                  className="btn"
-                  type="button"
-                  onClick={() => openQc(p)}
-                  title="QC: Autorizar / Observar / Rechazar"
-                  style={{ fontSize: 14, padding: '8px 10px', borderRadius: 10, fontWeight: 900 }}
-                >
-                  QC
-                </button>
-               
-
-                <button
-                  className="btn btn--brand"
-                  onClick={() => onStart && onStart(p.id, effKey)}
-                  disabled={!canStart || disabledId === p.id}
-                  title="Iniciar (En Proceso)"
-                  style={{ fontSize: 18, padding: '8px 10px', borderRadius: 10 }}
-                >
-                  ▶
-                </button>
-
-                <button
-                  className="btn"
-                  onClick={() => onStop && onStop(p.id, effKey)}
-                  disabled={!canStop || disabledId === p.id}
-                  title="Finalizar"
-                  style={{ fontSize: 18, padding: '8px 10px', borderRadius: 10 }}
-                >
-                  ⏹
-                </button>
-              </div>
-            </div>
-          );
-        })}
-
-        {ordered.length === 0 && <div style={{ opacity: 0.6, fontSize: 13 }}>Sin elementos.</div>}
-      </div>
-
-      {/* Modal Historial */}
-      {showHist && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setShowHist(false);
-          }}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(15,23,42,0.55)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 16,
-            zIndex: 9999,
-          }}
-        >
-          <div
+        {mode !== 'ipanel' ? (
+          <button
+            type="button"
+            className="btn"
+            onClick={() => setHistOpen(true)}
+            title="Ver historial (últimos 10)"
             style={{
-              width: 'min(920px, 100%)',
-              background: '#fff',
-              borderRadius: 14,
-              border: '1px solid #e5e7eb',
-              boxShadow: '0 18px 55px rgba(0,0,0,0.25)',
-              overflow: 'hidden',
+              background: 'rgba(255,255,255,0.18)',
+              color: '#fff',
+              borderColor: 'rgba(255,255,255,0.35)',
+              fontWeight: 900,
+              padding: '6px 10px',
             }}
           >
-            <div
-              style={{
-                padding: '12px 14px',
-                borderBottom: '1px solid #e5e7eb',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 10,
-                background: '#f8fafc',
-              }}
-            >
-              <div style={{ fontWeight: 900 }}>
-                Historial – {title} ({mode === 'ipanel' ? 'iPanel' : 'Portones'})
-              </div>
+            Hist
+          </button>
+        ) : null}
+      </div>
 
-              <button
-                type="button"
-                onClick={() => setShowHist(false)}
-                style={{
-                  border: '1px solid #d1d5db',
-                  background: '#fff',
-                  borderRadius: 10,
-                  padding: '6px 10px',
-                  cursor: 'pointer',
-                  fontWeight: 800,
-                }}
-                title="Cerrar"
-              >
-                Cerrar
-              </button>
-            </div>
+      <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {ordered
+          .filter((p) => {
+            const st = low(p?.[effKey]);
+            if (st === 'finalizado') return !shouldHideFinalizado(p);
+            return st === 'pendiente' || st === 'en proceso';
+          })
+          .map((p) => {
+            const st = low(p?.[effKey]);
+            const canStop = st === 'en proceso';
+            const canStart = st === 'pendiente';
 
-            <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 14 }}>
-              {/* Buscador */}
+            const qcId = getQcItemId(p, line);
+            const info = Number.isInteger(qcId) ? qcSummaryMap?.[qcId] : null;
+            const hasObs = Boolean(info?.has_obs);
+
+            const prod10 = getProdDate10(p);
+
+            // ✅ NUEVO: regla despacho (fecha salida + admin_cliente_en_regla)
+            const salida10 = getSalidaDate10(p);
+            const today10 = todayISO10Local();
+            const vencida = salida10 ? salida10 <= today10 : false;
+
+            const enRegla = isClienteEnRegla(p);
+
+            const needsAdminAuthRed = isDespachoColumn && vencida && !enRegla;
+
+            return (
               <div
+                key={`${mode}-${p?.id ?? `${p?.nv}-${p?.nlista}-${p?.partida}`}`}
                 style={{
-                  border: '1px solid #e5e7eb',
+                  border: needsAdminAuthRed ? '2px solid #ef4444' : '1px solid var(--border)',
                   borderRadius: 12,
-                  padding: 12,
-                  background: '#fff',
+                  padding: '10px 12px',
+                  background: needsAdminAuthRed ? '#fff5f5' : 'var(--surface)',
+                  position: 'relative',
+                  boxShadow: needsAdminAuthRed ? '0 8px 22px rgba(239,68,68,0.16)' : undefined,
                 }}
               >
-                <div style={{ fontWeight: 900, marginBottom: 8 }}>Buscar portón</div>
-
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                  <input
-                    type="text"
-                    value={q}
-                    onChange={(e) => setQ(e.target.value)}
-                    placeholder="Buscar por NV, N° Portón o Partida"
-                    style={{
-                      flex: '1 1 320px',
-                      padding: '10px 12px',
-                      borderRadius: 10,
-                      border: '1px solid #d1d5db',
-                      outline: 'none',
-                      fontSize: 14,
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        doSearch();
-                      }
-                    }}
-                  />
-
-                  <button
-                    type="button"
-                    onClick={doSearch}
-                    style={{
-                      border: '1px solid #d1d5db',
-                      background: '#111827',
-                      color: '#fff',
-                      borderRadius: 10,
-                      padding: '10px 12px',
-                      cursor: 'pointer',
-                      fontWeight: 800,
-                    }}
-                  >
-                    Buscar
-                  </button>
-
+                {hasObs ? (
                   <button
                     type="button"
                     onClick={() => {
-                      setQ('');
-                      setSearched(false);
-                      setSearchResults([]);
-                      setSelected(null);
+                      setObsTarget(p);
+                      setObsOpen(true);
                     }}
+                    title="Ver observaciones"
                     style={{
-                      border: '1px solid #d1d5db',
-                      background: '#fff',
-                      color: '#111827',
-                      borderRadius: 10,
-                      padding: '10px 12px',
+                      position: 'absolute',
+                      top: 8,
+                      right: 8,
+                      width: 28,
+                      height: 28,
+                      borderRadius: 999,
+                      border: '1px solid #b91c1c',
+                      background: '#ef4444',
+                      color: '#fff',
+                      fontWeight: 900,
                       cursor: 'pointer',
-                      fontWeight: 800,
+                      display: 'grid',
+                      placeItems: 'center',
+                      boxShadow: '0 6px 18px rgba(0,0,0,0.18)',
                     }}
                   >
-                    Limpiar
+                    !
                   </button>
-                </div>
+                ) : null}
 
-                {/* Resultado */}
-                <div style={{ marginTop: 10 }}>
-                  {!searched ? (
-                    <div style={{ fontSize: 13, opacity: 0.7 }}>
-                      Ingresá un dato (NV / N° Portón / Partida) y presioná Buscar.
-                    </div>
-                  ) : searchResults.length === 0 ? (
-                    <div style={{ fontSize: 13, color: '#b91c1c', fontWeight: 800 }}>
-                      No se encontró coincidencia en el dataset actual.
-                    </div>
-                  ) : (
+                <div style={{ fontWeight: 900 }}>N° Portón {p?.nlista ?? p?.NLista ?? '-'}</div>
+                <div>Partida {p?.partida ?? p?.PARTIDA ?? '-'}</div>
+                <div>NV {p?.nv ?? p?.NV ?? '-'}</div>
+
+                <div style={{ fontSize: 12, opacity: 0.75 }}>
+                  Estado: {p?.[effKey] || ''}
+                  {prod10 ? (
                     <>
-                      {searchResults.length > 1 && (
-                        <div
-                          style={{
-                            marginTop: 8,
-                            border: '1px solid #e5e7eb',
-                            borderRadius: 12,
-                            padding: 12,
-                            background: '#fff',
-                          }}
-                        >
-                          <div style={{ fontWeight: 900, marginBottom: 8 }}>
-                            Se encontraron {searchResults.length} portones para “{safeStr(q)}”
-                          </div>
-
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                            {searchResults.map((p) => {
-                              const { nv, nlista, partida } = getFields(p);
-                              const st = safeStr(p?.[effKey]);
-                              const isSel = selected && (selected === p);
-
-                              return (
-                                <div
-                                  key={`hit-${p?.id ?? `${nv}-${nlista}-${partida}`}`}
-                                  style={{
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                    gap: 10,
-                                    alignItems: 'center',
-                                    border: '1px solid #e5e7eb',
-                                    borderRadius: 12,
-                                    padding: '10px 12px',
-                                    background: isSel ? '#eff6ff' : '#fff',
-                                  }}
-                                >
-                                  <div style={{ fontWeight: 900 }}>
-                                    N° Portón {nlista || '-'} · Partida {partida || '-'} · NV {nv || '-'}
-                                    <div style={{ fontSize: 12, fontWeight: 700, opacity: 0.75, marginTop: 2 }}>
-                                      Estado: {st || '(sin estado)'}
-                                    </div>
-                                  </div>
-
-                                  <button
-                                    type="button"
-                                    onClick={() => setSelected(p)}
-                                    style={{
-                                      border: '1px solid #d1d5db',
-                                      background: '#111827',
-                                      color: '#fff',
-                                      borderRadius: 10,
-                                      padding: '8px 10px',
-                                      cursor: 'pointer',
-                                      fontWeight: 900,
-                                    }}
-                                  >
-                                    Ver
-                                  </button>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      {selected && (
-                        <div
-                          style={{
-                            marginTop: 10,
-                            border: '1px solid #e5e7eb',
-                            borderRadius: 12,
-                            padding: 12,
-                            background: '#f9fafb',
-                          }}
-                        >
-                          {(() => {
-                            const p = selected;
-                            const { nv, nlista, partida } = getFields(p);
-
-                            const st = safeStr(p?.[effKey]);
-                            const inicio = p?.[`${effKey}_inicio`] || null;
-                            const fin = p?.[`${effKey}_fin`] || null;
-
-                            return (
-                              <>
-                                <div style={{ fontWeight: 900, marginBottom: 6 }}>
-                                  N° Portón {nlista || '-'} · Partida {partida || '-'} · NV {nv || '-'}
-                                </div>
-
-                                <div style={{ fontSize: 13 }}>
-                                  <b>Puesto:</b> {title} · <b>Estado:</b> {st || '(sin estado)'}
-                                </div>
-
-                                <div style={{ fontSize: 13, marginTop: 4 }}>
-                                  {inicio ? (
-                                    <>
-                                      <b>Inicio:</b> {fmt(inicio)}
-                                    </>
-                                  ) : (
-                                    <span style={{ opacity: 0.7 }}>Sin fecha de inicio</span>
-                                  )}
-                                  {' · '}
-                                  {fin ? (
-                                    <>
-                                      <b>Fin:</b> {fmt(fin)}
-                                    </>
-                                  ) : (
-                                    <span style={{ opacity: 0.7 }}>Sin fecha de fin</span>
-                                  )}
-                                </div>
-                              </>
-                            );
-                          })()}
-                        </div>
-                      )}
+                      {' '}
+                      · Producción: <b>{prod10}</b>
                     </>
-                  )}
-                </div>
-              </div>
+                  ) : null}
 
-              {/* Últimos 10 */}
-              <div
-                style={{
-                  border: '1px solid #e5e7eb',
-                  borderRadius: 12,
-                  padding: 12,
-                  background: '#fff',
-                }}
-              >
-                <div style={{ fontWeight: 900, marginBottom: 8 }}>
-                  Últimos 10 finalizados en este sector
+                  {isDespachoColumn && salida10 ? (
+                    <>
+                      {' '}
+                      · Salida: <b>{salida10}</b>
+                    </>
+                  ) : null}
+
+                  {needsAdminAuthRed ? (
+                    <>
+                      {' '}
+                      · <b style={{ color: '#b91c1c' }}>Cliente NO en regla (Administración)</b>
+                    </>
+                  ) : null}
                 </div>
 
-                {last10Finalizados.length ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {last10Finalizados.map((p) => {
-                      const { nv, nlista, partida } = getFields(p);
+                <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+                  {showPdfButtons &&
+                    pdfButtons.map((b) => {
+                      const enabled =
+                        canPdfBase &&
+                        (b.tipo === 'arm-primario'
+                          ? Boolean(p?.nv != null || p?.NV != null || p?.partida != null || p?.PARTIDA != null)
+                          : Boolean(getProdDate10(p) || getEnvioProduccionDate10(p)));
+
                       return (
-                        <div
-                          key={`hist-${effKey}-${p?.id ?? `${nv}-${nlista}-${partida}`}`}
-                          style={{
-                            border: '1px solid #e5e7eb',
-                            borderRadius: 12,
-                            padding: '10px 12px',
-                            background: '#fff',
-                            fontWeight: 900,
-                          }}
+                        <button
+                          key={b.tipo}
+                          className="btn"
+                          onClick={() => openPdf(b.tipo, p)}
+                          disabled={!enabled}
+                          title={
+                            b.tipo === 'arm-primario'
+                              ? b.title
+                              : `${b.title} (por fecha de producción)`
+                          }
                         >
-                          N° Portón {nlista || '-'} · Partida {partida || '-'} · NV {nv || '-'}
-                        </div>
+                          {b.icon} {b.label}
+                        </button>
                       );
                     })}
-                  </div>
-                ) : (
-                  <div style={{ fontSize: 13, opacity: 0.7 }}>
-                    No hay finalizados recientes detectables para este sector (en el dataset actual).
-                  </div>
-                )}
-              </div>
 
-              <div style={{ fontSize: 12, opacity: 0.65 }}>
-                Nota: si tu API no devuelve registros finalizados para este sector, el “últimos 10” no podrá
-                llenarse. En ese caso hay que agregar un endpoint de historial en backend para consultar por NV/Partida/N° Portón.
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+                  <button className="btn" type="button" onClick={() => openQc(p)} style={{ fontWeight: 900 }}>
+                    QC
+                  </button>
 
-      {/* Modal QC (queda listo, pero no se invoca sin el botón) */}
+                  <button
+                    className="btn btn--brand"
+                    onClick={() => onStart && onStart(p.id, effKey)}
+                    disabled={!canStart || disabledId === p.id}
+                  >
+                    ▶
+                  </button>
+
+                  <button
+                    className="btn"
+                    onClick={() => onStop && onStop(p.id, effKey)}
+                    disabled={!canStop || disabledId === p.id}
+                  >
+                    ⏹
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+      </div>
+
+      <HistoryModal
+        open={histOpen}
+        onClose={() => setHistOpen(false)}
+        title={title}
+        effKey={String(effKey || '').trim()}
+        rows={historyLast10}
+      />
+
       <QcModal
         open={qcOpen}
-        onClose={() => { setQcOpen(false); setQcTarget(null); }}
+        onClose={() => {
+          setQcOpen(false);
+          setQcTarget(null);
+        }}
         item={qcTarget}
         line={line}
         stageKey={effKey}
         title={title}
+        onSaved={() => onQcSaved?.()}
+      />
+
+      <ObservacionesModal
+        open={obsOpen}
+        onClose={() => {
+          setObsOpen(false);
+          setObsTarget(null);
+        }}
+        title={title}
+        item={obsTarget}
+        line={line}
       />
     </div>
   );

@@ -1,13 +1,11 @@
 // src/App.jsx
-import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
-import { useEffect, useMemo, useState } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import usePortones from './hooks/usePortones';
 import useIpanel from './hooks/useIpanels';
-import {
-  startStage, stopStage,
-  startIpanelStage, stopIpanelStage
-} from './api';
+import { startStage, stopStage, startIpanelStage, stopIpanelStage, qcSummary } from './api';
 import StageColumn from './components/StageColumn';
+
 import StatusGatePage from '../src/components/StatusGatePage';
 import CreateGatePage from '../pages/CreateGatePage';
 import PlantaReadOnlyPage from '../pages/PlantaOnlyDearPage';
@@ -15,12 +13,17 @@ import IpanelReadOnlyPage from '../pages/IpanelReadOnlyPage';
 import PlantaReadOnlySimplePage from '../pages/PlantaReadyOnlySimplePage';
 import StatusIpanelsPage from '../pages/StatusIpanelsPage';
 import PortonesStatsPage from '../pages/PortonesStatsPage';
+
 import AdminLoginPage from '../pages/admin/AdminLoginPage';
 import AdminHomePage from '../pages/admin/AdminHomePage';
 import WorkflowDesignerPage from '../pages/admin/WorkflowDesignerPage';
 import AdminQcPage from '../pages/admin/AdminQcPage';
 
-import LogoDeGrandis from './assets/DeGrandis_1.png';
+import PreproduccionValoresTable from '../src/components/PreproduccionValoresTable';
+import UserAdminDashboard from './components/UserAdminDashboard';
+
+import IndexPage from '../pages/IndexPage';
+import NonProductionLayout from './components/NonProductionLayout';
 
 const color = 'var(--brand)';
 
@@ -34,16 +37,13 @@ function apiBase() {
   const v = import.meta.env.VITE_API_URL || '';
   return String(v || '').replace(/\/$/, '');
 }
-
 function low(v) { return String(v ?? '').toLowerCase(); }
 
 function isFinalizadoByKey(item, key) {
-  // key apunta a la columna status (ej: diseno, laser, etc)
   return low(item?.[key]) === low(STATUS.FINALIZADO);
 }
 
 function buildReqIndex(requirements) {
-  // requirements: [{stage_key, type, group_id, required_key}, ...]
   const idx = new Map();
   for (const r of requirements || []) {
     const stageKey = String(r?.stage_key || '').trim();
@@ -53,9 +53,7 @@ function buildReqIndex(requirements) {
 
     if (!stageKey || !type || !requiredKey) continue;
 
-    if (!idx.has(stageKey)) {
-      idx.set(stageKey, { all: new Set(), anyGroups: new Map() });
-    }
+    if (!idx.has(stageKey)) idx.set(stageKey, { all: new Set(), anyGroups: new Map() });
     const bucket = idx.get(stageKey);
 
     if (type === 'ALL') {
@@ -71,36 +69,41 @@ function buildReqIndex(requirements) {
 
 function canAppearInStage({ item, stageKey, reqIndex }) {
   const st = item?.[stageKey];
-
-  // Si no tiene status en esa columna, no debería estar en esa etapa
   if (st == null) return false;
 
-  // Si ya está en proceso o finalizado, se muestra igual
   const stLow = low(st);
   if (stLow === low(STATUS.EN_PROCESO) || stLow === low(STATUS.FINALIZADO)) return true;
-
-  // Solo gateamos el caso Pendiente
   if (stLow !== low(STATUS.PENDIENTE)) return true;
 
-  // Si no hay requisitos cargados, fallback: mostrar como antes
   if (!reqIndex) return true;
-
   const req = reqIndex.get(stageKey);
-  if (!req) return true; // sin requisitos para esa etapa
+  if (!req) return true;
 
-  // ALL
   for (const k of req.all) {
     if (!isFinalizadoByKey(item, k)) return false;
   }
 
-  // ANY_GROUP: cada grupo debe tener al menos uno finalizado
   for (const [, set] of req.anyGroups.entries()) {
     const keys = Array.from(set);
-    const ok = keys.some(k => isFinalizadoByKey(item, k));
+    const ok = keys.some((k) => isFinalizadoByKey(item, k));
     if (!ok) return false;
   }
 
   return true;
+}
+
+function chunk(arr, size) {
+  const out = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+/**
+ * Wrapper “full-bleed” para páginas que deben ocupar TODO el ancho de viewport
+ * aunque estén dentro de layouts con max-width.
+ */
+function FullBleed({ children }) {
+  return <div className="route-fullbleed">{children}</div>;
 }
 
 function Board({ stages }) {
@@ -110,13 +113,14 @@ function Board({ stages }) {
     useIpanel({ pollMs: 300000 });
 
   const [busyId, setBusyId] = useState(null);
-
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState(null);
 
-  // Workflow config (public read-only)
-  const [wfPortones, setWfPortones] = useState(null); // {stages, edges, requirements}
+  const [wfPortones, setWfPortones] = useState(null);
   const [wfIpanel, setWfIpanel] = useState(null);
+
+  const [qcSumPortones, setQcSumPortones] = useState({});
+  const [qcSumIpanel, setQcSumIpanel] = useState({});
 
   useEffect(() => {
     let cancelled = false;
@@ -133,13 +137,8 @@ function Board({ stages }) {
 
     (async () => {
       try {
-        const [p, i] = await Promise.all([
-          loadWorkflow('portones'),
-          loadWorkflow('ipanel'),
-        ]);
-
+        const [p, i] = await Promise.all([loadWorkflow('portones'), loadWorkflow('ipanel')]);
         if (cancelled) return;
-
         setWfPortones(p?.ok ? p : null);
         setWfIpanel(i?.ok ? i : null);
       } catch (e) {
@@ -154,28 +153,29 @@ function Board({ stages }) {
     return () => { cancelled = true; };
   }, []);
 
-  const reqIndexPortones = useMemo(() => {
-    return wfPortones?.requirements ? buildReqIndex(wfPortones.requirements) : null;
-  }, [wfPortones]);
-
-  const reqIndexIpanel = useMemo(() => {
-    return wfIpanel?.requirements ? buildReqIndex(wfIpanel.requirements) : null;
-  }, [wfIpanel]);
+  const reqIndexPortones = useMemo(
+    () => (wfPortones?.requirements ? buildReqIndex(wfPortones.requirements) : null),
+    [wfPortones]
+  );
+  const reqIndexIpanel = useMemo(
+    () => (wfIpanel?.requirements ? buildReqIndex(wfIpanel.requirements) : null),
+    [wfIpanel]
+  );
 
   const filteredPortones = useMemo(() => {
     if (!Array.isArray(portones)) return [];
-    if (filter === null || filter === '') return portones;
+    if (filter == null || filter === '') return portones;
     const n = Number(filter);
     if (Number.isNaN(n)) return portones;
-    return portones.filter(p => p.nv === n || p.nlista === n || p.partida === n);
+    return portones.filter((p) => p.nv === n || p.nlista === n || p.partida === n);
   }, [portones, filter]);
 
   const filteredIpanels = useMemo(() => {
     if (!Array.isArray(ipanels)) return [];
-    if (filter === null || filter === '') return ipanels;
+    if (filter == null || filter === '') return ipanels;
     const n = Number(filter);
     if (Number.isNaN(n)) return ipanels;
-    return ipanels.filter(ip => ip.nv === n || ip.partida === n);
+    return ipanels.filter((ip) => ip.nv === n || ip.partida === n);
   }, [ipanels, filter]);
 
   const handleStart = async (id, stage) => {
@@ -189,6 +189,7 @@ function Board({ stages }) {
       setBusyId(null);
     }
   };
+
   const handleStop = async (id, stage) => {
     try {
       setBusyId(id);
@@ -212,6 +213,7 @@ function Board({ stages }) {
       setBusyId(null);
     }
   };
+
   const handleStopIpanel = async (id, stage) => {
     try {
       setBusyId(id);
@@ -224,6 +226,46 @@ function Board({ stages }) {
     }
   };
 
+  const refreshQcSummary = useCallback(async () => {
+    try {
+      const pIds = (Array.isArray(portones) ? portones : [])
+        .map((p) => Number(p?.nv))
+        .filter((n) => Number.isInteger(n));
+
+      const iIds = (Array.isArray(ipanels) ? ipanels : [])
+        .map((p) => Number(p?.nv))
+        .filter((n) => Number.isInteger(n));
+
+      if (!pIds.length) setQcSumPortones({});
+      if (!iIds.length) setQcSumIpanel({});
+
+      async function loadLine(line, ids) {
+        const out = {};
+        const parts = chunk(ids, 200);
+        for (const part of parts) {
+          const resp = await qcSummary({ line, item_ids: part });
+          const items = resp?.items || {};
+          for (const k of Object.keys(items)) out[k] = items[k];
+        }
+        return out;
+      }
+
+      const [pMap, iMap] = await Promise.all([
+        pIds.length ? loadLine('portones', pIds) : Promise.resolve({}),
+        iIds.length ? loadLine('ipanel', iIds) : Promise.resolve({}),
+      ]);
+
+      setQcSumPortones(pMap);
+      setQcSumIpanel(iMap);
+    } catch (e) {
+      console.warn('No se pudo cargar qcSummary:', e?.message || e);
+    }
+  }, [portones, ipanels]);
+
+  useEffect(() => {
+    refreshQcSummary();
+  }, [refreshQcSummary]);
+
   if (loading) return <div className="container">Cargando…</div>;
   if (err) return <div className="container" style={{ color: 'crimson' }}>Error: {err}</div>;
 
@@ -233,7 +275,7 @@ function Board({ stages }) {
         <h2 className="h1" style={{ borderColor: color }}>DE GRANDIS PORTONES</h2>
         <button
           className="btn btn--brand"
-          onClick={() => { refresh(); refreshIpanel(); }}
+          onClick={() => { refresh(); refreshIpanel(); refreshQcSummary(); }}
           disabled={refreshing}
         >
           {refreshing ? 'Actualizando…' : 'Refrescar'}
@@ -254,25 +296,22 @@ function Board({ stages }) {
           inputMode="numeric"
         />
         <button className="btn btn--brand" type="submit">Buscar</button>
-        <button
-          className="btn"
-          type="button"
-          onClick={() => { setQ(''); setFilter(null); }}
-        >
+        <button className="btn" type="button" onClick={() => { setQ(''); setFilter(null); }}>
           Limpiar
         </button>
       </form>
 
       <div className="stage-grid">
-        {stages.map(s => {
+        {stages.map((s) => {
           const isIpanel = s.mode === 'ipanel';
-
           const baseItems = isIpanel ? filteredIpanels : filteredPortones;
           const reqIndex = isIpanel ? reqIndexIpanel : reqIndexPortones;
 
-          const itemsForStage = baseItems.filter(item =>
+          const itemsForStage = baseItems.filter((item) =>
             canAppearInStage({ item, stageKey: s.key, reqIndex })
           );
+
+          const qcMap = isIpanel ? qcSumIpanel : qcSumPortones;
 
           return (
             <StageColumn
@@ -284,6 +323,9 @@ function Board({ stages }) {
               onStart={isIpanel ? handleStartIpanel : handleStart}
               onStop={isIpanel ? handleStopIpanel : handleStop}
               disabledId={busyId}
+              allItems={isIpanel ? ipanels : portones}
+              qcSummaryMap={qcMap}
+              onQcSaved={refreshQcSummary}
             />
           );
         })}
@@ -296,8 +338,8 @@ const ONE = (key, label) => [{ key, label, mode: 'porton' }];
 
 const ROUTES = [
   {
-    path: '/',
-    label: 'Inicio (Tablero completo)',
+    path: '/board',
+    label: 'Producción · Tablero completo',
     stages: [
       { key: 'diseno', label: 'Diseño (Portones)', mode: 'porton' },
       { key: 'diseno', label: 'Diseño (iPanel)', mode: 'ipanel' },
@@ -319,7 +361,7 @@ const ROUTES = [
 
       { key: 'revestimiento', label: 'Revestimiento', mode: 'porton' },
 
-      { key: 'pintura', label: 'Pintura Portones', mode: 'porton' },
+      { key: 'pintura', label: 'Pintura Sistemas (Portones)', mode: 'porton' },
       { key: 'pintura', label: 'Pintura (Ipanels)', mode: 'ipanel' },
 
       { key: 'inyeccion', label: 'Inyeccion (Portones)', mode: 'porton' },
@@ -329,204 +371,115 @@ const ROUTES = [
 
       { key: 'despacho', label: 'Despacho (Portones)', mode: 'porton' },
       { key: 'despacho', label: 'Despacho (iPanel)', mode: 'ipanel' },
-    ]
+    ],
   },
-
   {
     path: '/diseno',
-    label: 'Diseño',
+    label: 'Producción · Diseño',
     stages: [
       { key: 'diseno', label: 'Diseño (Portones)', mode: 'porton' },
       { key: 'diseno', label: 'Diseño (iPanel)', mode: 'ipanel' },
-    ]
+    ],
   },
-
-  { path: '/laser', label: 'Laser', stages: ONE('laser', 'Laser') },
-
+  { path: '/laser', label: 'Producción · Laser', stages: ONE('laser', 'Laser') },
   {
     path: '/corte',
-    label: 'Corte',
+    label: 'Producción · Corte',
     stages: [
       { key: 'guillotina', label: 'Corte piernas', mode: 'porton' },
       { key: 'corte_revest', label: 'Corte revestimiento', mode: 'porton' },
       { key: 'guillotina', label: 'Corte Ipanel', mode: 'ipanel' },
-    ]
+    ],
   },
-
   {
     path: '/plegado',
-    label: 'Plegado',
+    label: 'Producción · Plegado',
     stages: [
       { key: 'plegadora', label: 'Plegado Piernas', mode: 'porton' },
       { key: 'plegado_revest', label: 'Plegado Revestimiento', mode: 'porton' },
       { key: 'plegado', label: 'Plegado Ipanel', mode: 'ipanel' },
-    ]
+    ],
   },
-
   {
     path: '/prefabricados',
-    label: 'Prefabricados / Armado',
+    label: 'Producción · Prefabricados / Armado',
     stages: [
       { key: 'armado_piernas', label: 'Prefabricados (Armado de piernas)', mode: 'porton' },
       { key: 'armado_marco_piernas', label: 'Armado de marcos piernas', mode: 'porton' },
       { key: 'armado_hojas', label: 'Armado de hoja', mode: 'porton' },
-    ]
+    ],
   },
-
-  { path: '/armado-primario', label: 'Armado Primario', stages: ONE('armado_primario', 'Armado Primario') },
-
+  { path: '/armado-primario', label: 'Producción · Armado Primario', stages: ONE('armado_primario', 'Armado Primario') },
   {
     path: '/pintura',
-    label: 'Pintura',
+    label: 'Producción · Pintura',
     stages: [
-      { key: 'pintura', label: 'Pintura Portones', mode: 'porton' },
+      { key: 'pintura', label: 'Pintura Sistemas (Portones)', mode: 'porton' },
+      { key: 'pintura_revestimiento', label: 'Pintura Revestimiento (Portones)', mode: 'porton' },
       { key: 'pintura', label: 'Pintura (Ipanels)', mode: 'ipanel' },
-    ]
+    ],
   },
-
   {
     path: '/inyeccion',
-    label: 'Inyección',
+    label: 'Producción · Inyección',
     stages: [
       { key: 'inyeccion', label: 'Inyeccion (Portones)', mode: 'porton' },
       { key: 'inyeccion', label: 'Inyeccion Ipanel', mode: 'ipanel' },
-    ]
+    ],
   },
-
-  { path: '/revestimiento', label: 'Revestimiento', stages: ONE('revestimiento', 'Revestimiento') },
-  { path: '/armado-final', label: 'Armado Final', stages: ONE('armado_final', 'Armado Final') },
-
+  { path: '/revestimiento', label: 'Producción · Revestimiento', stages: ONE('revestimiento', 'Revestimiento') },
+  { path: '/armado-final', label: 'Producción · Armado Final', stages: ONE('armado_final', 'Armado Final') },
   {
     path: '/despacho',
-    label: 'Despacho',
+    label: 'Producción · Despacho',
     stages: [
       { key: 'despacho', label: 'Despacho (Portones)', mode: 'porton' },
       { key: 'despacho', label: 'Despacho (iPanel)', mode: 'ipanel' },
-    ]
+    ],
   },
 ];
-
-function IndexPage() {
-  const extraRoutes = [
-    { path: '/ipanel', label: 'iPanel (solo lectura)' },
-    { path: '/statusGate', label: 'Status Portones' },
-    { path: '/createGate', label: 'CreateGate (carga / planificación)' },
-    { path: '/planta', label: 'Planta (solo lectura – detalle)' },
-    { path: '/plantasimple', label: 'Planta simple (resumen)' },
-    { path: '/statusIpanels', label: 'Status iPanels' },
-    { path: '/admin/login', label: 'Admin Login' },
-    { path: '/admin', label: 'Admin - Menú' },
-    { path: '/admin/qc', label: 'Admin - Usuarios QC' },
-    { path: '/admin/workflow', label: 'Admin - Workflow Designer' },
-  ];
-
-  const routeLinks = [...ROUTES, ...extraRoutes];
-
-  return (
-    <div className="container">
-      <h1 className="h1" style={{ marginBottom: 16 }}>Índice de tableros</h1>
-
-      <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {routeLinks.map(r => (
-          <li
-            key={r.path}
-            style={{
-              border: '1px solid #ddd',
-              borderRadius: 8,
-              padding: '8px 12px',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              flexWrap: 'wrap',
-              gap: 8
-            }}
-          >
-            <div>
-              <Link to={r.path} style={{ fontWeight: 600, textDecoration: 'none', color: 'var(--brand)' }}>
-                {r.label}
-              </Link>
-              <div style={{ fontSize: 12, opacity: .7 }}>
-                Ruta: <code>{r.path}</code>
-              </div>
-            </div>
-            <Link to={r.path} className="btn btn--brand">Ir</Link>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-/** Pantalla de mantenimiento embebida en este mismo archivo (copy/paste total) */
-function MaintenancePage() {
-  return (
-    <div
-      style={{
-        minHeight: '100vh',
-        background: '#000',
-        color: '#fff',
-        display: 'grid',
-        placeItems: 'center',
-        padding: 24,
-      }}
-    >
-      <div
-        style={{
-          width: '100%',
-          maxWidth: 760,
-          textAlign: 'center',
-          border: '1px solid rgba(255,255,255,0.12)',
-          borderRadius: 18,
-          padding: 24,
-          background: 'rgba(0,0,0,0.65)',
-          boxShadow: '0 14px 40px rgba(0,0,0,0.45)',
-        }}
-      >
-        <div
-          style={{
-            display: 'grid',
-            placeItems: 'center',
-            marginBottom: 18,
-            padding: 18,
-            borderRadius: 14,
-            background: '#000', // fondo negro para el logo
-            border: '1px solid rgba(255,255,255,0.10)',
-          }}
-        >
-          <img
-            src={LogoDeGrandis}
-            alt="De Grandis Portones"
-            style={{
-              width: 280,
-              maxWidth: '80%',
-              height: 'auto',
-              display: 'block',
-              objectFit: 'contain',
-            }}
-          />
-        </div>
-
-        <h1 style={{ margin: '0 0 10px', fontSize: 22, fontWeight: 700 }}>
-          Aplicación en actualización
-        </h1>
-
-        <p style={{ margin: 0, fontSize: 16, lineHeight: 1.55, opacity: 0.9 }}>
-          La aplicación se encuentra  en actualización. Te avisaremos cuando ya se encuentre operativa.
-        </p>
-      </div>
-    </div>
-  );
-}
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Ruta canónica */}
-        <Route path="/mantenimiento" element={<MaintenancePage />} />
+        <Route path="/" element={<Navigate to="/admin/login" replace />} />
+        <Route path="/admin/login" element={<AdminLoginPage />} />
 
-        {/* TODO el resto deshabilitado */}
-        <Route path="*" element={<Navigate to="/mantenimiento" replace />} />
+        <Route element={<NonProductionLayout />}>
+          <Route path="/index" element={<IndexPage routes={ROUTES} />} />
+
+          <Route path="/admin" element={<AdminHomePage />} />
+          <Route path="/admin/qc" element={<AdminQcPage />} />
+          <Route path="/admin/workflow" element={<WorkflowDesignerPage />} />
+
+          {/* ✅ FULL BLEED SOLO para /a */}
+          <Route
+            path="/a"
+            element={
+              <FullBleed>
+                <PreproduccionValoresTable />
+              </FullBleed>
+            }
+          />
+
+          <Route path="/b" element={<UserAdminDashboard />} />
+        </Route>
+
+        {ROUTES.map((r) => (
+          <Route key={r.path} path={r.path} element={<Board stages={r.stages} />} />
+        ))}
+
+        <Route path="/ipanel" element={<IpanelReadOnlyPage />} />
+        <Route path="/Diseño" element={<Navigate to="/diseno" replace />} />
+        <Route path="/statusGate" element={<StatusGatePage />} />
+        <Route path="/createGate" element={<CreateGatePage />} />
+        <Route path="/planta" element={<PlantaReadOnlyPage />} />
+        <Route path="/plantasimple" element={<PlantaReadOnlySimplePage />} />
+        <Route path="/statusIpanels" element={<StatusIpanelsPage />} />
+        <Route path="/stats/portones" element={<PortonesStatsPage />} />
+
+        <Route path="*" element={<Navigate to="/admin/login" replace />} />
       </Routes>
     </BrowserRouter>
   );

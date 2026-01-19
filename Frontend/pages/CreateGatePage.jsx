@@ -36,7 +36,8 @@ const STAGES = [
   // Sistema / pintura
   { key: 'inyeccion',            label: 'Inyección' },
   { key: 'revestimiento',        label: 'Revestimiento' },
-  { key: 'pintura',              label: 'Pintura' },
+  { key: 'pintura',              label: 'Pintura (Sistemas)' },
+  { key: 'pintura_revestimiento',label: 'Pintura (Revestimiento)' },
 
   { key: 'armado_final',         label: 'Armado Final' },
   { key: 'despacho',             label: 'Despacho' },
@@ -85,7 +86,7 @@ const isSistema = p =>
   (p.revestimiento || '').toLowerCase() === 'finalizado';
 
 const isFullyFinishedPorton = p =>
-  STAGES.every(s => (p[s.key] || '').toLowerCase() === 'finalizado');
+  STAGES.every(s => (p[s.key] == null) || (p[s.key] || '').toLowerCase() === 'finalizado');
 
 const isFullyFinishedIpanel = i =>
   IP_STAGES.every(s => (i[s.key] || '').toLowerCase() === 'finalizado');

@@ -1,0 +1,15 @@
+# Node / build artifacts
+**/node_modules/
+**/dist/
+**/dist-ssr/
+**/*.local
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+# Secrets
+**/.env
+**/.env.*
+!**/.env.example
+**/*clave*.txt
