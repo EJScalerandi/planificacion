@@ -359,6 +359,7 @@ const ROUTES = [
       { key: 'revestimiento', label: 'Revestimiento', mode: 'porton' },
 
       { key: 'pintura', label: 'Pintura Sistemas (Portones)', mode: 'porton' },
+      { key: 'pintura_revestimiento', label: 'Pintura Revestimiento (Portones)', mode: 'porton' },
       { key: 'pintura', label: 'Pintura (Ipanels)', mode: 'ipanel' },
 
       { key: 'inyeccion', label: 'Inyeccion (Portones)', mode: 'porton' },
@@ -418,7 +419,7 @@ const ROUTES = [
   },
 
   // ✅ NUEVO: Ruta dedicada para que aparezca en el índice como sección independiente
-  { path: '/pintura-revestimiento', label: 'Producción · Pintura Revestimiento (Portones)', stages: ONE('pintura_revestimiento', 'Pintura Revestimiento (Portones)') },
+
 
   {
     path: '/inyeccion',
