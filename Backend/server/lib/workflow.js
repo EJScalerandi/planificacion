@@ -76,17 +76,19 @@ function evalRule(ctx, rule) {
 
   const actual = getValueByField(ctx, field);
 
-  // Si el campo no existe en el contexto, la regla NO debe matchear.
-  // Esto evita falsos positivos (ej: op "!=" con actual undefined).
-  if (actual === undefined || actual === null) return false;
+  // Normalización de strings:
+  // En varios orígenes legacy (por ejemplo campos CHAR/NCHAR) los valores vienen con padding de espacios.
+  // Si comparamos sin trim, reglas con '=' / '!=' / 'in' pueden dar resultados incorrectos.
+  // Ejemplo real: "Para revestir con AL-PVC-OTROS····" (con espacios al final) no matchea.
+  const normStr = (x) => String(x ?? '').trim();
 
   const asNum = (x) => {
     const n = Number(x);
     return Number.isFinite(n) ? n : null;
   };
 
-  if (op === '=') return String(actual) === String(value ?? '');
-  if (op === '!=') return String(actual) !== String(value ?? '');
+  if (op === '=') return normStr(actual) === normStr(value);
+  if (op === '!=') return normStr(actual) !== normStr(value);
 
   if (op === '>') {
     const a = asNum(actual);
@@ -111,11 +113,11 @@ function evalRule(ctx, rule) {
 
   if (op === 'in') {
     if (!Array.isArray(value)) return false;
-    return value.map(String).includes(String(actual));
+    return value.map(normStr).includes(normStr(actual));
   }
 
   if (op === 'contains') {
-    return String(actual ?? '').toLowerCase().includes(String(value ?? '').toLowerCase());
+    return normStr(actual).toLowerCase().includes(normStr(value).toLowerCase());
   }
 
   return false;

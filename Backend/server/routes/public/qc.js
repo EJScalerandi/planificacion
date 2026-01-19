@@ -72,22 +72,6 @@ async function getPortonCtxById(db, id) {
     ctx[`${k}_fin`] = r.fin ?? null;
   }
 
-  // Enriquecemos el contexto con los campos del JSONB de preproducción
-  // (por ejemplo "Sistema"). Las condiciones del workflow designer se basan
-  // en esos campos; si no están, reglas como "!=" pueden matchear de más.
-  try {
-    const pr = await db.query(
-      'select data from public.preproduccion_valores where nv = $1 limit 1;',
-      [ctx.nv]
-    );
-    const data = pr.rows?.[0]?.data;
-    if (data && typeof data === 'object') {
-      Object.assign(ctx, data);
-    }
-  } catch (e) {
-    // No rompemos QC si no existe preproducción para ese NV.
-  }
-
   return ctx;
 }
 
