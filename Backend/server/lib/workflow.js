@@ -81,8 +81,10 @@ function evalRule(ctx, rule) {
     return Number.isFinite(n) ? n : null;
   };
 
-  if (op === '=') return String(actual ?? '') === String(value ?? '');
-  if (op === '!=') return String(actual ?? '') !== String(value ?? '');
+    const normStr = (x) => String(x ?? '').trim();
+
+  if (op === '=') return normStr(actual) === normStr(value);
+  if (op === '!=') return normStr(actual) !== normStr(value);
 
   if (op === '>') {
     const a = asNum(actual);
