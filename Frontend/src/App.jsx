@@ -359,6 +359,7 @@ const ROUTES = [
       { key: 'revestimiento', label: 'Revestimiento', mode: 'porton' },
 
       { key: 'pintura', label: 'Pintura Sistemas (Portones)', mode: 'porton' },
+      // ✅ ESTE ES EL QUE TE FALTABA EN /board
       { key: 'pintura_revestimiento', label: 'Pintura Revestimiento (Portones)', mode: 'porton' },
       { key: 'pintura', label: 'Pintura (Ipanels)', mode: 'ipanel' },
 
@@ -417,10 +418,6 @@ const ROUTES = [
       { key: 'pintura', label: 'Pintura (Ipanels)', mode: 'ipanel' },
     ],
   },
-
-  // ✅ NUEVO: Ruta dedicada para que aparezca en el índice como sección independiente
-
-
   {
     path: '/inyeccion',
     label: 'Producción · Inyección',
