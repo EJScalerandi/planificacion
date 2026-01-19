@@ -1,14 +1,29 @@
 const express = require('express');
 const router = express.Router();
 
+const bcrypt = require('bcryptjs');
 const { pool } = require('../../db');
 const { adminAuth } = require('../../middleware/adminAuth');
 
 function normalizeScopes(scopes) {
   if (!Array.isArray(scopes)) return [];
-  return Array.from(
-    new Set(scopes.map((s) => String(s || '').trim()).filter(Boolean))
-  );
+  return Array.from(new Set(scopes.map((s) => String(s || '').trim()).filter(Boolean)));
+}
+
+async function resolvePasswordHashFromBody(body) {
+  const password = String(body?.password || '').trim();
+  const password_hash = String(body?.password_hash || '').trim();
+
+  // Preferimos password (plain) y lo hasheamos
+  if (password) {
+    const saltRounds = 10;
+    return await bcrypt.hash(password, saltRounds);
+  }
+
+  // Compat: si alguien manda password_hash directo
+  if (password_hash) return password_hash;
+
+  return '';
 }
 
 // GET /admin/users
@@ -39,15 +54,22 @@ router.get('/users', adminAuth, async (_req, res) => {
 router.post('/users', adminAuth, async (req, res) => {
   try {
     const body = req.body || {};
+
+    // Aceptamos variantes
     const username = String(body.username || '').trim();
-    const password_hash = String(body.password_hash || '').trim(); // si lo manejás así
-    const is_active = body.is_active === false ? false : true;
-    const name = body.name == null ? null : String(body.name || '').trim();
+    const name =
+      body.full_name !== undefined ? String(body.full_name || '').trim() :
+      body.name !== undefined ? String(body.name || '').trim() :
+      null;
+
     const email = body.email == null ? null : String(body.email || '').trim();
+    const is_active = body.is_active === false || body.active === false ? false : true;
     const scopes = normalizeScopes(body.scopes);
 
     if (!username) return res.status(400).json({ error: 'username requerido' });
-    if (!password_hash) return res.status(400).json({ error: 'password_hash requerido' });
+
+    const password_hash = await resolvePasswordHashFromBody(body);
+    if (!password_hash) return res.status(400).json({ error: 'password requerido' });
 
     const ins = await pool.query(
       `
@@ -83,14 +105,22 @@ router.patch('/users/:id', adminAuth, async (req, res) => {
       values.push(username);
     }
 
-    if (patch.is_active !== undefined) {
+    // Aceptamos active / is_active
+    if (patch.is_active !== undefined || patch.active !== undefined) {
+      const v = (patch.is_active === false || patch.active === false) ? false : true;
       fields.push(`is_active = $${idx++}`);
-      values.push(patch.is_active === false ? false : true);
+      values.push(v);
     }
 
-    if (patch.name !== undefined) {
+    // Aceptamos name / full_name
+    if (patch.name !== undefined || patch.full_name !== undefined) {
+      const v =
+        patch.full_name !== undefined ? patch.full_name :
+        patch.name !== undefined ? patch.name :
+        null;
+
       fields.push(`name = $${idx++}`);
-      values.push(patch.name == null ? null : String(patch.name || '').trim());
+      values.push(v == null ? null : String(v || '').trim());
     }
 
     if (patch.email !== undefined) {
@@ -132,8 +162,8 @@ router.post('/users/:id/password', adminAuth, async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) return res.status(400).json({ error: 'id inválido' });
 
-    const password_hash = String(req.body?.password_hash || '').trim();
-    if (!password_hash) return res.status(400).json({ error: 'password_hash requerido' });
+    const password_hash = await resolvePasswordHashFromBody(req.body || {});
+    if (!password_hash) return res.status(400).json({ error: 'password requerido' });
 
     const upd = await pool.query(
       `
@@ -155,18 +185,11 @@ router.post('/users/:id/password', adminAuth, async (req, res) => {
 
 // GET /admin/scopes
 router.get('/scopes', adminAuth, async (_req, res) => {
-  // FIX: ADMIN_SCOPES puede no existir en Render. No debe crashear.
-  // Podés setear ADMIN_SCOPES en Render: "qc:admin,workflow:admin,users:admin"
   const raw = String(process.env.ADMIN_SCOPES || '').trim();
 
   const scopes = raw
     ? raw.split(',').map((s) => String(s || '').trim()).filter(Boolean)
-    : [
-        // fallback razonable para no romper UI
-        'qc:admin',
-        'workflow:admin',
-        'users:admin',
-      ];
+    : ['qc:admin', 'workflow:admin', 'users:admin'];
 
   return res.json(scopes);
 });
