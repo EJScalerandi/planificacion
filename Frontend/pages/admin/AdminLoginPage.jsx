@@ -1,7 +1,7 @@
 // pages/admin/AdminLoginPage.jsx
 import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { adminLogin, setAdminToken, clearAdminToken, getAdminToken } from '../../api';
+import { adminLogin, setAdminToken, clearAdminToken, getAdminToken } from '../../src/api';
 
 const LS_USER = 'dg_admin_user';     // opcional: { id, name, username, scopes }
 const LS_SCOPES = 'dg_admin_scopes'; // opcional: ["qc:admin", "workflow:admin", ...]
