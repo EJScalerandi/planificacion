@@ -10,7 +10,7 @@ const router = express.Router();
 const PORTON_ETAPAS = new Set([
   'diseno', 'laser', 'guillotina', 'plegadora',
   'armado_marco_piernas', 'armado_piernas', 'armado_primario', 'armado_hojas',
-  'inyeccion', 'revestimiento', 'pintura', 'armado_final', 'despacho',
+  'inyeccion', 'revestimiento', 'pintura', 'pintura_revestimiento', 'armado_final', 'despacho',
   'corte_revest', 'plegado_revest',
 ]);
 
@@ -18,7 +18,7 @@ const PORTON_ETAPAS = new Set([
 const PORTON_STAGE_KEYS_ORDER = [
   'diseno', 'laser', 'guillotina', 'plegadora',
   'armado_piernas', 'armado_primario', 'inyeccion', 'corte_revest', 'plegado_revest',
-  'revestimiento', 'pintura', 'armado_hojas', 'armado_marco_piernas', 'armado_final', 'despacho'
+  'revestimiento', 'pintura', 'pintura_revestimiento', 'armado_hojas', 'armado_marco_piernas', 'armado_final', 'despacho'
 ];
 
 // IMPORTANTE:
@@ -49,6 +49,7 @@ async function getPortonShapeById(db, id) {
       max(case when e.etapa = 'plegado_revest'::public.porton_etapa then e.estado end) as plegado_revest,
       max(case when e.etapa = 'revestimiento'::public.porton_etapa then e.estado end) as revestimiento,
       max(case when e.etapa = 'pintura'::public.porton_etapa then e.estado end) as pintura,
+      max(case when e.etapa = 'pintura_revestimiento'::public.porton_etapa then e.estado end) as pintura_revestimiento,
       max(case when e.etapa = 'armado_hojas'::public.porton_etapa then e.estado end) as armado_hojas,
       max(case when e.etapa = 'armado_marco_piernas'::public.porton_etapa then e.estado end) as armado_marco_piernas,
       max(case when e.etapa = 'armado_final'::public.porton_etapa then e.estado end) as armado_final,
@@ -87,6 +88,9 @@ async function getPortonShapeById(db, id) {
 
       max(case when t.etapa = 'pintura'::public.porton_etapa then t.inicio end) as pintura_inicio,
       max(case when t.etapa = 'pintura'::public.porton_etapa then t.fin end) as pintura_fin,
+
+      max(case when t.etapa = 'pintura_revestimiento'::public.porton_etapa then t.inicio end) as pintura_revestimiento_inicio,
+      max(case when t.etapa = 'pintura_revestimiento'::public.porton_etapa then t.fin end) as pintura_revestimiento_fin,
 
       max(case when t.etapa = 'armado_hojas'::public.porton_etapa then t.inicio end) as armado_hojas_inicio,
       max(case when t.etapa = 'armado_hojas'::public.porton_etapa then t.fin end) as armado_hojas_fin,
@@ -137,6 +141,7 @@ router.get('/portones', async (_req, res) => {
         max(case when e.etapa = 'plegado_revest'::public.porton_etapa then e.estado end) as plegado_revest,
         max(case when e.etapa = 'revestimiento'::public.porton_etapa then e.estado end) as revestimiento,
         max(case when e.etapa = 'pintura'::public.porton_etapa then e.estado end) as pintura,
+        max(case when e.etapa = 'pintura_revestimiento'::public.porton_etapa then e.estado end) as pintura_revestimiento,
         max(case when e.etapa = 'armado_hojas'::public.porton_etapa then e.estado end) as armado_hojas,
         max(case when e.etapa = 'armado_marco_piernas'::public.porton_etapa then e.estado end) as armado_marco_piernas,
         max(case when e.etapa = 'armado_final'::public.porton_etapa then e.estado end) as armado_final,
@@ -175,6 +180,9 @@ router.get('/portones', async (_req, res) => {
 
         max(case when t.etapa = 'pintura'::public.porton_etapa then t.inicio end) as pintura_inicio,
         max(case when t.etapa = 'pintura'::public.porton_etapa then t.fin end) as pintura_fin,
+
+        max(case when t.etapa = 'pintura_revestimiento'::public.porton_etapa then t.inicio end) as pintura_revestimiento_inicio,
+        max(case when t.etapa = 'pintura_revestimiento'::public.porton_etapa then t.fin end) as pintura_revestimiento_fin,
 
         max(case when t.etapa = 'armado_hojas'::public.porton_etapa then t.inicio end) as armado_hojas_inicio,
         max(case when t.etapa = 'armado_hojas'::public.porton_etapa then t.fin end) as armado_hojas_fin,
@@ -241,18 +249,56 @@ router.post('/portones', async (req, res) => {
 
     const id = ins.rows[0]?.id;
 
-    // ====== ETAPAS INICIALES (SIEMPRE) ======
-    // Diseño + Corte Piernas (guillotina)
-    await client.query(
-      `
-      insert into public.porton_etapas_estado(porton_id, etapa, estado)
-      values
-        ($1, 'diseno'::public.porton_etapa, $2),
-        ($1, 'guillotina'::public.porton_etapa, $2)
-      on conflict (porton_id, etapa) do nothing;
-      `,
-      [id, STATUS.PENDIENTE]
-    );
+    // ====== ETAPAS INICIALES (WORKFLOW) ======
+    // Antes: siempre entraba a Diseño + Corte Piernas.
+    // Ahora: si existe el stage "inicio" en el workflow (línea portones),
+    // ruteamos según sus edges (con condiciones).
+    // Fallback: si no hay config o no matchea nada, mantenemos el comportamiento anterior.
+
+    const shapedBefore = await getPortonShapeById(client, id);
+
+    let insertedAny = false;
+    try {
+      const stageMap = await loadStageMap('portones');
+      const nextKeys = await getNextStages('portones', 'inicio', shapedBefore || {});
+
+      const cols = [];
+      for (const nk of nextKeys || []) {
+        const ns = stageMap.get(nk);
+        const col = String(ns?.status_col || '').trim();
+        if (col && PORTON_ETAPAS.has(col)) cols.push(col);
+      }
+
+      if (cols.length) {
+        await client.query(
+          `
+          insert into public.porton_etapas_estado(porton_id, etapa, estado)
+          select $1, x::public.porton_etapa, $2
+          from unnest($3::text[]) as x
+          on conflict (porton_id, etapa) do nothing;
+          `,
+          [id, STATUS.PENDIENTE, cols]
+        );
+        insertedAny = true;
+      }
+    } catch (e) {
+      // Ignoramos para poder hacer fallback sin romper create.
+      insertedAny = false;
+    }
+
+    if (!insertedAny) {
+      // Fallback legacy
+      await client.query(
+        `
+        insert into public.porton_etapas_estado(porton_id, etapa, estado)
+        values
+          ($1, 'diseno'::public.porton_etapa, $2),
+          ($1, 'guillotina'::public.porton_etapa, $2)
+        on conflict (porton_id, etapa) do nothing;
+        `,
+        [id, STATUS.PENDIENTE]
+      );
+    }
 
     const shaped = await getPortonShapeById(client, id);
 
