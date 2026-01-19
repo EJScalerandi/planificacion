@@ -1,7 +1,7 @@
 // pages/admin/AdminLoginPage.jsx
 import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { adminLogin, getAdminToken, clearAdminToken } from '../../src/api';
+import { adminLogin, setAdminToken, clearAdminToken, getAdminToken } from '../../api';
 
 const LS_USER = 'dg_admin_user';     // opcional: { id, name, username, scopes }
 const LS_SCOPES = 'dg_admin_scopes'; // opcional: ["qc:admin", "workflow:admin", ...]
@@ -18,7 +18,6 @@ export default function AdminLoginPage() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
-  // Si ya hay token, mandamos al índice
   useEffect(() => {
     const t = getAdminToken();
     if (t && String(t).trim()) {
@@ -48,10 +47,9 @@ export default function AdminLoginPage() {
         return;
       }
 
-      // Nota: NO guardamos token manualmente acá.
-      // adminLogin() -> setAdminToken() (en src/api.js) ya lo persiste de forma consistente.
+      // adminLogin ya llama setAdminToken, pero lo dejamos explícito por robustez
+      setAdminToken(String(data.token));
 
-      // Si tu backend devuelve scopes/usuario, los guardamos (sin romper si no vienen)
       const scopes =
         Array.isArray(data?.scopes) ? data.scopes :
         Array.isArray(data?.user?.scopes) ? data.user.scopes :
@@ -63,10 +61,8 @@ export default function AdminLoginPage() {
       if (data?.user) localStorage.setItem(LS_USER, JSON.stringify(data.user));
       else localStorage.removeItem(LS_USER);
 
-      // ✅ Después del login, vamos al índice central
       nav('/index', { replace: true });
     } catch (e2) {
-      // Ante error, limpiamos token para evitar sesiones “fantasma”
       clearAdminToken();
       localStorage.removeItem(LS_USER);
       localStorage.removeItem(LS_SCOPES);
@@ -77,7 +73,6 @@ export default function AdminLoginPage() {
     }
   };
 
-  // (Opcional) helper visual: si ya hay scopes guardados (debug)
   const savedScopes = safeJsonParse(localStorage.getItem(LS_SCOPES)) || [];
 
   return (
