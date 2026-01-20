@@ -66,6 +66,14 @@ export const setFechaMed = (id, fechaOrNull) => api.post(`/portones/${id}/fecha-
 export const setFechaPlanEntrega = (id, fechaOrNull) =>
   api.post(`/portones/${id}/fecha-plan-entrega`, { fecha_plan_entrega: fechaOrNull });
 
+/**
+ * ✅ NUEVO: Sistema en Portones
+ * Requiere endpoint backend:
+ *   POST /portones/:id/sistema   body: { sistema: string|null }
+ */
+export const setSistemaPorton = (id, sistemaOrNull) =>
+  api.post(`/portones/${id}/sistema`, { sistema: sistemaOrNull });
+
 /* ========= Observaciones Portones ========= */
 export const getPortonObservaciones = (id) => api.get(`/portones/${id}/observaciones`);
 export const savePortonObservaciones = (id, observaciones) => api.post(`/portones/${id}/observaciones`, { observaciones });
