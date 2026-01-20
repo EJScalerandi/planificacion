@@ -6,6 +6,15 @@ const { STATUS, loadStageMap, getNextStages, checkRequirements } = require('../.
 
 const router = express.Router();
 
+function mergePreprodData(row) {
+  if (!row || typeof row !== 'object') return row;
+  const pre = row.preprod_data;
+  const { preprod_data, ...rest } = row;
+  if (!pre || typeof pre !== 'object') return rest;
+  // Preproducción (JSON) primero, para no pisar campos del tablero (nv, nlista, etc.)
+  return { ...pre, ...rest };
+}
+
 // Portones (normalizado): set defensivo para no aceptar cualquier texto
 const PORTON_ETAPAS = new Set([
   'diseno', 'laser', 'guillotina', 'plegadora',
@@ -28,7 +37,8 @@ const PORTON_BASE_COLS_SQL = `
   p.id, p.nv, p.nlista, p.partida,
   p.fecha_plan, p.fecha_prod, p.fecha_nv, p.fecha_med, p.fecha_plan_entrega,
   p.observaciones,
-  p.created_at
+  p.created_at,
+  pv.data as preprod_data
 `;
 
 async function getPortonShapeById(db, id) {
@@ -109,8 +119,10 @@ async function getPortonShapeById(db, id) {
       on e.porton_id = p.id
     left join public.porton_etapas_tiempos t
       on t.porton_id = p.id
+    left join public.preproduccion_valores pv
+      on pv.nv = p.nv
     where p.id = $1
-    group by p.id
+    group by p.id, pv.data
     limit 1;
     `,
     [id]
@@ -118,7 +130,15 @@ async function getPortonShapeById(db, id) {
 
   // NOTA: ya NO “normalizamos” null a Pendiente.
   // null significa “esa etapa no existe todavía”, y el front la oculta.
-  return rows[0] || null;
+  const row = rows[0] || null;
+  if (!row) return null;
+
+  // Hacemos que las condiciones de workflow puedan evaluar campos “reales”
+  // (Sistema, Color, etc.) que viven en preproduccion_valores.data.
+  // Se mergea al shape para que ctx[field] funcione.
+  const pre = row.preprod_data && typeof row.preprod_data === 'object' ? row.preprod_data : {};
+  delete row.preprod_data;
+  return { ...pre, ...row };
 }
 
 // GET /portones
@@ -201,12 +221,21 @@ router.get('/portones', async (_req, res) => {
         on e.porton_id = p.id
       left join public.porton_etapas_tiempos t
         on t.porton_id = p.id
-      group by p.id
+      left join public.preproduccion_valores pv
+        on pv.nv = p.nv
+      group by p.id, pv.data
       order by p.nv asc;
       `
     );
 
-    return res.json(rows);
+    const shaped = (rows || []).map((r) => {
+      const pre = r?.preprod_data && typeof r.preprod_data === 'object' ? r.preprod_data : {};
+      const { preprod_data, ...rest } = r || {};
+      // pre primero y luego rest para no pisar nv/nlista/partida, etc.
+      return { ...pre, ...rest };
+    });
+
+    return res.json(shaped);
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: 'Error leyendo portones', detail: err.message });

@@ -1137,6 +1137,10 @@ export default function PreproduccionValoresTable() {
         auth_logistica: false,
         auth_admin_at: null,
         auth_logistica_at: null,
+        // Importante: si reseteamos autorizaciones, también liberamos el envío a producción
+        // (el botón depende de estas fechas/campos).
+        inicio_prod_imput: null,
+        fecha_envio_produccion: null,
       });
     },
     [accessMode, onPatch]
