@@ -37,6 +37,7 @@ const PORTON_BASE_COLS_SQL = `
   p.id, p.nv, p.nlista, p.partida,
   p.fecha_plan, p.fecha_prod, p.fecha_nv, p.fecha_med, p.fecha_plan_entrega,
   p.observaciones,
+  p.sistema,
   p.created_at,
   pv.data as preprod_data
 `;
@@ -246,7 +247,7 @@ router.get('/portones', async (_req, res) => {
 router.post('/portones', async (req, res) => {
   const client = await pool.connect();
   try {
-    const { nv, nlista, partida: bodyPartida, npartida } = req.body || {};
+    const { nv, nlista, partida: bodyPartida, npartida, sistema } = req.body || {};
 
     const nNv = Number(nv);
     const nNl = Number(nlista);
@@ -254,6 +255,15 @@ router.post('/portones', async (req, res) => {
 
     if (![nNv, nNl, nPa].every(Number.isInteger)) {
       return res.status(400).json({ error: 'nv, nlista y partida/npartida deben ser enteros' });
+    }
+
+    // sistema es opcional; si viene, debe ser string
+    let sistemaStr = null;
+    if (sistema !== null && sistema !== undefined) {
+      if (typeof sistema !== 'string') {
+        return res.status(400).json({ error: 'sistema debe ser string o null' });
+      }
+      sistemaStr = String(sistema).trim() || null;
     }
 
     await client.query('begin');
@@ -269,11 +279,11 @@ router.post('/portones', async (req, res) => {
 
     const ins = await client.query(
       `
-      insert into public.portones (nv, nlista, partida)
-      values ($1, $2, $3)
+      insert into public.portones (nv, nlista, partida, sistema)
+      values ($1, $2, $3, $4)
       returning id;
       `,
-      [nNv, nNl, nPa]
+      [nNv, nNl, nPa, sistemaStr]
     );
 
     const id = ins.rows[0]?.id;
@@ -465,11 +475,46 @@ function datePatchHandlerPortones(fieldName) {
   };
 }
 
+// text patch helper (para campos string simples como sistema)
+function textPatchHandlerPortones(fieldName) {
+  return async (req, res) => {
+    const { id } = req.params;
+    let v = req.body?.[fieldName];
+
+    try {
+      if (v !== null && v !== undefined) {
+        if (typeof v !== 'string') return res.status(400).json({ error: `${fieldName} debe ser string o null` });
+        v = String(v).trim();
+        if (!v) v = null;
+      }
+
+      const { rowCount } = await pool.query(
+        `
+        update public.portones
+        set ${fieldName} = $2
+        where id = $1;
+        `,
+        [id, v ?? null]
+      );
+
+      if (!rowCount) return res.status(404).json({ error: 'Portón no encontrado' });
+
+      const shaped = await getPortonShapeById(pool, id);
+      return res.json(shaped);
+    } catch (err) {
+      console.error(`set ${fieldName} error:`, err);
+      return res.status(500).json({ error: `Error al actualizar ${fieldName}`, detail: err.message });
+    }
+  };
+}
+
+
 router.post('/portones/:id/fecha-plan', datePatchHandlerPortones('fecha_plan'));
 router.post('/portones/:id/fecha-prod', datePatchHandlerPortones('fecha_prod'));
 router.post('/portones/:id/fecha-nv', datePatchHandlerPortones('fecha_nv'));
 router.post('/portones/:id/fecha-med', datePatchHandlerPortones('fecha_med'));
 router.post('/portones/:id/fecha-plan-entrega', datePatchHandlerPortones('fecha_plan_entrega'));
+router.post('/portones/:id/sistema', textPatchHandlerPortones('sistema'));
 
 // Observaciones
 router.get('/portones/:id/observaciones', async (req, res) => {

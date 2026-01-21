@@ -6,7 +6,7 @@ import {
   createPorton,
   fetchPortones,
   setFechaProd,
-  setSistemaPorton, // ✅ NUEVO
+  setSistemaPorton,
   getAdminToken,
 } from '../api';
 
@@ -275,6 +275,13 @@ function getNvCanonicalFromRow(row) {
   const s = String(v).trim();
   const m = s.match(/\d+/);
   return m ? m[0] : s;
+}
+
+function getSistemaFromRow(row) {
+  const d = row?.data || {};
+  const v = d.Sistema ?? d.sistema ?? d.SISTEMA ?? d.Sistemas ?? d.sistemas ?? null;
+  const s = String(v ?? '').trim();
+  return s ? s : null;
 }
 
 function getNvIntFromRow(row) {
@@ -854,21 +861,11 @@ export default function PreproduccionValoresTable() {
             const d = updated?.data && typeof updated.data === 'object' ? updated.data : {};
             const nv = Number(d?.NV ?? d?.nv ?? updated?.nv ?? updated?.NV);
 
-            // ✅ NUEVO: resolver sistema desde data para persistirlo a PORTONES
-            const sistema = String(getAny(d, ['Sistema', 'sistema', 'Sistemas', 'sistemas']) ?? '').trim() || null;
-
             if (Number.isInteger(nv)) {
               const existingId = portonesNvToId?.get(nv) ?? null;
 
               if (existingId != null) {
                 await setFechaProd(existingId, fecha10 || null);
-
-                // ✅ NUEVO: mantener sistema sincronizado si existe endpoint
-                try {
-                  if (sistema) await setSistemaPorton(existingId, sistema);
-                } catch (e) {
-                  console.warn('No se pudo sincronizar sistema en PORTONES:', e?.message || e);
-                }
               } else {
                 const partida = Number(d?.PARTIDA ?? d?.partida);
                 const payload = {
@@ -876,14 +873,18 @@ export default function PreproduccionValoresTable() {
                   nlista: Number(d?.NLista ?? d?.nlista) || nv,
                   partida: Number.isInteger(partida) ? partida : 800,
                   fecha_prod: fecha10 || null,
-
-                  // ✅ NUEVO
-                  sistema,
+                  sistema: getSistemaFromRow(updated) ?? getSistemaFromRow({ data: d }) ?? null,
                 };
 
                 const cr = await createPorton(payload);
                 const created = cr?.data || null;
                 const createdId = created?.id ?? created?.ID ?? null;
+
+          if (createdId != null && sistemaStr) {
+            try {
+              await setSistemaPorton(createdId, sistemaStr);
+            } catch {}
+          }
 
                 setPortonesNvSet((prev) => {
                   const n = new Set(prev);
@@ -896,19 +897,12 @@ export default function PreproduccionValoresTable() {
                     m.set(nv, createdId);
                     return m;
                   });
-
-                  // ✅ NUEVO: si por backend create no guarda sistema, intentamos setearlo después
-                  try {
-                    if (sistema) await setSistemaPorton(createdId, sistema);
-                  } catch (e) {
-                    console.warn('No se pudo sincronizar sistema en PORTONES:', e?.message || e);
-                  }
                 }
               }
             }
           }
         } catch (e) {
-          console.warn('No se pudo sincronizar fecha_prod/sistema en PORTONES:', e?.message || e);
+          console.warn('No se pudo sincronizar fecha_prod en PORTONES:', e?.message || e);
         }
 
         return updated;
@@ -1173,7 +1167,6 @@ export default function PreproduccionValoresTable() {
   // - Persiste:
   //   1) preproduccion_valores.inicio_prod_imput
   //   2) portones.fecha_prod (update si existe / create si no existe)
-  //   2b) portones.sistema (update/create si existe)
   //   3) marca fecha_envio_produccion (flag)
   const sendToProduccion = useCallback(
     async (row) => {
@@ -1194,6 +1187,8 @@ export default function PreproduccionValoresTable() {
         return;
       }
 
+      const sistemaStr = getSistemaFromRow(row);
+
       const dateOrNull = (v) => {
         const x = normalizeDate10(v);
         return x ? x : null;
@@ -1207,24 +1202,19 @@ export default function PreproduccionValoresTable() {
         return;
       }
 
-      // ✅ NUEVO: resolver sistema desde data
-      const sistema = String(getAny(d, ['Sistema', 'sistema', 'Sistemas', 'sistemas']) ?? '').trim() || null;
-
       try {
         // 1) Persistir en preproducción (sin sync automática a portones, porque la controlamos abajo)
         await onPatch(id, { inicio_prod_imput: prodDate10 }, { skipPortonesSync: true });
 
-        // 2) Persistir en PORTONES.fecha_prod (+ sistema)
+        // 2) Persistir en PORTONES.fecha_prod
         const existingId = portonesNvToId?.get(nv) ?? null;
 
         if (existingId != null) {
           await setFechaProd(existingId, prodDate10);
-
-          // ✅ NUEVO: persistir sistema (si vino)
-          try {
-            if (sistema) await setSistemaPorton(existingId, sistema);
-          } catch (e) {
-            console.warn('No se pudo sincronizar sistema en PORTONES:', e?.message || e);
+          if (sistemaStr) {
+            try {
+              await setSistemaPorton(existingId, sistemaStr);
+            } catch {}
           }
         } else {
           const payload = {
@@ -1235,14 +1225,18 @@ export default function PreproduccionValoresTable() {
             fecha_prod: prodDate10,
             fecha_nv: dateOrNull(getAny(d, ['Fecha_NV', 'fecha_nv', 'Fecha_Venta', 'fecha_venta'])),
             fecha_med: dateOrNull(d.fecha_medicion_imput ?? d.Fecha_Medicion_Imput ?? null),
-
-            // ✅ NUEVO
-            sistema,
+            sistema: sistemaStr,
           };
 
           const cr = await createPorton(payload);
           const created = cr?.data || null;
           const createdId = created?.id ?? created?.ID ?? null;
+
+          if (createdId != null && sistemaStr) {
+            try {
+              await setSistemaPorton(createdId, sistemaStr);
+            } catch {}
+          }
 
           setPortonesNvSet((prev) => {
             const next = new Set(prev);
@@ -1256,13 +1250,6 @@ export default function PreproduccionValoresTable() {
               m.set(nv, createdId);
               return m;
             });
-
-            // Si createPorton no lo guardó, lo intentamos setear después (no rompe si falla)
-            try {
-              if (sistema) await setSistemaPorton(createdId, sistema);
-            } catch (e) {
-              console.warn('No se pudo sincronizar sistema en PORTONES:', e?.message || e);
-            }
           }
         }
 
@@ -1491,30 +1478,19 @@ export default function PreproduccionValoresTable() {
       const st = getAccionesStatus(row);
       const alreadySent = st === 'produccion';
 
-      // ✅ NUEVO: exigir fecha de producción para habilitar envío (UI)
-      const d = row?.data || {};
-      const prodDate10 = normalizeDate10(d.inicio_prod_imput ?? d.Inicio_Prod_Imput ?? null);
-      const hasProdDate = Boolean(prodDate10);
-
       return (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {alreadySent ? (
             <span className="pp-badge pp-badge--ok">Enviado</span>
           ) : st === 'listo' ? (
-            hasProdDate ? (
-              <button
-                onClick={() => sendToProduccion(row)}
-                disabled={isBusy}
-                className="btn btn--brand pp-btnCell"
-                title="Enviar a producción (requiere autorización de logística y Fecha Producción)"
-              >
-                Enviar a producción
-              </button>
-            ) : (
-              <span className="pp-badge pp-badge--pending" title="Falta Fecha Producción (Inicio Prod)">
-                Falta Fecha Prod
-              </span>
-            )
+            <button
+              onClick={() => sendToProduccion(row)}
+              disabled={isBusy}
+              className="btn btn--brand pp-btnCell"
+              title="Enviar a producción (requiere autorización de logística)"
+            >
+              Enviar a producción
+            </button>
           ) : (
             <span className="pp-badge pp-badge--pending" title="Falta autorización de logística">
               Pendiente
