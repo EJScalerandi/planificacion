@@ -59,6 +59,32 @@ async function getPortonCtxById(db, id) {
     delete ctx.preprod_data;
   } catch {}
 
+  // Asegurar disponibilidad de "Sistema" para reglas configuradas con mayúscula.
+  // La columna real en portones es `sistema`.
+  if (ctx.Sistema == null && ctx.sistema != null) ctx.Sistema = ctx.sistema;
+
+  // Estados actuales por etapa: el workflow y la UI se basan en estas tablas.
+  // Si no los incorporamos al contexto, QC puede exigir "Finalizado" aunque
+  // la etapa ya esté finalizada en porton_etapas_estado.
+  try {
+    const estadosQ = await db.query(
+      `
+        SELECT etapa::text AS etapa, estado::text AS estado
+        FROM public.porton_etapas_estado
+        WHERE porton_id = $1
+      `,
+      [id]
+    );
+
+    for (const r of estadosQ.rows || []) {
+      const etapa = String(r?.etapa || '').trim();
+      if (!etapa) continue;
+      ctx[etapa] = r?.estado ?? null;
+    }
+  } catch {
+    // no bloquea QC si no existe la tabla o no hay registros
+  }
+
   // Nota: en la DB actual la columna se llama `etapa` (no `etapa_key`).
   // Usamos `etapa` para evitar error 42703 (columna inexistente) al autorizar QC.
   const tQ = await db.query(

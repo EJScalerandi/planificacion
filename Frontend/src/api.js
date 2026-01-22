@@ -69,6 +69,9 @@ export const setFechaPlanEntrega = (id, fechaOrNull) =>
 export const setSistemaPorton = (id, sistemaOrNull) =>
   api.post(`/portones/${id}/sistema`, { sistema: sistemaOrNull });
 
+// Alias más explícito (uso interno en Preproducción)
+export const setPortonSistema = setSistemaPorton;
+
 /* ========= Observaciones Portones ========= */
 export const getPortonObservaciones = (id) => api.get(`/portones/${id}/observaciones`);
 export const savePortonObservaciones = (id, observaciones) => api.post(`/portones/${id}/observaciones`, { observaciones });

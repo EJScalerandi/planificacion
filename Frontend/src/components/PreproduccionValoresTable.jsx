@@ -864,8 +864,17 @@ export default function PreproduccionValoresTable() {
             if (Number.isInteger(nv)) {
               const existingId = portonesNvToId?.get(nv) ?? null;
 
+	              // Sistema es clave para las condiciones de workflow (porta los mismos strings
+	              // que se usan en condition_json). Lo mantenemos sincronizado.
+	              const sistemaStr = getSistemaFromRow(updated) ?? getSistemaFromRow({ data: d }) ?? null;
+
               if (existingId != null) {
                 await setFechaProd(existingId, fecha10 || null);
+	                if (sistemaStr) {
+	                  try {
+	                    await setSistemaPorton(existingId, sistemaStr);
+	                  } catch {}
+	                }
               } else {
                 const partida = Number(d?.PARTIDA ?? d?.partida);
                 const payload = {
@@ -873,18 +882,20 @@ export default function PreproduccionValoresTable() {
                   nlista: Number(d?.NLista ?? d?.nlista) || nv,
                   partida: Number.isInteger(partida) ? partida : 800,
                   fecha_prod: fecha10 || null,
-                  sistema: getSistemaFromRow(updated) ?? getSistemaFromRow({ data: d }) ?? null,
+	                  sistema: sistemaStr,
                 };
 
                 const cr = await createPorton(payload);
                 const created = cr?.data || null;
                 const createdId = created?.id ?? created?.ID ?? null;
 
-          if (createdId != null && sistemaStr) {
-            try {
-              await setSistemaPorton(createdId, sistemaStr);
-            } catch {}
-          }
+	                if (createdId != null && sistemaStr) {
+	                  // Doble seguro: si por algún motivo el insert no tomó el sistema
+	                  // (o vino null), lo fijamos por endpoint.
+	                  try {
+	                    await setSistemaPorton(createdId, sistemaStr);
+	                  } catch {}
+	                }
 
                 setPortonesNvSet((prev) => {
                   const n = new Set(prev);
