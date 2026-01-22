@@ -59,9 +59,11 @@ async function getPortonCtxById(db, id) {
     delete ctx.preprod_data;
   } catch {}
 
+  // Nota: en la DB actual la columna se llama `etapa` (no `etapa_key`).
+  // Usamos `etapa` para evitar error 42703 (columna inexistente) al autorizar QC.
   const tQ = await db.query(
     `
-    select etapa_key as k, inicio, fin
+    select etapa as k, inicio, fin
     from public.porton_etapas_tiempos
     where porton_id = $1;
     `,

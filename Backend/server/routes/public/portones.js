@@ -243,11 +243,24 @@ router.get('/portones', async (_req, res) => {
   }
 });
 
-// POST /portones
-router.post('/portones', async (req, res) => {
+	// POST /portones
+	// Permite crear portón y opcionalmente persistir fechas/sistema.
+	router.post('/portones', async (req, res) => {
   const client = await pool.connect();
   try {
-    const { nv, nlista, partida: bodyPartida, npartida, sistema } = req.body || {};
+	    const {
+	      nv,
+	      nlista,
+	      partida: bodyPartida,
+	      npartida,
+	      sistema,
+	      Sistema,
+	      fecha_plan,
+	      fecha_prod,
+	      fecha_nv,
+	      fecha_med,
+	      fecha_plan_entrega,
+	    } = req.body || {};
 
     const nNv = Number(nv);
     const nNl = Number(nlista);
@@ -257,14 +270,28 @@ router.post('/portones', async (req, res) => {
       return res.status(400).json({ error: 'nv, nlista y partida/npartida deben ser enteros' });
     }
 
-    // sistema es opcional; si viene, debe ser string
+	    // sistema es opcional; si viene, debe ser string
     let sistemaStr = null;
-    if (sistema !== null && sistema !== undefined) {
-      if (typeof sistema !== 'string') {
+	    const sistemaRaw = sistema ?? Sistema;
+	    if (sistemaRaw !== null && sistemaRaw !== undefined) {
+	      if (typeof sistemaRaw !== 'string') {
         return res.status(400).json({ error: 'sistema debe ser string o null' });
       }
-      sistemaStr = String(sistema).trim() || null;
+	      sistemaStr = String(sistemaRaw).trim() || null;
     }
+
+	    // Fechas opcionales (ISO yyyy-mm-dd). Si no son válidas, se guardan como null.
+	    const date10OrNull = (v) => {
+	      const s = String(v ?? '').trim();
+	      if (!s) return null;
+	      const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+	      return m ? s : null;
+	    };
+	    const fechaPlan = date10OrNull(fecha_plan);
+	    const fechaProd = date10OrNull(fecha_prod);
+	    const fechaNv = date10OrNull(fecha_nv);
+	    const fechaMed = date10OrNull(fecha_med);
+	    const fechaPlanEntrega = date10OrNull(fecha_plan_entrega);
 
     await client.query('begin');
 
@@ -277,14 +304,24 @@ router.post('/portones', async (req, res) => {
       return res.status(409).json({ error: 'Ya existe un portón con ese NV y NLista' });
     }
 
-    const ins = await client.query(
-      `
-      insert into public.portones (nv, nlista, partida, sistema)
-      values ($1, $2, $3, $4)
-      returning id;
-      `,
-      [nNv, nNl, nPa, sistemaStr]
-    );
+	    const ins = await client.query(
+	      `
+	      insert into public.portones (
+	        nv,
+	        nlista,
+	        partida,
+	        sistema,
+	        fecha_plan,
+	        fecha_prod,
+	        fecha_nv,
+	        fecha_med,
+	        fecha_plan_entrega
+	      )
+	      values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+	      returning id;
+	      `,
+	      [nNv, nNl, nPa, sistemaStr, fechaPlan, fechaProd, fechaNv, fechaMed, fechaPlanEntrega]
+	    );
 
     const id = ins.rows[0]?.id;
 
