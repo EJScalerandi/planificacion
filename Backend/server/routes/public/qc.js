@@ -1,38 +1,9 @@
 const express = require('express');
 const crypto = require('crypto');
 const { pool } = require('../../db');
-const { STATUS, loadStageMap, getNextStages, checkRequirements } = require('../../lib/workflow');
+const { STATUS, low, loadStageMap, getNextStages, checkRequirements } = require('../../lib/workflow');
 
 const router = express.Router();
-
-function low(v) { return String(v ?? '').toLowerCase(); }
-
-async function filterNextKeysByRequirements(db, line, nextKeys, ctx) {
-  if (!Array.isArray(nextKeys) || nextKeys.length === 0) return nextKeys;
-
-  const rows = await db.any(
-    `select stage_key, type, group_id, required_key
-       from public.workflow_requirements
-      where line = $1
-        and stage_key = any($2::text[])`,
-    [line, nextKeys]
-  );
-
-  if (!rows.length) return nextKeys;
-
-  const byStage = new Map();
-  for (const r of rows) {
-    const k = r.stage_key;
-    if (!byStage.has(k)) byStage.set(k, []);
-    byStage.get(k).push(r);
-  }
-
-  return nextKeys.filter((k) => {
-    const reqs = byStage.get(k) || [];
-    const { ok } = checkRequirements(ctx, reqs);
-    return ok;
-  });
-}
 
 // Whitelists defensivos para evitar SQL injection en columnas dinámicas
 const PORTON_ETAPAS = new Set([
@@ -101,6 +72,21 @@ async function getPortonCtxById(db, id) {
     if (!k) continue;
     ctx[`${k}_inicio`] = r.inicio ?? null;
     ctx[`${k}_fin`] = r.fin ?? null;
+  }
+
+  // Estados por etapa (fuente de verdad para el workflow / tablero)
+  const eQ = await db.query(
+    `
+    select etapa as k, estado
+    from public.porton_etapas_estado
+    where porton_id = $1;
+    `,
+    [id]
+  );
+  for (const r of eQ.rows) {
+    const k = String(r?.k || '');
+    if (!k) continue;
+    ctx[k] = r.estado ?? null;
   }
 
   return ctx;
@@ -402,15 +388,18 @@ router.post('/qc/authorize', async (req, res) => {
             return res.status(404).json({ error: 'Portón no encontrado' });
           }
 
+          const finCol = `${statusCol}_fin`;
           const st = low(ctx?.[statusCol]);
-          if (st !== low(STATUS.FINALIZADO)) {
+          const isFinal = st === low(STATUS.FINALIZADO);
+          const hasFin = Boolean(ctx?.[finCol]);
+          // Validación robusta: si por datos legacy falta el timestamp fin,
+          // permitimos avanzar si el estado ya está en Finalizado.
+          if (!isFinal && !hasFin) {
             await client.query('rollback');
             return res.status(409).json({ error: `La etapa ${statusCol} debe estar FINALIZADO antes de completar QC` });
           }
 
-    let nextKeys = await getNextStages('portones', stageKey, ctx);
-    // No insertar la siguiente etapa hasta que se cumplan los requirements configurados
-    nextKeys = await filterNextKeysByRequirements(db, 'portones', nextKeys, ctx);
+          const nextKeys = await getNextStages('portones', stageKey, ctx);
 
           for (const nk of nextKeys || []) {
             const ns = stageMap.get(nk);
@@ -418,6 +407,10 @@ router.post('/qc/authorize', async (req, res) => {
 
             const nextStageCol = String(ns.status_col || '').trim();
             if (!PORTON_ETAPAS.has(nextStageCol)) continue;
+
+            // Gate por requirements: la etapa sólo debe aparecer cuando se cumplen.
+            const req = await checkRequirements(client, 'portones', nextStageCol, ctx);
+            if (!req?.ok) continue;
 
             await client.query(
               `

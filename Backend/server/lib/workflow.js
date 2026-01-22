@@ -8,7 +8,9 @@ const STATUS = {
 };
 
 function low(v) {
-  return (v || '').toString().toLowerCase();
+  // Normaliza strings para comparaciones de estados/valores.
+  // Importante: algunos valores pueden venir con padding (p.ej. inputs con espacios o datos legacy).
+  return (v == null ? '' : String(v)).trim().toLowerCase();
 }
 
 // --------- acceso a campos (top-level + data + path) ---------
