@@ -31,11 +31,12 @@ async function getPortonCtxById(db, id) {
   const pQ = await db.query(
     `
     select
-      id, nv, nlista, partida,
-      fecha_plan, fecha_prod, fecha_nv, fecha_med, fecha_plan_entrega,
-      observaciones, created_at
-    from public.portones
-    where id = $1
+      p.*,
+      pv.data as preprod_data
+    from public.portones p
+    left join public.preproduccion_valores pv
+      on pv.nv = p.nv
+    where p.id = $1
     limit 1;
     `,
     [id]
@@ -44,22 +45,23 @@ async function getPortonCtxById(db, id) {
 
   const ctx = { ...pQ.rows[0] };
 
-  const sQ = await db.query(
-    `
-    select etapa::text as k, estado as v
-    from public.porton_etapas_estado
-    where porton_id = $1;
-    `,
-    [id]
-  );
-
-  for (const r of sQ.rows) {
-    if (r?.k) ctx[String(r.k)] = r.v;
-  }
+  // Mezclar datos de preproducción (JSON) al nivel raíz para que las reglas puedan consultar "Sistema", etc.
+  // Sin romper campos del propio portón.
+  try {
+    const pre = ctx.preprod_data;
+    if (pre && typeof pre === 'object') {
+      for (const k of Object.keys(pre)) {
+        if (ctx[k] == null) ctx[k] = pre[k];
+      }
+    }
+  } catch {}
+  try {
+    delete ctx.preprod_data;
+  } catch {}
 
   const tQ = await db.query(
     `
-    select etapa::text as k, inicio, fin
+    select etapa_key as k, inicio, fin
     from public.porton_etapas_tiempos
     where porton_id = $1;
     `,
