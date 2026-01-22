@@ -1,11 +1,38 @@
 const express = require('express');
 const crypto = require('crypto');
 const { pool } = require('../../db');
-const { STATUS, loadStageMap, getNextStages } = require('../../lib/workflow');
+const { STATUS, loadStageMap, getNextStages, checkRequirements } = require('../../lib/workflow');
 
 const router = express.Router();
 
 function low(v) { return String(v ?? '').toLowerCase(); }
+
+async function filterNextKeysByRequirements(db, line, nextKeys, ctx) {
+  if (!Array.isArray(nextKeys) || nextKeys.length === 0) return nextKeys;
+
+  const rows = await db.any(
+    `select stage_key, type, group_id, required_key
+       from public.workflow_requirements
+      where line = $1
+        and stage_key = any($2::text[])`,
+    [line, nextKeys]
+  );
+
+  if (!rows.length) return nextKeys;
+
+  const byStage = new Map();
+  for (const r of rows) {
+    const k = r.stage_key;
+    if (!byStage.has(k)) byStage.set(k, []);
+    byStage.get(k).push(r);
+  }
+
+  return nextKeys.filter((k) => {
+    const reqs = byStage.get(k) || [];
+    const { ok } = checkRequirements(ctx, reqs);
+    return ok;
+  });
+}
 
 // Whitelists defensivos para evitar SQL injection en columnas dinámicas
 const PORTON_ETAPAS = new Set([
@@ -58,32 +85,6 @@ async function getPortonCtxById(db, id) {
   try {
     delete ctx.preprod_data;
   } catch {}
-
-  // Asegurar disponibilidad de "Sistema" para reglas configuradas con mayúscula.
-  // La columna real en portones es `sistema`.
-  if (ctx.Sistema == null && ctx.sistema != null) ctx.Sistema = ctx.sistema;
-
-  // Estados actuales por etapa: el workflow y la UI se basan en estas tablas.
-  // Si no los incorporamos al contexto, QC puede exigir "Finalizado" aunque
-  // la etapa ya esté finalizada en porton_etapas_estado.
-  try {
-    const estadosQ = await db.query(
-      `
-        SELECT etapa::text AS etapa, estado::text AS estado
-        FROM public.porton_etapas_estado
-        WHERE porton_id = $1
-      `,
-      [id]
-    );
-
-    for (const r of estadosQ.rows || []) {
-      const etapa = String(r?.etapa || '').trim();
-      if (!etapa) continue;
-      ctx[etapa] = r?.estado ?? null;
-    }
-  } catch {
-    // no bloquea QC si no existe la tabla o no hay registros
-  }
 
   // Nota: en la DB actual la columna se llama `etapa` (no `etapa_key`).
   // Usamos `etapa` para evitar error 42703 (columna inexistente) al autorizar QC.
@@ -407,7 +408,9 @@ router.post('/qc/authorize', async (req, res) => {
             return res.status(409).json({ error: `La etapa ${statusCol} debe estar FINALIZADO antes de completar QC` });
           }
 
-          const nextKeys = await getNextStages('portones', stageKey, ctx);
+    let nextKeys = await getNextStages('portones', stageKey, ctx);
+    // No insertar la siguiente etapa hasta que se cumplan los requirements configurados
+    nextKeys = await filterNextKeysByRequirements(db, 'portones', nextKeys, ctx);
 
           for (const nk of nextKeys || []) {
             const ns = stageMap.get(nk);
