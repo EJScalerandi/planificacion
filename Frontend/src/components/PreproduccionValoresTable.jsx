@@ -626,6 +626,42 @@ export default function PreproduccionValoresTable() {
   const [err, setErr] = useState('');
   const [saving, setSaving] = useState(() => new Set());
 
+  // ✅ NUEVO: Draft local SOLO para inicio_prod_imput (Fecha Producción), por row.id
+  const [draftInicioProdById, setDraftInicioProdById] = useState(() => ({}));
+
+  const setDraftInicioProd = useCallback((rowId, value) => {
+    setDraftInicioProdById((p) => ({ ...p, [rowId]: value }));
+  }, []);
+
+  const clearDraftInicioProd = useCallback((rowId) => {
+    setDraftInicioProdById((p) => {
+      const n = { ...p };
+      delete n[rowId];
+      return n;
+    });
+  }, []);
+
+  const getInicioProdEffective = useCallback(
+    (row) => {
+      const id = row?.id;
+      const d = row?.data || {};
+      const serverVal = normalizeDate10(d.inicio_prod_imput ?? d.Inicio_Prod_Imput ?? '');
+
+      if (!id) return serverVal;
+
+      const draft = draftInicioProdById[id];
+
+      // si el draft existe (aunque sea vacío), manda el draft
+      if (draft != null) {
+        const s = String(draft);
+        return s.trim() === '' ? '' : normalizeDate10(s);
+      }
+
+      return serverVal;
+    },
+    [draftInicioProdById]
+  );
+
   // ====== NV bloqueados (desde TXT) ======
   const [blockedNvSet, setBlockedNvSet] = useState(() => new Set());
   const [blockedNvState, setBlockedNvState] = useState('idle'); // idle|loading|ok|error
@@ -815,6 +851,9 @@ export default function PreproduccionValoresTable() {
       const res = await fetchPreproduccionValores();
       const list = Array.isArray(res?.data) ? res.data : res?.data ? [res.data] : [];
       setRows(list);
+
+      // ✅ NUEVO: al recargar, limpiamos borradores locales
+      setDraftInicioProdById({});
     } catch (e) {
       setErr(e?.response?.data?.error || e?.message || 'Error cargando preproducción');
     } finally {
@@ -864,17 +903,17 @@ export default function PreproduccionValoresTable() {
             if (Number.isInteger(nv)) {
               const existingId = portonesNvToId?.get(nv) ?? null;
 
-	              // Sistema es clave para las condiciones de workflow (porta los mismos strings
-	              // que se usan en condition_json). Lo mantenemos sincronizado.
-	              const sistemaStr = getSistemaFromRow(updated) ?? getSistemaFromRow({ data: d }) ?? null;
+              // Sistema es clave para las condiciones de workflow (porta los mismos strings
+              // que se usan en condition_json). Lo mantenemos sincronizado.
+              const sistemaStr = getSistemaFromRow(updated) ?? getSistemaFromRow({ data: d }) ?? null;
 
               if (existingId != null) {
                 await setFechaProd(existingId, fecha10 || null);
-	                if (sistemaStr) {
-	                  try {
-	                    await setSistemaPorton(existingId, sistemaStr);
-	                  } catch {}
-	                }
+                if (sistemaStr) {
+                  try {
+                    await setSistemaPorton(existingId, sistemaStr);
+                  } catch {}
+                }
               } else {
                 const partida = Number(d?.PARTIDA ?? d?.partida);
                 const payload = {
@@ -882,20 +921,20 @@ export default function PreproduccionValoresTable() {
                   nlista: Number(d?.NLista ?? d?.nlista) || nv,
                   partida: Number.isInteger(partida) ? partida : 800,
                   fecha_prod: fecha10 || null,
-	                  sistema: sistemaStr,
+                  sistema: sistemaStr,
                 };
 
                 const cr = await createPorton(payload);
                 const created = cr?.data || null;
                 const createdId = created?.id ?? created?.ID ?? null;
 
-	                if (createdId != null && sistemaStr) {
-	                  // Doble seguro: si por algún motivo el insert no tomó el sistema
-	                  // (o vino null), lo fijamos por endpoint.
-	                  try {
-	                    await setSistemaPorton(createdId, sistemaStr);
-	                  } catch {}
-	                }
+                if (createdId != null && sistemaStr) {
+                  // Doble seguro: si por algún motivo el insert no tomó el sistema
+                  // (o vino null), lo fijamos por endpoint.
+                  try {
+                    await setSistemaPorton(createdId, sistemaStr);
+                  } catch {}
+                }
 
                 setPortonesNvSet((prev) => {
                   const n = new Set(prev);
@@ -1018,12 +1057,7 @@ export default function PreproduccionValoresTable() {
   const getAccionesStatus = useCallback((row) => {
     const d = row?.data || {};
 
-    const alreadySent = Boolean(
-      d.fecha_envio_produccion ??
-        d.Fecha_Envio_Produccion ??
-        d.fecha_envio_prod ??
-        d.Fecha_Envio_Prod
-    );
+    const alreadySent = Boolean(d.fecha_envio_produccion ?? d.Fecha_Envio_Produccion ?? d.fecha_envio_prod ?? d.Fecha_Envio_Prod);
 
     if (alreadySent) return 'produccion';
     if (!Boolean(d.auth_logistica)) return 'pendiente';
@@ -1153,10 +1187,11 @@ export default function PreproduccionValoresTable() {
       const id = row?.id;
       if (!id) return;
 
-      const ok = window.confirm(
-        'Esto va a quitar SOLO las autorizaciones (Admin y Logística) para este NV.\n\n¿Continuar?'
-      );
+      const ok = window.confirm('Esto va a quitar SOLO las autorizaciones (Admin y Logística) para este NV.\n\n¿Continuar?');
       if (!ok) return;
+
+      // ✅ NUEVO: si había borrador local de fecha prod, lo limpiamos
+      clearDraftInicioProd(id);
 
       await onPatch(id, {
         auth_admin: false,
@@ -1169,7 +1204,7 @@ export default function PreproduccionValoresTable() {
         fecha_envio_produccion: null,
       });
     },
-    [accessMode, onPatch]
+    [accessMode, onPatch, clearDraftInicioProd]
   );
 
   // ✅ CORREGIDO:
@@ -1205,7 +1240,9 @@ export default function PreproduccionValoresTable() {
         return x ? x : null;
       };
 
-      const prodDate10 = dateOrNull(d.inicio_prod_imput ?? d.Inicio_Prod_Imput ?? null);
+      // ✅ NUEVO: si hay borrador local, lo usamos; si no, caemos al server value
+      const draftProd = draftInicioProdById[id];
+      const prodDate10 = dateOrNull(draftProd != null ? draftProd : d.inicio_prod_imput ?? d.Inicio_Prod_Imput ?? null);
 
       // ✅ OPCIÓN 3: bloquear envío si falta fecha producción
       if (!prodDate10) {
@@ -1216,6 +1253,9 @@ export default function PreproduccionValoresTable() {
       try {
         // 1) Persistir en preproducción (sin sync automática a portones, porque la controlamos abajo)
         await onPatch(id, { inicio_prod_imput: prodDate10 }, { skipPortonesSync: true });
+
+        // ✅ NUEVO: ya se persistió, borrador deja de tener sentido
+        clearDraftInicioProd(id);
 
         // 2) Persistir en PORTONES.fecha_prod
         const existingId = portonesNvToId?.get(nv) ?? null;
@@ -1293,7 +1333,7 @@ export default function PreproduccionValoresTable() {
         alert(msg);
       }
     },
-    [onPatch, portonesNvToId, accessMode]
+    [onPatch, portonesNvToId, accessMode, draftInicioProdById, clearDraftInicioProd]
   );
 
   // ======= PDF helpers =======
@@ -1594,27 +1634,44 @@ export default function PreproduccionValoresTable() {
 
       if (col.type === 'date') {
         const isFechaSalida = col.patchKey === 'fecha_salida_imput';
-        const sistemas = String(
-          data.Sistemas ?? data.sistemas ?? data.Sistema ?? data.sistema ?? data.SISTEMAS ?? ''
-        ).trim();
+        const isInicioProd = col.patchKey === 'inicio_prod_imput';
+
+        const sistemas = String(data.Sistemas ?? data.sistemas ?? data.Sistema ?? data.sistema ?? data.SISTEMAS ?? '').trim();
 
         const recommended = isFechaSalida ? resolveRecommendedFechaSalidaISO10(sistemas, sistemaRules) : '';
         const current = normalizeDate10(v);
         const showRecommend = Boolean(isFechaSalida && recommended && recommended !== current);
 
+        // ✅ para inicio_prod_imput usamos draft local
+        const dateValue = isInicioProd ? getInicioProdEffective(row) : normalizeDate10(v);
+
         return (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <input
               type="date"
-              value={normalizeDate10(v)}
+              value={dateValue}
               disabled={isBusy}
               onChange={(e) => {
                 const next = e.target.value;
+
+                if (isInicioProd) {
+                  // ✅ SOLO estado local (no patch)
+                  setDraftInicioProd(id, next);
+                  return;
+                }
+
+                // comportamiento existente para el resto de fechas
                 setRows((prev) =>
                   prev.map((r) => (r.id === id ? { ...r, data: { ...(r.data || {}), [col.patchKey]: next } } : r))
                 );
               }}
-              onBlur={() => onPatch(id, { [col.patchKey]: normalizeDate10(data[col.patchKey] ?? '') || null })}
+              onBlur={() => {
+                if (isInicioProd) {
+                  // ✅ no persistimos nada acá
+                  return;
+                }
+                onPatch(id, { [col.patchKey]: normalizeDate10(data[col.patchKey] ?? '') || null });
+              }}
               className="pp-input"
               style={{ width: 150 }}
             />
@@ -1635,6 +1692,13 @@ export default function PreproduccionValoresTable() {
               >
                 Recomendar
               </button>
+            ) : null}
+
+            {/* Indicador visual opcional para borrador de fecha prod */}
+            {isInicioProd && draftInicioProdById[id] != null ? (
+              <span className="pp-badge pp-badge--pending" title="Fecha Producción en borrador (aún no enviada)">
+                Borrador
+              </span>
             ) : null}
           </div>
         );
@@ -1695,7 +1759,9 @@ export default function PreproduccionValoresTable() {
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800 }}>
             Preproducción {accessMode === 'limited' ? <span style={{ fontSize: 12, fontWeight: 700 }}>(Vista)</span> : null}
-            {accessMode === 'admin' ? <span style={{ fontSize: 12, fontWeight: 700 }}>(Administración)</span> : null}
+            {accessMode === 'admin' ? (
+              <span style={{ fontSize: 12, fontWeight: 700 }}>(Administración)</span>
+            ) : null}
           </h2>
 
           <button onClick={load} disabled={loading} className="btn">
@@ -1891,9 +1957,7 @@ export default function PreproduccionValoresTable() {
             </div>
           ) : null}
 
-          <div style={{ marginLeft: 'auto', fontSize: 12, color: '#374151' }}>
-            {loading ? 'Cargando…' : `Registros: ${total}`}
-          </div>
+          <div style={{ marginLeft: 'auto', fontSize: 12, color: '#374151' }}>{loading ? 'Cargando…' : `Registros: ${total}`}</div>
         </div>
 
         {err ? (
@@ -2055,11 +2119,7 @@ export default function PreproduccionValoresTable() {
             Página <b>{safePage}</b> / <b>{pageCount}</b>
           </div>
 
-          <button
-            className="btn"
-            onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
-            disabled={safePage >= pageCount}
-          >
+          <button className="btn" onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={safePage >= pageCount}>
             Siguiente
           </button>
         </div>
