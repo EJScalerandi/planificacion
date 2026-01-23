@@ -1,26 +1,34 @@
-import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
-import { clearAdminSession } from '../auth/adminSession';
+import { Outlet, useNavigate } from 'react-router-dom';
+import { clearAdminToken } from '../api';
 
 export default function NonProductionLayout() {
   const nav = useNavigate();
-  const loc = useLocation();
 
+  // "Menú": vuelve al índice (hub)
+  const goMenu = () => {
+    nav('/index', { replace: false });
+  };
+
+  // "Cerrar Sesión": mismo comportamiento que el botón "Salir" en /admin/workflow
   const logout = () => {
-    clearAdminSession();
-    // replace para que no puedas volver con back a una pantalla “logueada”
-    nav('/admin/login', { replace: true, state: { from: loc.pathname } });
+    // Igual que /admin/workflow
+    clearAdminToken();
+    nav('/admin/login');
   };
 
   return (
     <div className="container">
       <div className="header-row" style={{ alignItems: 'center' }}>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <Link className="btn" to="/index">Inicio</Link>
-        </div>
+        <div />
 
-        <button className="btn btn--brand" type="button" onClick={logout}>
-          Salir
-        </button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button className="btn btn--brand" type="button" onClick={goMenu}>
+            Menú
+          </button>
+          <button className="btn" type="button" onClick={logout}>
+            Cerrar Sesión
+          </button>
+        </div>
       </div>
 
       <Outlet />
