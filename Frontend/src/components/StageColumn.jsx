@@ -120,18 +120,8 @@ function getEnvioProduccionDate10(item) {
   return toISODate10(raw);
 }
 
-function canEnterQueue(item, effKey) {
-  const st = low(item?.[effKey]);
-  if (st === 'en proceso') return true;
-
-  const prod10 = getProdDate10(item);
-  if (!prod10) return true;
-
-  const allowFrom = mondayBeforeISO10(prod10);
-  if (!allowFrom) return true;
-
-  const today10 = todayISO10Local();
-  return today10 >= allowFrom;
+function canEnterQueue() {
+  return true;
 }
 
 /**
