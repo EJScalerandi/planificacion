@@ -17,11 +17,26 @@ function fmt(dt) {
 function mapModeToLine(mode) {
   return mode === 'ipanel' ? 'ipanel' : 'portones';
 }
+function toText(v) {
+  return String(v ?? '').trim();
+}
+function toNum(v) {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(String(v).replace(',', '.'));
+  return Number.isFinite(n) ? n : null;
+}
+function firstDefined(item, keys = []) {
+  for (const key of keys) {
+    const value = item?.[key];
+    if (value !== undefined && value !== null && String(value).trim() !== '') return value;
+  }
+  return '';
+}
+function displayValue(v, fallback = '—') {
+  const s = String(v ?? '').trim();
+  return s || fallback;
+}
 
-/**
- * ID que usa QC. En tu caso: /qc/history/portones/2633 (NV)
- * => usamos NV como item_id por defecto.
- */
 function getQcItemId(item, line) {
   const nv = Number(item?.nv ?? item?.NV);
   if (Number.isInteger(nv)) return nv;
@@ -36,7 +51,6 @@ function getQcItemId(item, line) {
   return null;
 }
 
-// ===== fechas / cola =====
 function pad2(n) {
   return String(n).padStart(2, '0');
 }
@@ -58,7 +72,6 @@ function toISODate10(v) {
 
   const d = new Date(s);
   if (!Number.isNaN(d.getTime())) {
-    // usamos fecha local, no UTC
     const yyyy = d.getFullYear();
     const mm = pad2(d.getMonth() + 1);
     const dd = pad2(d.getDate());
@@ -68,26 +81,9 @@ function toISODate10(v) {
   return '';
 }
 
-// ✅ hoy local (Argentina)
 function todayISO10Local() {
   const d = new Date();
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-}
-
-// lunes anterior a la semana de producción (para cola)
-function mondayBeforeISO10(dateLike) {
-  const date10 = toISODate10(dateLike);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date10)) return '';
-
-  const d = new Date(`${date10}T00:00:00Z`);
-  const dayMon0 = (d.getUTCDay() + 6) % 7; // lunes=0
-  const mondayThisWeek = new Date(d);
-  mondayThisWeek.setUTCDate(d.getUTCDate() - dayMon0);
-
-  const mondayPrev = new Date(mondayThisWeek);
-  mondayPrev.setUTCDate(mondayThisWeek.getUTCDate() - 7);
-
-  return `${mondayPrev.getUTCFullYear()}-${pad2(mondayPrev.getUTCMonth() + 1)}-${pad2(mondayPrev.getUTCDate())}`;
 }
 
 function getProdDate10(item) {
@@ -105,29 +101,10 @@ function getProdDate10(item) {
   return toISODate10(raw);
 }
 
-/**
- * ✅ NUEVO: fecha que ahora usa el sistema de PDFs (link mode) para agrupar portones.
- * Se basa en `fecha_envio_produccion` (Supabase).
- */
-function getEnvioProduccionDate10(item) {
-  const raw =
-    item?.fecha_envio_produccion ??
-    item?.Fecha_Envio_Produccion ??
-    item?.fecha_envio_prod ??
-    item?.Fecha_Envio_Prod ??
-    null;
-
-  return toISODate10(raw);
-}
-
 function canEnterQueue() {
   return true;
 }
 
-/**
- * ✅ Fecha salida/entrega para la regla de despacho
- * Priorizamos lo que vos tenés: fecha_salida_imput
- */
 function getSalidaDate10(item) {
   const raw =
     item?.fecha_salida_imput ??
@@ -143,17 +120,319 @@ function getSalidaDate10(item) {
   return toISODate10(raw);
 }
 
-/**
- * ✅ Estado “cliente en regla” (modal)
- * Requisito: si NO existe o es false => NO está en regla.
- */
 function isClienteEnRegla(item) {
   return item?.admin_cliente_en_regla === true;
 }
 
-// =====================
-// Modal QC
-// =====================
+function getIsoWeekInfo(dateLike) {
+  const date10 = toISODate10(dateLike);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date10)) return null;
+
+  const d = new Date(`${date10}T00:00:00Z`);
+  const day = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - day);
+
+  const year = d.getUTCFullYear();
+  const yearStart = new Date(Date.UTC(year, 0, 1));
+  const week = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+
+  return {
+    year,
+    week,
+    label: `Semana ${week}`,
+  };
+}
+
+function getLaserWeekLabel(item) {
+  const info = getIsoWeekInfo(getProdDate10(item));
+  return info?.label || 'Semana —';
+}
+
+function getPuertaPos(row) {
+  return toText(
+    row?.PUERTA_Posicion ??
+      row?.Puerta_Posicion ??
+      row?.puerta_posicion ??
+      row?.PUERTA_POSICION ??
+      row?.puertaPosicion
+  ).toUpperCase();
+}
+
+function getPuertaAlto(row) {
+  const v =
+    row?.Puerta_Alto ??
+    row?.PUERTA_Alto ??
+    row?.PUERTA_ALTO ??
+    row?.puerta_alto ??
+    row?.PUERTAalto ??
+    row?.puertaAlto;
+  const n = toNum(v);
+  return n != null ? String(Math.round(n)) : toText(v);
+}
+
+function getPuertaAncho(row) {
+  const v =
+    row?.Puerta_Ancho ??
+    row?.PUERTA_Ancho ??
+    row?.PUERTA_ANCHO ??
+    row?.puerta_ancho ??
+    row?.PUERTAancho ??
+    row?.puertaAncho;
+  const n = toNum(v);
+  return n != null ? String(Math.round(n)) : toText(v);
+}
+
+function hasPuerta(row) {
+  const pos = getPuertaPos(row);
+  return !!pos && pos !== 'NO' && pos !== '0' && pos !== 'N';
+}
+
+function calcLadoMasAltoFromParantesDescripcion(desc) {
+  const s = toText(desc);
+  if (!s) return 0;
+
+  const m = s.match(/(\d+(?:[.,]\d+)?)\s*[xX]\s*(\d+(?:[.,]\d+)?)/);
+  if (!m) return 0;
+
+  const a = Number(String(m[1]).replace(',', '.'));
+  const b = Number(String(m[2]).replace(',', '.'));
+  const max = Math.max(Number.isFinite(a) ? a : 0, Number.isFinite(b) ? b : 0);
+  return max || 0;
+}
+
+function getLadoMasAlto(row) {
+  const fromRow = toNum(row?.lado_mas_alto);
+  if (fromRow) return fromRow;
+  return calcLadoMasAltoFromParantesDescripcion(row?.PARANTES_Descripcion);
+}
+
+function calcCalcEspadaFromRow(row) {
+  const A = getLadoMasAlto(row);
+  const B = toNum(row?.Largo_Parantes);
+  const C = toNum(row?.DATOS_Brazos);
+
+  if (!A || !B || !C) return 0;
+
+  if (A === 50) {
+    if (B >= 2950 && B < 3150) return C - 12 - 45;
+    if (B < 2950) return C - 12 - 40;
+    return C - 12 - 55;
+  }
+
+  if (A === 70) {
+    if (B <= 2300) return C - 12 - 22;
+    if (B <= 2420) return C - 12 - 25;
+    if (B <= 2800) return C - 12 - 33;
+    if (B < 3150) return C - 12 - 38;
+    return C - 12 - 55;
+  }
+
+  if (A === 80) return C - 12 - 35;
+
+  return 0;
+}
+
+function getLargoTraves(row) {
+  return firstDefined(row, [
+    'Largo_Travesaños',
+    'Largo_Travesanos',
+    'Largo_Travesaño',
+    'Largo_Travesano',
+  ]);
+}
+
+function getLaserSectionData(item, sectionKey) {
+  switch (sectionKey) {
+    case 'dintel':
+      return [
+        { label: 'Tipo', value: firstDefined(item, ['DINTEL_tipo', 'DINTEL_Tipo', 'Dintel_Tipo']) },
+        { label: 'Ancho', value: firstDefined(item, ['DINTEL_Ancho', 'DINTEL_ancho', 'Dintel_Ancho']) },
+      ];
+
+    case 'brazos':
+      return [
+        { label: 'Brazos', value: firstDefined(item, ['DATOS_Brazos', 'datos_brazos']) },
+        { label: 'Largo planchuelas', value: firstDefined(item, ['Largo_Planchuelas', 'largo_planchuelas']) },
+        { label: 'Tipo pierna', value: firstDefined(item, ['PIERNAS_Tipo', 'PIERNAS_tipo', 'PIERNA_Tipo']) },
+      ];
+
+    case 'marco-hoja':
+      return [
+        { label: 'Parantes descripción', value: firstDefined(item, ['PARANTES_Descripcion']) },
+        { label: 'Largo parantes', value: firstDefined(item, ['Largo_Parantes']) },
+        { label: 'Largo travesaños', value: getLargoTraves(item) },
+        { label: 'Parantes internos', value: firstDefined(item, ['Parantes_Internos']) },
+        { label: 'Parantes cantidad', value: firstDefined(item, ['PARANTES_Cantidad']) },
+        { label: 'Parantes distribución', value: firstDefined(item, ['PARANTES_Distribucion']) },
+      ];
+
+    case 'puerta':
+      return [
+        { label: 'Posición', value: getPuertaPos(item) },
+        { label: 'Alto', value: getPuertaAlto(item) },
+        { label: 'Ancho', value: getPuertaAncho(item) },
+        { label: 'Condición', value: firstDefined(item, ['PUERTA_Condicion', 'Puerta_Condicion']) },
+      ];
+
+    case 'espada': {
+      const calcStored = firstDefined(item, ['calc_espada']);
+      const calcValue =
+        calcStored !== ''
+          ? calcStored
+          : (() => {
+              const calc = calcCalcEspadaFromRow(item);
+              return calc ? String(Math.round(calc)) : '';
+            })();
+
+      return [
+        { label: 'Espada', value: calcValue },
+        { label: 'Lado más alto', value: getLadoMasAlto(item) ? String(getLadoMasAlto(item)) : '' },
+        { label: 'Largo parantes', value: firstDefined(item, ['Largo_Parantes']) },
+        { label: 'Brazos', value: firstDefined(item, ['DATOS_Brazos']) },
+        { label: 'Espesor revestimiento', value: firstDefined(item, ['Espesor_Revestimiento']) },
+      ];
+    }
+
+    case 'rebaje':
+      return [
+        { label: 'Rebaje sí/no', value: firstDefined(item, ['REBAJE_SINO']) },
+        { label: 'Rebaje descuento', value: firstDefined(item, ['REBAJE_Descuento']) },
+        { label: 'Rebaje altura', value: firstDefined(item, ['REBAJE_Altura', 'rebaje_altura']) },
+        { label: 'RBJ ancho', value: firstDefined(item, ['RBJ_Ancho', 'RBJ_ancho']) },
+        {
+          label: 'Lateral / inferior',
+          value: firstDefined(item, ['REB_Lateral_Inferior', 'REBAJE_Lateral_Inferior']),
+        },
+      ];
+
+    default:
+      return [];
+  }
+}
+
+function DatosModal({ open, onClose, item, title }) {
+  const sections = useMemo(() => ([
+    { key: 'dintel', label: 'Dintel', enabled: true },
+    { key: 'brazos', label: 'Brazos', enabled: true },
+    { key: 'marco-hoja', label: 'Marco de hoja', enabled: true },
+    { key: 'puerta', label: 'Puerta', enabled: hasPuerta(item) },
+    { key: 'espada', label: 'Espada', enabled: true },
+    { key: 'rebaje', label: 'Rebaje', enabled: true },
+  ]), [item]);
+
+  const firstEnabledKey = useMemo(
+    () => sections.find((s) => s.enabled)?.key || sections[0]?.key || 'dintel',
+    [sections]
+  );
+
+  const [activeKey, setActiveKey] = useState(firstEnabledKey);
+
+  useEffect(() => {
+    if (!open) return;
+    setActiveKey(firstEnabledKey);
+  }, [open, firstEnabledKey, item?.id, item?.nv, item?.nlista, item?.partida]);
+
+  if (!open || !item) return null;
+
+  const active = sections.find((s) => s.key === activeKey) || sections[0];
+  const rows = getLaserSectionData(item, active?.key).filter((r) => String(r?.value ?? '').trim() !== '');
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose?.();
+      }}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(15,23,42,0.55)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 16,
+        zIndex: 9999,
+      }}
+    >
+      <div
+        style={{
+          width: 'min(840px, 100%)',
+          background: '#fff',
+          borderRadius: 14,
+          border: '1px solid #e5e7eb',
+          boxShadow: '0 18px 55px rgba(0,0,0,0.25)',
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            padding: '12px 14px',
+            borderBottom: '1px solid #e5e7eb',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 10,
+            background: '#f8fafc',
+          }}
+        >
+          <div style={{ fontWeight: 900 }}>
+            Datos · {title} · NV {item?.nv ?? item?.NV ?? '-'}
+          </div>
+          <button className="btn" type="button" onClick={onClose}>
+            Cerrar
+          </button>
+        </div>
+
+        <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {sections.map((section) => (
+              <button
+                key={section.key}
+                type="button"
+                className="btn"
+                disabled={!section.enabled}
+                onClick={() => section.enabled && setActiveKey(section.key)}
+                style={{
+                  fontWeight: activeKey === section.key ? 900 : 700,
+                  opacity: section.enabled ? 1 : 0.5,
+                }}
+                title={!section.enabled ? 'Este portón no tiene puerta' : section.label}
+              >
+                {section.label}
+              </button>
+            ))}
+          </div>
+
+          <div
+            style={{
+              border: '1px solid #e5e7eb',
+              borderRadius: 12,
+              padding: 14,
+              background: '#ffffff',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8,
+            }}
+          >
+            <div style={{ fontWeight: 900, fontSize: 16 }}>{active?.label}</div>
+
+            {rows.length === 0 ? (
+              <div style={{ opacity: 0.7 }}>No hay datos disponibles para este bloque.</div>
+            ) : (
+              rows.map((row) => (
+                <div key={`${active?.key}-${row.label}`} style={{ fontSize: 14 }}>
+                  <b>{row.label}:</b> {displayValue(row.value)}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function QcModal({ open, onClose, item, line, stageKey, title, onSaved }) {
   const [pin, setPin] = useState('');
   const [status, setStatus] = useState('APROBADO');
@@ -380,9 +659,6 @@ function QcModal({ open, onClose, item, line, stageKey, title, onSaved }) {
   );
 }
 
-// =====================
-// Modal Observaciones (carga on-demand)
-// =====================
 function ObservacionesModal({ open, onClose, title, item, line }) {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
@@ -527,9 +803,6 @@ function ObservacionesModal({ open, onClose, title, item, line }) {
   );
 }
 
-// =====================
-// ✅ Modal Historial (últimos 10 del sector)
-// =====================
 function HistoryModal({ open, onClose, title, effKey, rows = [] }) {
   if (!open) return null;
 
@@ -627,9 +900,6 @@ function HistoryModal({ open, onClose, title, effKey, rows = [] }) {
   );
 }
 
-// =====================
-// StageColumn
-// =====================
 export default function StageColumn({
   title,
   stageKey,
@@ -639,7 +909,6 @@ export default function StageColumn({
   onStart,
   onStop,
   disabledId,
-  pdfBaseUrl = 'https://integrador-six-zeta.vercel.app',
   qcSummaryMap = {},
   onQcSaved,
 }) {
@@ -651,11 +920,15 @@ export default function StageColumn({
 
   const [histOpen, setHistOpen] = useState(false);
 
+  const [datosOpen, setDatosOpen] = useState(false);
+  const [datosTarget, setDatosTarget] = useState(null);
+
   const effKey = mode === 'ipanel' && stageKey === 'plegadora' ? 'plegado' : stageKey;
   const line = mapModeToLine(mode);
 
   const keyTrim = String(effKey || '').trim();
   const isDespachoColumn = keyTrim === 'despacho';
+  const isLaserColumn = keyTrim === 'laser';
 
   function shouldHideFinalizado(p) {
     const qcId = getQcItemId(p, line);
@@ -708,93 +981,10 @@ export default function StageColumn({
     setQcOpen(true);
   };
 
-  const showPdfButtons = mode !== 'ipanel';
-  const canPdfBase = !!String(pdfBaseUrl || '').trim();
-
-  const pdfButtons = useMemo(() => {
-    const k = String(keyTrim || '').trim();
-
-    if (k === 'diseno' || k === 'laser') {
-      return [{ tipo: 'diseno', label: 'Diseño', title: 'PDF Diseño', icon: '📐' }];
-    }
-
-    const cortePlegadoKeys = new Set([
-      'guillotina',
-      'corte_revest',
-      'plegadora',
-      'plegado_revest',
-      'armado_piernas',
-    ]);
-
-    if (cortePlegadoKeys.has(k)) {
-      return [
-        // ✅ Para estas secciones necesitamos 2 PDFs distintos:
-        // - corte-plegado
-        // - tapajuntas
-        // Antes el 2° botón enviaba `plegado`, que se mapeaba a `corte-plegado`,
-        // por eso ambos abrían el mismo PDF.
-        { tipo: 'corte', label: 'Corte/Plegado', title: 'PDF Corte/Plegado', icon: '✂️' },
-        { tipo: 'tapajuntas', label: 'Tapajuntas', title: 'PDF Tapajuntas', icon: '📏' },
-      ];
-    }
-
-    return [{ tipo: 'arm-primario', label: 'AP', title: 'PDF Armado Primario (por NV)', icon: '🧰' }];
-  }, [keyTrim]);
-
-  /**
-   * ✅ Adaptación a “links por fecha”
-   *
-   * - Diseño / Corte / Plegado / Tapajuntas: se abren por fecha (YYYY-MM-DD).
-   *   En la tabla portones guardamos esa fecha como `fecha_prod`.
-   *   En el visor actual, el parámetro se llama `fecha_envio_produccion`, así que lo enviamos
-   *   con el valor de `fecha_prod` para compatibilidad.
-   * - Armado Primario queda por NV (como siempre)
-   */
-  function openPdf(tipo, item) {
-    const base = (pdfBaseUrl || '').trim();
-    if (!base) return;
-
-    const t = String(tipo || '').trim();
-
-    const tipoMap =
-      t === 'diseno' ? 'diseno-laser' :
-      (t === 'corte' || t === 'plegado') ? 'corte-plegado' :
-      t === 'tapajuntas' ? 'tapajuntas' :
-      t; // arm-primario
-
-    const nvStr = item?.nv != null ? String(item.nv).trim() : (item?.NV != null ? String(item.NV).trim() : '');
-    const partidaStr =
-      item?.partida != null ? String(item.partida).trim() : (item?.PARTIDA != null ? String(item.PARTIDA).trim() : '');
-
-    // ✅ Fecha guía para PDFs agrupados:
-    // Preferimos fecha_prod (planificación/producción) desde tabla portones,
-    // y dejamos fecha_envio_produccion como fallback por compatibilidad.
-    const fecha10 = getProdDate10(item) || getEnvioProduccionDate10(item);
-
-    const params = new URLSearchParams();
-    params.set('pdf', tipoMap);
-
-    if (tipoMap === 'arm-primario') {
-      // ✅ NO TOCAR: sigue por NV (preferido). Si no hay NV, cae a partida como antes.
-      if (nvStr) params.set('nv', nvStr);
-      else if (partidaStr) params.set('partida', partidaStr);
-    } else {
-      // ✅ Agrupación por fecha
-      if (fecha10) {
-        // Visor actual
-        params.set('fecha_envio_produccion', fecha10);
-        // Compatibilidad futura
-        params.set('fecha_prod', fecha10);
-      } else {
-        // fallback conservador: evitamos abrir un link inválido
-        alert('Este portón no tiene fecha de producción cargada, no se puede abrir el PDF por fecha.');
-        return;
-      }
-    }
-
-    const url = `${base}/?${params.toString()}`;
-    window.open(url, '_blank', 'noopener,noreferrer');
-  }
+  const openDatos = (p) => {
+    setDatosTarget(p);
+    setDatosOpen(true);
+  };
 
   const historyLast10 = useMemo(() => {
     if (mode === 'ipanel') return [];
@@ -907,14 +1097,10 @@ export default function StageColumn({
             const hasObs = Boolean(info?.has_obs);
 
             const prod10 = getProdDate10(p);
-
-            // ✅ NUEVO: regla despacho (fecha salida + admin_cliente_en_regla)
             const salida10 = getSalidaDate10(p);
             const today10 = todayISO10Local();
             const vencida = salida10 ? salida10 <= today10 : false;
-
             const enRegla = isClienteEnRegla(p);
-
             const needsAdminAuthRed = isDespachoColumn && vencida && !enRegla;
 
             return (
@@ -959,7 +1145,7 @@ export default function StageColumn({
                 ) : null}
 
                 <div style={{ fontWeight: 900 }}>N° Portón {p?.nlista ?? p?.NLista ?? '-'}</div>
-                <div>Partida {p?.partida ?? p?.PARTIDA ?? '-'}</div>
+                <div>{isLaserColumn ? getLaserWeekLabel(p) : `Partida ${p?.partida ?? p?.PARTIDA ?? '-'}`}</div>
                 <div>NV {p?.nv ?? p?.NV ?? '-'}</div>
 
                 <div style={{ fontSize: 12, opacity: 0.75 }}>
@@ -987,30 +1173,17 @@ export default function StageColumn({
                 </div>
 
                 <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
-                  {showPdfButtons &&
-                    pdfButtons.map((b) => {
-                      const enabled =
-                        canPdfBase &&
-                        (b.tipo === 'arm-primario'
-                          ? Boolean(p?.nv != null || p?.NV != null || p?.partida != null || p?.PARTIDA != null)
-                          : Boolean(getProdDate10(p) || getEnvioProduccionDate10(p)));
-
-                      return (
-                        <button
-                          key={b.tipo}
-                          className="btn"
-                          onClick={() => openPdf(b.tipo, p)}
-                          disabled={!enabled}
-                          title={
-                            b.tipo === 'arm-primario'
-                              ? b.title
-                              : `${b.title} (por fecha de producción)`
-                          }
-                        >
-                          {b.icon} {b.label}
-                        </button>
-                      );
-                    })}
+                  {isLaserColumn ? (
+                    <button
+                      className="btn"
+                      type="button"
+                      onClick={() => openDatos(p)}
+                      style={{ fontWeight: 900 }}
+                      title="Ver datos del sector Laser"
+                    >
+                      📋 Datos
+                    </button>
+                  ) : null}
 
                   <button className="btn" type="button" onClick={() => openQc(p)} style={{ fontWeight: 900 }}>
                     QC
@@ -1043,6 +1216,16 @@ export default function StageColumn({
         title={title}
         effKey={String(effKey || '').trim()}
         rows={historyLast10}
+      />
+
+      <DatosModal
+        open={datosOpen}
+        onClose={() => {
+          setDatosOpen(false);
+          setDatosTarget(null);
+        }}
+        item={datosTarget}
+        title={title}
       />
 
       <QcModal
