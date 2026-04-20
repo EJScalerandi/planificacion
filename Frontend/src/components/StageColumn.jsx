@@ -878,12 +878,6 @@ function HistoryModal({ open, onClose, title, effKey, rows = [] }) {
                     </div>
                     <div style={{ opacity: 0.8, marginTop: 2 }}>
                       Fin etapa: <b>{r.fin ? fmt(r.fin) : '-'}</b>
-                      {r.prod10 ? (
-                        <>
-                          {' '}
-                          · Producción: <b>{r.prod10}</b>
-                        </>
-                      ) : null}
                     </div>
                   </div>
 
@@ -1029,7 +1023,6 @@ export default function StageColumn({
         nlista: p?.nlista ?? '-',
         partida: p?.partida ?? '-',
         fin: p?.[finKey] ?? null,
-        prod10: getProdDate10(p) || '',
         qcLatest,
       };
     });
