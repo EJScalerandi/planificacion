@@ -1,5 +1,4 @@
-Archivo modificado:
-- Frontend/src/components/StageColumn.jsx
-
-Cambio aplicado:
-- Se quitó la leyenda 'Producción: <fecha>' del modal de historial.
+Cambio incluido:
+- Renombrado visual del modal existente a Historial seccion
+- Nuevo modal Historial porton por NV
+- Archivo modificado: Frontend/src/components/StageColumn.jsx

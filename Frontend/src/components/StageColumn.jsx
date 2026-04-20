@@ -846,7 +846,7 @@ function HistoryModal({ open, onClose, title, effKey, rows = [] }) {
           }}
         >
           <div style={{ fontWeight: 900 }}>
-            Historial · {title} <span style={{ opacity: 0.7, fontWeight: 700 }}>({effKey})</span>
+            Historial sección · {title} <span style={{ opacity: 0.7, fontWeight: 700 }}>({effKey})</span>
           </div>
           <button className="btn" type="button" onClick={onClose}>
             Cerrar
@@ -894,6 +894,158 @@ function HistoryModal({ open, onClose, title, effKey, rows = [] }) {
   );
 }
 
+function PortonHistoryModal({ open, onClose, title, effKey, items = [] }) {
+  const [nv, setNv] = useState('');
+  const [result, setResult] = useState(null);
+  const [searchDone, setSearchDone] = useState(false);
+
+  const cleanEffKey = String(effKey || '').trim();
+  const startKey = `${cleanEffKey}_inicio`;
+  const finKey = `${cleanEffKey}_fin`;
+  const normalizedNv = String(nv || '').trim();
+  const parsedNv = Number(normalizedNv);
+  const invalidNv = searchDone && !Number.isInteger(parsedNv);
+
+  useEffect(() => {
+    if (!open) return;
+    setNv('');
+    setResult(null);
+    setSearchDone(false);
+  }, [open, cleanEffKey]);
+
+  const handleSearch = (e) => {
+    e?.preventDefault?.();
+
+    if (!Number.isInteger(parsedNv)) {
+      setResult(null);
+      setSearchDone(true);
+      return;
+    }
+
+    const found = (Array.isArray(items) ? items : []).find(
+      (p) => Number(p?.nv ?? p?.NV) === parsedNv
+    ) || null;
+
+    setResult(found);
+    setSearchDone(true);
+  };
+
+  if (!open) return null;
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose?.();
+      }}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(15,23,42,0.55)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 16,
+        zIndex: 9999,
+      }}
+    >
+      <div
+        style={{
+          width: 'min(760px, 100%)',
+          background: '#fff',
+          borderRadius: 14,
+          border: '1px solid #e5e7eb',
+          boxShadow: '0 18px 55px rgba(0,0,0,0.25)',
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            padding: '12px 14px',
+            borderBottom: '1px solid #e5e7eb',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 10,
+            background: '#f8fafc',
+          }}
+        >
+          <div style={{ fontWeight: 900 }}>
+            Historial portón · {title} <span style={{ opacity: 0.7, fontWeight: 700 }}>({cleanEffKey})</span>
+          </div>
+          <button className="btn" type="button" onClick={onClose}>
+            Cerrar
+          </button>
+        </div>
+
+        <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <form onSubmit={handleSearch} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'end' }}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 220 }}>
+              <span style={{ fontWeight: 800 }}>NV</span>
+              <input
+                className="btn"
+                type="text"
+                value={nv}
+                onChange={(e) => setNv(e.target.value)}
+                inputMode="numeric"
+                placeholder="Ej: 3995"
+                autoFocus
+              />
+            </label>
+
+            <button className="btn btn--brand" type="submit">
+              Buscar
+            </button>
+          </form>
+
+          {invalidNv ? (
+            <div style={{ color: 'crimson', fontWeight: 800 }}>
+              Ingresá un NV numérico válido.
+            </div>
+          ) : null}
+
+          {searchDone && !invalidNv && !result ? (
+            <div style={{ opacity: 0.8 }}>
+              No se encontró ningún portón con NV <b>{normalizedNv}</b>.
+            </div>
+          ) : null}
+
+          {result ? (
+            <div
+              style={{
+                border: '1px solid #e5e7eb',
+                borderRadius: 12,
+                padding: 14,
+                background: '#ffffff',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 8,
+              }}
+            >
+              <div style={{ fontWeight: 900, fontSize: 16 }}>
+                Portón {result?.nlista ?? result?.NLista ?? '-'} · NV {result?.nv ?? result?.NV ?? '-'} · Partida {result?.partida ?? result?.PARTIDA ?? '-'}
+              </div>
+              <div style={{ fontSize: 14 }}>
+                <b>Sector:</b> {title}
+              </div>
+              <div style={{ fontSize: 14 }}>
+                <b>Estado:</b> {displayValue(result?.[cleanEffKey], 'Sin datos')}
+              </div>
+              <div style={{ fontSize: 14 }}>
+                <b>Inicio:</b> {result?.[startKey] ? fmt(result[startKey]) : '-'}
+              </div>
+              <div style={{ fontSize: 14 }}>
+                <b>Finalizado:</b> {result?.[finKey] ? fmt(result[finKey]) : '-'}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function StageColumn({
   title,
   stageKey,
@@ -913,6 +1065,7 @@ export default function StageColumn({
   const [obsTarget, setObsTarget] = useState(null);
 
   const [histOpen, setHistOpen] = useState(false);
+  const [portonHistOpen, setPortonHistOpen] = useState(false);
 
   const [datosOpen, setDatosOpen] = useState(false);
   const [datosTarget, setDatosTarget] = useState(null);
@@ -1055,21 +1208,39 @@ export default function StageColumn({
         <div>{title}</div>
 
         {mode !== 'ipanel' ? (
-          <button
-            type="button"
-            className="btn"
-            onClick={() => setHistOpen(true)}
-            title="Ver historial (últimos 10)"
-            style={{
-              background: 'rgba(255,255,255,0.18)',
-              color: '#fff',
-              borderColor: 'rgba(255,255,255,0.35)',
-              fontWeight: 900,
-              padding: '6px 10px',
-            }}
-          >
-            Hist
-          </button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => setHistOpen(true)}
+              title="Ver historial sección (últimos 10)"
+              style={{
+                background: 'rgba(255,255,255,0.18)',
+                color: '#fff',
+                borderColor: 'rgba(255,255,255,0.35)',
+                fontWeight: 900,
+                padding: '6px 10px',
+              }}
+            >
+              Hist. sección
+            </button>
+
+            <button
+              type="button"
+              className="btn"
+              onClick={() => setPortonHistOpen(true)}
+              title="Ver historial de un portón por NV"
+              style={{
+                background: 'rgba(255,255,255,0.18)',
+                color: '#fff',
+                borderColor: 'rgba(255,255,255,0.35)',
+                fontWeight: 900,
+                padding: '6px 10px',
+              }}
+            >
+              Hist. portón
+            </button>
+          </div>
         ) : null}
       </div>
 
@@ -1209,6 +1380,14 @@ export default function StageColumn({
         title={title}
         effKey={String(effKey || '').trim()}
         rows={historyLast10}
+      />
+
+      <PortonHistoryModal
+        open={portonHistOpen}
+        onClose={() => setPortonHistOpen(false)}
+        title={title}
+        effKey={String(effKey || '').trim()}
+        items={allItems}
       />
 
       <DatosModal
