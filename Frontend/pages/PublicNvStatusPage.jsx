@@ -26,6 +26,42 @@ function normalizeStatus(value) {
   return s || 'Sin registrar';
 }
 
+function firstDefined(obj, keys = [], fallback = '-') {
+  for (const key of keys) {
+    const value = obj?.[key];
+    const text = String(value ?? '').trim();
+    if (text) return text;
+  }
+  return fallback;
+}
+
+function getCliente(item) {
+  return firstDefined(item, [
+    'nombreCliente',
+    'nombre_cliente',
+    'NombreCliente',
+    'Nombre_Cliente',
+    'cliente',
+    'Cliente',
+    'cliente_nombre',
+    'Cliente_Nombre',
+    'Nombre',
+    'nombre',
+  ]);
+}
+
+function getDistribuidor(item) {
+  return firstDefined(item, [
+    'distribuidor',
+    'Distribuidor',
+    'razsoc',
+    'RazSoc',
+    'razon_social',
+    'Razon_Social',
+    'razonSocial',
+  ]);
+}
+
 export default function PublicNvStatusPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const initialNv = String(searchParams.get('nv') ?? '').trim();
@@ -179,15 +215,16 @@ export default function PublicNvStatusPage() {
               padding: '14px 16px',
               borderBottom: '1px solid var(--border)',
               background: '#f8fafc',
-              display: 'flex',
-              gap: 16,
-              flexWrap: 'wrap',
-              alignItems: 'center',
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gap: 10,
             }}
           >
             <div><b>NV:</b> {target?.nv ?? '-'}</div>
             <div><b>Portón:</b> {target?.nlista ?? '-'}</div>
             <div><b>Partida:</b> {target?.partida ?? '-'}</div>
+            <div><b>Cliente:</b> {getCliente(target)}</div>
+            <div><b>Distribuidor:</b> {getDistribuidor(target)}</div>
           </div>
 
           <div style={{ overflowX: 'auto' }}>

@@ -1,9 +1,6 @@
-Se agrega una pagina publica de consulta por NV.
+Consulta pública por NV actualizada.
 
-Ruta nueva:
-- /estado-porton
-- Ejemplo compartible: /estado-porton?nv=3995
-
-Archivos incluidos:
-- Frontend/src/App.jsx
-- Frontend/pages/PublicNvStatusPage.jsx
+Cambios:
+- Se agregan Cliente y Distribuidor en la cabecera del resultado.
+- La página sigue siendo pública en /estado-porton.
+- Se usan varias claves posibles para encontrar esos datos y mostrar el primer valor disponible.
