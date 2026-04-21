@@ -1,4 +1,9 @@
-Cambio incluido:
-- Renombrado visual del modal existente a Historial seccion
-- Nuevo modal Historial porton por NV
-- Archivo modificado: Frontend/src/components/StageColumn.jsx
+Se agrega una pagina publica de consulta por NV.
+
+Ruta nueva:
+- /estado-porton
+- Ejemplo compartible: /estado-porton?nv=3995
+
+Archivos incluidos:
+- Frontend/src/App.jsx
+- Frontend/pages/PublicNvStatusPage.jsx

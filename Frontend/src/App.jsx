@@ -13,6 +13,7 @@ import IpanelReadOnlyPage from '../pages/IpanelReadOnlyPage';
 import PlantaReadOnlySimplePage from '../pages/PlantaReadyOnlySimplePage';
 import StatusIpanelsPage from '../pages/StatusIpanelsPage';
 import PortonesStatsPage from '../pages/PortonesStatsPage';
+import PublicNvStatusPage from '../pages/PublicNvStatusPage';
 
 import AdminLoginPage from '../pages/admin/AdminLoginPage';
 import AdminHomePage from '../pages/admin/AdminHomePage';
@@ -359,7 +360,6 @@ const ROUTES = [
       { key: 'revestimiento', label: 'Revestimiento', mode: 'porton' },
 
       { key: 'pintura', label: 'Pintura Sistemas (Portones)', mode: 'porton' },
-      // ✅ ESTE ES EL QUE TE FALTABA EN /board
       { key: 'pintura_revestimiento', label: 'Pintura Revestimiento (Portones)', mode: 'porton' },
       { key: 'pintura', label: 'Pintura (Ipanels)', mode: 'ipanel' },
 
@@ -452,7 +452,6 @@ export default function App() {
           <Route path="/admin/qc" element={<AdminQcPage />} />
           <Route path="/admin/workflow" element={<WorkflowDesignerPage />} />
 
-          {/* ✅ FULL BLEED SOLO para /a */}
           <Route
             path="/a"
             element={
@@ -469,6 +468,7 @@ export default function App() {
           <Route key={r.path} path={r.path} element={<Board stages={r.stages} />} />
         ))}
 
+        <Route path="/estado-porton" element={<PublicNvStatusPage />} />
         <Route path="/ipanel" element={<IpanelReadOnlyPage />} />
         <Route path="/Diseño" element={<Navigate to="/diseno" replace />} />
         <Route path="/statusGate" element={<StatusGatePage />} />
