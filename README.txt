@@ -1,6 +1,6 @@
-Consulta pública por NV actualizada.
+Cambio aplicado en StageColumn.jsx
 
-Cambios:
-- Se agregan Cliente y Distribuidor en la cabecera del resultado.
-- La página sigue siendo pública en /estado-porton.
-- Se usan varias claves posibles para encontrar esos datos y mostrar el primer valor disponible.
+- Restaurado Historial portón
+- Se mantiene Historial sección
+- Se quita Partida de las tarjetas de secciones
+- Producción en tarjetas con formato DD-MM-AAAA
