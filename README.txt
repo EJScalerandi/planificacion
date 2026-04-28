@@ -1,6 +1,7 @@
-Cambio aplicado en StageColumn.jsx
+Cambio realizado:
+- Se agregó en el Index un bloque "Público"
+- Dentro del bloque se agregó el acceso a /estado-porton
+- El link apunta a la consulta pública por NV
 
-- Restaurado Historial portón
-- Se mantiene Historial sección
-- Se quita Partida de las tarjetas de secciones
-- Producción en tarjetas con formato DD-MM-AAAA
+Archivo incluido:
+- Frontend/pages/IndexPage.jsx

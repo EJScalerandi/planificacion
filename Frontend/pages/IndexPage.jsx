@@ -120,6 +120,10 @@ export default function IndexPage({ routes = [] }) {
     nav('/admin/login', { replace: true });
   };
 
+  const publicRoutes = useMemo(() => {
+    return [{ path: '/estado-porton', label: 'Consulta pública · Estado por NV' }];
+  }, []);
+
   // ===== Rutas por sección, filtradas por scope =====
   const adminRoutes = useMemo(() => {
     if (isPreprodOnly) return [];
@@ -196,7 +200,10 @@ export default function IndexPage({ routes = [] }) {
   );
 
   const hasAny =
-    adminRoutes.length > 0 || opsRoutes.length > 0 || infoRoutes.length > 0;
+    publicRoutes.length > 0 ||
+    adminRoutes.length > 0 ||
+    opsRoutes.length > 0 ||
+    infoRoutes.length > 0;
 
   return (
     <div className="container">
@@ -226,6 +233,27 @@ export default function IndexPage({ routes = [] }) {
         </div>
       ) : (
         <div className="idx-grid">
+          {/* PÚBLICO */}
+          {publicRoutes.length > 0 && (
+            <section className="idx-section idx-section--info" style={{ gridColumn: '1 / -1' }}>
+              <div className="idx-section__head">
+                <div>
+                  <div className="idx-section__title">Público</div>
+                  <div className="idx-section__sub">Consultas disponibles sin login</div>
+                </div>
+                <span className="idx-pill">Público</span>
+              </div>
+
+              <div className="idx-section__body">
+                <ul className="idx-links">
+                  {publicRoutes.map((r) => (
+                    <LinkRow key={r.path} r={r} />
+                  ))}
+                </ul>
+              </div>
+            </section>
+          )}
+
           {/* ADMIN */}
           {adminRoutes.length > 0 && (
             <section className="idx-section idx-section--admin">
