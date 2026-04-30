@@ -151,7 +151,7 @@ function getIsoWeekInfo(dateLike) {
 
 function getLaserWeekLabel(item) {
   const info = getIsoWeekInfo(getProdDate10(item));
-  return info?.label || 'Semana —';
+  return info?.week != null ? `Semana N° ${info.week}` : 'Semana N° —';
 }
 
 function getPuertaPos(row) {
@@ -1314,9 +1314,8 @@ export default function StageColumn({
                   </button>
                 ) : null}
 
-                <div style={{ fontWeight: 900 }}>N° Portón {p?.nlista ?? p?.NLista ?? '-'}</div>
-                {isLaserColumn ? <div>{getLaserWeekLabel(p)}</div> : null}
-                <div>NV {p?.nv ?? p?.NV ?? '-'}</div>
+                <div style={{ fontWeight: 900 }}>NV {p?.nv ?? p?.NV ?? '-'}</div>
+                <div>{getLaserWeekLabel(p)}</div>
 
                 <div style={{ fontSize: 12, opacity: 0.75 }}>
                   Estado: {p?.[effKey] || ''}

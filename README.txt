@@ -1,7 +1,4 @@
-Cambio realizado:
-- Se agregó en el Index un bloque "Público"
-- Dentro del bloque se agregó el acceso a /estado-porton
-- El link apunta a la consulta pública por NV
-
-Archivo incluido:
-- Frontend/pages/IndexPage.jsx
+Cambio aplicado en StageColumn.jsx:
+- El titulo de la tarjeta ahora muestra NV en negrita.
+- La linea siguiente ahora muestra Semana N° segun la fecha de produccion.
+- Se mantiene el resto de la logica existente, incluyendo Historial porton y formato de Produccion.
