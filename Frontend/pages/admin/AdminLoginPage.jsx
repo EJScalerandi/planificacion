@@ -10,11 +10,32 @@ function safeJsonParse(v) {
   try { return JSON.parse(v); } catch { return null; }
 }
 
+function EyeIcon({ open }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="18"
+      height="18"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z" />
+      <circle cx="12" cy="12" r="3" />
+      {!open ? <path d="M4 4l16 16" /> : null}
+    </svg>
+  );
+}
+
 export default function AdminLoginPage() {
   const nav = useNavigate();
 
   const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
@@ -108,13 +129,36 @@ export default function AdminLoginPage() {
 
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <span style={{ fontWeight: 800 }}>Contraseña</span>
-          <input
-            className="btn"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password"
-          />
+
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              className="btn"
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              style={{ flex: 1 }}
+            />
+
+            <button
+              type="button"
+              className="btn"
+              onClick={() => setShowPassword((v) => !v)}
+              aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+              title={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+              style={{
+                minWidth: 44,
+                width: 44,
+                height: 40,
+                display: 'grid',
+                placeItems: 'center',
+                padding: 0,
+                fontSize: 0,
+              }}
+            >
+              <EyeIcon open={showPassword} />
+            </button>
+          </div>
         </label>
 
         <button className="btn btn--brand" type="submit" disabled={busy}>
