@@ -433,7 +433,7 @@ function DatosModal({ open, onClose, item, title }) {
               ))
             )}
           </div>
-        </div>
+        </form>
       </div>
     </div>
   );
@@ -550,6 +550,12 @@ function QcModal({ open, onClose, item, line, stageKey, title, onSaved }) {
     }
   };
 
+  const handleSubmit = (e) => {
+    e?.preventDefault?.();
+    if (saving) return;
+    submit();
+  };
+
   if (!open || !item) return null;
 
   return (
@@ -597,7 +603,7 @@ function QcModal({ open, onClose, item, line, stageKey, title, onSaved }) {
           </button>
         </div>
 
-        <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <form onSubmit={handleSubmit} style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
           {err && <div style={{ color: 'crimson', fontWeight: 800 }}>{err}</div>}
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -655,7 +661,7 @@ function QcModal({ open, onClose, item, line, stageKey, title, onSaved }) {
               Line: <b>{line}</b> · Stage: <b>{stageKey}</b> · QC Item ID: <b>{qcItemId ?? '-'}</b>
             </div>
 
-            <button className="btn btn--brand" type="button" onClick={submit} disabled={saving}>
+            <button className="btn btn--brand" type="submit" disabled={saving}>
               {saving ? 'Guardando…' : 'Confirmar'}
             </button>
           </div>
