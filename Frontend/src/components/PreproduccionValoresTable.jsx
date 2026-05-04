@@ -1444,41 +1444,49 @@ export default function PreproduccionValoresTable() {
         : { from: '', to: '', has: false, empty: false };
 
     const from = curr.from || '';
-    const to = curr.to || '';
     const has = Boolean(curr.has);
     const empty = Boolean(curr.empty);
 
     const setObj = (next) => setFilters((p) => ({ ...p, [colId]: { ...curr, ...next } }));
 
+    const openPicker = (e) => {
+      try {
+        e.currentTarget.showPicker?.();
+      } catch {}
+    };
+
     return (
-      <div className="pp-dateFilterBox">
-        <div className="pp-dateRow">
-          <div>
-            <div className="pp-dateLabel">Desde</div>
-            <input type="date" value={from} onChange={(e) => setObj({ from: e.target.value })} className="pp-input" />
-          </div>
-          <div>
-            <div className="pp-dateLabel">Hasta</div>
-            <input type="date" value={to} onChange={(e) => setObj({ to: e.target.value })} className="pp-input" />
-          </div>
+      <div className="pp-dateFilterBox pp-dateFilterBox--compact">
+        <div className="pp-dateField">
+          <div className="pp-dateLabel">Desde</div>
+          <input
+            type="date"
+            value={from}
+            onChange={(e) => setObj({ from: e.target.value, to: '' })}
+            onClick={openPicker}
+            onFocus={openPicker}
+            onKeyDown={(e) => e.preventDefault()}
+            onPaste={(e) => e.preventDefault()}
+            inputMode="none"
+            className="pp-input pp-input--dateCompact"
+          />
         </div>
 
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 6 }}>
-          <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div className="pp-dateChecks">
+          <label className="pp-checkRow">
             <input type="checkbox" checked={has} onChange={(e) => setObj({ has: e.target.checked })} />
-            <span style={{ fontSize: 12 }}>Con fecha</span>
+            <span>Con fecha</span>
           </label>
 
-          <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <label className="pp-checkRow">
             <input type="checkbox" checked={empty} onChange={(e) => setObj({ empty: e.target.checked })} />
-            <span style={{ fontSize: 12 }}>Sin fecha</span>
+            <span>Sin fecha</span>
           </label>
         </div>
 
         <button
           type="button"
-          className="btn"
-          style={{ marginTop: 8 }}
+          className="btn pp-btnCompact"
           onClick={() => setFilters((p) => ({ ...p, [colId]: { from: '', to: '', has: false, empty: false } }))}
         >
           Limpiar
@@ -1985,7 +1993,7 @@ export default function PreproduccionValoresTable() {
                   {visibleColsList.map((c) => (
                     <th
                       key={c.id}
-                      className="pp-th"
+                      className={`pp-th pp-colHeader pp-colHeader--${c.id}`}
                       style={{
                         textAlign: 'left',
                         whiteSpace: 'nowrap',
@@ -1999,7 +2007,7 @@ export default function PreproduccionValoresTable() {
 
                 <tr>
                   {visibleColsList.map((c) => (
-                    <th key={`${c.id}_filter`} className="pp-th pp-th--filter">
+                    <th key={`${c.id}_filter`} className={`pp-th pp-th--filter pp-colFilter pp-colFilter--${c.id}`}>
                       {c.type === 'actions' ? (
                         <select
                           value={filters[c.id] || ''}
@@ -2058,6 +2066,7 @@ export default function PreproduccionValoresTable() {
                     {visibleColsList.map((col) => (
                       <td
                         key={`${row.id}_${col.id}`}
+                        className={`pp-colCell pp-colCell--${col.id}`}
                         style={{
                           borderBottom: '1px solid #f0f0f0',
                           padding: 8,
@@ -2125,8 +2134,7 @@ export default function PreproduccionValoresTable() {
         </div>
 
         <div style={{ marginTop: 8, fontSize: 11, color: '#6b7280' }}>
-          Fechas: podés usar <b>Desde/Hasta</b> (intervalo), y/o <b>Con fecha</b>, y/o <b>Sin fecha</b>. Si combinás
-          intervalo + “Sin fecha” trae <i>intervalo OR sin fecha</i>.
+          Fechas: usá <b>Desde</b> con el calendario desplegable, y opcionalmente <b>Con fecha</b> o <b>Sin fecha</b>.
         </div>
       </div>
 

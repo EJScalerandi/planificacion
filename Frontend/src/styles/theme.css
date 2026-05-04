@@ -326,7 +326,8 @@ body {
 /* ========================================================= */
 
 .pp-table{
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   border-collapse: separate;
   border-spacing: 0;
   background: var(--surface);
@@ -334,7 +335,7 @@ body {
   font-size: 12px;
   line-height: 1.25;
   font-feature-settings: "tnum" 1;
-  min-width: 1200px;
+  table-layout: auto;
 }
 
 .pp-table th,
@@ -410,31 +411,45 @@ body {
 .pp-input--date{ width: 160px; }
 .pp-input--text{ width: 220px; }
 .pp-select--day{ width: 180px; }
+.pp-input--dateCompact{
+  width: 136px;
+  min-width: 136px;
+  cursor: pointer;
+}
 
 .pp-dateFilterBox{
   display: grid;
-  gap: 8px;
-  min-width: 190px;
+  gap: 6px;
+  min-width: 146px;
+}
+
+.pp-dateFilterBox--compact{
+  min-width: 146px;
+}
+
+.pp-dateField{
+  display: grid;
+  gap: 4px;
 }
 
 .pp-dateRow{
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 8px;
 }
 
 .pp-dateLabel{
   font-size: 11px;
   color: var(--ink-weak);
-  margin-bottom: 4px;
+  margin-bottom: 0;
   font-weight: 900;
 }
 
 .pp-checkRow{
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  font-size: 12px;
+  gap: 6px;
+  font-size: 11px;
   color: var(--ink);
 }
 
@@ -557,17 +572,50 @@ body {
 .pp-dateChecks{
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
 .pp-checkRow{
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  font-size: 12px;
+  gap: 6px;
+  font-size: 11px;
   color: var(--ink);
   font-weight: 800;
+}
+
+.pp-btnCompact{
+  padding: 6px 8px;
+  font-size: 11px;
+  line-height: 1;
+  justify-self: start;
+}
+
+.pp-colHeader,
+.pp-colFilter,
+.pp-colCell{
+  width: max-content;
+}
+
+.pp-colHeader--nv,
+.pp-colFilter--nv,
+.pp-colCell--nv{
+  min-width: 96px;
+}
+
+.pp-colHeader--acciones,
+.pp-colFilter--acciones,
+.pp-colCell--acciones{
+  min-width: 220px;
+}
+
+.pp-colFilter--fecha_venta,
+.pp-colFilter--fecha_medicion,
+.pp-colFilter--inicio_prod,
+.pp-colFilter--fecha_salida,
+.pp-colFilter--fecha_llegada{
+  min-width: 150px;
 }
 
 /* ===========================
