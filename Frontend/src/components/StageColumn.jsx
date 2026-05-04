@@ -556,6 +556,13 @@ function QcModal({ open, onClose, item, line, stageKey, title, onSaved }) {
     submit();
   };
 
+  const handleEnterKey = (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    if (saving) return;
+    submit();
+  };
+
   if (!open || !item) return null;
 
   return (
@@ -603,7 +610,10 @@ function QcModal({ open, onClose, item, line, stageKey, title, onSaved }) {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <form
+          onSubmit={handleSubmit}
+          style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}
+        >
           {err && <div style={{ color: 'crimson', fontWeight: 800 }}>{err}</div>}
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -614,6 +624,7 @@ function QcModal({ open, onClose, item, line, stageKey, title, onSaved }) {
                 type="password"
                 value={pin}
                 onChange={(e) => setPin(e.target.value)}
+                onKeyDown={handleEnterKey}
                 inputMode="numeric"
                 autoComplete="off"
                 placeholder="Ej: 1234"
@@ -622,7 +633,12 @@ function QcModal({ open, onClose, item, line, stageKey, title, onSaved }) {
 
             <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <span style={{ fontWeight: 800 }}>Estado</span>
-              <select className="btn" value={status} onChange={(e) => setStatus(e.target.value)}>
+              <select
+                className="btn"
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                onKeyDown={handleEnterKey}
+              >
                 <option value="APROBADO">Autorizar</option>
                 <option value="OBSERVADO">Observar</option>
                 <option value="RECHAZADO">Rechazar</option>
@@ -644,6 +660,7 @@ function QcModal({ open, onClose, item, line, stageKey, title, onSaved }) {
                   style={{ width: '100%' }}
                   value={motiveId}
                   onChange={(e) => setMotiveId(e.target.value)}
+                  onKeyDown={handleEnterKey}
                 >
                   <option value="">— Elegí un motivo —</option>
                   {(motives || []).map((m) => (
@@ -665,7 +682,7 @@ function QcModal({ open, onClose, item, line, stageKey, title, onSaved }) {
               {saving ? 'Guardando…' : 'Confirmar'}
             </button>
           </div>
-        </div>
+        </form>
       </div>
     </div>
   );

@@ -1,5 +1,4 @@
-Cambio aplicado en StageColumn.jsx
-
-- En el modal QC, Enter ahora ejecuta Confirmar.
-- Se resolvio envolviendo el contenido del modal en un form con onSubmit.
-- El boton Confirmar paso a type=submit.
+Cambio aplicado:
+- En QcModal, Enter ahora confirma igual que el botón "Confirmar".
+- Se corrigió el cierre del formulario del modal QC.
+- Se agregó manejo explícito de Enter en PIN, Estado y Motivo.
