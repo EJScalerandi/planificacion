@@ -506,7 +506,6 @@ const BASE_COLS = [
   { id: 'observacion', label: 'Observación', patchKey: 'observacion_imput' },
 
   { id: 'auth_admin', label: 'Aut. Admin', type: 'bool', patchKey: 'auth_admin' },
-  { id: 'auth_logistica', label: 'Aut. Logística', type: 'bool', patchKey: 'auth_logistica' },
 ];
 
 const ACTION_COL = { id: 'acciones', label: 'Acciones', type: 'actions' };
@@ -1050,19 +1049,21 @@ export default function PreproduccionValoresTable() {
   }, [logModalRow, logisticaPresets]);
 
   // ====== Estado acciones (solo full) ======
-  // ✅ CORREGIDO:
-  // - "Enviado" depende de fecha_envio_produccion (flag real), NO de "existe en portones"
-  // - "Pendiente" si NO está autorizado por logística
-  // - "Listo" si logística ok
+  // - "Enviado" depende de fecha_envio_produccion
+  // - "Pendiente" si falta Fecha Producción
+  // - "Listo" cuando ya tiene Fecha Producción
   const getAccionesStatus = useCallback((row) => {
     const d = row?.data || {};
 
-    const alreadySent = Boolean(d.fecha_envio_produccion ?? d.Fecha_Envio_Produccion ?? d.fecha_envio_prod ?? d.Fecha_Envio_Prod);
+    const alreadySent = Boolean(
+      d.fecha_envio_produccion ?? d.Fecha_Envio_Produccion ?? d.fecha_envio_prod ?? d.Fecha_Envio_Prod
+    );
+    const prodDate10 = getInicioProdEffective(row);
 
     if (alreadySent) return 'produccion';
-    if (!Boolean(d.auth_logistica)) return 'pendiente';
+    if (!prodDate10) return 'pendiente';
     return 'listo';
-  }, []);
+  }, [getInicioProdEffective]);
 
   // =====================
   // Date filter: intervalo + con fecha + sin fecha
@@ -1187,7 +1188,7 @@ export default function PreproduccionValoresTable() {
       const id = row?.id;
       if (!id) return;
 
-      const ok = window.confirm('Esto va a quitar SOLO las autorizaciones (Admin y Logística) para este NV.\n\n¿Continuar?');
+      const ok = window.confirm('Esto va a quitar la autorización de Admin y reiniciar la Fecha Producción / envío a producción para este NV.\n\n¿Continuar?');
       if (!ok) return;
 
       // ✅ NUEVO: si había borrador local de fecha prod, lo limpiamos
@@ -1198,8 +1199,7 @@ export default function PreproduccionValoresTable() {
         auth_logistica: false,
         auth_admin_at: null,
         auth_logistica_at: null,
-        // Importante: si reseteamos autorizaciones, también liberamos el envío a producción
-        // (el botón depende de estas fechas/campos).
+        // Reinicia la fecha de producción y libera el envío a producción.
         inicio_prod_imput: null,
         fecha_envio_produccion: null,
       });
@@ -1209,7 +1209,7 @@ export default function PreproduccionValoresTable() {
 
   // ✅ CORREGIDO:
   // - Permite enviar aunque el NV ya exista en PORTONES (no es "enviado" automáticamente)
-  // - Requiere fecha de producción (opción 3)
+  // - Requiere Fecha Producción
   // - Persiste:
   //   1) preproduccion_valores.inicio_prod_imput
   //   2) portones.fecha_prod (update si existe / create si no existe)
@@ -1223,9 +1223,7 @@ export default function PreproduccionValoresTable() {
 
       const d = row?.data || {};
 
-      // SOLO logística habilita el envío
-      const okAuth = Boolean(d.auth_logistica);
-      if (!okAuth) return;
+      // La habilitación depende solo de que exista Fecha Producción.
 
       const nv = getNvIntFromRow(row);
       if (nv == null) {
@@ -1444,49 +1442,41 @@ export default function PreproduccionValoresTable() {
         : { from: '', to: '', has: false, empty: false };
 
     const from = curr.from || '';
+    const to = curr.to || '';
     const has = Boolean(curr.has);
     const empty = Boolean(curr.empty);
 
     const setObj = (next) => setFilters((p) => ({ ...p, [colId]: { ...curr, ...next } }));
 
-    const openPicker = (e) => {
-      try {
-        e.currentTarget.showPicker?.();
-      } catch {}
-    };
-
     return (
-      <div className="pp-dateFilterBox pp-dateFilterBox--compact">
-        <div className="pp-dateField">
-          <div className="pp-dateLabel">Desde</div>
-          <input
-            type="date"
-            value={from}
-            onChange={(e) => setObj({ from: e.target.value, to: '' })}
-            onClick={openPicker}
-            onFocus={openPicker}
-            onKeyDown={(e) => e.preventDefault()}
-            onPaste={(e) => e.preventDefault()}
-            inputMode="none"
-            className="pp-input pp-input--dateCompact"
-          />
+      <div className="pp-dateFilterBox">
+        <div className="pp-dateRow">
+          <div>
+            <div className="pp-dateLabel">Desde</div>
+            <input type="date" value={from} onChange={(e) => setObj({ from: e.target.value })} className="pp-input" />
+          </div>
+          <div>
+            <div className="pp-dateLabel">Hasta</div>
+            <input type="date" value={to} onChange={(e) => setObj({ to: e.target.value })} className="pp-input" />
+          </div>
         </div>
 
-        <div className="pp-dateChecks">
-          <label className="pp-checkRow">
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 6 }}>
+          <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <input type="checkbox" checked={has} onChange={(e) => setObj({ has: e.target.checked })} />
-            <span>Con fecha</span>
+            <span style={{ fontSize: 12 }}>Con fecha</span>
           </label>
 
-          <label className="pp-checkRow">
+          <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <input type="checkbox" checked={empty} onChange={(e) => setObj({ empty: e.target.checked })} />
-            <span>Sin fecha</span>
+            <span style={{ fontSize: 12 }}>Sin fecha</span>
           </label>
         </div>
 
         <button
           type="button"
-          className="btn pp-btnCompact"
+          className="btn"
+          style={{ marginTop: 8 }}
           onClick={() => setFilters((p) => ({ ...p, [colId]: { from: '', to: '', has: false, empty: false } }))}
         >
           Limpiar
@@ -1546,12 +1536,12 @@ export default function PreproduccionValoresTable() {
               onClick={() => sendToProduccion(row)}
               disabled={isBusy}
               className="btn btn--brand pp-btnCell"
-              title="Enviar a producción (requiere autorización de logística)"
+              title="Enviar a producción (requiere Fecha Producción)"
             >
               Enviar a producción
             </button>
           ) : (
-            <span className="pp-badge pp-badge--pending" title="Falta autorización de logística">
+            <span className="pp-badge pp-badge--pending" title="Falta Fecha Producción">
               Pendiente
             </span>
           )}
@@ -1993,7 +1983,7 @@ export default function PreproduccionValoresTable() {
                   {visibleColsList.map((c) => (
                     <th
                       key={c.id}
-                      className={`pp-th pp-colHeader pp-colHeader--${c.id}`}
+                      className="pp-th"
                       style={{
                         textAlign: 'left',
                         whiteSpace: 'nowrap',
@@ -2007,7 +1997,7 @@ export default function PreproduccionValoresTable() {
 
                 <tr>
                   {visibleColsList.map((c) => (
-                    <th key={`${c.id}_filter`} className={`pp-th pp-th--filter pp-colFilter pp-colFilter--${c.id}`}>
+                    <th key={`${c.id}_filter`} className="pp-th pp-th--filter">
                       {c.type === 'actions' ? (
                         <select
                           value={filters[c.id] || ''}
@@ -2066,7 +2056,6 @@ export default function PreproduccionValoresTable() {
                     {visibleColsList.map((col) => (
                       <td
                         key={`${row.id}_${col.id}`}
-                        className={`pp-colCell pp-colCell--${col.id}`}
                         style={{
                           borderBottom: '1px solid #f0f0f0',
                           padding: 8,
@@ -2134,7 +2123,8 @@ export default function PreproduccionValoresTable() {
         </div>
 
         <div style={{ marginTop: 8, fontSize: 11, color: '#6b7280' }}>
-          Fechas: usá <b>Desde</b> con el calendario desplegable, y opcionalmente <b>Con fecha</b> o <b>Sin fecha</b>.
+          Fechas: podés usar <b>Desde/Hasta</b> (intervalo), y/o <b>Con fecha</b>, y/o <b>Sin fecha</b>. Si combinás
+          intervalo + “Sin fecha” trae <i>intervalo OR sin fecha</i>.
         </div>
       </div>
 
