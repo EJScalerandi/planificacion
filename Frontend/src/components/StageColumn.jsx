@@ -149,7 +149,7 @@ function getIsoWeekInfo(dateLike) {
   };
 }
 
-function getLaserWeekLabel(item) {
+function getProdWeekLabel(item) {
   const info = getIsoWeekInfo(getProdDate10(item));
   return info?.week != null ? `Semana N° ${info.week}` : 'Semana N° —';
 }
@@ -433,7 +433,7 @@ function DatosModal({ open, onClose, item, title }) {
               ))
             )}
           </div>
-        </form>
+        </div>
       </div>
     </div>
   );
@@ -1338,7 +1338,7 @@ export default function StageColumn({
                 ) : null}
 
                 <div style={{ fontWeight: 900 }}>NV {p?.nv ?? p?.NV ?? '-'}</div>
-                <div>{getLaserWeekLabel(p)}</div>
+                <div>{getProdWeekLabel(p)}</div>
 
                 <div style={{ fontSize: 12, opacity: 0.75 }}>
                   Estado: {p?.[effKey] || ''}
