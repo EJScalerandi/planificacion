@@ -36,6 +36,7 @@ alter table public.ipanel add column if not exists despacho_fin timestamp with t
 
 alter table public.ipanel add column if not exists fecha_prod date null;
 alter table public.ipanel add column if not exists fecha_plan_entrega date null;
+alter table public.ipanel add column if not exists descripcion text null;
 
 -- Normaliza nulos legacy a Pendiente para que aparezcan correctamente en el tablero.
 update public.ipanel
@@ -89,3 +90,10 @@ values
   ('ipanel', 'despacho',   'ALL', null, 'inyeccion');
 
 commit;
+
+
+-- Campo disponible para condiciones de workflow:
+-- En /admin/workflow, linea iPanels, usar campo `descripcion` con operador `contains`.
+-- Ejemplos:
+--   descripcion contains SIMIL ALUMINIO
+--   descripcion contains SIMIL MADERA

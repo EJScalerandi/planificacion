@@ -65,6 +65,13 @@ function field(row, keys) {
   return getAny(row, keys) || getAny(d, keys);
 }
 
+function getDescripcion(row) {
+  return toStr(
+    row?.descripcion ||
+    field(row, ['descripcion', 'producto_descripcion', 'producto_descripciones', 'descripcion_producto'])
+  );
+}
+
 function RowStatus({ row }) {
   const sent = row?.produccion_enviada === true || !!row?.ipanel_id;
   if (sent) {
@@ -219,7 +226,7 @@ export default function IpanelPreproduccionValoresTable() {
           className="btn"
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Buscar por partida, NV, cliente, nombre, localidad u OC"
+          placeholder="Buscar por partida, NV, cliente, nombre, descripcion, localidad u OC"
           style={{ minWidth: 360 }}
         />
         <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontWeight: 800 }}>
@@ -260,6 +267,7 @@ export default function IpanelPreproduccionValoresTable() {
               <th style={th}>Fecha NV</th>
               <th style={th}>Cliente</th>
               <th style={th}>Nombre</th>
+              <th style={th}>Descripcion</th>
               <th style={th}>Localidad</th>
               <th style={th}>Fecha Producción</th>
               <th style={th}>Fecha Entrega</th>
@@ -293,6 +301,7 @@ export default function IpanelPreproduccionValoresTable() {
                   <td style={td}>{formatDMY(row.fecha_nv || d.fecha_nv || d.fecha)}</td>
                   <td style={td}>{toStr(field(row, ['cliente', 'Cliente']))}</td>
                   <td style={td}>{toStr(field(row, ['nombre', 'Nombre']))}</td>
+                  <td style={{ ...td, minWidth: 280, whiteSpace: 'pre-wrap' }}>{getDescripcion(row)}</td>
                   <td style={td}>{toStr(field(row, ['localidad', 'Localidad']))}</td>
                   <td style={td}>
                     <input
@@ -339,7 +348,7 @@ export default function IpanelPreproduccionValoresTable() {
 
             {!loading && rows.length === 0 && (
               <tr>
-                <td style={{ ...td, textAlign: 'center', padding: 20 }} colSpan={10}>
+                <td style={{ ...td, textAlign: 'center', padding: 20 }} colSpan={11}>
                   No hay iPanels para mostrar.
                 </td>
               </tr>

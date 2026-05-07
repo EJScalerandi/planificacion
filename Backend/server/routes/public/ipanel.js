@@ -39,7 +39,7 @@ router.get('/ipanel', async (req, res) => {
     if (q) {
       params.push(`%${q}%`);
       const p = params.length;
-      where.push(`(partida::text ilike $${p} or coalesce(nv::text, '') ilike $${p} or coalesce(observaciones, '') ilike $${p})`);
+      where.push(`(partida::text ilike $${p} or coalesce(nv::text, '') ilike $${p} or coalesce(observaciones, '') ilike $${p} or coalesce(descripcion, '') ilike $${p})`);
     }
 
     const n = toIntOrNull(req.query.nv || req.query.partida);
@@ -74,7 +74,7 @@ router.get('/ipanel', async (req, res) => {
 // POST /ipanel
 router.post('/ipanel', async (req, res) => {
   try {
-    const { partida: bodyPartida, npartida, nv, fecha_prod, fecha_plan_entrega, fecha_nv, observaciones } = req.body || {};
+    const { partida: bodyPartida, npartida, nv, fecha_prod, fecha_plan_entrega, fecha_nv, observaciones, descripcion } = req.body || {};
     const nNv = Number(nv);
     const hasPartida = (bodyPartida ?? npartida) != null;
     const nPartida = hasPartida ? Number(bodyPartida ?? npartida) : nNv;
@@ -84,11 +84,11 @@ router.post('/ipanel', async (req, res) => {
 
     const { rows } = await pool.query(
       `
-      insert into public.ipanel (nv, partida, fecha_prod, fecha_plan_entrega, fecha_nv, observaciones)
-      values ($1,$2,$3::date,$4::date,$5::date,$6)
+      insert into public.ipanel (nv, partida, fecha_prod, fecha_plan_entrega, fecha_nv, observaciones, descripcion)
+      values ($1,$2,$3::date,$4::date,$5::date,$6,$7)
       returning *;
       `,
-      [nNv, nPartida, fecha_prod || null, fecha_plan_entrega || null, fecha_nv || null, observaciones || null]
+      [nNv, nPartida, fecha_prod || null, fecha_plan_entrega || null, fecha_nv || null, observaciones || null, descripcion || null]
     );
     return res.status(201).json(rows[0]);
   } catch (err) {
