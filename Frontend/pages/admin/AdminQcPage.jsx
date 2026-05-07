@@ -13,36 +13,55 @@ const KINDS = [
   { key: 'RECHAZADO', label: 'RECHAZADO' },
 ];
 
-// Stages conocidas (por lo que tenés hoy en back)
+// Stages conocidas para permisos QC.
+// IMPORTANTE: el value real que se guarda en DB es stage_key.
+// Solo cambia el label visible para que sea claro en la pantalla.
 const STAGES_BY_LINE = {
   portones: [
-    'diseno',
-    'laser',
-    'guillotina',
-    'corte_revest',
-    'plegadora',
-    'plegado_revest',
-    'armado_piernas',
-    'armado_marco_piernas',
-    'armado_hojas',
-    'armado_primario',
-    'revestimiento',
-    'pintura',
-    'inyeccion',
-    'armado_final',
-    'despacho',
+    { key: 'diseno', label: 'Diseño' },
+    { key: 'laser', label: 'Láser' },
+    { key: 'guillotina', label: 'Guillotina / Corte piernas' },
+    { key: 'corte_revest', label: 'Corte revestimiento' },
+    { key: 'plegadora', label: 'Plegadora / Plegado piernas' },
+    { key: 'plegado_revest', label: 'Plegado revestimiento' },
+    { key: 'armado_piernas', label: 'Armado piernas' },
+    { key: 'armado_marco_piernas', label: 'Armado marco piernas' },
+    { key: 'armado_hojas', label: 'Armado hojas' },
+    { key: 'armado_primario', label: 'Armado primario' },
+    { key: 'revestimiento', label: 'Revestimiento' },
+    { key: 'pintura', label: 'Pintura sistemas' },
+    { key: 'pintura_revestimiento', label: 'Pintura revestimiento' },
+    { key: 'inyeccion', label: 'Inyección' },
+    { key: 'armado_final', label: 'Armado final' },
+    { key: 'despacho', label: 'Despacho' },
   ],
   ipanel: [
-    'diseno',
-    'guillotina',
-    'plegado',
-    'pintura',
-    'inyeccion',
-    'despacho',
+    { key: 'diseno', label: 'Diseño' },
+    { key: 'guillotina', label: 'Guillotina / Corte iPanel' },
+    { key: 'plegado', label: 'Plegado' },
+    { key: 'pintura', label: 'Pintura' },
+    { key: 'inyeccion', label: 'Inyección' },
+    { key: 'despacho', label: 'Despacho' },
   ],
 };
 
-function toBool(v) { return v === true; }
+const STAGE_LABELS = Object.fromEntries(
+  Object.entries(STAGES_BY_LINE).flatMap(([line, stages]) =>
+    stages.map((stage) => [`${line}:${stage.key}`, stage.label])
+  )
+);
+
+function toBool(v) {
+  return v === true;
+}
+
+function getStageOptions(line) {
+  return STAGES_BY_LINE[line] || [];
+}
+
+function stageLabel(line, stageKey) {
+  return STAGE_LABELS[`${line}:${stageKey}`] || stageKey || '—';
+}
 
 function Modal({ open, title, onClose, children, footer }) {
   if (!open) return null;
@@ -55,7 +74,7 @@ function Modal({ open, title, onClose, children, footer }) {
         display: 'grid',
         placeItems: 'center',
         zIndex: 9999,
-        padding: 16
+        padding: 16,
       }}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
@@ -68,18 +87,34 @@ function Modal({ open, title, onClose, children, footer }) {
           borderRadius: 12,
           border: '1px solid var(--border)',
           boxShadow: '0 18px 55px rgba(0,0,0,0.25)',
-          overflow: 'hidden'
+          overflow: 'hidden',
         }}
       >
-        <div style={{ padding: 12, borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+        <div
+          style={{
+            padding: 12,
+            borderBottom: '1px solid var(--border)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            gap: 10,
+          }}
+        >
           <div style={{ fontWeight: 900 }}>{title}</div>
-          <button className="btn" type="button" onClick={onClose}>Cerrar</button>
+          <button className="btn" type="button" onClick={onClose}>
+            Cerrar
+          </button>
         </div>
-        <div style={{ padding: 12 }}>
-          {children}
-        </div>
+        <div style={{ padding: 12 }}>{children}</div>
         {footer && (
-          <div style={{ padding: 12, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <div
+            style={{
+              padding: 12,
+              borderTop: '1px solid var(--border)',
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: 8,
+            }}
+          >
             {footer}
           </div>
         )}
@@ -97,23 +132,22 @@ function ScopeEditor({ value, onChange, disabled }) {
     for (const ln of Object.keys(STAGES_BY_LINE)) m.set(ln, new Set());
     for (const s of scopes) {
       const line = String(s?.line || '').trim();
-      const stage_key = String(s?.stage_key || '').trim();
+      const stageKey = String(s?.stage_key || '').trim();
       const enabled = s?.enabled !== false;
-      if (!line || !stage_key || !enabled) continue;
+      if (!line || !stageKey || !enabled) continue;
       if (!m.has(line)) m.set(line, new Set());
-      m.get(line).add(stage_key);
+      m.get(line).add(stageKey);
     }
     return m;
   }, [JSON.stringify(scopes)]);
 
-  const setChecked = (line, stage_key, checked) => {
+  const setChecked = (line, stageKey, checked) => {
     const nextMap = new Map(map);
     const set = new Set(nextMap.get(line) || []);
-    if (checked) set.add(stage_key);
-    else set.delete(stage_key);
+    if (checked) set.add(stageKey);
+    else set.delete(stageKey);
     nextMap.set(line, set);
 
-    // Convertir map a array scopes (enabled=true)
     const next = [];
     for (const [ln, stSet] of nextMap.entries()) {
       for (const sk of Array.from(stSet)) {
@@ -125,22 +159,25 @@ function ScopeEditor({ value, onChange, disabled }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, opacity: disabled ? 0.6 : 1 }}>
-      {LINES.map(ln => (
+      {LINES.map((ln) => (
         <div key={ln.key} style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 12 }}>
           <div style={{ fontWeight: 900, marginBottom: 8 }}>{ln.label}</div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8 }}>
-            {(STAGES_BY_LINE[ln.key] || []).map(sk => {
-              const checked = (map.get(ln.key) || new Set()).has(sk);
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 8 }}>
+            {getStageOptions(ln.key).map((stage) => {
+              const checked = (map.get(ln.key) || new Set()).has(stage.key);
               return (
-                <label key={`${ln.key}-${sk}`} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <label key={`${ln.key}-${stage.key}`} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   <input
                     type="checkbox"
                     disabled={disabled}
                     checked={checked}
-                    onChange={(e) => setChecked(ln.key, sk, e.target.checked)}
+                    onChange={(e) => setChecked(ln.key, stage.key, e.target.checked)}
                   />
-                  <span style={{ fontWeight: 700 }}>{sk}</span>
+                  <span>
+                    <b>{stage.label}</b>{' '}
+                    <span style={{ opacity: 0.65 }}>({stage.key})</span>
+                  </span>
                 </label>
               );
             })}
@@ -148,7 +185,7 @@ function ScopeEditor({ value, onChange, disabled }) {
         </div>
       ))}
       <div style={{ fontSize: 12, opacity: 0.7 }}>
-        Si el usuario es GLOBAL, los scopes no son necesarios (pero podés dejarlos igual).
+        Si el usuario es GLOBAL, los scopes no son necesarios, pero podés dejarlos igual.
       </div>
     </div>
   );
@@ -157,7 +194,6 @@ function ScopeEditor({ value, onChange, disabled }) {
 export default function AdminQcPage() {
   const nav = useNavigate();
 
-  // Guard simple por token
   useEffect(() => {
     const t = getAdminToken();
     if (!t) nav('/admin/login', { replace: true });
@@ -168,7 +204,6 @@ export default function AdminQcPage() {
     nav('/admin/login', { replace: true });
   };
 
-  // USERS
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [usersErr, setUsersErr] = useState('');
   const [users, setUsers] = useState([]);
@@ -178,8 +213,7 @@ export default function AdminQcPage() {
     setLoadingUsers(true);
     try {
       const { data } = await api.get('/admin/qc/users');
-      const list = data?.users || [];
-      setUsers(list);
+      setUsers(data?.users || []);
     } catch (e) {
       const msg = e?.response?.data?.error || e.message;
       setUsersErr(msg);
@@ -189,11 +223,12 @@ export default function AdminQcPage() {
     }
   };
 
-  useEffect(() => { reloadUsers(); }, []);
+  useEffect(() => {
+    reloadUsers();
+  }, []);
 
-  // MODAL create/edit user
   const [userModalOpen, setUserModalOpen] = useState(false);
-  const [userModalMode, setUserModalMode] = useState('create'); // create | edit
+  const [userModalMode, setUserModalMode] = useState('create');
   const [editingUser, setEditingUser] = useState(null);
 
   const [uName, setUName] = useState('');
@@ -221,7 +256,7 @@ export default function AdminQcPage() {
     setUserModalMode('edit');
     setEditingUser(u);
     setUName(u?.name || '');
-    setUPin(''); // si querés cambiar
+    setUPin('');
     setUIsGlobal(toBool(u?.is_global));
     setUIsActive(u?.is_active !== false);
     setUScopes(Array.isArray(u?.scopes) ? u.scopes : []);
@@ -238,39 +273,32 @@ export default function AdminQcPage() {
       return;
     }
 
-    if (userModalMode === 'create') {
-      const pin = String(uPin || '').trim();
-      if (!/^\d{3,10}$/.test(pin)) {
-        setUserFormErr('PIN inválido (3 a 10 dígitos numéricos).');
-        return;
-      }
-    } else {
-      // edit: pin opcional, si lo cargan debe ser válido
-      const pin = String(uPin || '').trim();
-      if (pin && !/^\d{3,10}$/.test(pin)) {
-        setUserFormErr('PIN inválido (3 a 10 dígitos numéricos).');
-        return;
-      }
+    const pin = String(uPin || '').trim();
+    if (userModalMode === 'create' && !/^\d{3,10}$/.test(pin)) {
+      setUserFormErr('PIN inválido (3 a 10 dígitos numéricos).');
+      return;
+    }
+    if (userModalMode === 'edit' && pin && !/^\d{3,10}$/.test(pin)) {
+      setUserFormErr('PIN inválido (3 a 10 dígitos numéricos).');
+      return;
     }
 
     try {
       setSavingUser(true);
 
       if (userModalMode === 'create') {
-        const payload = {
+        await api.post('/admin/qc/users', {
           name: nm,
-          pin: String(uPin).trim(),
+          pin,
           is_global: uIsGlobal === true,
           is_active: uIsActive === true,
           scopes: Array.isArray(uScopes) ? uScopes : [],
-        };
-        await api.post('/admin/qc/users', payload);
+        });
         await reloadUsers();
         setUserModalOpen(false);
         return;
       }
 
-      // edit
       const id = Number(editingUser?.id);
       if (!Number.isInteger(id)) throw new Error('Usuario inválido (id).');
 
@@ -279,12 +307,9 @@ export default function AdminQcPage() {
         is_global: uIsGlobal === true,
         is_active: uIsActive === true,
       };
-      const pin = String(uPin || '').trim();
       if (pin) patch.pin = pin;
 
       await api.put(`/admin/qc/users/${id}`, patch);
-
-      // scopes (siempre los mandamos como reemplazo, así no hay drift)
       await api.put(`/admin/qc/users/${id}/scopes`, {
         scopes: Array.isArray(uScopes) ? uScopes : [],
       });
@@ -298,14 +323,13 @@ export default function AdminQcPage() {
     }
   };
 
-  // MOTIVES
   const [loadingMot, setLoadingMot] = useState(false);
   const [motErr, setMotErr] = useState('');
   const [motives, setMotives] = useState([]);
 
   const [mLine, setMLine] = useState('portones');
   const [mKind, setMKind] = useState('RECHAZADO');
-  const [mStage, setMStage] = useState(''); // opcional ('' => null)
+  const [mStage, setMStage] = useState('');
 
   const reloadMotives = async () => {
     setMotErr('');
@@ -316,7 +340,7 @@ export default function AdminQcPage() {
           line: mLine || undefined,
           kind: mKind || undefined,
           stage: mStage ? mStage : undefined,
-        }
+        },
       });
       setMotives(data?.motives || []);
     } catch (e) {
@@ -326,11 +350,12 @@ export default function AdminQcPage() {
     }
   };
 
-  useEffect(() => { reloadMotives(); }, [mLine, mKind, mStage]);
+  useEffect(() => {
+    reloadMotives();
+  }, [mLine, mKind, mStage]);
 
-  // Modal motive
   const [motModalOpen, setMotModalOpen] = useState(false);
-  const [motModalMode, setMotModalMode] = useState('create'); // create|edit
+  const [motModalMode, setMotModalMode] = useState('create');
   const [editingMotive, setEditingMotive] = useState(null);
 
   const [moLine, setMoLine] = useState('portones');
@@ -346,14 +371,12 @@ export default function AdminQcPage() {
   const openCreateMotive = () => {
     setMotModalMode('create');
     setEditingMotive(null);
-
     setMoLine(mLine || 'portones');
     setMoKind(mKind || 'RECHAZADO');
     setMoStage(mStage || '');
     setMoLabel('');
     setMoEnabled(true);
     setMoPriority(100);
-
     setMotFormErr('');
     setMotModalOpen(true);
   };
@@ -361,14 +384,12 @@ export default function AdminQcPage() {
   const openEditMotive = (m) => {
     setMotModalMode('edit');
     setEditingMotive(m);
-
     setMoLine(m?.line || 'portones');
     setMoKind(m?.kind || 'RECHAZADO');
     setMoStage(m?.stage_key || '');
     setMoLabel(m?.label || '');
     setMoEnabled(m?.enabled !== false);
     setMoPriority(Number.isFinite(Number(m?.priority)) ? Number(m.priority) : 100);
-
     setMotFormErr('');
     setMotModalOpen(true);
   };
@@ -428,18 +449,27 @@ export default function AdminQcPage() {
         <h2 className="h1">Admin – QC (Usuarios y Motivos)</h2>
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <Link className="btn" to="/admin">Volver</Link>
-          <Link className="btn" to="/">Inicio</Link>
-          <button className="btn" type="button" onClick={reloadUsers}>Refrescar</button>
-          <button className="btn" type="button" onClick={logout}>Salir</button>
+          <Link className="btn" to="/admin">
+            Volver
+          </Link>
+          <Link className="btn" to="/">
+            Inicio
+          </Link>
+          <button className="btn" type="button" onClick={reloadUsers}>
+            Refrescar
+          </button>
+          <button className="btn" type="button" onClick={logout}>
+            Salir
+          </button>
         </div>
       </div>
 
-      {/* USERS */}
       <div style={{ marginTop: 12, border: '1px solid var(--border)', borderRadius: 12, padding: 12, background: 'var(--surface)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           <div style={{ fontWeight: 900, fontSize: 16 }}>Usuarios QC</div>
-          <button className="btn btn--brand" type="button" onClick={openCreateUser}>+ Nuevo usuario</button>
+          <button className="btn btn--brand" type="button" onClick={openCreateUser}>
+            + Nuevo usuario
+          </button>
         </div>
 
         {usersErr && <div style={{ color: 'crimson', fontWeight: 800, marginTop: 10 }}>{usersErr}</div>}
@@ -459,9 +489,9 @@ export default function AdminQcPage() {
                 </tr>
               </thead>
               <tbody>
-                {usersSorted.map(u => {
+                {usersSorted.map((u) => {
                   const scopes = Array.isArray(u?.scopes) ? u.scopes : [];
-                  const scopeCount = scopes.filter(s => s?.enabled !== false).length;
+                  const scopeCount = scopes.filter((s) => s?.enabled !== false).length;
 
                   return (
                     <tr key={u.id}>
@@ -470,11 +500,7 @@ export default function AdminQcPage() {
                       <td style={{ padding: 8, borderBottom: '1px solid #eee' }}>{u.is_active !== false ? 'Sí' : 'No'}</td>
                       <td style={{ padding: 8, borderBottom: '1px solid #eee' }}>{u.is_global === true ? 'Sí' : 'No'}</td>
                       <td style={{ padding: 8, borderBottom: '1px solid #eee' }}>
-                        {u.is_global === true ? (
-                          <span style={{ fontWeight: 800 }}>GLOBAL</span>
-                        ) : (
-                          <span>{scopeCount} permisos</span>
-                        )}
+                        {u.is_global === true ? <span style={{ fontWeight: 800 }}>GLOBAL</span> : <span>{scopeCount} permisos</span>}
                       </td>
                       <td style={{ padding: 8, borderBottom: '1px solid #eee' }}>
                         <button className="btn btn--brand" type="button" onClick={() => openEditUser(u)}>
@@ -486,7 +512,9 @@ export default function AdminQcPage() {
                 })}
                 {usersSorted.length === 0 && (
                   <tr>
-                    <td colSpan={6} style={{ padding: 10, opacity: 0.7 }}>Sin usuarios.</td>
+                    <td colSpan={6} style={{ padding: 10, opacity: 0.7 }}>
+                      Sin usuarios.
+                    </td>
                   </tr>
                 )}
               </tbody>
@@ -495,25 +523,34 @@ export default function AdminQcPage() {
         )}
       </div>
 
-      {/* MOTIVES */}
       <div style={{ marginTop: 14, border: '1px solid var(--border)', borderRadius: 12, padding: 12, background: 'var(--surface)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           <div style={{ fontWeight: 900, fontSize: 16 }}>Motivos QC</div>
-          <button className="btn btn--brand" type="button" onClick={openCreateMotive}>+ Nuevo motivo</button>
+          <button className="btn btn--brand" type="button" onClick={openCreateMotive}>
+            + Nuevo motivo
+          </button>
         </div>
 
         <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             <span style={{ fontSize: 12, opacity: 0.75, fontWeight: 800 }}>Línea</span>
             <select className="btn" value={mLine} onChange={(e) => setMLine(e.target.value)}>
-              {LINES.map(x => <option key={x.key} value={x.key}>{x.label}</option>)}
+              {LINES.map((x) => (
+                <option key={x.key} value={x.key}>
+                  {x.label}
+                </option>
+              ))}
             </select>
           </label>
 
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             <span style={{ fontSize: 12, opacity: 0.75, fontWeight: 800 }}>Tipo</span>
             <select className="btn" value={mKind} onChange={(e) => setMKind(e.target.value)}>
-              {KINDS.map(x => <option key={x.key} value={x.key}>{x.label}</option>)}
+              {KINDS.map((x) => (
+                <option key={x.key} value={x.key}>
+                  {x.label}
+                </option>
+              ))}
             </select>
           </label>
 
@@ -521,8 +558,10 @@ export default function AdminQcPage() {
             <span style={{ fontSize: 12, opacity: 0.75, fontWeight: 800 }}>Etapa (opcional)</span>
             <select className="btn" value={mStage} onChange={(e) => setMStage(e.target.value)}>
               <option value="">(Todas)</option>
-              {(STAGES_BY_LINE[mLine] || []).map(sk => (
-                <option key={sk} value={sk}>{sk}</option>
+              {getStageOptions(mLine).map((stage) => (
+                <option key={stage.key} value={stage.key}>
+                  {stage.label} ({stage.key})
+                </option>
               ))}
             </select>
           </label>
@@ -549,12 +588,14 @@ export default function AdminQcPage() {
               </tr>
             </thead>
             <tbody>
-              {(motives || []).map(m => (
+              {(motives || []).map((m) => (
                 <tr key={m.id}>
                   <td style={{ padding: 8, borderBottom: '1px solid #eee' }}>{m.id}</td>
                   <td style={{ padding: 8, borderBottom: '1px solid #eee' }}>{m.line}</td>
                   <td style={{ padding: 8, borderBottom: '1px solid #eee', fontWeight: 800 }}>{m.kind}</td>
-                  <td style={{ padding: 8, borderBottom: '1px solid #eee' }}>{m.stage_key || '—'}</td>
+                  <td style={{ padding: 8, borderBottom: '1px solid #eee' }}>
+                    {m.stage_key ? `${stageLabel(m.line, m.stage_key)} (${m.stage_key})` : '—'}
+                  </td>
                   <td style={{ padding: 8, borderBottom: '1px solid #eee' }}>{m.label}</td>
                   <td style={{ padding: 8, borderBottom: '1px solid #eee' }}>{m.enabled !== false ? 'Sí' : 'No'}</td>
                   <td style={{ padding: 8, borderBottom: '1px solid #eee' }}>{m.priority}</td>
@@ -567,7 +608,9 @@ export default function AdminQcPage() {
               ))}
               {!loadingMot && (motives || []).length === 0 && (
                 <tr>
-                  <td colSpan={8} style={{ padding: 10, opacity: 0.7 }}>Sin motivos para el filtro actual.</td>
+                  <td colSpan={8} style={{ padding: 10, opacity: 0.7 }}>
+                    Sin motivos para el filtro actual.
+                  </td>
                 </tr>
               )}
             </tbody>
@@ -575,7 +618,6 @@ export default function AdminQcPage() {
         </div>
       </div>
 
-      {/* MODAL USER */}
       <Modal
         open={userModalOpen}
         title={userModalMode === 'create' ? 'Crear usuario QC' : `Editar usuario QC #${editingUser?.id}`}
@@ -600,9 +642,7 @@ export default function AdminQcPage() {
           </label>
 
           <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <span style={{ fontWeight: 900 }}>
-              PIN {userModalMode === 'edit' ? '(solo si querés cambiarlo)' : ''}
-            </span>
+            <span style={{ fontWeight: 900 }}>PIN {userModalMode === 'edit' ? '(solo si querés cambiarlo)' : ''}</span>
             <input
               className="btn"
               value={uPin}
@@ -625,15 +665,10 @@ export default function AdminQcPage() {
 
         <div style={{ marginTop: 12 }}>
           <div style={{ fontWeight: 900, marginBottom: 8 }}>Permisos (scopes por etapa)</div>
-          <ScopeEditor
-            value={uScopes}
-            onChange={setUScopes}
-            disabled={false}
-          />
+          <ScopeEditor value={uScopes} onChange={setUScopes} disabled={false} />
         </div>
       </Modal>
 
-      {/* MODAL MOTIVE */}
       <Modal
         open={motModalOpen}
         title={motModalMode === 'create' ? 'Crear motivo QC' : `Editar motivo QC #${editingMotive?.id}`}
@@ -655,14 +690,22 @@ export default function AdminQcPage() {
           <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <span style={{ fontWeight: 900 }}>Línea</span>
             <select className="btn" value={moLine} onChange={(e) => setMoLine(e.target.value)} disabled={motModalMode === 'edit'}>
-              {LINES.map(x => <option key={x.key} value={x.key}>{x.label}</option>)}
+              {LINES.map((x) => (
+                <option key={x.key} value={x.key}>
+                  {x.label}
+                </option>
+              ))}
             </select>
           </label>
 
           <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <span style={{ fontWeight: 900 }}>Tipo</span>
             <select className="btn" value={moKind} onChange={(e) => setMoKind(e.target.value)} disabled={motModalMode === 'edit'}>
-              {KINDS.map(x => <option key={x.key} value={x.key}>{x.label}</option>)}
+              {KINDS.map((x) => (
+                <option key={x.key} value={x.key}>
+                  {x.label}
+                </option>
+              ))}
             </select>
           </label>
 
@@ -670,20 +713,17 @@ export default function AdminQcPage() {
             <span style={{ fontWeight: 900 }}>Etapa (opcional)</span>
             <select className="btn" value={moStage} onChange={(e) => setMoStage(e.target.value)}>
               <option value="">(Sin etapa específica)</option>
-              {(STAGES_BY_LINE[moLine] || []).map(sk => (
-                <option key={sk} value={sk}>{sk}</option>
+              {getStageOptions(moLine).map((stage) => (
+                <option key={stage.key} value={stage.key}>
+                  {stage.label} ({stage.key})
+                </option>
               ))}
             </select>
           </label>
 
           <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <span style={{ fontWeight: 900 }}>Prioridad</span>
-            <input
-              className="btn"
-              value={String(moPriority)}
-              onChange={(e) => setMoPriority(e.target.value)}
-              inputMode="numeric"
-            />
+            <input className="btn" value={String(moPriority)} onChange={(e) => setMoPriority(e.target.value)} inputMode="numeric" />
           </label>
 
           <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -701,7 +741,7 @@ export default function AdminQcPage() {
           </label>
 
           <div style={{ marginTop: 8, fontSize: 12, opacity: 0.7 }}>
-            Recordatorio: en tu back, los motivos aplican solo a estados QC <b>OBSERVADO</b> y <b>RECHAZADO</b>.
+            Recordatorio: los motivos aplican solo a estados QC <b>OBSERVADO</b> y <b>RECHAZADO</b>.
           </div>
         </div>
       </Modal>
