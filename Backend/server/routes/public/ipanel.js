@@ -24,16 +24,19 @@ function toIntOrNull(v) {
   return Number.isFinite(n) ? n : null;
 }
 
-// GET /ipanel
-// Tabla productiva: solo se alimenta cuando logistica envia un registro desde preproduccion_valores_ipanels.
+function normalizeDate10(v) {
+  if (v === null || v === undefined || v === '') return null;
+  if (typeof v !== 'string') return null;
+  const d = v.slice(0, 10);
+  return isValidISODate10(d) ? d : null;
+}
+
 router.get('/ipanel', async (req, res) => {
   try {
     const params = [];
     const where = [];
 
-    if (truthy(req.query.produccion) || truthy(req.query.production)) {
-      where.push('fecha_prod is not null');
-    }
+    if (truthy(req.query.produccion) || truthy(req.query.production)) where.push('fecha_prod is not null');
 
     const q = String(req.query.q || '').trim();
     if (q) {
@@ -71,7 +74,6 @@ router.get('/ipanel', async (req, res) => {
   }
 });
 
-// POST /ipanel
 router.post('/ipanel', async (req, res) => {
   try {
     const { partida: bodyPartida, npartida, nv, fecha_prod, fecha_plan_entrega, fecha_nv, observaciones, descripcion } = req.body || {};
@@ -84,11 +86,38 @@ router.post('/ipanel', async (req, res) => {
 
     const { rows } = await pool.query(
       `
-      insert into public.ipanel (nv, partida, fecha_prod, fecha_plan_entrega, fecha_nv, observaciones, descripcion)
-      values ($1,$2,$3::date,$4::date,$5::date,$6,$7)
+      insert into public.ipanel (
+        nv,
+        partida,
+        fecha_prod,
+        fecha_plan_entrega,
+        fecha_nv,
+        observaciones,
+        descripcion,
+        diseno,
+        guillotina,
+        plegado,
+        pintura,
+        inyeccion,
+        despacho
+      ) values ($1,$2,$3::date,$4::date,$5::date,$6,$7,$8,$9,$10,$11,$12,$13)
       returning *;
       `,
-      [nNv, nPartida, fecha_prod || null, fecha_plan_entrega || null, fecha_nv || null, observaciones || null, descripcion || null]
+      [
+        nNv,
+        nPartida,
+        normalizeDate10(fecha_prod),
+        normalizeDate10(fecha_plan_entrega),
+        normalizeDate10(fecha_nv),
+        observaciones || null,
+        descripcion || null,
+        'Pendiente',
+        null,
+        null,
+        null,
+        null,
+        null,
+      ]
     );
     return res.status(201).json(rows[0]);
   } catch (err) {
@@ -97,15 +126,12 @@ router.post('/ipanel', async (req, res) => {
   }
 });
 
-// POST /ipanel/:id/stage
 router.post('/ipanel/:id/stage', async (req, res) => {
   const { id } = req.params;
   const { stage, action } = req.body || {};
   const cfg = IPANEL_STAGES[stage];
 
-  if (!cfg || !['start', 'stop'].includes(action)) {
-    return res.status(400).json({ error: 'Parametros invalidos' });
-  }
+  if (!cfg || !['start', 'stop'].includes(action)) return res.status(400).json({ error: 'Parametros invalidos' });
 
   const client = await pool.connect();
   try {
@@ -117,13 +143,17 @@ router.post('/ipanel/:id/stage', async (req, res) => {
       await client.query('rollback');
       return res.status(404).json({ error: 'iPanel no encontrado' });
     }
-
     if (!row0.fecha_prod) {
       await client.query('rollback');
       return res.status(409).json({ error: 'El iPanel todavia no tiene fecha de produccion' });
     }
 
     if (action === 'start') {
+      if (row0[cfg.status] == null) {
+        await client.query('rollback');
+        return res.status(409).json({ error: `La etapa ${stage} todavia no esta habilitada por workflow` });
+      }
+
       const reqCheck = await checkRequirements('ipanel', stage, row0);
       if (!reqCheck.ok) {
         await client.query('rollback');
@@ -180,12 +210,7 @@ function datePatchHandler(fieldName) {
       }
 
       const { rows } = await pool.query(
-        `
-        update public.ipanel
-        set ${fieldName} = $2
-        where id = $1
-        returning *;
-        `,
+        `update public.ipanel set ${fieldName} = $2 where id = $1 returning *;`,
         [id, v ?? null]
       );
 
@@ -204,30 +229,9 @@ router.post('/ipanel/:id/fecha-med', datePatchHandler('fecha_med'));
 router.post('/ipanel/:id/fecha-plan', datePatchHandler('fecha_plan'));
 router.post('/ipanel/:id/fecha-plan-entrega', datePatchHandler('fecha_plan_entrega'));
 
-router.get('/ipanel/:id/observaciones', async (req, res) => {
-  const { id } = req.params;
-
-  try {
-    const { rows } = await pool.query(
-      `
-      select id, observaciones
-      from public.ipanel
-      where id = $1;
-      `,
-      [id]
-    );
-
-    if (!rows.length) return res.status(404).json({ error: 'iPanel no encontrado' });
-    return res.json(rows[0]);
-  } catch (err) {
-    console.error('get observaciones ipanel error:', err);
-    return res.status(500).json({ error: 'Error leyendo observaciones de iPanel', detail: err.message });
-  }
-});
-
 async function upsertIpanelObservaciones(req, res) {
   const { id } = req.params;
-  let { observaciones } = req.body || {};
+  const { observaciones } = req.body || {};
 
   try {
     if (observaciones !== null && observaciones !== undefined && typeof observaciones !== 'string') {
@@ -235,12 +239,7 @@ async function upsertIpanelObservaciones(req, res) {
     }
 
     const { rows } = await pool.query(
-      `
-      update public.ipanel
-      set observaciones = $2
-      where id = $1
-      returning id, observaciones;
-      `,
+      `update public.ipanel set observaciones = $2 where id = $1 returning id, observaciones;`,
       [id, observaciones ?? null]
     );
 
@@ -251,6 +250,18 @@ async function upsertIpanelObservaciones(req, res) {
     return res.status(500).json({ error: 'Error al actualizar observaciones de iPanel', detail: err.message });
   }
 }
+
+router.get('/ipanel/:id/observaciones', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const { rows } = await pool.query('select id, observaciones from public.ipanel where id = $1;', [id]);
+    if (!rows.length) return res.status(404).json({ error: 'iPanel no encontrado' });
+    return res.json(rows[0]);
+  } catch (err) {
+    console.error('get observaciones ipanel error:', err);
+    return res.status(500).json({ error: 'Error leyendo observaciones de iPanel', detail: err.message });
+  }
+});
 router.post('/ipanel/:id/observaciones', upsertIpanelObservaciones);
 router.put('/ipanel/:id/observaciones', upsertIpanelObservaciones);
 

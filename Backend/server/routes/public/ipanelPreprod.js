@@ -146,8 +146,6 @@ async function getPreprodById(clientOrPool, id) {
   return rows[0] ? normalizePreprodRow(rows[0]) : null;
 }
 
-// GET /preproduccion-valores-ipanels
-// Listado de logistica: datos que vienen de SQL y se sincronizan en preproduccion_valores_ipanels.
 router.get('/preproduccion-valores-ipanels', async (req, res) => {
   try {
     const q = toStr(req.query.q);
@@ -169,10 +167,7 @@ router.get('/preproduccion-valores-ipanels', async (req, res) => {
       )`);
     }
 
-    if (onlyPending) {
-      where.push('(coalesce(p.produccion_enviada, false) = false and ip.id is null)');
-    }
-
+    if (onlyPending) where.push('(coalesce(p.produccion_enviada, false) = false and ip.id is null)');
     const whereSql = where.length ? `where ${where.join(' and ')}` : '';
 
     const { rows } = await pool.query(
@@ -206,7 +201,6 @@ router.get('/preproduccion-valores-ipanels', async (req, res) => {
   }
 });
 
-// Aliases legibles
 router.get('/ipanels/preproduccion', async (req, res, next) => {
   req.url = `/preproduccion-valores-ipanels${req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''}`;
   return router.handle(req, res, next);
@@ -266,8 +260,6 @@ async function updatePreprodDates(req, res) {
 router.patch('/preproduccion-valores-ipanels/:id', updatePreprodDates);
 router.put('/preproduccion-valores-ipanels/:id', updatePreprodDates);
 
-// POST /preproduccion-valores-ipanels/:id/enviar-produccion
-// Crea/actualiza el registro productivo en public.ipanel y marca el preproductivo como enviado.
 router.post('/preproduccion-valores-ipanels/:id/enviar-produccion', async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) return res.status(400).json({ error: 'id invalido' });
@@ -312,18 +304,10 @@ router.post('/preproduccion-valores-ipanels/:id/enviar-produccion', async (req, 
       produccion_enviada: true,
     };
 
-    const observaciones =
-      toStr(data.observaciones ?? data.Observaciones) ||
-      buildObservacionesFromData(data);
+    const observaciones = toStr(data.observaciones ?? data.Observaciones) || buildObservacionesFromData(data);
 
     const existing = await client.query(
-      `
-      select *
-      from public.ipanel
-      where partida = $1
-      order by id asc
-      limit 1;
-      `,
+      `select * from public.ipanel where partida = $1 order by id asc limit 1;`,
       [partida]
     );
 
@@ -342,15 +326,7 @@ router.post('/preproduccion-valores-ipanels/:id/enviar-produccion', async (req, 
         where id = $1
         returning *;
         `,
-        [
-          existing.rows[0].id,
-          nv,
-          current.fecha_nv,
-          fechaProd,
-          fechaPlanEntrega,
-          observaciones || null,
-          descripcion || null,
-        ]
+        [existing.rows[0].id, nv, current.fecha_nv, fechaProd, fechaPlanEntrega, observaciones || null, descripcion || null]
       );
       ipanel = upd.rows[0];
     } else {
@@ -363,11 +339,31 @@ router.post('/preproduccion-valores-ipanels/:id/enviar-produccion', async (req, 
           fecha_prod,
           fecha_plan_entrega,
           observaciones,
-          descripcion
-        ) values ($1,$2,$3::date,$4::date,$5::date,$6,$7)
+          descripcion,
+          diseno,
+          guillotina,
+          plegado,
+          pintura,
+          inyeccion,
+          despacho
+        ) values ($1,$2,$3::date,$4::date,$5::date,$6,$7,$8,$9,$10,$11,$12,$13)
         returning *;
         `,
-        [partida, nv, current.fecha_nv, fechaProd, fechaPlanEntrega, observaciones || null, descripcion || null]
+        [
+          partida,
+          nv,
+          current.fecha_nv,
+          fechaProd,
+          fechaPlanEntrega,
+          observaciones || null,
+          descripcion || null,
+          'Pendiente',
+          null,
+          null,
+          null,
+          null,
+          null,
+        ]
       );
       ipanel = ins.rows[0];
     }

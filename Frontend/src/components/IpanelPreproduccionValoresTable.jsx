@@ -1,12 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  fetchIpanelPreproduccionValores,
-  updateIpanelPreproduccionValor,
-  enviarIpanelPreproduccionAProduccion,
-} from '../api';
+import api from '../api';
 
 function toStr(v) {
   if (v == null) return '';
+  if (typeof v === 'string') return v;
   return String(v);
 }
 
@@ -17,112 +14,83 @@ function pad2(n) {
 function toISODate10(v) {
   if (!v) return '';
   const s = String(v).trim();
-
   let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
   if (m) return `${m[1]}-${pad2(m[2])}-${pad2(m[3])}`;
-
-  m = s.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})/);
-  if (m) return `${m[1]}-${pad2(m[2])}-${pad2(m[3])}`;
-
   m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
   if (m) return `${m[3]}-${pad2(m[2])}-${pad2(m[1])}`;
-
   const d = new Date(s);
-  if (!Number.isNaN(d.getTime())) {
-    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-  }
-
+  if (!Number.isNaN(d.getTime())) return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
   return '';
 }
 
-function formatDMY(v) {
+function formatDate(v) {
   const iso = toISODate10(v);
   if (!iso) return '';
   const [y, m, d] = iso.split('-');
   return `${d}/${m}/${y}`;
 }
 
-function dataOf(row) {
+function getData(row) {
   return row?.data && typeof row.data === 'object' ? row.data : {};
 }
 
 function getAny(obj, keys) {
-  if (!obj) return '';
   for (const k of keys) {
-    if (Object.prototype.hasOwnProperty.call(obj, k) && obj[k] != null) return obj[k];
+    if (obj?.[k] != null && String(obj[k]).trim() !== '') return obj[k];
   }
-  const byLow = {};
-  for (const k of Object.keys(obj)) byLow[String(k).toLowerCase()] = k;
+  const lower = {};
+  for (const k of Object.keys(obj || {})) lower[k.toLowerCase()] = k;
   for (const k of keys) {
-    const real = byLow[String(k).toLowerCase()];
-    if (real && obj[real] != null) return obj[real];
+    const real = lower[String(k).toLowerCase()];
+    if (real && obj?.[real] != null && String(obj[real]).trim() !== '') return obj[real];
   }
   return '';
 }
 
-function field(row, keys) {
-  const d = dataOf(row);
-  return getAny(row, keys) || getAny(d, keys);
+function getNombre(row) {
+  const d = getData(row);
+  return toStr(row?.nombre ?? getAny(d, ['nombre', 'Nombre']));
+}
+
+function getCliente(row) {
+  const d = getData(row);
+  return toStr(row?.cliente ?? getAny(d, ['cliente', 'Cliente']));
 }
 
 function getDescripcion(row) {
+  const d = getData(row);
   return toStr(
-    row?.descripcion ||
-    field(row, ['descripcion', 'producto_descripcion', 'producto_descripciones', 'descripcion_producto'])
+    row?.descripcion ??
+      d.descripcion ??
+      d.producto_descripcion ??
+      d.producto_descripciones ??
+      d.descripcion_producto
   );
 }
 
-function RowStatus({ row }) {
-  const sent = row?.produccion_enviada === true || !!row?.ipanel_id;
-  if (sent) {
-    return (
-      <span style={{ padding: '3px 8px', borderRadius: 999, background: '#dcfce7', color: '#166534', fontWeight: 800, whiteSpace: 'nowrap' }}>
-        En producción{row?.ipanel_id ? ` #${row.ipanel_id}` : ''}
-      </span>
-    );
-  }
-  return (
-    <span style={{ padding: '3px 8px', borderRadius: 999, background: '#fef3c7', color: '#92400e', fontWeight: 800, whiteSpace: 'nowrap' }}>
-      Pendiente
-    </span>
-  );
+function rowKey(row) {
+  return String(row?.id ?? row?.partida ?? row?.nv ?? Math.random());
 }
 
 export default function IpanelPreproduccionValoresTable() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [savingId, setSavingId] = useState(null);
   const [err, setErr] = useState('');
   const [q, setQ] = useState('');
   const [onlyPending, setOnlyPending] = useState(false);
   const [drafts, setDrafts] = useState({});
-
-  const setDraft = useCallback((id, key, value) => {
-    setDrafts((prev) => ({
-      ...prev,
-      [id]: {
-        ...(prev[id] || {}),
-        [key]: value,
-      },
-    }));
-  }, []);
-
-  const getDraftValue = useCallback((row, key) => {
-    const d = drafts[row.id] || {};
-    if (Object.prototype.hasOwnProperty.call(d, key)) return d[key] || '';
-    return toISODate10(row?.[key]);
-  }, [drafts]);
+  const [savingId, setSavingId] = useState(null);
+  const [sendingId, setSendingId] = useState(null);
 
   const load = useCallback(async () => {
     try {
       setLoading(true);
       setErr('');
-      const { data } = await fetchIpanelPreproduccionValores({
-        q: q.trim() || undefined,
-        onlyPending: onlyPending ? 1 : undefined,
+      const { data } = await api.get('/preproduccion-valores-ipanels', {
+        params: { q: q.trim() || undefined, onlyPending: onlyPending ? 1 : undefined },
+        headers: { 'Cache-Control': 'no-cache' },
       });
       setRows(Array.isArray(data) ? data : []);
-      setDrafts({});
     } catch (e) {
       setErr(e?.response?.data?.error || e.message || 'Error cargando iPanels');
     } finally {
@@ -130,27 +98,52 @@ export default function IpanelPreproduccionValoresTable() {
     }
   }, [q, onlyPending]);
 
-  useEffect(() => {
-    load();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const counts = useMemo(() => {
-    const total = rows.length;
-    const sent = rows.filter((r) => r?.produccion_enviada === true || !!r?.ipanel_id).length;
-    return { total, sent, pending: total - sent };
+  const rowById = useMemo(() => {
+    const m = new Map();
+    for (const r of rows || []) m.set(String(r.id), r);
+    return m;
   }, [rows]);
 
+  function getDraft(row, field) {
+    const id = String(row?.id);
+    if (drafts[id] && Object.prototype.hasOwnProperty.call(drafts[id], field)) return drafts[id][field];
+    return toISODate10(row?.[field]);
+  }
+
+  function isDirty(row) {
+    const id = String(row?.id);
+    const d = drafts[id];
+    if (!d) return false;
+    if (Object.prototype.hasOwnProperty.call(d, 'fecha_prod') && toISODate10(d.fecha_prod) !== toISODate10(row?.fecha_prod)) return true;
+    if (Object.prototype.hasOwnProperty.call(d, 'fecha_plan_entrega') && toISODate10(d.fecha_plan_entrega) !== toISODate10(row?.fecha_plan_entrega)) return true;
+    return false;
+  }
+
+  function setDraft(row, field, value) {
+    const id = String(row?.id);
+    setDrafts((prev) => ({ ...prev, [id]: { ...(prev[id] || {}), [field]: value } }));
+  }
+
   async function saveDates(row) {
+    const id = row?.id;
+    if (!id) return;
+
+    const fechaProd = toISODate10(getDraft(row, 'fecha_prod')) || null;
+    const fechaPlanEntrega = toISODate10(getDraft(row, 'fecha_plan_entrega')) || null;
+
     try {
-      setSavingId(row.id);
+      setSavingId(id);
       setErr('');
-      const fecha_prod = getDraftValue(row, 'fecha_prod') || null;
-      const fecha_plan_entrega = getDraftValue(row, 'fecha_plan_entrega') || null;
-      const { data } = await updateIpanelPreproduccionValor(row.id, { fecha_prod, fecha_plan_entrega });
-      setRows((prev) => prev.map((r) => (r.id === row.id ? data : r)));
+      const { data: updated } = await api.patch(`/preproduccion-valores-ipanels/${id}`, {
+        fecha_prod: fechaProd,
+        fecha_plan_entrega: fechaPlanEntrega,
+      });
+      setRows((prev) => prev.map((r) => (String(r.id) === String(id) ? updated : r)));
       setDrafts((prev) => {
         const next = { ...prev };
-        delete next[row.id];
+        delete next[String(id)];
         return next;
       });
     } catch (e) {
@@ -161,184 +154,136 @@ export default function IpanelPreproduccionValoresTable() {
   }
 
   async function sendToProduction(row) {
-    const savedFechaProd = toISODate10(row?.fecha_prod);
-    const savedFechaEntrega = toISODate10(row?.fecha_plan_entrega);
+    const id = row?.id;
+    if (!id) return;
 
-    if (!savedFechaProd) {
-      alert('Primero guardá la Fecha Producción.');
+    const fresh = rowById.get(String(id)) || row;
+    if (isDirty(fresh)) {
+      window.alert('Primero guardá las fechas antes de enviar a producción.');
+      return;
+    }
+    if (!toISODate10(fresh.fecha_prod)) {
+      window.alert('Para enviar a producción primero cargá y guardá Fecha Producción.');
       return;
     }
 
-    const draft = drafts[row.id] || {};
-    const hasUnsavedDraft =
-      Object.prototype.hasOwnProperty.call(draft, 'fecha_prod') ||
-      Object.prototype.hasOwnProperty.call(draft, 'fecha_plan_entrega');
-
-    if (hasUnsavedDraft) {
-      alert('Hay cambios de fecha sin guardar. Guardá las fechas antes de enviar a producción.');
-      return;
-    }
-
-    const partida = row?.partida || field(row, ['numero']);
-    const ok = window.confirm(`¿Enviar iPanel partida ${partida || row.id} a producción?`);
+    const ok = window.confirm(`¿Enviar iPanel partida ${fresh.partida || '-'} a producción?`);
     if (!ok) return;
 
     try {
-      setSavingId(row.id);
+      setSendingId(id);
       setErr('');
-      const { data } = await enviarIpanelPreproduccionAProduccion(row.id, {
-        fecha_prod: savedFechaProd,
-        fecha_plan_entrega: savedFechaEntrega || null,
-      });
-      const updated = data?.preproduccion || row;
-      setRows((prev) => prev.map((r) => (r.id === row.id ? updated : r)));
-      setDrafts((prev) => {
-        const next = { ...prev };
-        delete next[row.id];
-        return next;
-      });
+      const { data } = await api.post(`/preproduccion-valores-ipanels/${id}/enviar-produccion`, {});
+      const updated = data?.preproduccion;
+      if (updated) setRows((prev) => prev.map((r) => (String(r.id) === String(id) ? updated : r)));
+      else await load();
     } catch (e) {
       setErr(e?.response?.data?.error || e.message || 'Error enviando a producción');
     } finally {
-      setSavingId(null);
+      setSendingId(null);
     }
   }
 
   return (
-    <div style={{ padding: 14 }}>
-      <div className="header-row" style={{ marginBottom: 12, alignItems: 'flex-start' }}>
+    <div style={{ padding: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'end' }}>
         <div>
-          <h1 className="h1" style={{ margin: 0 }}>Preproducción iPanels</h1>
-          <div style={{ opacity: 0.75, marginTop: 4 }}>
-            Origen: <b>preproduccion_valores_ipanels</b>. Al enviar a producción se crea/actualiza en <b>public.ipanel</b>.
-          </div>
+          <h1 style={{ margin: 0, fontSize: 22 }}>Preproducción iPanels</h1>
+          <div style={{ fontSize: 12, opacity: 0.7 }}>Origen: preproduccion_valores_ipanels. Producción: public.ipanel.</div>
         </div>
-        <button className="btn btn--brand" type="button" onClick={load} disabled={loading}>
-          {loading ? 'Cargando…' : 'Actualizar'}
-        </button>
+
+        <form
+          onSubmit={(e) => { e.preventDefault(); load(); }}
+          style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}
+        >
+          <input
+            className="btn"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Buscar partida, NV, cliente, descripción..."
+            style={{ minWidth: 280 }}
+          />
+          <label className="btn" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <input type="checkbox" checked={onlyPending} onChange={(e) => setOnlyPending(e.target.checked)} />
+            Solo pendientes
+          </label>
+          <button className="btn btn--brand" type="submit" disabled={loading}>{loading ? 'Cargando...' : 'Buscar'}</button>
+          <button className="btn" type="button" onClick={() => { setQ(''); setOnlyPending(false); setTimeout(load, 0); }}>Limpiar</button>
+        </form>
       </div>
 
-      <form
-        onSubmit={(e) => { e.preventDefault(); load(); }}
-        style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}
-      >
-        <input
-          className="btn"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Buscar por partida, NV, cliente, nombre, descripcion, localidad u OC"
-          style={{ minWidth: 360 }}
-        />
-        <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontWeight: 800 }}>
-          <input
-            type="checkbox"
-            checked={onlyPending}
-            onChange={(e) => setOnlyPending(e.target.checked)}
-          />
-          Solo pendientes
-        </label>
-        <button className="btn btn--brand" type="submit" disabled={loading}>Buscar</button>
-        <button
-          className="btn"
-          type="button"
-          disabled={loading}
-          onClick={() => { setQ(''); setOnlyPending(false); setTimeout(load, 0); }}
-        >
-          Limpiar
-        </button>
-        <div style={{ fontWeight: 800, opacity: 0.75 }}>
-          Total: {counts.total} · Pendientes: {counts.pending} · En producción: {counts.sent}
-        </div>
-      </form>
+      {err && <div style={{ color: 'crimson', fontWeight: 800, marginTop: 12 }}>{err}</div>}
 
-      {err && (
-        <div style={{ color: 'crimson', fontWeight: 800, marginBottom: 10, border: '1px solid #fecaca', padding: 10, borderRadius: 10 }}>
-          {err}
-        </div>
-      )}
-
-      <div style={{ overflow: 'auto', border: '1px solid var(--border, #e5e7eb)', borderRadius: 12, background: 'white' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+      <div style={{ marginTop: 12, overflow: 'auto', border: '1px solid var(--border, #ddd)', borderRadius: 12 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1180 }}>
           <thead>
             <tr style={{ background: '#f8fafc' }}>
-              <th style={th}>Estado</th>
               <th style={th}>Partida</th>
               <th style={th}>NV</th>
-              <th style={th}>Fecha NV</th>
               <th style={th}>Cliente</th>
               <th style={th}>Nombre</th>
-              <th style={th}>Descripcion</th>
-              <th style={th}>Localidad</th>
-              <th style={th}>Fecha Producción</th>
-              <th style={th}>Fecha Entrega</th>
+              <th style={th}>Descripción</th>
+              <th style={th}>Fecha producción</th>
+              <th style={th}>Fecha entrega</th>
+              <th style={th}>Estado</th>
               <th style={th}>Acciones</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => {
-              const d = dataOf(row);
-              const sent = row?.produccion_enviada === true || !!row?.ipanel_id;
-              const disabled = savingId === row.id || sent;
-              const savedFechaProd = toISODate10(row?.fecha_prod);
-              const draft = drafts[row.id] || {};
-              const hasUnsavedDraft =
-                Object.prototype.hasOwnProperty.call(draft, 'fecha_prod') ||
-                Object.prototype.hasOwnProperty.call(draft, 'fecha_plan_entrega');
-              const canSendToProduction = !disabled && !!savedFechaProd && !hasUnsavedDraft;
-              const sendTitle = sent
-                ? 'Este iPanel ya está en producción'
-                : !savedFechaProd
-                  ? 'Primero guardá la Fecha Producción'
-                  : hasUnsavedDraft
-                    ? 'Guardá los cambios de fecha antes de enviar a producción'
-                    : 'Enviar a producción';
+            {(rows || []).map((r) => {
+              const dirty = isDirty(r);
+              const hasFechaProd = !!toISODate10(r.fecha_prod);
+              const enviado = r.produccion_enviada === true || !!r.ipanel_id;
+              const id = r.id;
 
               return (
-                <tr key={row.id}>
-                  <td style={td}><RowStatus row={row} /></td>
-                  <td style={td}>{toStr(row.partida || d.partida || d.numero)}</td>
-                  <td style={td}>{toStr(row.nv || d.nv || d.numero)}</td>
-                  <td style={td}>{formatDMY(row.fecha_nv || d.fecha_nv || d.fecha)}</td>
-                  <td style={td}>{toStr(field(row, ['cliente', 'Cliente']))}</td>
-                  <td style={td}>{toStr(field(row, ['nombre', 'Nombre']))}</td>
-                  <td style={{ ...td, minWidth: 280, whiteSpace: 'pre-wrap' }}>{getDescripcion(row)}</td>
-                  <td style={td}>{toStr(field(row, ['localidad', 'Localidad']))}</td>
+                <tr key={rowKey(r)}>
+                  <td style={td}>{toStr(r.partida)}</td>
+                  <td style={td}>{toStr(r.nv)}</td>
+                  <td style={td}>{getCliente(r)}</td>
+                  <td style={td}>{getNombre(r)}</td>
+                  <td style={{ ...td, maxWidth: 420, whiteSpace: 'pre-wrap' }}>{getDescripcion(r)}</td>
                   <td style={td}>
                     <input
-                      className="btn"
                       type="date"
-                      value={getDraftValue(row, 'fecha_prod')}
-                      onChange={(e) => setDraft(row.id, 'fecha_prod', e.target.value)}
-                      disabled={sent}
-                      style={{ minWidth: 140 }}
+                      className="btn"
+                      value={getDraft(r, 'fecha_prod')}
+                      onChange={(e) => setDraft(r, 'fecha_prod', e.target.value)}
+                      disabled={enviado || savingId === id || sendingId === id}
                     />
-                    {hasUnsavedDraft && !sent ? (
-                      <div style={{ fontSize: 11, color: '#92400e', marginTop: 4 }}>Cambios sin guardar</div>
-                    ) : null}
+                    {r.fecha_prod ? <div style={hint}>Guardada: {formatDate(r.fecha_prod)}</div> : null}
                   </td>
                   <td style={td}>
                     <input
-                      className="btn"
                       type="date"
-                      value={getDraftValue(row, 'fecha_plan_entrega')}
-                      onChange={(e) => setDraft(row.id, 'fecha_plan_entrega', e.target.value)}
-                      disabled={sent}
-                      style={{ minWidth: 140 }}
+                      className="btn"
+                      value={getDraft(r, 'fecha_plan_entrega')}
+                      onChange={(e) => setDraft(r, 'fecha_plan_entrega', e.target.value)}
+                      disabled={enviado || savingId === id || sendingId === id}
                     />
+                    {r.fecha_plan_entrega ? <div style={hint}>Guardada: {formatDate(r.fecha_plan_entrega)}</div> : null}
+                  </td>
+                  <td style={td}>
+                    {enviado ? <span style={pillOk}>En producción</span> : dirty ? <span style={pillWarn}>Sin guardar</span> : <span style={pill}>Pendiente</span>}
                   </td>
                   <td style={td}>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <button className="btn" type="button" onClick={() => saveDates(row)} disabled={disabled}>
-                        Guardar fechas
+                      <button
+                        className="btn"
+                        type="button"
+                        onClick={() => saveDates(r)}
+                        disabled={enviado || !dirty || savingId === id || sendingId === id}
+                      >
+                        {savingId === id ? 'Guardando...' : 'Guardar fecha'}
                       </button>
                       <button
                         className="btn btn--brand"
                         type="button"
-                        onClick={() => sendToProduction(row)}
-                        disabled={!canSendToProduction}
-                        title={sendTitle}
+                        onClick={() => sendToProduction(r)}
+                        disabled={enviado || dirty || !hasFechaProd || savingId === id || sendingId === id}
+                        title={!hasFechaProd ? 'Primero guardá Fecha Producción' : dirty ? 'Primero guardá los cambios' : ''}
                       >
-                        {sent ? 'En producción' : 'Enviar a producción'}
+                        {sendingId === id ? 'Enviando...' : 'Enviar a producción'}
                       </button>
                     </div>
                   </td>
@@ -346,13 +291,9 @@ export default function IpanelPreproduccionValoresTable() {
               );
             })}
 
-            {!loading && rows.length === 0 && (
-              <tr>
-                <td style={{ ...td, textAlign: 'center', padding: 20 }} colSpan={11}>
-                  No hay iPanels para mostrar.
-                </td>
-              </tr>
-            )}
+            {!loading && (!rows || !rows.length) ? (
+              <tr><td style={td} colSpan={9}>No hay iPanels para mostrar.</td></tr>
+            ) : null}
           </tbody>
         </table>
       </div>
@@ -360,15 +301,9 @@ export default function IpanelPreproduccionValoresTable() {
   );
 }
 
-const th = {
-  textAlign: 'left',
-  padding: '10px 8px',
-  borderBottom: '1px solid #e5e7eb',
-  whiteSpace: 'nowrap',
-};
-
-const td = {
-  padding: '8px',
-  borderBottom: '1px solid #eef2f7',
-  verticalAlign: 'middle',
-};
+const th = { padding: 8, borderBottom: '1px solid #e5e7eb', textAlign: 'left', fontSize: 13 };
+const td = { padding: 8, borderBottom: '1px solid #e5e7eb', verticalAlign: 'top', fontSize: 13 };
+const hint = { fontSize: 11, opacity: 0.7, marginTop: 4 };
+const pill = { display: 'inline-block', padding: '3px 8px', borderRadius: 999, border: '1px solid #d1d5db', background: '#fff' };
+const pillOk = { ...pill, borderColor: '#86efac', background: '#f0fdf4', color: '#166534', fontWeight: 800 };
+const pillWarn = { ...pill, borderColor: '#fcd34d', background: '#fffbeb', color: '#92400e', fontWeight: 800 };

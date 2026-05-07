@@ -5,40 +5,48 @@ const { STATUS, low, loadStageMap, getNextStages, checkRequirements } = require(
 
 const router = express.Router();
 
-// Whitelists defensivos para evitar SQL injection en columnas dinamicas.
 const PORTON_ETAPAS = new Set([
-  'diseno', 'laser', 'guillotina', 'plegadora',
-  'armado_marco_piernas', 'armado_piernas', 'armado_primario', 'armado_hojas',
-  'inyeccion', 'revestimiento', 'pintura', 'pintura_revestimiento', 'armado_final', 'despacho',
-  'corte_revest', 'plegado_revest',
+  'diseno',
+  'laser',
+  'guillotina',
+  'plegadora',
+  'armado_marco_piernas',
+  'armado_piernas',
+  'armado_primario',
+  'armado_hojas',
+  'inyeccion',
+  'revestimiento',
+  'pintura',
+  'pintura_revestimiento',
+  'armado_final',
+  'despacho',
+  'corte_revest',
+  'plegado_revest',
 ]);
 
 const IPANEL_ETAPAS = new Set(['diseno', 'guillotina', 'plegado', 'pintura', 'inyeccion', 'despacho']);
 
-const QC_PIN_SALT = process.env.QC_PIN_SALT || 'dev_change_me_pin_salt';
+const IPANEL_TO_PORTON_STAGE_CANDIDATES = {
+  diseno: ['diseno'],
+  guillotina: ['guillotina'],
+  plegado: ['plegadora', 'plegado_revest'],
+  pintura: ['pintura', 'pintura_revestimiento'],
+  inyeccion: ['inyeccion'],
+  despacho: ['despacho'],
+};
 
-function hashPin(pin) {
-  return crypto.createHmac('sha256', QC_PIN_SALT).update(String(pin)).digest('hex');
-}
-
-function isValidLine(line) {
-  return ['portones', 'ipanel'].includes(line);
-}
-function isValidQcStatus(s) {
-  return ['APROBADO', 'OBSERVADO', 'RECHAZADO'].includes(s);
-}
-function isValidKind(k) {
-  return ['OBSERVADO', 'RECHAZADO'].includes(k);
-}
-
-function stageMatchesSql(alias = '') {
-  const prefix = alias ? `${alias}.` : '';
-  return `(${prefix}stage_key is null or ${prefix}stage_key = $3)`;
+function stageCandidatesForScope(line, stageKey) {
+  if (line !== 'ipanel') return [{ line, stage_key: stageKey }];
+  const out = [{ line: 'ipanel', stage_key: stageKey }];
+  for (const st of IPANEL_TO_PORTON_STAGE_CANDIDATES[stageKey] || [stageKey]) {
+    out.push({ line: 'portones', stage_key: st });
+  }
+  return out;
 }
 
 async function getPortonIdByNv(db, nv) {
   const { rows } = await db.query(
-    'select id from public.portones where nv = $1 order by created_at desc, id desc limit 1;',
+    `select id from public.portones where nv = $1 order by created_at desc, id desc limit 1;`,
     [nv]
   );
   return rows[0]?.id || null;
@@ -58,7 +66,6 @@ async function getPortonCtxById(db, id) {
   if (!pQ.rows.length) return null;
 
   const ctx = { ...pQ.rows[0] };
-
   try {
     const pre = ctx.preprod_data;
     if (pre && typeof pre === 'object') {
@@ -70,30 +77,22 @@ async function getPortonCtxById(db, id) {
   try { delete ctx.preprod_data; } catch {}
 
   const tQ = await db.query(
-    `
-    select etapa as k, inicio, fin
-    from public.porton_etapas_tiempos
-    where porton_id = $1;
-    `,
+    `select etapa as k, inicio, fin from public.porton_etapas_tiempos where porton_id = $1;`,
     [id]
   );
   for (const r of tQ.rows) {
-    const k = String(r?.k || '').trim();
+    const k = String(r?.k || '');
     if (!k) continue;
     ctx[`${k}_inicio`] = r.inicio ?? null;
     ctx[`${k}_fin`] = r.fin ?? null;
   }
 
   const eQ = await db.query(
-    `
-    select etapa as k, estado
-    from public.porton_etapas_estado
-    where porton_id = $1;
-    `,
+    `select etapa as k, estado from public.porton_etapas_estado where porton_id = $1;`,
     [id]
   );
   for (const r of eQ.rows) {
-    const k = String(r?.k || '').trim();
+    const k = String(r?.k || '');
     if (!k) continue;
     ctx[k] = r.estado ?? null;
   }
@@ -103,15 +102,69 @@ async function getPortonCtxById(db, id) {
 
 async function getIpanelByNv(db, nv) {
   const { rows } = await db.query(
-    'select * from public.ipanel where nv = $1 order by created_at desc, id desc limit 1;',
+    `select * from public.ipanel where nv = $1 order by created_at desc, id desc limit 1;`,
     [nv]
   );
   return rows[0] || null;
 }
 
-// GET /qc/motives
-// Para iPanel se aceptan motivos propios line='ipanel' y, como fallback, motivos de portones.
-// Eso permite que el mismo set de codigos/PIN y motivos funcione en ambas lineas.
+const QC_PIN_SALT = process.env.QC_PIN_SALT || 'dev_change_me_pin_salt';
+
+function hashPin(pin) {
+  return crypto.createHmac('sha256', QC_PIN_SALT).update(String(pin)).digest('hex');
+}
+
+function isValidLine(line) {
+  return ['portones', 'ipanel'].includes(line);
+}
+function isValidQcStatus(s) {
+  return ['APROBADO', 'OBSERVADO', 'RECHAZADO'].includes(s);
+}
+function isValidKind(k) {
+  return ['OBSERVADO', 'RECHAZADO'].includes(k);
+}
+
+async function userHasStageScope(db, userId, line, stageKey) {
+  const candidates = stageCandidatesForScope(line, stageKey);
+  for (const c of candidates) {
+    const { rows } = await db.query(
+      `
+      select 1
+      from public.qc_user_scope
+      where user_id = $1 and line = $2 and stage_key = $3 and enabled = true
+      limit 1;
+      `,
+      [userId, c.line, c.stage_key]
+    );
+    if (rows.length) return true;
+  }
+  return false;
+}
+
+async function resolveMotive(db, { line, qcStatus, stageKey, motiveId }) {
+  const mid = Number(motiveId);
+  if (!Number.isInteger(mid)) return null;
+
+  const candidates = stageCandidatesForScope(line, stageKey);
+  for (const c of candidates) {
+    const { rows } = await db.query(
+      `
+      select id, line, kind, stage_key, label
+      from public.qc_motive
+      where id = $1
+        and enabled = true
+        and line = $2
+        and kind = $3
+        and (stage_key is null or stage_key = $4)
+      limit 1;
+      `,
+      [mid, c.line, qcStatus, c.stage_key]
+    );
+    if (rows.length) return rows[0];
+  }
+  return null;
+}
+
 router.get('/qc/motives', async (req, res) => {
   try {
     const line = String(req.query.line || '').trim();
@@ -121,31 +174,51 @@ router.get('/qc/motives', async (req, res) => {
     if (!isValidLine(line)) return res.status(400).json({ error: 'line invalida' });
     if (!isValidKind(kind)) return res.status(400).json({ error: 'kind invalido' });
 
-    const lines = line === 'ipanel' ? ['ipanel', 'portones'] : ['portones'];
-    const { rows } = await pool.query(
-      `
-      select id, line, kind, stage_key, label, priority
-      from public.qc_motive
-      where enabled = true
-        and line = any($1::text[])
-        and kind = $2
-        and (stage_key is null or stage_key = $3)
-      order by
-        case when line = $4 then 0 else 1 end,
-        priority asc,
-        id asc;
-      `,
-      [lines, kind, stage, line]
-    );
+    if (line !== 'ipanel') {
+      const { rows } = await pool.query(
+        `
+        select id, line, kind, stage_key, label, priority
+        from public.qc_motive
+        where enabled = true
+          and line = $1
+          and kind = $2
+          and (stage_key is null or stage_key = $3)
+        order by priority asc, id asc;
+        `,
+        [line, kind, stage]
+      );
+      return res.json(rows);
+    }
 
-    return res.json(rows);
+    const candidates = stageCandidatesForScope(line, stage);
+    const rowsOut = [];
+    const seen = new Set();
+    for (const c of candidates) {
+      const { rows } = await pool.query(
+        `
+        select id, line, kind, stage_key, label, priority
+        from public.qc_motive
+        where enabled = true
+          and line = $1
+          and kind = $2
+          and (stage_key is null or stage_key = $3)
+        order by priority asc, id asc;
+        `,
+        [c.line, kind, c.stage_key]
+      );
+      for (const r of rows) {
+        if (seen.has(r.id)) continue;
+        seen.add(r.id);
+        rowsOut.push(r);
+      }
+    }
+    return res.json(rowsOut);
   } catch (err) {
     console.error('qc motives error:', err);
     return res.status(500).json({ error: 'Error leyendo motivos', detail: err.message });
   }
 });
 
-// GET /qc/history/:line/:itemId
 router.get('/qc/history/:line/:itemId', async (req, res) => {
   try {
     const line = String(req.params.line || '').trim();
@@ -183,17 +256,16 @@ router.get('/qc/history/:line/:itemId', async (req, res) => {
   }
 });
 
-// POST /qc/authorize
 router.post('/qc/authorize', async (req, res) => {
   const { line, item_id, stage_key, qc_status, motive_id, note, pin } = req.body || {};
 
-  const sLine = String(line || '').trim();
   const nItemId = Number(item_id);
   const stageKey = String(stage_key || '').trim();
   const qcStatus = String(qc_status || '').trim().toUpperCase();
   const pinStr = String(pin || '').trim();
+  const lineStr = String(line || '').trim();
 
-  if (!isValidLine(sLine)) return res.status(400).json({ error: 'line invalida' });
+  if (!isValidLine(lineStr)) return res.status(400).json({ error: 'line invalida' });
   if (!Number.isInteger(nItemId)) return res.status(400).json({ error: 'item_id invalido' });
   if (!stageKey) return res.status(400).json({ error: 'stage_key requerido' });
   if (!isValidQcStatus(qcStatus)) return res.status(400).json({ error: 'qc_status invalido' });
@@ -205,12 +277,7 @@ router.post('/qc/authorize', async (req, res) => {
 
     const pinHash = hashPin(pinStr);
     const uQ = await client.query(
-      `
-      select id, name, is_global, is_active
-      from public.qc_users
-      where pin_hash = $1
-      limit 1;
-      `,
+      `select id, name, is_global, is_active from public.qc_users where pin_hash = $1 limit 1;`,
       [pinHash]
     );
 
@@ -221,37 +288,19 @@ router.post('/qc/authorize', async (req, res) => {
     }
 
     const lastQ = await client.query(
-      `
-      select qc_status
-      from public.qc_event
-      where line = $1 and item_id = $2
-      order by created_at desc
-      limit 1;
-      `,
-      [sLine, nItemId]
+      `select qc_status from public.qc_event where line = $1 and item_id = $2 order by created_at desc limit 1;`,
+      [lineStr, nItemId]
     );
-
     const lastStatus = lastQ.rows[0]?.qc_status || null;
+
     if (lastStatus === 'RECHAZADO' && qcStatus !== 'RECHAZADO' && !user.is_global) {
       await client.query('rollback');
       return res.status(403).json({ error: 'Solo un usuario GLOBAL puede destrabar un RECHAZADO' });
     }
 
     if (!user.is_global) {
-      const allowedLines = sLine === 'ipanel' ? ['ipanel', 'portones'] : ['portones'];
-      const sQ = await client.query(
-        `
-        select 1
-        from public.qc_user_scope
-        where user_id = $1
-          and line = any($2::text[])
-          and stage_key = $3
-          and enabled = true
-        limit 1;
-        `,
-        [user.id, allowedLines, stageKey]
-      );
-      if (!sQ.rows.length) {
+      const hasScope = await userHasStageScope(client, user.id, lineStr, stageKey);
+      if (!hasScope) {
         await client.query('rollback');
         return res.status(403).json({ error: 'Usuario sin permiso para esa seccion' });
       }
@@ -259,32 +308,12 @@ router.post('/qc/authorize', async (req, res) => {
 
     let motiveId = null;
     if (qcStatus === 'OBSERVADO' || qcStatus === 'RECHAZADO') {
-      const mid = Number(motive_id);
-      if (!Number.isInteger(mid)) {
-        await client.query('rollback');
-        return res.status(400).json({ error: 'motive_id requerido para Observado/Rechazado' });
-      }
-
-      const allowedLines = sLine === 'ipanel' ? ['ipanel', 'portones'] : ['portones'];
-      const motQ = await client.query(
-        `
-        select id
-        from public.qc_motive
-        where id = $1
-          and enabled = true
-          and line = any($2::text[])
-          and kind = $3
-          and (stage_key is null or stage_key = $4)
-        limit 1;
-        `,
-        [mid, allowedLines, qcStatus, stageKey]
-      );
-      if (!motQ.rows.length) {
+      const motive = await resolveMotive(client, { line: lineStr, qcStatus, stageKey, motiveId: motive_id });
+      if (!motive) {
         await client.query('rollback');
         return res.status(400).json({ error: 'motive_id invalido para esa linea/estado/etapa' });
       }
-
-      motiveId = mid;
+      motiveId = motive.id;
     }
 
     const ins = await client.query(
@@ -293,12 +322,11 @@ router.post('/qc/authorize', async (req, res) => {
       values ($1,$2,$3,$4,$5,$6,$7)
       returning *;
       `,
-      [sLine, nItemId, stageKey, qcStatus, motiveId, note ?? null, user.id]
+      [lineStr, nItemId, stageKey, qcStatus, motiveId, note ?? null, user.id]
     );
 
-    // Ruteo por QC: si no fue RECHAZADO y la etapa ya esta FINALIZADO, habilita siguientes.
     if (qcStatus !== 'RECHAZADO') {
-      const stageMap = await loadStageMap(sLine);
+      const stageMap = await loadStageMap(lineStr);
       const stRow = stageMap.get(stageKey);
       const statusCol = String(stRow?.status_col || stageKey || '').trim();
       if (!statusCol) {
@@ -306,7 +334,7 @@ router.post('/qc/authorize', async (req, res) => {
         return res.status(400).json({ error: 'stage_key invalida para workflow' });
       }
 
-      if (sLine === 'portones') {
+      if (lineStr === 'portones') {
         const portonId = await getPortonIdByNv(client, nItemId);
         if (!portonId) {
           await client.query('rollback');
@@ -331,7 +359,6 @@ router.post('/qc/authorize', async (req, res) => {
         for (const nk of nextKeys || []) {
           const ns = stageMap.get(nk);
           if (!ns) continue;
-
           const nextStageCol = String(ns.status_col || '').trim();
           if (!PORTON_ETAPAS.has(nextStageCol)) continue;
 
@@ -348,15 +375,15 @@ router.post('/qc/authorize', async (req, res) => {
             [portonId, nextStageCol, STATUS.PENDIENTE]
           );
         }
-      } else if (sLine === 'ipanel') {
+      } else if (lineStr === 'ipanel') {
         const ip = await getIpanelByNv(client, nItemId);
         if (!ip?.id) {
           await client.query('rollback');
           return res.status(404).json({ error: 'iPanel no encontrado para ese NV' });
         }
 
-        const isFinal = low(ip?.[statusCol]) === low(STATUS.FINALIZADO);
-        if (!isFinal) {
+        const st = low(ip?.[statusCol]);
+        if (st !== low(STATUS.FINALIZADO)) {
           await client.query('rollback');
           return res.status(409).json({ error: `La etapa ${statusCol} debe estar FINALIZADO antes de completar QC` });
         }
@@ -365,12 +392,8 @@ router.post('/qc/authorize', async (req, res) => {
         for (const nk of nextKeys || []) {
           const ns = stageMap.get(nk);
           if (!ns) continue;
-
           const nextStageCol = String(ns.status_col || '').trim();
           if (!IPANEL_ETAPAS.has(nextStageCol)) continue;
-
-          const req = await checkRequirements('ipanel', nextStageCol, ip);
-          if (!req?.ok) continue;
 
           await client.query(
             `update public.ipanel set ${nextStageCol} = coalesce(${nextStageCol}, $2) where id = $1;`,
@@ -396,15 +419,10 @@ router.post('/qc/authorize', async (req, res) => {
   }
 });
 
-// POST /qc/summary
-// body: { line: 'portones'|'ipanel', item_ids: number[], stage_key?: string|null }
 router.post('/qc/summary', async (req, res) => {
   try {
     const line = String(req.body?.line || '').trim();
-    const stageKey = req.body?.stage_key == null || req.body?.stage_key === ''
-      ? null
-      : String(req.body.stage_key).trim();
-
+    const stageKey = req.body?.stage_key == null || req.body?.stage_key === '' ? null : String(req.body.stage_key).trim();
     const itemIds = Array.isArray(req.body?.item_ids)
       ? req.body.item_ids.map((n) => Number(n)).filter((n) => Number.isInteger(n))
       : [];
@@ -415,15 +433,8 @@ router.post('/qc/summary', async (req, res) => {
     const latestQ = await pool.query(
       `
       with ranked as (
-        select
-          item_id,
-          stage_key,
-          qc_status,
-          created_at,
-          row_number() over (
-            partition by item_id, stage_key
-            order by created_at desc
-          ) as rn
+        select item_id, stage_key, qc_status, created_at,
+          row_number() over (partition by item_id, stage_key order by created_at desc) as rn
         from public.qc_event
         where line = $1
           and item_id = any($2::int8[])
@@ -440,8 +451,7 @@ router.post('/qc/summary', async (req, res) => {
       `
       select item_id, bool_or(upper(qc_status) = 'OBSERVADO') as has_obs
       from public.qc_event
-      where line = $1
-        and item_id = any($2::int8[])
+      where line = $1 and item_id = any($2::int8[])
       group by item_id;
       `,
       [line, itemIds]
@@ -456,7 +466,6 @@ router.post('/qc/summary', async (req, res) => {
       const st = String(r.stage_key || '').trim();
       const qc = String(r.qc_status || '').trim().toUpperCase();
       if (!Number.isInteger(id) || !st) continue;
-
       const key = String(id);
       if (!items[key]) items[key] = { has_obs: hasObsById.get(id) || false, latest_by_stage: {} };
       items[key].latest_by_stage[st] = qc;
