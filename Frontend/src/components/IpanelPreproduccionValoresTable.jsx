@@ -154,11 +154,21 @@ export default function IpanelPreproduccionValoresTable() {
   }
 
   async function sendToProduction(row) {
-    const fecha_prod = getDraftValue(row, 'fecha_prod') || null;
-    const fecha_plan_entrega = getDraftValue(row, 'fecha_plan_entrega') || null;
+    const savedFechaProd = toISODate10(row?.fecha_prod);
+    const savedFechaEntrega = toISODate10(row?.fecha_plan_entrega);
 
-    if (!fecha_prod) {
-      alert('Primero cargá la Fecha Producción.');
+    if (!savedFechaProd) {
+      alert('Primero guardá la Fecha Producción.');
+      return;
+    }
+
+    const draft = drafts[row.id] || {};
+    const hasUnsavedDraft =
+      Object.prototype.hasOwnProperty.call(draft, 'fecha_prod') ||
+      Object.prototype.hasOwnProperty.call(draft, 'fecha_plan_entrega');
+
+    if (hasUnsavedDraft) {
+      alert('Hay cambios de fecha sin guardar. Guardá las fechas antes de enviar a producción.');
       return;
     }
 
@@ -169,7 +179,10 @@ export default function IpanelPreproduccionValoresTable() {
     try {
       setSavingId(row.id);
       setErr('');
-      const { data } = await enviarIpanelPreproduccionAProduccion(row.id, { fecha_prod, fecha_plan_entrega });
+      const { data } = await enviarIpanelPreproduccionAProduccion(row.id, {
+        fecha_prod: savedFechaProd,
+        fecha_plan_entrega: savedFechaEntrega || null,
+      });
       const updated = data?.preproduccion || row;
       setRows((prev) => prev.map((r) => (r.id === row.id ? updated : r)));
       setDrafts((prev) => {
@@ -258,6 +271,19 @@ export default function IpanelPreproduccionValoresTable() {
               const d = dataOf(row);
               const sent = row?.produccion_enviada === true || !!row?.ipanel_id;
               const disabled = savingId === row.id || sent;
+              const savedFechaProd = toISODate10(row?.fecha_prod);
+              const draft = drafts[row.id] || {};
+              const hasUnsavedDraft =
+                Object.prototype.hasOwnProperty.call(draft, 'fecha_prod') ||
+                Object.prototype.hasOwnProperty.call(draft, 'fecha_plan_entrega');
+              const canSendToProduction = !disabled && !!savedFechaProd && !hasUnsavedDraft;
+              const sendTitle = sent
+                ? 'Este iPanel ya está en producción'
+                : !savedFechaProd
+                  ? 'Primero guardá la Fecha Producción'
+                  : hasUnsavedDraft
+                    ? 'Guardá los cambios de fecha antes de enviar a producción'
+                    : 'Enviar a producción';
 
               return (
                 <tr key={row.id}>
@@ -277,6 +303,9 @@ export default function IpanelPreproduccionValoresTable() {
                       disabled={sent}
                       style={{ minWidth: 140 }}
                     />
+                    {hasUnsavedDraft && !sent ? (
+                      <div style={{ fontSize: 11, color: '#92400e', marginTop: 4 }}>Cambios sin guardar</div>
+                    ) : null}
                   </td>
                   <td style={td}>
                     <input
@@ -293,7 +322,13 @@ export default function IpanelPreproduccionValoresTable() {
                       <button className="btn" type="button" onClick={() => saveDates(row)} disabled={disabled}>
                         Guardar fechas
                       </button>
-                      <button className="btn btn--brand" type="button" onClick={() => sendToProduction(row)} disabled={disabled}>
+                      <button
+                        className="btn btn--brand"
+                        type="button"
+                        onClick={() => sendToProduction(row)}
+                        disabled={!canSendToProduction}
+                        title={sendTitle}
+                      >
                         {sent ? 'En producción' : 'Enviar a producción'}
                       </button>
                     </div>

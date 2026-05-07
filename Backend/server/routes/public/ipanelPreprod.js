@@ -18,8 +18,30 @@ function toIntOrNull(v) {
 
 function normalizeDate10(v) {
   if (v === null || v === undefined || v === '') return null;
-  const s = String(v).slice(0, 10);
-  return isValidISODate10(s) ? s : null;
+
+  if (v instanceof Date) {
+    if (Number.isNaN(v.getTime())) return null;
+    return v.toISOString().slice(0, 10);
+  }
+
+  const s = String(v).trim();
+  if (!s) return null;
+
+  const direct = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (direct && isValidISODate10(direct[1])) return direct[1];
+
+  const d = new Date(s);
+  if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+
+  return null;
+}
+
+function firstDate10(...values) {
+  for (const v of values) {
+    const d = normalizeDate10(v);
+    if (d) return d;
+  }
+  return null;
 }
 
 function assertDate10OrNull(value, fieldName) {
@@ -79,9 +101,9 @@ function normalizePreprodRow(row) {
     data,
     ipanel_id: ipanelId,
     produccion_enviada: enviado,
-    fecha_prod: normalizeDate10(row?.fecha_prod ?? data.fecha_prod ?? data.inicio_prod_imput),
-    fecha_plan_entrega: normalizeDate10(row?.fecha_plan_entrega ?? data.fecha_plan_entrega ?? data.fechaent),
-    fecha_nv: normalizeDate10(row?.fecha_nv ?? data.fecha_nv ?? data.fecha),
+    fecha_prod: firstDate10(row?.fecha_prod, data.fecha_prod, data.inicio_prod_imput),
+    fecha_plan_entrega: firstDate10(row?.fecha_plan_entrega, data.fecha_plan_entrega, data.fecha_salida_imput, data.fechaent),
+    fecha_nv: firstDate10(row?.fecha_nv, data.fecha_nv, data.fecha),
     partida: toIntOrNull(row?.partida ?? data.partida ?? data.numero),
     nv: toIntOrNull(row?.nv ?? data.nv ?? data.numero),
   };

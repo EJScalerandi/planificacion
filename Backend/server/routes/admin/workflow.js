@@ -6,13 +6,17 @@ const { getWorkflowConfig } = require('../../lib/workflow');
 
 const router = express.Router();
 
+function normalizeLine(value) {
+  const line = String(value || '').trim();
+  return ['portones', 'ipanel'].includes(line) ? line : '';
+}
+
 // GET /admin/workflow/config
 router.get('/workflow/config', adminAuth, async (req, res) => {
   try {
-    const line = String(req.query.line || '').trim();
-    if (!['portones', 'ipanel'].includes(line)) {
-      return res.status(400).json({ error: 'line debe ser portones o ipanel' });
-    }
+    const line = normalizeLine(req.query.line);
+    if (!line) return res.status(400).json({ error: 'line debe ser portones o ipanel' });
+
     const cfg = await getWorkflowConfig(line);
     return res.json({ ok: true, ...cfg });
   } catch (err) {
@@ -21,57 +25,83 @@ router.get('/workflow/config', adminAuth, async (req, res) => {
   }
 });
 
-// ✅ GET /admin/workflow/condition-fields?line=portones
-// Devuelve lista de campos disponibles para condiciones.
-// - Incluye keys top-level típicas ("nv") y keys del JSONB (data)
-// - Ordena la muestra por updated_at desc, id desc (según tu esquema)
+async function getPortonesConditionFields(limit) {
+  const { rows } = await pool.query(
+    `
+    with sample as (
+      select data
+      from public.preproduccion_valores
+      where data is not null
+      order by updated_at desc, id desc
+      limit $1
+    ),
+    keys as (
+      select distinct jsonb_object_keys(data) as key
+      from sample
+    )
+    select key
+    from keys
+    order by key asc;
+    `,
+    [limit]
+  );
+
+  const base = [
+    { key: 'id', label: 'id' },
+    { key: 'nv', label: 'nv' },
+    { key: 'nlista', label: 'nlista' },
+    { key: 'partida', label: 'partida' },
+  ];
+
+  const blacklist = new Set(['created_at', 'updated_at']);
+  const jsonKeys = (rows || [])
+    .map((r) => String(r.key || '').trim())
+    .filter(Boolean)
+    .filter((k) => !blacklist.has(k))
+    .map((k) => ({ key: k, label: k }));
+
+  const seen = new Set();
+  return [...base, ...jsonKeys].filter((x) => {
+    const key = String(x.key || '').trim();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+async function getIpanelConditionFields() {
+  const { rows } = await pool.query(
+    `
+    select column_name as key
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'ipanel'
+    order by ordinal_position asc;
+    `
+  );
+
+  // Para iPanels el workflow se evalua contra public.ipanel, por eso los campos
+  // disponibles salen de columnas reales de esa tabla, no de preproduccion_valores.
+  const blacklist = new Set(['created_at', 'updated_at']);
+  return (rows || [])
+    .map((r) => String(r.key || '').trim())
+    .filter(Boolean)
+    .filter((k) => !blacklist.has(k))
+    .map((k) => ({ key: k, label: k }));
+}
+
+// GET /admin/workflow/condition-fields?line=portones|ipanel
 router.get('/workflow/condition-fields', adminAuth, async (req, res) => {
   try {
-    const line = String(req.query.line || '').trim();
-    if (!['portones', 'ipanel'].includes(line)) {
-      return res.status(400).json({ error: 'line debe ser portones o ipanel' });
-    }
+    const line = normalizeLine(req.query.line);
+    if (!line) return res.status(400).json({ error: 'line debe ser portones o ipanel' });
 
     const limit = Math.min(Math.max(parseInt(req.query.limit || '2000', 10) || 2000, 100), 10000);
+    const fields = line === 'ipanel'
+      ? await getIpanelConditionFields()
+      : await getPortonesConditionFields(limit);
 
-    const { rows } = await pool.query(
-      `
-      with sample as (
-        select data
-        from public.preproduccion_valores
-        where data is not null
-        order by updated_at desc, id desc
-        limit $1
-      ),
-      keys as (
-        select distinct jsonb_object_keys(data) as key
-        from sample
-      )
-      select key
-      from keys
-      order by key asc;
-      `,
-      [limit]
-    );
-
-    // Campos top-level que querés permitir en condiciones
-    // (Si mañana agregás más columnas reales, las sumás acá)
-    const base = [
-      { key: 'nv', label: 'nv' },
-      // opcional: si querés exponer también "id" a condiciones:
-      // { key: 'id', label: 'id' },
-    ];
-
-    // Blacklist para no ensuciar el selector con cosas internas
-    const blacklist = new Set(['created_at']); // no existe, pero por las dudas de configs viejas
-
-    const jsonKeys = (rows || [])
-      .map((r) => String(r.key || '').trim())
-      .filter(Boolean)
-      .filter((k) => !blacklist.has(k))
-      .map((k) => ({ key: k, label: k }));
-
-    return res.json({ ok: true, fields: [...base, ...jsonKeys] });
+    return res.json({ ok: true, fields });
   } catch (err) {
     console.error('get condition-fields error:', err);
     return res.status(500).json({ error: 'Error leyendo campos', detail: err.message });
@@ -80,10 +110,8 @@ router.get('/workflow/condition-fields', adminAuth, async (req, res) => {
 
 // PUT /admin/workflow/config
 router.put('/workflow/config', adminAuth, async (req, res) => {
-  const line = String(req.query.line || '').trim();
-  if (!['portones', 'ipanel'].includes(line)) {
-    return res.status(400).json({ error: 'line debe ser portones o ipanel' });
-  }
+  const line = normalizeLine(req.query.line);
+  if (!line) return res.status(400).json({ error: 'line debe ser portones o ipanel' });
 
   const { edges = [], requirements = [], stageLabels = [] } = req.body || {};
 
@@ -105,7 +133,7 @@ router.put('/workflow/config', adminAuth, async (req, res) => {
       }
     }
 
-    await client.query(`delete from public.workflow_edge where line = $1;`, [line]);
+    await client.query('delete from public.workflow_edge where line = $1;', [line]);
     for (const e of edges) {
       if (!e?.from_key || !e?.to_key) continue;
       await client.query(
@@ -124,7 +152,7 @@ router.put('/workflow/config', adminAuth, async (req, res) => {
       );
     }
 
-    await client.query(`delete from public.workflow_requirement where line = $1;`, [line]);
+    await client.query('delete from public.workflow_requirement where line = $1;', [line]);
     for (const r of requirements) {
       if (!r?.stage_key || !r?.type || !r?.required_key) continue;
       await client.query(

@@ -6,6 +6,9 @@ alter table public.preproduccion_valores_ipanels
   add column if not exists fecha_prod date;
 
 alter table public.preproduccion_valores_ipanels
+  add column if not exists fecha_plan_entrega date;
+
+alter table public.preproduccion_valores_ipanels
   add column if not exists produccion_enviada boolean not null default false;
 
 alter table public.preproduccion_valores_ipanels
@@ -32,6 +35,9 @@ end $$;
 
 create index if not exists preproduccion_valores_ipanels_fecha_prod_idx
   on public.preproduccion_valores_ipanels using btree (fecha_prod);
+
+create index if not exists preproduccion_valores_ipanels_fecha_plan_entrega_idx
+  on public.preproduccion_valores_ipanels using btree (fecha_plan_entrega);
 
 create index if not exists preproduccion_valores_ipanels_produccion_enviada_idx
   on public.preproduccion_valores_ipanels using btree (produccion_enviada);
