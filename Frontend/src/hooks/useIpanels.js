@@ -2,13 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 
 // Misma env que en usePortones
-const BASE_URL = import.meta.env.VITE_API_BASE || 'https://planificacion-6sk9.onrender.com';
+const BASE_URL = import.meta.env.VITE_API_BASE || import.meta.env.VITE_API_URL || 'https://planificacion-6sk9.onrender.com';
 
-// Etapas válidas del backend para iPanel
-export const IPANEL_STAGES = ['guillotina', 'plegado', 'pintura', 'inyeccion', 'despacho'];
+// Etapas validas del backend para iPanel
+export const IPANEL_STAGES = ['diseno', 'guillotina', 'plegado', 'pintura', 'inyeccion', 'despacho'];
 
 export default function useIpanels(opts = {}) {
-  const { pollMs = 0 } = opts; // 0 => sin auto-refresh
+  const { pollMs = 0, onlyProduction = true } = opts; // por defecto: tablero productivo
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
@@ -26,14 +26,15 @@ export default function useIpanels(opts = {}) {
       setRefreshing(true);
       if (!didFetchOnce.current) setLoading(true);
 
-      const url = `${BASE_URL}/ipanel`;
-      const { data: payload, headers } = await axios.get(url, { timeout: 15000 });
+      const params = onlyProduction ? { produccion: 1 } : {};
+      const url = `${String(BASE_URL).replace(/\/+$/, '')}/ipanel`;
+      const { data: payload, headers } = await axios.get(url, { params, timeout: 15000 });
 
       if (!Array.isArray(payload)) {
         const ctype = headers?.['content-type'] || 'desconocido';
         throw new Error(
           `Respuesta inesperada desde ${url}. Content-Type: ${ctype}. ` +
-          `Verificá VITE_API_BASE y que GET /ipanel devuelva JSON (array).`
+          `Verifica VITE_API_BASE/VITE_API_URL y que GET /ipanel devuelva JSON (array).`
         );
       }
 
@@ -45,12 +46,10 @@ export default function useIpanels(opts = {}) {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [onlyProduction]);
 
-  // primera carga
   useEffect(() => { refresh(); }, [refresh]);
 
-  // auto-refresh opcional
   useEffect(() => {
     if (!pollMs) return;
     const tick = () => { if (isVisible()) refresh(); };
@@ -73,17 +72,17 @@ export default function useIpanels(opts = {}) {
     });
   }, []);
 
-  // ---- NUEVOS HELPERS (tal cual los endpoints del backend) ----
-
-  const createIpanel = useCallback(async ({ nv, partida, npartida }) => {
+  const createIpanel = useCallback(async ({ nv, partida, npartida, fecha_prod, fecha_plan_entrega }) => {
     try {
       setErr('');
       const payload = { nv };
       if (partida != null) payload.partida = partida;
       if (npartida != null) payload.npartida = npartida;
+      if (fecha_prod != null) payload.fecha_prod = fecha_prod;
+      if (fecha_plan_entrega != null) payload.fecha_plan_entrega = fecha_plan_entrega;
 
       const { data: created } = await axios.post(
-        `${BASE_URL}/ipanel`,
+        `${String(BASE_URL).replace(/\/+$/, '')}/ipanel`,
         payload,
         { timeout: 15000 }
       );
@@ -96,11 +95,11 @@ export default function useIpanels(opts = {}) {
     }
   }, []);
 
-  const setFechaProd = useCallback(async (id, fecha /* string YYYY-MM-DD | null */) => {
+  const setFechaProd = useCallback(async (id, fecha) => {
     try {
       setErr('');
       const { data: updated } = await axios.post(
-        `${BASE_URL}/ipanel/${id}/fecha-prod`,
+        `${String(BASE_URL).replace(/\/+$/, '')}/ipanel/${id}/fecha-prod`,
         { fecha_prod: fecha ?? null },
         { timeout: 15000 }
       );
@@ -117,7 +116,7 @@ export default function useIpanels(opts = {}) {
     try {
       setErr('');
       const { data: updated } = await axios.post(
-        `${BASE_URL}/ipanel/${id}/stage`,
+        `${String(BASE_URL).replace(/\/+$/, '')}/ipanel/${id}/stage`,
         { stage, action: 'start' },
         { timeout: 15000 }
       );
@@ -134,7 +133,7 @@ export default function useIpanels(opts = {}) {
     try {
       setErr('');
       const { data: updated } = await axios.post(
-        `${BASE_URL}/ipanel/${id}/stage`,
+        `${String(BASE_URL).replace(/\/+$/, '')}/ipanel/${id}/stage`,
         { stage, action: 'stop' },
         { timeout: 15000 }
       );
@@ -149,7 +148,6 @@ export default function useIpanels(opts = {}) {
 
   return {
     data, loading, err, refresh, refreshing, replaceItem,
-    // nuevos métodos:
     createIpanel,
     setFechaProd,
     startStage,

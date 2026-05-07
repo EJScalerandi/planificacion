@@ -21,6 +21,7 @@ import WorkflowDesignerPage from '../pages/admin/WorkflowDesignerPage';
 import AdminQcPage from '../pages/admin/AdminQcPage';
 
 import PreproduccionValoresTable from '../src/components/PreproduccionValoresTable';
+import IpanelPreproduccionValoresTable from '../src/components/IpanelPreproduccionValoresTable';
 import UserAdminDashboard from './components/UserAdminDashboard';
 
 import IndexPage from '../pages/IndexPage';
@@ -35,7 +36,7 @@ const STATUS = {
 };
 
 function apiBase() {
-  const v = import.meta.env.VITE_API_URL || '';
+  const v = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE || '';
   return String(v || '').replace(/\/$/, '');
 }
 function low(v) {
@@ -101,17 +102,14 @@ function chunk(arr, size) {
   return out;
 }
 
-/**
- * Wrapper “full-bleed” para páginas que deben ocupar TODO el ancho de viewport
- * aunque estén dentro de layouts con max-width.
- */
 function FullBleed({ children }) {
   return <div className="route-fullbleed">{children}</div>;
 }
 
 function Board({ stages }) {
   const { data: portones, loading, err, replaceItem, refresh, refreshing } = usePortones({ pollMs: 300000 });
-  const { data: ipanels, refresh: refreshIpanel } = useIpanel({ pollMs: 300000 });
+  // Solo trae los iPanels que logistica ya envio a produccion (public.ipanel, fecha_prod no null).
+  const { data: ipanels, refresh: refreshIpanel } = useIpanel({ pollMs: 300000, onlyProduction: true });
 
   const [busyId, setBusyId] = useState(null);
   const [q, setQ] = useState('');
@@ -151,9 +149,7 @@ function Board({ stages }) {
       }
     })();
 
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
 
   const reqIndexPortones = useMemo(
@@ -306,9 +302,7 @@ function Board({ stages }) {
           const isIpanel = s.mode === 'ipanel';
           const baseItems = isIpanel ? filteredIpanels : filteredPortones;
           const reqIndex = isIpanel ? reqIndexIpanel : reqIndexPortones;
-
           const itemsForStage = baseItems.filter((item) => canAppearInStage({ item, stageKey: s.key, reqIndex }));
-
           const qcMap = isIpanel ? qcSumIpanel : qcSumPortones;
 
           return (
@@ -341,33 +335,24 @@ const ROUTES = [
     stages: [
       { key: 'diseno', label: 'Diseño (Portones)', mode: 'porton' },
       { key: 'diseno', label: 'Diseño (iPanel)', mode: 'ipanel' },
-
       { key: 'laser', label: 'Laser', mode: 'porton' },
-
       { key: 'guillotina', label: 'Corte piernas', mode: 'porton' },
       { key: 'corte_revest', label: 'Corte revestimiento', mode: 'porton' },
       { key: 'guillotina', label: 'Corte Ipanel', mode: 'ipanel' },
-
       { key: 'plegadora', label: 'Plegado Piernas', mode: 'porton' },
       { key: 'plegado_revest', label: 'Plegado Revestimiento', mode: 'porton' },
       { key: 'plegado', label: 'Plegado Ipanel', mode: 'ipanel' },
-
       { key: 'armado_piernas', label: 'Prefabricados (Armado de piernas)', mode: 'porton' },
       { key: 'armado_marco_piernas', label: 'Armado de marcos piernas', mode: 'porton' },
       { key: 'armado_hojas', label: 'Armado de hoja', mode: 'porton' },
       { key: 'armado_primario', label: 'Armado Primario', mode: 'porton' },
-
       { key: 'revestimiento', label: 'Revestimiento', mode: 'porton' },
-
       { key: 'pintura', label: 'Pintura Sistemas (Portones)', mode: 'porton' },
       { key: 'pintura_revestimiento', label: 'Pintura Revestimiento (Portones)', mode: 'porton' },
       { key: 'pintura', label: 'Pintura (Ipanels)', mode: 'ipanel' },
-
       { key: 'inyeccion', label: 'Inyeccion (Portones)', mode: 'porton' },
       { key: 'inyeccion', label: 'Inyeccion Ipanel', mode: 'ipanel' },
-
       { key: 'armado_final', label: 'Armado Final', mode: 'porton' },
-
       { key: 'despacho', label: 'Despacho (Portones)', mode: 'porton' },
       { key: 'despacho', label: 'Despacho (iPanel)', mode: 'ipanel' },
     ],
@@ -457,6 +442,15 @@ export default function App() {
             element={
               <FullBleed>
                 <PreproduccionValoresTable />
+              </FullBleed>
+            }
+          />
+
+          <Route
+            path="/i"
+            element={
+              <FullBleed>
+                <IpanelPreproduccionValoresTable />
               </FullBleed>
             }
           />

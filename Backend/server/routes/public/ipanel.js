@@ -14,21 +14,59 @@ const IPANEL_STAGES = {
   despacho: { status: 'despacho', start: 'despacho_inicio', end: 'despacho_fin' },
 };
 
-const IPANEL_ALLOWED_STATUS_COLS = new Set(Object.keys(IPANEL_STAGES));
+function truthy(v) {
+  return ['1', 'true', 'si', 'yes'].includes(String(v || '').trim().toLowerCase());
+}
+
+function toIntOrNull(v) {
+  if (v === null || v === undefined || v === '') return null;
+  const n = parseInt(String(v).trim(), 10);
+  return Number.isFinite(n) ? n : null;
+}
 
 // GET /ipanel
-router.get('/ipanel', async (_req, res) => {
+// Tabla productiva: solo se alimenta cuando logistica envia un registro desde preproduccion_valores_ipanels.
+router.get('/ipanel', async (req, res) => {
   try {
+    const params = [];
+    const where = [];
+
+    if (truthy(req.query.produccion) || truthy(req.query.production)) {
+      where.push('fecha_prod is not null');
+    }
+
+    const q = String(req.query.q || '').trim();
+    if (q) {
+      params.push(`%${q}%`);
+      const p = params.length;
+      where.push(`(partida::text ilike $${p} or coalesce(nv::text, '') ilike $${p} or coalesce(observaciones, '') ilike $${p})`);
+    }
+
+    const n = toIntOrNull(req.query.nv || req.query.partida);
+    if (n) {
+      params.push(n);
+      const p = params.length;
+      where.push('(partida = $' + p + ' or nv = $' + p + ')');
+    }
+
+    const whereSql = where.length ? 'where ' + where.join(' and ') : '';
+
     const { rows } = await pool.query(
       `
       select *
       from public.ipanel
-      order by coalesce(partida, 0) asc, coalesce(nv, 0) asc, id asc;
-      `
+      ${whereSql}
+      order by coalesce(fecha_prod, fecha_plan_entrega, fecha_nv) asc nulls last,
+               coalesce(partida, 0) asc,
+               coalesce(nv, 0) asc,
+               id asc;
+      `,
+      params
     );
+    res.setHeader('Cache-Control', 'no-store');
     return res.json(rows);
   } catch (err) {
-    console.error(err);
+    console.error('ipanel list error:', err);
     return res.status(500).json({ error: 'Error leyendo ipanel', detail: err.message });
   }
 });
@@ -36,20 +74,22 @@ router.get('/ipanel', async (_req, res) => {
 // POST /ipanel
 router.post('/ipanel', async (req, res) => {
   try {
-    const { partida: bodyPartida, npartida, nv } = req.body || {};
+    const { partida: bodyPartida, npartida, nv, fecha_prod, fecha_plan_entrega, fecha_nv, observaciones } = req.body || {};
     const nNv = Number(nv);
     const hasPartida = (bodyPartida ?? npartida) != null;
+    const nPartida = hasPartida ? Number(bodyPartida ?? npartida) : nNv;
 
     if (!Number.isInteger(nNv)) return res.status(400).json({ error: 'nv debe ser entero' });
+    if (!Number.isInteger(nPartida)) return res.status(400).json({ error: 'partida debe ser entero' });
 
-    const query = `
-      insert into public.ipanel (nv${hasPartida ? ', partida' : ''})
-      values ($1${hasPartida ? ', $2' : ''})
+    const { rows } = await pool.query(
+      `
+      insert into public.ipanel (nv, partida, fecha_prod, fecha_plan_entrega, fecha_nv, observaciones)
+      values ($1,$2,$3::date,$4::date,$5::date,$6)
       returning *;
-    `;
-    const params = hasPartida ? [nNv, Number(bodyPartida ?? npartida)] : [nNv];
-
-    const { rows } = await pool.query(query, params);
+      `,
+      [nNv, nPartida, fecha_prod || null, fecha_plan_entrega || null, fecha_nv || null, observaciones || null]
+    );
     return res.status(201).json(rows[0]);
   } catch (err) {
     console.error('create ipanel error:', err);
@@ -64,7 +104,7 @@ router.post('/ipanel/:id/stage', async (req, res) => {
   const cfg = IPANEL_STAGES[stage];
 
   if (!cfg || !['start', 'stop'].includes(action)) {
-    return res.status(400).json({ error: 'Parámetros inválidos' });
+    return res.status(400).json({ error: 'Parametros invalidos' });
   }
 
   const client = await pool.connect();
@@ -76,6 +116,11 @@ router.post('/ipanel/:id/stage', async (req, res) => {
     if (!row0) {
       await client.query('rollback');
       return res.status(404).json({ error: 'iPanel no encontrado' });
+    }
+
+    if (!row0.fecha_prod) {
+      await client.query('rollback');
+      return res.status(409).json({ error: 'El iPanel todavia no tiene fecha de produccion' });
     }
 
     if (action === 'start') {
@@ -110,12 +155,6 @@ router.post('/ipanel/:id/stage', async (req, res) => {
       [id, STATUS.FINALIZADO]
     );
 
-    const afterQ = await client.query('select * from public.ipanel where id = $1;', [id]);
-    const row1 = afterQ.rows[0];
-
-    // A partir de ahora, el ruteo a la/s siguiente/s etapa/s se ejecuta cuando se completa el QC.
-    // El STOP solo marca FINALIZADO y cierra tiempos.
-
     const { rows } = await client.query('select * from public.ipanel where id = $1;', [id]);
     await client.query('commit');
     return res.json(rows[0]);
@@ -137,7 +176,7 @@ function datePatchHandler(fieldName) {
       if (v !== null && v !== undefined) {
         if (typeof v !== 'string') return res.status(400).json({ error: `${fieldName} debe ser string YYYY-MM-DD o null` });
         v = v.slice(0, 10);
-        if (!isValidISODate10(v)) return res.status(400).json({ error: `${fieldName} inválida. Use formato YYYY-MM-DD` });
+        if (!isValidISODate10(v)) return res.status(400).json({ error: `${fieldName} invalida. Use formato YYYY-MM-DD` });
       }
 
       const { rows } = await pool.query(

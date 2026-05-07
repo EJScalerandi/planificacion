@@ -16,12 +16,13 @@ const qcRoutes = require('./routes/public/qc');
 const workflowRoutes = require('./routes/public/workflow');
 const portonesRoutes = require('./routes/public/portones');
 const ipanelRoutes = require('./routes/public/ipanel');
+const ipanelPreprodRoutes = require('./routes/public/ipanelPreprod');
 
 const { errorHandler } = require('./middleware/errorHandler');
 
 const app = express();
 
-// Para que caches/CDN varíen por Origin
+// Para que caches/CDN varien por Origin
 app.use((req, res, next) => { res.header('Vary', 'Origin'); next(); });
 
 const defaultOrigins = [
@@ -69,13 +70,14 @@ app.use('/admin', adminWorkflowRoutes);
 // Backward-compat aliases (legacy frontend)
 // ---------------------------------------------------------------------------
 // Algunos clientes antiguos consumen /users y /scopes (sin prefijo /admin).
-// Montamos el mismo router también en la raíz para evitar 404.
+// Montamos el mismo router tambien en la raiz para evitar 404.
 // Nota: siguen protegidas por adminAuth (401 si falta token).
 app.use('/', adminUsersRoutes);
 
 app.use('/', plantaRoutes);
 app.use('/', despacharRoutes);
 app.use('/', preproduccionRoutes);
+app.use('/', ipanelPreprodRoutes);
 app.use('/', qcRoutes);
 app.use('/', workflowRoutes);
 app.use('/', portonesRoutes);

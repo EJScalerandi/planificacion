@@ -78,13 +78,23 @@ export const savePortonObservaciones = (id, observaciones) => api.post(`/portone
 export const updatePortonObservaciones = (id, observaciones) => api.put(`/portones/${id}/observaciones`, { observaciones });
 export const setPortonObservaciones = (id, observaciones) => updatePortonObservaciones(id, observaciones);
 
-/* ========= iPanels ========= */
-export const fetchIpanels = () => api.get('/ipanel');
+/* ========= iPanels productivos ========= */
+export const fetchIpanels = (params = {}) => api.get('/ipanel', { params });
 export const createIpanel = (payload) => api.post('/ipanel', payload);
 export const startIpanelStage = (id, stage) => api.post(`/ipanel/${id}/stage`, { stage, action: 'start' });
 export const stopIpanelStage = (id, stage) => api.post(`/ipanel/${id}/stage`, { stage, action: 'stop' });
 
-/* ========= Fechas iPanels ========= */
+/* ========= Preproducción iPanels: datos desde SQL ya sincronizados ========= */
+export const fetchIpanelPreproduccionValores = (params = {}) =>
+  api.get('/preproduccion-valores-ipanels', { params });
+
+export const updateIpanelPreproduccionValor = (id, patch) =>
+  api.patch(`/preproduccion-valores-ipanels/${id}`, patch);
+
+export const enviarIpanelPreproduccionAProduccion = (id, payload = {}) =>
+  api.post(`/preproduccion-valores-ipanels/${id}/enviar-produccion`, payload);
+
+/* ========= Fechas iPanels productivos ========= */
 export const setIpanelFechaProd = (id, fechaOrNull) => api.post(`/ipanel/${id}/fecha-prod`, { fecha_prod: fechaOrNull });
 export const setIpanelFechaNV = (id, fechaOrNull) => api.post(`/ipanel/${id}/fecha-nv`, { fecha_nv: fechaOrNull });
 export const setIpanelFechaMed = (id, fechaOrNull) => api.post(`/ipanel/${id}/fecha-med`, { fecha_med: fechaOrNull });
@@ -209,7 +219,7 @@ export const getDespacharBase = () => api.get('/despachar/base');
 export const postDespacharBase = (payload) => api.post('/despachar/base', payload);
 export const getDespacharBases = () => api.get('/despachar/bases');
 
-/* ========= Preproducción ========= */
+/* ========= Preproducción portones ========= */
 export const fetchPreproduccionValores = () => api.get('/preproduccion-valores');
 export const updatePreproduccionValor = (id, patch) => api.put(`/preproduccion-valores/${id}`, { patch });
 

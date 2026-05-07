@@ -6,21 +6,17 @@ function parseJwtPayload(token) {
   try {
     const parts = String(token || '').split('.');
     if (parts.length < 2) return null;
-
-    // base64url -> base64
     const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
     const pad = b64.length % 4 ? '='.repeat(4 - (b64.length % 4)) : '';
-    const json = atob(b64 + pad);
-
-    return JSON.parse(json);
+    return JSON.parse(atob(b64 + pad));
   } catch {
     return null;
   }
 }
 
 function readAdminToken() {
-  // Ajustá keys si usás otras; dejo varias comunes para no romper.
   return (
+    localStorage.getItem('dg_admin_token') ||
     localStorage.getItem('token') ||
     localStorage.getItem('admin_token') ||
     localStorage.getItem('auth_token') ||
@@ -32,7 +28,6 @@ function readAdminToken() {
 }
 
 function readStoredScopes() {
-  // 1) scopes guardados explícitamente
   const raw =
     localStorage.getItem('admin_scopes') ||
     sessionStorage.getItem('admin_scopes') ||
@@ -44,19 +39,13 @@ function readStoredScopes() {
       if (Array.isArray(j)) return j.map(String);
       if (typeof j === 'string') return j.split(/[,\s]+/).filter(Boolean);
     } catch {
-      // si no es JSON, lo tratamos como string
       return String(raw).split(/[,\s]+/).filter(Boolean);
     }
   }
 
-  // 2) scopes dentro del JWT (scope/scopes/permissions)
   const token = readAdminToken();
   const payload = parseJwtPayload(token);
   if (!payload) return [];
-
-  const s1 = payload.scopes;
-  const s2 = payload.scope;
-  const s3 = payload.permissions;
 
   const toArr = (v) => {
     if (!v) return [];
@@ -65,54 +54,31 @@ function readStoredScopes() {
     return [];
   };
 
-  return [...toArr(s1), ...toArr(s2), ...toArr(s3)];
+  return [...toArr(payload.scopes), ...toArr(payload.scope), ...toArr(payload.permissions)];
 }
 
 function clearAdminSession() {
-  const keys = ['token', 'admin_token', 'auth_token', 'admin_scopes'];
+  const keys = ['dg_admin_token', 'token', 'admin_token', 'auth_token', 'admin_scopes'];
   for (const k of keys) localStorage.removeItem(k);
   for (const k of keys) sessionStorage.removeItem(k);
 }
 
-/**
- * Index “central” con scope-based menu:
- * Scopes:
- * - users:read
- * - users:write
- * - qc:admin
- * - workflow:admin
- * - preproduccion:admin
- *
- * Reglas pedidas:
- * - qc:admin -> ve Admin Qcusers + TODO Producción + TODO Informativo
- * - workflow:admin -> ve Admin Workflow + TODO Producción + TODO Informativo
- * - preproduccion:admin -> ve SOLO Autorizaciones (parte informativa)
- */
 export default function IndexPage({ routes = [] }) {
   const nav = useNavigate();
 
-  const scopes = useMemo(() => {
-    const arr = readStoredScopes();
-    return new Set(arr.map((x) => String(x || '').trim()).filter(Boolean));
-  }, []);
-
+  const scopes = useMemo(() => new Set(readStoredScopes().map((x) => String(x || '').trim()).filter(Boolean)), []);
   const has = (s) => scopes.has(s);
 
   const isQcAdmin = has('qc:admin');
   const isWfAdmin = has('workflow:admin');
-  const isPreprodAdmin = has('preproduccion:admin');
+  const isPreprodAdmin = has('preproduccion:admin') || has('preproduccion:full');
   const canUsers = has('users:read') || has('users:write');
 
-  // Caso especial: preproducción-only (según tu regla: SOLO Autorizaciones)
   const isPreprodOnly = isPreprodAdmin && !isQcAdmin && !isWfAdmin && !canUsers;
 
   useEffect(() => {
-    // Si no hay token, a login.
-    // (Index es el “hub” post-login; si entran directo sin sesión, los mandamos a login.)
     const token = readAdminToken();
-    if (!String(token || '').trim()) {
-      nav('/admin/login', { replace: true });
-    }
+    if (!String(token || '').trim()) nav('/admin/login', { replace: true });
   }, [nav]);
 
   const logout = () => {
@@ -120,29 +86,22 @@ export default function IndexPage({ routes = [] }) {
     nav('/admin/login', { replace: true });
   };
 
-  const publicRoutes = useMemo(() => {
-    return [{ path: '/estado-porton', label: 'Consulta pública · Estado por NV' }];
-  }, []);
+  const publicRoutes = useMemo(() => [
+    { path: '/estado-porton', label: 'Consulta pública · Estado por NV' },
+  ], []);
 
-  // ===== Rutas por sección, filtradas por scope =====
   const adminRoutes = useMemo(() => {
     if (isPreprodOnly) return [];
-
     const out = [];
     if (isQcAdmin) out.push({ path: '/admin/qc', label: 'Admin · Usuarios QC' });
     if (isWfAdmin) out.push({ path: '/admin/workflow', label: 'Admin · Workflow (Designer)' });
-
-    // (Opcional, por scopes users:*; si no lo querés, lo saco)
     if (canUsers) out.push({ path: '/b', label: 'Admin · Usuarios / Permisos (Dashboard)' });
-
     return out;
   }, [isPreprodOnly, isQcAdmin, isWfAdmin, canUsers]);
 
   const opsRoutes = useMemo(() => {
-    // Producción solo para qc:admin o workflow:admin (según tu regla)
     if (isPreprodOnly) return [];
     if (!(isQcAdmin || isWfAdmin)) return [];
-
     return [
       { path: '/board', label: 'Producción · Tablero completo' },
       ...routes
@@ -151,28 +110,22 @@ export default function IndexPage({ routes = [] }) {
     ];
   }, [isPreprodOnly, isQcAdmin, isWfAdmin, routes]);
 
+  const preprodRoutes = useMemo(() => [
+    { path: '/a', label: 'Autorizaciones · Preproducción Portones' },
+    { path: '/i', label: 'Autorizaciones · Preproducción iPanels' },
+  ], []);
+
   const infoRoutes = useMemo(() => {
-    // Informativo:
-    // - qc:admin / workflow:admin -> TODO informativo
-    // - preproduccion:admin -> SOLO autorizaciones
-    if (isPreprodOnly) {
-      return [{ path: '/a', label: 'Autorizaciones · Preproducción (portones_valores)' }];
-    }
+    if (isPreprodOnly) return preprodRoutes;
 
     if (isPreprodAdmin && !(isQcAdmin || isWfAdmin)) {
-      // Si tiene preproduccion:admin pero además no es qc/workflow, respetamos tu consigna:
-      // "solo Autorizaciones"
-      return [{ path: '/a', label: 'Autorizaciones · Preproducción (portones_valores)' }];
+      return preprodRoutes;
     }
 
-    if (!(isQcAdmin || isWfAdmin)) {
-      // Sin qc/workflow, no mostramos informativo (salvo el caso preprod ya contemplado).
-      return [];
-    }
+    if (!(isQcAdmin || isWfAdmin)) return [];
 
     return [
-      { path: '/a', label: 'Autorizaciones · Preproducción (portones_valores)' },
-
+      ...preprodRoutes,
       { path: '/ipanel', label: 'iPanel (solo lectura)' },
       { path: '/statusGate', label: 'Status Portones' },
       { path: '/createGate', label: 'CreateGate (carga / planificación)' },
@@ -181,59 +134,36 @@ export default function IndexPage({ routes = [] }) {
       { path: '/statusIpanels', label: 'Status iPanels' },
       { path: '/stats/portones', label: 'Stats · Portones' },
     ];
-  }, [isPreprodOnly, isPreprodAdmin, isQcAdmin, isWfAdmin]);
+  }, [isPreprodOnly, isPreprodAdmin, isQcAdmin, isWfAdmin, preprodRoutes]);
 
   const LinkRow = ({ r }) => (
     <li className="idx-linkItem">
       <div className="idx-linkText">
-        <Link to={r.path} className="idx-linkTitle">
-          {r.label}
-        </Link>
-        <div className="idx-linkMeta">
-          Ruta: <code>{r.path}</code>
-        </div>
+        <Link to={r.path} className="idx-linkTitle">{r.label}</Link>
+        <div className="idx-linkMeta">Ruta: <code>{r.path}</code></div>
       </div>
-      <Link to={r.path} className="btn btn--brand">
-        Ir
-      </Link>
+      <Link to={r.path} className="btn btn--brand">Ir</Link>
     </li>
   );
 
-  const hasAny =
-    publicRoutes.length > 0 ||
-    adminRoutes.length > 0 ||
-    opsRoutes.length > 0 ||
-    infoRoutes.length > 0;
+  const hasAny = publicRoutes.length || adminRoutes.length || opsRoutes.length || infoRoutes.length;
 
   return (
     <div className="container">
       <div className="header-row" style={{ marginBottom: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <h1 className="h1" style={{ margin: 0 }}>
-            Índice
-          </h1>
+          <h1 className="h1" style={{ margin: 0 }}>Índice</h1>
           <span className="idx-pill">Menú principal</span>
         </div>
-
-
+        <button type="button" className="btn" onClick={logout}>Cerrar sesión</button>
       </div>
 
       {!hasAny ? (
-        <div
-          style={{
-            border: '1px solid var(--border)',
-            borderRadius: 12,
-            padding: 14,
-            background: 'var(--surface)',
-            color: 'crimson',
-            fontWeight: 800,
-          }}
-        >
+        <div style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 14, background: 'var(--surface)', color: 'crimson', fontWeight: 800 }}>
           No tenés permisos para ver opciones en el índice. Contactá a un administrador.
         </div>
       ) : (
         <div className="idx-grid">
-          {/* PÚBLICO */}
           {publicRoutes.length > 0 && (
             <section className="idx-section idx-section--info" style={{ gridColumn: '1 / -1' }}>
               <div className="idx-section__head">
@@ -243,18 +173,10 @@ export default function IndexPage({ routes = [] }) {
                 </div>
                 <span className="idx-pill">Público</span>
               </div>
-
-              <div className="idx-section__body">
-                <ul className="idx-links">
-                  {publicRoutes.map((r) => (
-                    <LinkRow key={r.path} r={r} />
-                  ))}
-                </ul>
-              </div>
+              <div className="idx-section__body"><ul className="idx-links">{publicRoutes.map((r) => <LinkRow key={r.path} r={r} />)}</ul></div>
             </section>
           )}
 
-          {/* ADMIN */}
           {adminRoutes.length > 0 && (
             <section className="idx-section idx-section--admin">
               <div className="idx-section__head">
@@ -264,18 +186,10 @@ export default function IndexPage({ routes = [] }) {
                 </div>
                 <span className="idx-pill">Admin</span>
               </div>
-
-              <div className="idx-section__body">
-                <ul className="idx-links">
-                  {adminRoutes.map((r) => (
-                    <LinkRow key={r.path} r={r} />
-                  ))}
-                </ul>
-              </div>
+              <div className="idx-section__body"><ul className="idx-links">{adminRoutes.map((r) => <LinkRow key={r.path} r={r} />)}</ul></div>
             </section>
           )}
 
-          {/* PRODUCCIÓN */}
           {opsRoutes.length > 0 && (
             <section className="idx-section idx-section--prod">
               <div className="idx-section__head">
@@ -285,35 +199,20 @@ export default function IndexPage({ routes = [] }) {
                 </div>
                 <span className="idx-pill">Operativo</span>
               </div>
-
-              <div className="idx-section__body">
-                <ul className="idx-links">
-                  {opsRoutes.map((r) => (
-                    <LinkRow key={r.path} r={r} />
-                  ))}
-                </ul>
-              </div>
+              <div className="idx-section__body"><ul className="idx-links">{opsRoutes.map((r) => <LinkRow key={r.path} r={r} />)}</ul></div>
             </section>
           )}
 
-          {/* INFORMATIVO / HERRAMIENTAS */}
           {infoRoutes.length > 0 && (
             <section className="idx-section idx-section--info" style={{ gridColumn: '1 / -1' }}>
               <div className="idx-section__head">
                 <div>
                   <div className="idx-section__title">Informativo</div>
-                  <div className="idx-section__sub">Consultas, estado y utilidades</div>
+                  <div className="idx-section__sub">Consultas, preproducción, estado y utilidades</div>
                 </div>
                 <span className="idx-pill">Info</span>
               </div>
-
-              <div className="idx-section__body">
-                <ul className="idx-links">
-                  {infoRoutes.map((r) => (
-                    <LinkRow key={r.path} r={r} />
-                  ))}
-                </ul>
-              </div>
+              <div className="idx-section__body"><ul className="idx-links">{infoRoutes.map((r) => <LinkRow key={r.path} r={r} />)}</ul></div>
             </section>
           )}
         </div>
