@@ -60,11 +60,10 @@ function getCliente(row) {
 function getDescripcion(row) {
   const d = getData(row);
   return toStr(
-    row?.descripcion ??
-      d.descripcion ??
-      d.producto_descripcion ??
-      d.producto_descripciones ??
-      d.descripcion_producto
+    row?.descripcion_simple ??
+      row?.DescripcionSimple ??
+      d.descripcion_simple ??
+      d.DescripcionSimple
   );
 }
 
