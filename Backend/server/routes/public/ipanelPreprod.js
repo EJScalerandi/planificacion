@@ -70,6 +70,15 @@ function getDescripcionFromRowOrData(row = {}, data = {}) {
   ) || null;
 }
 
+function getDescripcionSimpleFromRowOrData(row = {}, data = {}) {
+  return toStr(
+    row.descripcion_simple ??
+    row.DescripcionSimple ??
+    data.DescripcionSimple ??
+    data.descripcion_simple
+  ) || null;
+}
+
 function buildObservacionesFromData(data = {}) {
   const parts = [];
   const cliente = toStr(data.cliente ?? data.Cliente);
@@ -108,10 +117,13 @@ function normalizePreprodRow(row) {
   const ipanelId = row?.ipanel_id_resolved ?? row?.ipanel_id ?? null;
   const enviado = row?.produccion_enviada_resolved === true || row?.produccion_enviada === true || !!ipanelId;
   const descripcion = getDescripcionFromRowOrData(row, data);
+  const descripcionSimple = getDescripcionSimpleFromRowOrData(row, data);
 
   return {
     ...row,
     descripcion,
+    descripcion_simple: descripcionSimple,
+    DescripcionSimple: descripcionSimple,
     data,
     ipanel_id: ipanelId,
     produccion_enviada: enviado,
@@ -164,6 +176,7 @@ router.get('/preproduccion-valores-ipanels', async (req, res) => {
         or coalesce(p.data->>'localidad', p.data->>'Localidad', '') ilike $${p}
         or coalesce(p.data->>'oc', p.data->>'OC', '') ilike $${p}
         or coalesce(p.descripcion, p.data->>'descripcion', p.data->>'producto_descripcion', p.data->>'producto_descripciones', p.data->>'descripcion_producto', '') ilike $${p}
+        or coalesce(p.descripcion_simple, p.data->>'DescripcionSimple', p.data->>'descripcion_simple', '') ilike $${p}
       )`);
     }
 
@@ -223,9 +236,12 @@ async function updatePreprodDates(req, res) {
       : current.fecha_plan_entrega;
 
     const descripcion = getDescripcionFromRowOrData(current, current.data || {});
+    const descripcionSimple = getDescripcionSimpleFromRowOrData(current, current.data || {});
     const data = {
       ...(current.data || {}),
       descripcion,
+      DescripcionSimple: descripcionSimple,
+      descripcion_simple: descripcionSimple,
       fecha_prod: fechaProd,
       fecha_plan_entrega: fechaPlanEntrega,
       inicio_prod_imput: fechaProd,
@@ -238,12 +254,13 @@ async function updatePreprodDates(req, res) {
       set fecha_prod = $2::date,
           fecha_plan_entrega = $3::date,
           descripcion = $4,
-          data = $5::jsonb,
+          descripcion_simple = $5,
+          data = $6::jsonb,
           updated_at = now()
       where id = $1
       returning *;
       `,
-      [id, fechaProd, fechaPlanEntrega, descripcion, JSON.stringify(data)]
+      [id, fechaProd, fechaPlanEntrega, descripcion, descripcionSimple, JSON.stringify(data)]
     );
 
     const updated = await getPreprodById(pool, rows[0].id);
@@ -294,9 +311,12 @@ router.post('/preproduccion-valores-ipanels/:id/enviar-produccion', async (req, 
     }
 
     const descripcion = getDescripcionFromRowOrData(current, current.data || {});
+    const descripcionSimple = getDescripcionSimpleFromRowOrData(current, current.data || {});
     const data = {
       ...(current.data || {}),
       descripcion,
+      DescripcionSimple: descripcionSimple,
+      descripcion_simple: descripcionSimple,
       fecha_prod: fechaProd,
       fecha_plan_entrega: fechaPlanEntrega,
       inicio_prod_imput: fechaProd,
@@ -322,11 +342,12 @@ router.post('/preproduccion-valores-ipanels/:id/enviar-produccion', async (req, 
             fecha_plan_entrega = $5::date,
             observaciones = coalesce($6, observaciones),
             descripcion = coalesce($7, descripcion),
+            descripcion_simple = coalesce($8, descripcion_simple),
             updated_at = now()
         where id = $1
         returning *;
         `,
-        [existing.rows[0].id, nv, current.fecha_nv, fechaProd, fechaPlanEntrega, observaciones || null, descripcion || null]
+        [existing.rows[0].id, nv, current.fecha_nv, fechaProd, fechaPlanEntrega, observaciones || null, descripcion || null, descripcionSimple || null]
       );
       ipanel = upd.rows[0];
     } else {
@@ -340,13 +361,14 @@ router.post('/preproduccion-valores-ipanels/:id/enviar-produccion', async (req, 
           fecha_plan_entrega,
           observaciones,
           descripcion,
+          descripcion_simple,
           diseno,
           guillotina,
           plegado,
           pintura,
           inyeccion,
           despacho
-        ) values ($1,$2,$3::date,$4::date,$5::date,$6,$7,$8,$9,$10,$11,$12,$13)
+        ) values ($1,$2,$3::date,$4::date,$5::date,$6,$7,$8,$9,$10,$11,$12,$13,$14)
         returning *;
         `,
         [
@@ -357,6 +379,7 @@ router.post('/preproduccion-valores-ipanels/:id/enviar-produccion', async (req, 
           fechaPlanEntrega,
           observaciones || null,
           descripcion || null,
+          descripcionSimple || null,
           'Pendiente',
           null,
           null,
@@ -374,6 +397,7 @@ router.post('/preproduccion-valores-ipanels/:id/enviar-produccion', async (req, 
       set fecha_prod = $2::date,
           fecha_plan_entrega = $3::date,
           descripcion = $6,
+          descripcion_simple = $7,
           produccion_enviada = true,
           produccion_enviada_at = coalesce(produccion_enviada_at, now()),
           ipanel_id = $4,
@@ -381,7 +405,7 @@ router.post('/preproduccion-valores-ipanels/:id/enviar-produccion', async (req, 
           updated_at = now()
       where id = $1;
       `,
-      [id, fechaProd, fechaPlanEntrega, ipanel.id, JSON.stringify(data), descripcion || null]
+      [id, fechaProd, fechaPlanEntrega, ipanel.id, JSON.stringify(data), descripcion || null, descripcionSimple || null]
     );
 
     const preproduccion = await getPreprodById(client, id);

@@ -42,7 +42,7 @@ router.get('/ipanel', async (req, res) => {
     if (q) {
       params.push(`%${q}%`);
       const p = params.length;
-      where.push(`(partida::text ilike $${p} or coalesce(nv::text, '') ilike $${p} or coalesce(observaciones, '') ilike $${p} or coalesce(descripcion, '') ilike $${p})`);
+      where.push(`(partida::text ilike $${p} or coalesce(nv::text, '') ilike $${p} or coalesce(observaciones, '') ilike $${p} or coalesce(descripcion, '') ilike $${p} or coalesce(descripcion_simple, '') ilike $${p})`);
     }
 
     const n = toIntOrNull(req.query.nv || req.query.partida);
@@ -56,7 +56,7 @@ router.get('/ipanel', async (req, res) => {
 
     const { rows } = await pool.query(
       `
-      select *
+      select *, descripcion_simple as "DescripcionSimple"
       from public.ipanel
       ${whereSql}
       order by coalesce(fecha_prod, fecha_plan_entrega, fecha_nv) asc nulls last,
@@ -76,7 +76,7 @@ router.get('/ipanel', async (req, res) => {
 
 router.post('/ipanel', async (req, res) => {
   try {
-    const { partida: bodyPartida, npartida, nv, fecha_prod, fecha_plan_entrega, fecha_nv, observaciones, descripcion } = req.body || {};
+    const { partida: bodyPartida, npartida, nv, fecha_prod, fecha_plan_entrega, fecha_nv, observaciones, descripcion, descripcion_simple, DescripcionSimple } = req.body || {};
     const nNv = Number(nv);
     const hasPartida = (bodyPartida ?? npartida) != null;
     const nPartida = hasPartida ? Number(bodyPartida ?? npartida) : nNv;
@@ -94,13 +94,14 @@ router.post('/ipanel', async (req, res) => {
         fecha_nv,
         observaciones,
         descripcion,
+        descripcion_simple,
         diseno,
         guillotina,
         plegado,
         pintura,
         inyeccion,
         despacho
-      ) values ($1,$2,$3::date,$4::date,$5::date,$6,$7,$8,$9,$10,$11,$12,$13)
+      ) values ($1,$2,$3::date,$4::date,$5::date,$6,$7,$8,$9,$10,$11,$12,$13,$14)
       returning *;
       `,
       [
@@ -111,6 +112,7 @@ router.post('/ipanel', async (req, res) => {
         normalizeDate10(fecha_nv),
         observaciones || null,
         descripcion || null,
+        String(descripcion_simple ?? DescripcionSimple ?? '').trim().toUpperCase() || null,
         'Pendiente',
         null,
         null,
