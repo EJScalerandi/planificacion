@@ -580,13 +580,24 @@ export default function PreproduccionValoresTable() {
 
   // Admin (preproduccion:admin): campos + autorización admin
   const ADMIN_COL_IDS = useMemo(
-    () => new Set(['fecha_venta', 'nv', 'nombre', 'distribuidor', 'fecha_salida', 'fecha_llegada', 'auth_admin']),
+    () =>
+      new Set([
+        'fecha_venta',
+        'nv',
+        'nombre',
+        'distribuidor',
+        'fecha_salida',
+        'semana_despacho',
+        'fecha_llegada',
+        'auth_admin',
+      ]),
     []
   );
   const ADMIN_LABEL_OVERRIDES = useMemo(
     () => ({
       distribuidor: 'Distribuidor',
       fecha_salida: 'Fecha salida',
+      semana_despacho: 'Semana despacho',
       auth_admin: 'Aut. Admin',
     }),
     []
@@ -1492,6 +1503,10 @@ export default function PreproduccionValoresTable() {
 
     // ===== limited: SOLO LECTURA =====
     if (accessMode === 'limited') {
+      if (col.type === 'week_despacho') {
+        return <span>{weekNumberFromLabel(weekLabelFromRow(row, 'despacho'))}</span>;
+      }
+
       const raw = getCellValue(row, col);
       if (col.id === 'fecha_venta') return <span>{formatDMY(toISODate10(raw))}</span>;
       if (col.type === 'date') return <span>{formatDMY(toISODate10(raw))}</span>;
