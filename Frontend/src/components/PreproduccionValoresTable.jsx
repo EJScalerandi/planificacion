@@ -1503,10 +1503,6 @@ export default function PreproduccionValoresTable() {
 
     // ===== limited: SOLO LECTURA =====
     if (accessMode === 'limited') {
-      if (col.type === 'week_despacho') {
-        return <span>{weekNumberFromLabel(weekLabelFromRow(row, 'despacho'))}</span>;
-      }
-
       const raw = getCellValue(row, col);
       if (col.id === 'fecha_venta') return <span>{formatDMY(toISODate10(raw))}</span>;
       if (col.type === 'date') return <span>{formatDMY(toISODate10(raw))}</span>;
@@ -1529,6 +1525,10 @@ export default function PreproduccionValoresTable() {
             Autorizar
           </button>
         );
+      }
+
+      if (col.type === 'week_despacho') {
+        return <span>{weekNumberFromLabel(weekLabelFromRow(row, 'despacho'))}</span>;
       }
 
       const raw = getCellValue(row, col);
