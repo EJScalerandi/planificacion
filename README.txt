@@ -1,21 +1,18 @@
-ZIP de reemplazo directo para repo planificacion.
+REEMPLAZO DIRECTO - admin acciones v2
 
-Copiar y reemplazar estos archivos en la raíz del repo:
+Copiar la carpeta Frontend sobre la raiz del repo planificacion y reemplazar archivos.
 
+Archivos incluidos:
 - Frontend/src/components/modals/AdminAuthModal.jsx
 - Frontend/src/components/StageColumn.jsx
 
-Cambios incluidos:
-1. En /a, dentro de Autorización Administración, agrega campo Acciones.
-   - Por defecto queda en No.
-   - Si se marca Sí, habilita detalle / observación y lo exige antes de autorizar.
-   - Guarda en preproduccion_valores.data:
-     - admin_acciones
-     - admin_acciones_detalle
+Cambios:
+- En /a con usuario Administracion se muestra columna Acciones antes de Aut. Admin.
+- En esa columna, Completar abre la misma autorizacion administrativa.
+- Dentro del popup de autorizacion esta el campo Acciones, por defecto No.
+- Si Acciones = Si, se habilita y exige el detalle.
+- En /despacho, si falta autorizacion pero Acciones = Si, el porton se muestra amarillo y aparece boton Acciones con popup de detalle.
 
-2. En /despacho, para portones:
-   - Si falta autorización administrativa y el portón tiene admin_acciones=true, se muestra amarillo en lugar de rojo.
-   - Agrega botón Acciones para abrir popup con el detalle cargado.
-   - Si no tiene acciones, mantiene comportamiento rojo existente.
-
-Después de copiar, ejecutar el build del frontend antes de deployar.
+Luego de copiar, correr:
+cd Frontend
+npm run build
