@@ -4,40 +4,55 @@ import BaseModal from './BaseModal';
 export default function AdminAuthModal({ open, row, onClose, onSubmit, busy }) {
   const data = row?.data || {};
 
-  // Key persistido para la respuesta del form
+  // Keys persistidas para la respuesta del form
   const KEYS = useMemo(
     () => ({
       enRegla: 'admin_cliente_en_regla', // boolean
+      acciones: 'admin_acciones', // boolean
+      accionesDetalle: 'admin_acciones_detalle', // string | null
     }),
     []
   );
 
   const [enRegla, setEnRegla] = useState(false);
+  const [acciones, setAcciones] = useState(false);
+  const [accionesDetalle, setAccionesDetalle] = useState('');
   const [touched, setTouched] = useState(false);
   const [formError, setFormError] = useState('');
 
   useEffect(() => {
     if (!open) return;
 
-    // Prefill: si ya estaba guardado, lo traemos
+    // Prefill: si ya estaba guardado, lo traemos.
+    // Acciones queda por defecto en No cuando no existe dato previo.
     setEnRegla(Boolean(data[KEYS.enRegla]));
+    setAcciones(Boolean(data[KEYS.acciones]));
+    setAccionesDetalle(String(data[KEYS.accionesDetalle] ?? ''));
     setTouched(false);
     setFormError('');
   }, [open, data, KEYS]);
 
-  const canAuthorize = Boolean(enRegla);
+  const detalleAcciones = acciones ? String(accionesDetalle || '').trim() : '';
+  const canAuthorize = Boolean(enRegla) && (!acciones || Boolean(detalleAcciones));
 
   const submit = async () => {
     setFormError('');
     setTouched(true);
 
-    if (!canAuthorize) {
+    if (!enRegla) {
       setFormError('Para autorizar, el cliente debe estar en regla (responder “Sí”).');
+      return;
+    }
+
+    if (acciones && !detalleAcciones) {
+      setFormError('Si marcás Acciones en “Sí”, cargá el detalle.');
       return;
     }
 
     const patch = {
       [KEYS.enRegla]: true,
+      [KEYS.acciones]: Boolean(acciones),
+      [KEYS.accionesDetalle]: acciones ? detalleAcciones : null,
 
       // bandera final
       auth_admin: true,
@@ -103,6 +118,66 @@ export default function AdminAuthModal({ open, row, onClose, onSubmit, busy }) {
 
           {touched && !enRegla ? (
             <div className="pp-errorText">Debe estar marcado “Sí” para autorizar.</div>
+          ) : null}
+        </div>
+
+        <div className="pp-field">
+          <div className="pp-label">Acciones</div>
+
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className={`pp-btnCell ${acciones ? 'pp-btnCell--brand' : ''}`}
+              onClick={() => {
+                setAcciones(true);
+                setTouched(true);
+                setFormError('');
+              }}
+              disabled={busy}
+              title="Sí, requiere acciones"
+            >
+              Sí
+            </button>
+
+            <button
+              type="button"
+              className={`pp-btnCell ${!acciones ? 'pp-btnCell--danger' : ''}`}
+              onClick={() => {
+                setAcciones(false);
+                setAccionesDetalle('');
+                setTouched(true);
+                setFormError('');
+              }}
+              disabled={busy}
+              title="No requiere acciones"
+            >
+              No
+            </button>
+          </div>
+
+          <div className="pp-help">
+            Por defecto queda en <b>No</b>. Si se marca <b>Sí</b>, se habilita el detalle.
+          </div>
+
+          {acciones ? (
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 10 }}>
+              <span className="pp-label" style={{ margin: 0 }}>
+                Detalle / observación de acciones <span className="pp-req">*</span>
+              </span>
+              <textarea
+                className="pp-input"
+                value={accionesDetalle}
+                onChange={(e) => setAccionesDetalle(e.target.value)}
+                disabled={busy}
+                rows={4}
+                placeholder="Escribí el detalle de las acciones administrativas..."
+                style={{ width: '100%', resize: 'vertical', minHeight: 84 }}
+              />
+            </label>
+          ) : null}
+
+          {touched && acciones && !detalleAcciones ? (
+            <div className="pp-errorText">Cargá el detalle para guardar Acciones en “Sí”.</div>
           ) : null}
         </div>
 
