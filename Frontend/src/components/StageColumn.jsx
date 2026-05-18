@@ -123,6 +123,9 @@ function getSalidaDate10(item) {
 function isClienteEnRegla(item) {
   return isTruthySi(item?.admin_cliente_en_regla);
 }
+function isAdminAutorizado(item) {
+  return isTruthySi(item?.auth_admin);
+}
 function hasAdminAcciones(item) {
   return isTruthySi(item?.admin_acciones);
 }
@@ -849,11 +852,15 @@ export default function StageColumn({
             const salida10 = getSalidaDate10(p);
             const today10 = todayISO10Local();
             const vencida = salida10 ? salida10 <= today10 : false;
-            const enRegla = isClienteEnRegla(p);
+            const adminAutorizado = isAdminAutorizado(p);
             const adminAcciones = isDespachoColumn && mode !== 'ipanel' && hasAdminAcciones(p);
             const adminAccionesDetalle = getAdminAccionesDetalle(p);
-            const needsAdminActionsYellow = isDespachoColumn && vencida && !enRegla && adminAcciones;
-            const needsAdminAuthRed = isDespachoColumn && vencida && !enRegla && !adminAcciones;
+
+            // No tocar el comportamiento rojo existente: si falta autorización administrativa
+            // y la salida ya está vencida, sigue rojo.
+            // Regla nueva: si ya fue autorizado por Administración y tiene Acciones = Sí, va amarillo.
+            const needsAdminActionsYellow = isDespachoColumn && adminAutorizado && adminAcciones;
+            const needsAdminAuthRed = isDespachoColumn && vencida && !adminAutorizado;
 
             return (
               <div

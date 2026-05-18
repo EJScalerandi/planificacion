@@ -179,7 +179,15 @@ function renderAdminAccionesCell({ cell, record, nv, nombre, authCell }) {
     btn.style.background = '#fffbeb';
     btn.style.color = '#92400e';
     btn.style.fontWeight = '900';
-    btn.addEventListener('click', () => showAdminAccionesPopup({ nv, nombre, detalle: info.detalle }));
+    btn.setAttribute('data-admin-acciones-public-open', '1');
+    btn.setAttribute('data-admin-acciones-nv', nv || '');
+    btn.setAttribute('data-admin-acciones-nombre', nombre || '');
+    btn.setAttribute('data-admin-acciones-detalle', info.detalle || '');
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      showAdminAccionesPopup({ nv, nombre, detalle: info.detalle });
+    });
     wrap.appendChild(btn);
   } else if (canOpenAuth) {
     const btn = document.createElement('button');
@@ -278,6 +286,18 @@ function startAdminAccionesPublicEnhancer() {
     lastFetch: 0,
   };
   window[flag] = state;
+
+  document.addEventListener('click', (e) => {
+    const btn = e.target?.closest?.('[data-admin-acciones-public-open="1"]');
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    showAdminAccionesPopup({
+      nv: btn.getAttribute('data-admin-acciones-nv') || '',
+      nombre: btn.getAttribute('data-admin-acciones-nombre') || '',
+      detalle: btn.getAttribute('data-admin-acciones-detalle') || '',
+    });
+  }, true);
 
   const refreshData = async () => {
     if (state.loading || window.location?.pathname !== '/a') return;
