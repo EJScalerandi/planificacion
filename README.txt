@@ -9,3 +9,5 @@ Cambios incluidos:
 - Se dejan solo Fecha NV, Fecha produccion y Fecha salida antes de las etapas.
 - Se quitan Medicion y Fecha planificada llegada de esta pantalla.
 - Se agrega scroll horizontal directo en la grilla.
+
+- Se agrega Diseño en la vista de iPanel (`diseno`, `diseno_inicio`, `diseno_fin`).

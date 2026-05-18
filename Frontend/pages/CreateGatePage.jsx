@@ -40,6 +40,7 @@ const STAGES = [
 ];
 
 const IP_STAGES = [
+  { key: 'diseno',     label: 'Diseño' },
   { key: 'guillotina', label: 'Corte' },
   { key: 'plegado',    label: 'Plegado' },
   { key: 'pintura',    label: 'Pintura' },
