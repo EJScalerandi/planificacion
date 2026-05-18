@@ -74,49 +74,6 @@ function escapeHtml(v) {
     .replace(/'/g, '&#039;');
 }
 
-function showAdminAccionesPopup({ nv, nombre, detalle }) {
-  if (typeof document === 'undefined') return;
-
-  const prev = document.querySelector('[data-admin-acciones-popup="1"]');
-  if (prev) prev.remove();
-
-  const overlay = document.createElement('div');
-  overlay.setAttribute('data-admin-acciones-popup', '1');
-  overlay.setAttribute('role', 'dialog');
-  overlay.setAttribute('aria-modal', 'true');
-  overlay.style.position = 'fixed';
-  overlay.style.inset = '0';
-  overlay.style.background = 'rgba(15,23,42,0.55)';
-  overlay.style.display = 'flex';
-  overlay.style.alignItems = 'center';
-  overlay.style.justifyContent = 'center';
-  overlay.style.padding = '16px';
-  overlay.style.zIndex = '9999';
-
-  const title = `Acciones administrativas${nv ? ` · NV ${escapeHtml(nv)}` : ''}${nombre ? ` · ${escapeHtml(nombre)}` : ''}`;
-
-  overlay.innerHTML = `
-    <div style="width:min(760px,100%);background:#fff;border-radius:14px;border:1px solid #f59e0b;box-shadow:0 18px 55px rgba(0,0,0,0.25);overflow:hidden;">
-      <div style="padding:12px 14px;border-bottom:1px solid #fcd34d;display:flex;align-items:center;justify-content:space-between;gap:10px;background:#fffbeb;">
-        <div style="font-weight:900;color:#92400e;">${title}</div>
-        <button type="button" class="btn" data-admin-acciones-close="1">Cerrar</button>
-      </div>
-      <div style="padding:14px;">
-        <div style="border:1px solid #fcd34d;background:#fffbeb;border-radius:12px;padding:12px;white-space:pre-wrap;line-height:1.45;color:#111827;">
-          ${escapeHtml(detalle || 'Sin detalle cargado.')}
-        </div>
-      </div>
-    </div>
-  `;
-
-  const close = () => overlay.remove();
-  overlay.addEventListener('mousedown', (e) => {
-    if (e.target === overlay) close();
-  });
-  overlay.querySelector('[data-admin-acciones-close="1"]')?.addEventListener('click', close);
-  document.body.appendChild(overlay);
-}
-
 function readHeaderLabels(table) {
   const row = table?.tHead?.rows?.[0];
   return row ? Array.from(row.cells).map((cell) => normalizeText(cell.textContent)) : [];
@@ -126,117 +83,151 @@ function headerIndex(labels, candidates) {
   return labels.findIndex((label) => candidates.some((c) => label === c || label.includes(c)));
 }
 
+function fixedHeaderCell(th) {
+  if (!th) return;
+  th.style.width = '210px';
+  th.style.minWidth = '210px';
+  th.style.maxWidth = '210px';
+}
+
+function makeInjectedTh(sourceTh, text, filter = false) {
+  const th = document.createElement('th');
+  th.className = sourceTh?.className || (filter ? 'pp-th pp-th--filter' : 'pp-th');
+  th.setAttribute('data-admin-acciones-public-col', '1');
+  th.style.textAlign = 'left';
+  th.style.whiteSpace = 'nowrap';
+  th.style.color = '#111827';
+  fixedHeaderCell(th);
+  if (filter) {
+    th.innerHTML = '<div style="font-size:12px;opacity:.65;padding:8px">Detalle</div>';
+  } else {
+    th.textContent = text;
+  }
+  return th;
+}
+
 function makeInjectedTd(sourceCell) {
   const td = document.createElement('td');
   td.setAttribute('data-admin-acciones-public-cell', '1');
   td.style.borderBottom = sourceCell?.style?.borderBottom || '1px solid #f0f0f0';
   td.style.padding = sourceCell?.style?.padding || '8px';
   td.style.fontSize = sourceCell?.style?.fontSize || '12px';
-  td.style.whiteSpace = 'nowrap';
+  td.style.whiteSpace = 'normal';
   td.style.verticalAlign = sourceCell?.style?.verticalAlign || 'top';
   td.style.color = sourceCell?.style?.color || '#111827';
-  td.style.width = '260px';
-  td.style.minWidth = '260px';
-  td.style.maxWidth = '260px';
+  td.style.width = '210px';
+  td.style.minWidth = '210px';
+  td.style.maxWidth = '210px';
   return td;
 }
 
-function setDetalleBoxExpanded(el, expanded) {
-  if (!el) return;
-  el.setAttribute('data-expanded', expanded ? '1' : '0');
-  el.style.whiteSpace = expanded ? 'normal' : 'nowrap';
-  el.style.overflow = expanded ? 'visible' : 'hidden';
-  el.style.textOverflow = expanded ? 'clip' : 'ellipsis';
-  el.style.maxHeight = expanded ? 'none' : '28px';
-  el.style.cursor = 'pointer';
+function shortText(text) {
+  const s = toText(text);
+  if (s.length <= 42) return s;
+  return `${s.slice(0, 42)}…`;
 }
 
-function renderAdminAccionesCell({ cell, record, nv, nombre, authCell }) {
-  if (!cell) return;
+function renderAdminAccionesCell({ cell, record }) {
+  if (!cell || cell.getAttribute('data-admin-acciones-public-cell') !== '1') return;
 
   const info = record ? getAdminAccionesInfo(record) : { hasActions: false, detalle: '' };
-  const canOpenAuth = Boolean(authCell?.querySelector('button'));
-  const isInjected = cell.getAttribute('data-admin-acciones-public-cell') === '1';
-  const renderKey = JSON.stringify({ hasActions: info.hasActions, detalle: info.detalle, canOpenAuth, isInjected });
+  const expanded = cell.getAttribute('data-admin-acciones-expanded') === '1';
+  const detalle = info.detalle || '';
+  const signature = JSON.stringify({ has: info.hasActions, detalle, expanded });
+  if (cell.getAttribute('data-admin-acciones-signature') === signature) return;
+  cell.setAttribute('data-admin-acciones-signature', signature);
 
-  if (
-    cell.getAttribute('data-admin-acciones-render-key') === renderKey &&
-    cell.querySelector('[data-admin-acciones-public-inline="1"]')
-  ) {
+  if (!info.hasActions) {
+    cell.innerHTML = '<span class="pp-badge" style="background:#f3f4f6;color:#374151;">No</span>';
     return;
   }
 
-  cell.setAttribute('data-admin-acciones-render-key', renderKey);
-  cell.style.width = '260px';
-  cell.style.minWidth = '260px';
-  cell.style.maxWidth = '260px';
-  cell.style.whiteSpace = 'nowrap';
+  const shown = expanded ? detalle : shortText(detalle || 'Sin detalle cargado.');
+  const help = expanded ? 'Click para contraer' : 'Click para expandir';
 
-  if (isInjected) {
-    cell.innerHTML = '';
-  } else {
-    cell.querySelector('[data-admin-acciones-public-inline="1"]')?.remove();
+  cell.innerHTML = `
+    <div style="width:210px;max-width:210px;display:flex;flex-direction:column;gap:4px;">
+      <span class="pp-badge pp-badge--pending" style="width:max-content;">Sí</span>
+      <button
+        type="button"
+        data-admin-acciones-toggle="1"
+        title="${escapeHtml(help)}"
+        style="
+          width:100%;
+          text-align:left;
+          border:1px solid #f59e0b;
+          background:#fffbeb;
+          color:#92400e;
+          border-radius:8px;
+          padding:4px 7px;
+          font-size:11px;
+          font-weight:700;
+          cursor:pointer;
+          white-space:${expanded ? 'pre-wrap' : 'nowrap'};
+          overflow:hidden;
+          text-overflow:ellipsis;
+          line-height:1.25;
+        "
+      >${escapeHtml(shown)}</button>
+    </div>
+  `;
+}
+
+function ensureAccionesColumn(table) {
+  const headRows = table.tHead?.rows ? Array.from(table.tHead.rows) : [];
+  if (!headRows.length) return null;
+
+  const mainHead = headRows[0];
+  const filterHead = headRows[1] || null;
+
+  let labels = readHeaderLabels(table);
+  const nvIdx = headerIndex(labels, ['nv']);
+  if (nvIdx < 0) return null;
+
+  let accionesIdx = labels.findIndex((label) => label === 'acciones admin');
+  const oldAccionesIdx = labels.findIndex((label) => label === 'acciones');
+  const authIdx = headerIndex(labels, ['aut. admin', 'aut admin']);
+  const nombreIdx = headerIndex(labels, ['nombre']);
+  const insertIdx = nombreIdx >= 0 ? nombreIdx : authIdx >= 0 ? authIdx : nvIdx + 1;
+
+  if (accionesIdx < 0 && oldAccionesIdx >= 0) {
+    accionesIdx = oldAccionesIdx;
+    mainHead.cells[accionesIdx].textContent = 'Acciones admin';
+    mainHead.cells[accionesIdx].setAttribute('data-admin-acciones-public-col', '1');
+    fixedHeaderCell(mainHead.cells[accionesIdx]);
+    if (filterHead?.cells?.[accionesIdx]) fixedHeaderCell(filterHead.cells[accionesIdx]);
   }
 
-  const wrap = document.createElement('div');
-  wrap.setAttribute('data-admin-acciones-public-inline', '1');
-  wrap.style.display = 'flex';
-  wrap.style.alignItems = 'center';
-  wrap.style.gap = '6px';
-  wrap.style.width = '244px';
-  wrap.style.maxWidth = '244px';
-  wrap.style.minWidth = '244px';
-  if (!isInjected) wrap.style.marginLeft = '8px';
+  if (accionesIdx < 0) {
+    const sourceMain = mainHead.cells[Math.min(insertIdx, Math.max(0, mainHead.cells.length - 1))] || null;
+    mainHead.insertBefore(makeInjectedTh(sourceMain, 'Acciones admin'), mainHead.cells[insertIdx] || null);
 
-  if (info.hasActions) {
-    const detalleBox = document.createElement('span');
-    detalleBox.setAttribute('data-admin-acciones-detalle-inline', '1');
-    detalleBox.textContent = info.detalle || 'Sin detalle cargado.';
-    detalleBox.title = 'Click para ver completo';
-    detalleBox.style.display = 'block';
-    detalleBox.style.width = '244px';
-    detalleBox.style.minWidth = '244px';
-    detalleBox.style.maxWidth = '244px';
-    detalleBox.style.lineHeight = '1.25';
-    detalleBox.style.border = '1px solid #fcd34d';
-    detalleBox.style.background = '#fffbeb';
-    detalleBox.style.color = '#92400e';
-    detalleBox.style.borderRadius = '8px';
-    detalleBox.style.padding = '5px 8px';
-    detalleBox.style.fontWeight = '700';
-    detalleBox.style.overflowWrap = 'anywhere';
-    detalleBox.style.boxSizing = 'border-box';
-    setDetalleBoxExpanded(detalleBox, false);
-    detalleBox.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const expanded = detalleBox.getAttribute('data-expanded') === '1';
-      setDetalleBoxExpanded(detalleBox, !expanded);
-    });
-    wrap.appendChild(detalleBox);
-  } else if (canOpenAuth) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'pp-btnCell';
-    btn.textContent = 'Completar';
-    btn.title = 'Abrir autorización administrativa y cargar acciones';
-    btn.style.borderColor = '#f59e0b';
-    btn.style.background = '#fffbeb';
-    btn.style.color = '#92400e';
-    btn.style.fontWeight = '900';
-    btn.addEventListener('click', () => authCell?.querySelector('button')?.click());
-    wrap.appendChild(btn);
-  } else {
-    const badge = document.createElement('span');
-    badge.className = 'pp-badge';
-    badge.textContent = 'Sin acciones';
-    badge.title = 'No tiene acciones administrativas cargadas';
-    badge.style.background = '#f3f4f6';
-    badge.style.color = '#374151';
-    wrap.appendChild(badge);
+    if (filterHead) {
+      const sourceFilter = filterHead.cells[Math.min(insertIdx, Math.max(0, filterHead.cells.length - 1))] || null;
+      filterHead.insertBefore(makeInjectedTh(sourceFilter, 'Detalle', true), filterHead.cells[insertIdx] || null);
+    }
+
+    labels = readHeaderLabels(table);
+    accionesIdx = labels.findIndex((label) => label === 'acciones admin');
   }
 
-  cell.appendChild(wrap);
+  if (accionesIdx < 0) return null;
+  fixedHeaderCell(mainHead.cells[accionesIdx]);
+  if (filterHead?.cells?.[accionesIdx]) fixedHeaderCell(filterHead.cells[accionesIdx]);
+
+  return { accionesIdx };
+}
+
+function ensureBodyCell(tr, accionesIdx) {
+  const current = tr.cells[accionesIdx] || null;
+  if (current?.getAttribute?.('data-admin-acciones-public-cell') === '1') return current;
+
+  // Si el índice ya tiene una celda real (por ejemplo Nombre), insertamos ANTES.
+  // Esto evita que el nombre caiga dentro de Acciones admin.
+  const source = tr.cells[Math.max(0, accionesIdx - 1)] || tr.cells[0] || null;
+  const td = makeInjectedTd(source);
+  tr.insertBefore(td, current || null);
+  return td;
 }
 
 function applyAdminAccionesEnhancer(state) {
@@ -246,105 +237,46 @@ function applyAdminAccionesEnhancer(state) {
   const tables = Array.from(document.querySelectorAll('table.pp-table'));
 
   for (const table of tables) {
-    const headRows = table.tHead?.rows ? Array.from(table.tHead.rows) : [];
     const bodyRows = table.tBodies?.[0]?.rows ? Array.from(table.tBodies[0].rows) : [];
-    if (!headRows.length || !bodyRows.length) continue;
+    if (!bodyRows.length) continue;
 
-    const mainHead = headRows[0];
-    const filterHead = headRows[1] || null;
+    const col = ensureAccionesColumn(table);
+    if (!col) continue;
 
-    let labels = readHeaderLabels(table);
+    const labels = readHeaderLabels(table);
     const nvIdx = headerIndex(labels, ['nv']);
     if (nvIdx < 0) continue;
 
-    let accionesIdx = labels.findIndex((label) => label === 'acciones admin' || label === 'detalle acciones admin');
-    const authIdxBefore = headerIndex(labels, ['aut. admin', 'aut admin']);
-    const distIdx = headerIndex(labels, ['distribuidor']);
-    const insertIdx = authIdxBefore >= 0 ? authIdxBefore : distIdx >= 0 ? distIdx + 1 : nvIdx + 1;
-    const shouldInjectColumn = accionesIdx < 0;
-
-    if (shouldInjectColumn) {
-      const th = document.createElement('th');
-      th.className = mainHead.cells[Math.min(insertIdx, mainHead.cells.length - 1)]?.className || 'pp-th';
-      th.textContent = 'Acciones admin';
-      th.style.textAlign = 'left';
-      th.style.whiteSpace = 'nowrap';
-      th.style.color = '#111827';
-      th.style.width = '260px';
-      th.style.minWidth = '260px';
-      th.style.maxWidth = '260px';
-      th.setAttribute('data-admin-acciones-public-col', '1');
-      mainHead.insertBefore(th, mainHead.cells[insertIdx] || null);
-
-      if (filterHead) {
-        const fth = document.createElement('th');
-        fth.className = filterHead.cells[Math.min(insertIdx, filterHead.cells.length - 1)]?.className || 'pp-th pp-th--filter';
-        fth.setAttribute('data-admin-acciones-public-col', '1');
-        fth.style.width = '260px';
-        fth.style.minWidth = '260px';
-        fth.style.maxWidth = '260px';
-        fth.innerHTML = '<div style="font-size:12px;opacity:.75;padding:8px">Click para expandir</div>';
-        filterHead.insertBefore(fth, filterHead.cells[insertIdx] || null);
-      }
-
-      labels = readHeaderLabels(table);
-      accionesIdx = labels.findIndex((label) => label === 'acciones admin' || label === 'detalle acciones admin');
-    }
-
-    if (accionesIdx < 0) continue;
-
-    const authIdx = headerIndex(labels, ['aut. admin', 'aut admin']);
-    const nombreIdx = headerIndex(labels, ['nombre']);
-    const currentNvIdx = headerIndex(labels, ['nv']);
-
     for (const tr of bodyRows) {
-      if (shouldInjectColumn && !tr.cells[accionesIdx]?.matches?.('[data-admin-acciones-public-cell="1"]')) {
-        const source = tr.cells[Math.max(0, accionesIdx - 1)] || tr.cells[0] || null;
-        tr.insertBefore(makeInjectedTd(source), tr.cells[accionesIdx] || null);
-      }
-
-      const nv = parseNv(tr.cells[currentNvIdx]?.textContent);
-      const nombre = nombreIdx >= 0 ? toText(tr.cells[nombreIdx]?.textContent) : '';
+      const cell = ensureBodyCell(tr, col.accionesIdx);
+      const nv = parseNv(tr.cells[nvIdx]?.textContent);
       const record = nv ? state.byNv.get(String(nv)) || null : null;
-      const cell = tr.cells[accionesIdx] || null;
-      const authCell = authIdx >= 0 ? tr.cells[authIdx] : null;
-
-      renderAdminAccionesCell({ cell, record, nv, nombre, authCell });
+      renderAdminAccionesCell({ cell, record });
     }
   }
 }
 
 function startAdminAccionesPublicEnhancer() {
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
-  const flag = '__dg_admin_acciones_public_enhancer_v7';
+  const flag = '__dg_admin_acciones_public_enhancer_v8';
   if (window[flag]) return;
 
   const state = {
     byNv: new Map(),
     loading: false,
     loaded: false,
-    applying: false,
-    applyTimer: 0,
   };
   window[flag] = state;
 
-  const scheduleApply = (delay = 80) => {
+  let raf = 0;
+  const scheduleApply = () => {
     if (window.location?.pathname !== '/a') return;
-    if (state.applyTimer) window.clearTimeout(state.applyTimer);
-    state.applyTimer = window.setTimeout(() => {
-      state.applyTimer = 0;
-      if (state.applying) return;
-      state.applying = true;
-      try {
-        applyAdminAccionesEnhancer(state);
-      } finally {
-        state.applying = false;
-      }
-    }, delay);
+    if (raf) cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(() => applyAdminAccionesEnhancer(state));
   };
 
-  const refreshData = async () => {
-    if (state.loading || window.location?.pathname !== '/a') return;
+  const refreshDataOnce = async () => {
+    if (state.loading || state.loaded || window.location?.pathname !== '/a') return;
     state.loading = true;
     try {
       const res = await fetchPreproduccionValores();
@@ -356,28 +288,37 @@ function startAdminAccionesPublicEnhancer() {
       }
       state.byNv = byNv;
       state.loaded = true;
-      scheduleApply(0);
     } catch {
-      // No bloquea la tabla si falla la consulta auxiliar.
+      state.byNv = new Map();
+      state.loaded = true;
     } finally {
       state.loading = false;
+      scheduleApply();
     }
   };
 
+  document.addEventListener(
+    'click',
+    (e) => {
+      const btn = e.target?.closest?.('[data-admin-acciones-toggle="1"]');
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const cell = btn.closest('[data-admin-acciones-public-cell="1"]');
+      if (!cell) return;
+      const expanded = cell.getAttribute('data-admin-acciones-expanded') === '1';
+      cell.setAttribute('data-admin-acciones-expanded', expanded ? '0' : '1');
+      cell.removeAttribute('data-admin-acciones-signature');
+      scheduleApply();
+    },
+    true
+  );
 
   const setup = () => {
-    // Una sola consulta inicial para armar el mapa NV -> acciones.
-    refreshData();
-
-    // Aplica sobre la tabla cuando React la termina de dibujar, sin volver a consultar backend.
-    scheduleApply(0);
-
-    const observer = new MutationObserver(() => {
-      if (state.applying) return;
-      scheduleApply(120);
-    });
+    refreshDataOnce();
+    scheduleApply();
+    const observer = new MutationObserver(() => scheduleApply());
     observer.observe(document.body, { childList: true, subtree: true });
-
   };
 
   if (document.readyState === 'loading') {
@@ -392,12 +333,11 @@ startAdminAccionesPublicEnhancer();
 export default function AdminAuthModal({ open, row, onClose, onSubmit, busy }) {
   const data = row?.data || {};
 
-  // Keys persistidas para la respuesta del form
   const KEYS = useMemo(
     () => ({
-      enRegla: 'admin_cliente_en_regla', // boolean
-      acciones: 'admin_acciones', // boolean
-      accionesDetalle: 'admin_acciones_detalle', // string | null
+      enRegla: 'admin_cliente_en_regla',
+      acciones: 'admin_acciones',
+      accionesDetalle: 'admin_acciones_detalle',
     }),
     []
   );
@@ -411,8 +351,6 @@ export default function AdminAuthModal({ open, row, onClose, onSubmit, busy }) {
   useEffect(() => {
     if (!open) return;
 
-    // Prefill: si ya estaba guardado, lo traemos.
-    // Acciones queda por defecto en No cuando no existe dato previo.
     setEnRegla(Boolean(data[KEYS.enRegla]));
     setAcciones(Boolean(data[KEYS.acciones]));
     setAccionesDetalle(String(data[KEYS.accionesDetalle] ?? ''));
@@ -441,11 +379,7 @@ export default function AdminAuthModal({ open, row, onClose, onSubmit, busy }) {
       [KEYS.enRegla]: true,
       [KEYS.acciones]: Boolean(acciones),
       [KEYS.accionesDetalle]: acciones ? detalleAcciones : null,
-
-      // bandera final
       auth_admin: true,
-
-      // auditoría opcional
       auth_admin_at: new Date().toISOString(),
     };
 
