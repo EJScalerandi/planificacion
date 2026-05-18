@@ -1,18 +1,17 @@
-admin_acciones_reemplazo_directo_v5
+admin_acciones_reemplazo_directo_v6
 
-Reemplazo directo para corregir la lentitud del boton Ver en /a.
+Copiar el contenido del ZIP sobre la raiz del repo planificacion y reemplazar archivos.
 
-Archivo incluido:
+Incluye:
 - Frontend/src/components/modals/AdminAuthModal.jsx
 
-Que cambia:
-- Quita el polling agresivo que disparaba GET /preproduccion-valores continuamente.
-- El popup Ver abre con los datos ya guardados en el boton, sin esperar una consulta al hacer click.
-- Mantiene la carga de Acciones por Administracion.
-- No toca /despacho.
+Cambios:
+- /a deja de abrir popup para consultar acciones.
+- El detalle de acciones queda escrito directamente en la tabla.
+- Se elimina el click "Ver" y el listener global asociado.
+- Se elimina el refresco auxiliar periodico de 60 segundos.
+- /despacho no se toca.
 
-Aplicacion:
-Copiar el contenido del zip sobre la raiz del repo planificacion y reemplazar archivos.
-Luego correr:
+Luego ejecutar:
 cd Frontend
 npm run build

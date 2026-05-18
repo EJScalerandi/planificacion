@@ -144,6 +144,16 @@ function renderAdminAccionesCell({ cell, record, nv, nombre, authCell }) {
   const info = record ? getAdminAccionesInfo(record) : { hasActions: false, detalle: '' };
   const canOpenAuth = Boolean(authCell?.querySelector('button'));
   const isInjected = cell.getAttribute('data-admin-acciones-public-cell') === '1';
+  const renderKey = JSON.stringify({ hasActions: info.hasActions, detalle: info.detalle, canOpenAuth, isInjected });
+
+  if (
+    cell.getAttribute('data-admin-acciones-render-key') === renderKey &&
+    cell.querySelector('[data-admin-acciones-public-inline="1"]')
+  ) {
+    return;
+  }
+
+  cell.setAttribute('data-admin-acciones-render-key', renderKey);
 
   if (isInjected) {
     cell.innerHTML = '';
@@ -157,6 +167,7 @@ function renderAdminAccionesCell({ cell, record, nv, nombre, authCell }) {
   wrap.style.alignItems = 'center';
   wrap.style.gap = '8px';
   wrap.style.flexWrap = 'wrap';
+  wrap.style.maxWidth = '520px';
   if (!isInjected) wrap.style.marginLeft = '8px';
 
   const badge = document.createElement('span');
@@ -170,25 +181,22 @@ function renderAdminAccionesCell({ cell, record, nv, nombre, authCell }) {
   wrap.appendChild(badge);
 
   if (info.hasActions) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'pp-btnCell';
-    btn.textContent = 'Ver';
-    btn.title = 'Ver detalle de acciones administrativas';
-    btn.style.borderColor = '#f59e0b';
-    btn.style.background = '#fffbeb';
-    btn.style.color = '#92400e';
-    btn.style.fontWeight = '900';
-    btn.setAttribute('data-admin-acciones-public-open', '1');
-    btn.setAttribute('data-admin-acciones-nv', nv || '');
-    btn.setAttribute('data-admin-acciones-nombre', nombre || '');
-    btn.setAttribute('data-admin-acciones-detalle', info.detalle || '');
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      showAdminAccionesPopup({ nv, nombre, detalle: info.detalle });
-    });
-    wrap.appendChild(btn);
+    const detalleBox = document.createElement('span');
+    detalleBox.setAttribute('data-admin-acciones-detalle-inline', '1');
+    detalleBox.textContent = info.detalle || 'Sin detalle cargado.';
+    detalleBox.title = info.detalle || 'Sin detalle cargado.';
+    detalleBox.style.display = 'inline-block';
+    detalleBox.style.maxWidth = '420px';
+    detalleBox.style.whiteSpace = 'normal';
+    detalleBox.style.overflowWrap = 'anywhere';
+    detalleBox.style.lineHeight = '1.25';
+    detalleBox.style.border = '1px solid #fcd34d';
+    detalleBox.style.background = '#fffbeb';
+    detalleBox.style.color = '#92400e';
+    detalleBox.style.borderRadius = '8px';
+    detalleBox.style.padding = '5px 8px';
+    detalleBox.style.fontWeight = '700';
+    wrap.appendChild(detalleBox);
   } else if (canOpenAuth) {
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -224,7 +232,7 @@ function applyAdminAccionesEnhancer(state) {
     const nvIdx = headerIndex(labels, ['nv']);
     if (nvIdx < 0) continue;
 
-    let accionesIdx = labels.findIndex((label) => label === 'acciones');
+    let accionesIdx = labels.findIndex((label) => label === 'acciones' || label === 'acciones admin');
     const authIdxBefore = headerIndex(labels, ['aut. admin', 'aut admin']);
     const distIdx = headerIndex(labels, ['distribuidor']);
     const insertIdx = authIdxBefore >= 0 ? authIdxBefore : distIdx >= 0 ? distIdx + 1 : nvIdx + 1;
@@ -233,7 +241,7 @@ function applyAdminAccionesEnhancer(state) {
     if (shouldInjectColumn) {
       const th = document.createElement('th');
       th.className = mainHead.cells[Math.min(insertIdx, mainHead.cells.length - 1)]?.className || 'pp-th';
-      th.textContent = 'Acciones';
+      th.textContent = 'Acciones admin';
       th.style.textAlign = 'left';
       th.style.whiteSpace = 'nowrap';
       th.style.color = '#111827';
@@ -244,12 +252,12 @@ function applyAdminAccionesEnhancer(state) {
         const fth = document.createElement('th');
         fth.className = filterHead.cells[Math.min(insertIdx, filterHead.cells.length - 1)]?.className || 'pp-th pp-th--filter';
         fth.setAttribute('data-admin-acciones-public-col', '1');
-        fth.innerHTML = '<div style="font-size:12px;opacity:.75;padding:8px">Ver detalle</div>';
+        fth.innerHTML = '<div style="font-size:12px;opacity:.75;padding:8px">Detalle</div>';
         filterHead.insertBefore(fth, filterHead.cells[insertIdx] || null);
       }
 
       labels = readHeaderLabels(table);
-      accionesIdx = labels.findIndex((label) => label === 'acciones');
+      accionesIdx = labels.findIndex((label) => label === 'acciones' || label === 'acciones admin');
     }
 
     if (accionesIdx < 0) continue;
@@ -277,7 +285,7 @@ function applyAdminAccionesEnhancer(state) {
 
 function startAdminAccionesPublicEnhancer() {
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
-  const flag = '__dg_admin_acciones_public_enhancer_v5';
+  const flag = '__dg_admin_acciones_public_enhancer_v6';
   if (window[flag]) return;
 
   const state = {
@@ -286,7 +294,6 @@ function startAdminAccionesPublicEnhancer() {
     loaded: false,
     applying: false,
     applyTimer: 0,
-    refreshTimer: 0,
   };
   window[flag] = state;
 
@@ -326,21 +333,6 @@ function startAdminAccionesPublicEnhancer() {
     }
   };
 
-  document.addEventListener(
-    'click',
-    (e) => {
-      const btn = e.target?.closest?.('[data-admin-acciones-public-open="1"]');
-      if (!btn) return;
-      e.preventDefault();
-      e.stopPropagation();
-      showAdminAccionesPopup({
-        nv: btn.getAttribute('data-admin-acciones-nv') || '',
-        nombre: btn.getAttribute('data-admin-acciones-nombre') || '',
-        detalle: btn.getAttribute('data-admin-acciones-detalle') || '',
-      });
-    },
-    true
-  );
 
   const setup = () => {
     // Una sola consulta inicial para armar el mapa NV -> acciones.
@@ -355,10 +347,6 @@ function startAdminAccionesPublicEnhancer() {
     });
     observer.observe(document.body, { childList: true, subtree: true });
 
-    // Refresco suave por si se autoriza algo desde otra sesión. No consulta en cada click ni cada render.
-    state.refreshTimer = window.setInterval(() => {
-      if (window.location?.pathname === '/a') refreshData();
-    }, 60000);
   };
 
   if (document.readyState === 'loading') {
