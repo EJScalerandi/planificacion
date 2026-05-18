@@ -15,7 +15,7 @@ const IPANEL_STAGES = {
 };
 
 function truthy(v) {
-  return ['1', 'true', 'si', 'yes'].includes(String(v || '').trim().toLowerCase());
+  return ['1', 'true', 'si', 'sí', 'yes'].includes(String(v || '').trim().toLowerCase());
 }
 
 function toIntOrNull(v) {
@@ -36,33 +36,56 @@ router.get('/ipanel', async (req, res) => {
     const params = [];
     const where = [];
 
-    if (truthy(req.query.produccion) || truthy(req.query.production)) where.push('fecha_prod is not null');
+    if (truthy(req.query.produccion) || truthy(req.query.production)) where.push('i.fecha_prod is not null');
 
     const q = String(req.query.q || '').trim();
     if (q) {
       params.push(`%${q}%`);
       const p = params.length;
-      where.push(`(partida::text ilike $${p} or coalesce(nv::text, '') ilike $${p} or coalesce(observaciones, '') ilike $${p} or coalesce(descripcion, '') ilike $${p} or coalesce(descripcion_simple, '') ilike $${p})`);
+      where.push(`(i.partida::text ilike $${p} or coalesce(i.nv::text, '') ilike $${p} or coalesce(i.observaciones, '') ilike $${p} or coalesce(i.descripcion, '') ilike $${p} or coalesce(i.descripcion_simple, '') ilike $${p})`);
     }
 
     const n = toIntOrNull(req.query.nv || req.query.partida);
     if (n) {
       params.push(n);
       const p = params.length;
-      where.push('(partida = $' + p + ' or nv = $' + p + ')');
+      where.push('(i.partida = $' + p + ' or i.nv = $' + p + ')');
     }
 
     const whereSql = where.length ? 'where ' + where.join(' and ') : '';
 
     const { rows } = await pool.query(
       `
-      select *, descripcion_simple as "DescripcionSimple"
-      from public.ipanel
+      select
+        i.*,
+        i.descripcion_simple as "DescripcionSimple",
+        case when lower(coalesce(pp.data->>'auth_admin', '')) in ('true','1','si','sí','yes') then true else false end as auth_admin,
+        pp.data->>'auth_admin_at' as auth_admin_at,
+        case when lower(coalesce(pp.data->>'admin_cliente_en_regla', '')) in ('true','1','si','sí','yes') then true else false end as admin_cliente_en_regla,
+        case
+          when lower(coalesce(pp.data->>'admin_acciones', '')) in ('true','1','si','sí','yes')
+            or coalesce(pp.data->>'admin_acciones_detalle', pp.data->>'admin_acciones_observacion', pp.data->>'admin_acciones_observacion_imput', pp.data->>'acciones_detalle', pp.data->>'acciones_observacion', '') <> ''
+          then true else false
+        end as admin_acciones,
+        coalesce(pp.data->>'admin_acciones_detalle', pp.data->>'admin_acciones_observacion', pp.data->>'admin_acciones_observacion_imput', pp.data->>'acciones_detalle', pp.data->>'acciones_observacion') as admin_acciones_detalle
+      from public.ipanel i
+      left join lateral (
+        select p.data
+        from public.preproduccion_valores_ipanels p
+        where p.ipanel_id = i.id
+           or p.partida = i.partida
+           or (p.nv is not null and i.nv is not null and p.nv = i.nv)
+        order by
+          case when p.ipanel_id = i.id then 0 else 1 end,
+          p.updated_at desc nulls last,
+          p.id desc
+        limit 1
+      ) pp on true
       ${whereSql}
-      order by coalesce(fecha_prod, fecha_plan_entrega, fecha_nv) asc nulls last,
-               coalesce(partida, 0) asc,
-               coalesce(nv, 0) asc,
-               id asc;
+      order by coalesce(i.fecha_prod, i.fecha_plan_entrega, i.fecha_nv) asc nulls last,
+               coalesce(i.partida, 0) asc,
+               coalesce(i.nv, 0) asc,
+               i.id asc;
       `,
       params
     );

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import api from '../api';
+import AdminAuthModal from './modals/AdminAuthModal';
 
 function toStr(v) {
   if (v == null) return '';
@@ -47,6 +48,12 @@ function getAny(obj, keys) {
   return '';
 }
 
+function isTruthySi(v) {
+  if (v === true) return true;
+  const s = String(v ?? '').trim().toLowerCase();
+  return ['si', 'sí', 'true', '1', 'yes'].includes(s);
+}
+
 function getNombre(row) {
   const d = getData(row);
   return toStr(row?.nombre ?? getAny(d, ['nombre', 'Nombre']));
@@ -67,6 +74,34 @@ function getDescripcion(row) {
   );
 }
 
+function isAdminAutorizado(row) {
+  const d = getData(row);
+  return isTruthySi(row?.auth_admin ?? d.auth_admin);
+}
+
+function hasAdminAcciones(row) {
+  const d = getData(row);
+  return isTruthySi(row?.admin_acciones ?? d.admin_acciones) || Boolean(getAdminAccionesDetalle(row));
+}
+
+function getAdminAccionesDetalle(row) {
+  const d = getData(row);
+  return toStr(
+    row?.admin_acciones_detalle ??
+      row?.admin_acciones_observacion ??
+      row?.acciones_detalle ??
+      d.admin_acciones_detalle ??
+      d.admin_acciones_observacion ??
+      d.admin_acciones_observacion_imput ??
+      d.acciones_detalle ??
+      d.acciones_observacion
+  );
+}
+
+function makeAuthModalRow(row) {
+  return { ...row, data: { ...(getData(row) || {}) } };
+}
+
 function rowKey(row) {
   return String(row?.id ?? row?.partida ?? row?.nv ?? Math.random());
 }
@@ -80,6 +115,11 @@ export default function IpanelPreproduccionValoresTable() {
   const [drafts, setDrafts] = useState({});
   const [savingId, setSavingId] = useState(null);
   const [sendingId, setSendingId] = useState(null);
+  const [expandedAcciones, setExpandedAcciones] = useState(() => new Set());
+
+  const [adminModalOpen, setAdminModalOpen] = useState(false);
+  const [adminModalRow, setAdminModalRow] = useState(null);
+  const [adminModalBusy, setAdminModalBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -183,6 +223,61 @@ export default function IpanelPreproduccionValoresTable() {
     }
   }
 
+  function openAdminModal(row) {
+    setAdminModalRow(makeAuthModalRow(row));
+    setAdminModalOpen(true);
+  }
+
+  function closeAdminModal() {
+    if (adminModalBusy) return;
+    setAdminModalOpen(false);
+    setAdminModalRow(null);
+  }
+
+  async function submitAdminAuth(patch) {
+    const id = adminModalRow?.id;
+    if (!id) return;
+    try {
+      setAdminModalBusy(true);
+      const { data: updated } = await api.patch(`/preproduccion-valores-ipanels/${id}`, patch);
+      setRows((prev) => prev.map((r) => (String(r.id) === String(id) ? updated : r)));
+      closeAdminModal();
+    } catch (e) {
+      window.alert(e?.response?.data?.error || e.message || 'Error guardando autorización administrativa');
+    } finally {
+      setAdminModalBusy(false);
+    }
+  }
+
+  function toggleAcciones(row) {
+    const key = rowKey(row);
+    setExpandedAcciones((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  function renderAccionesAdmin(row) {
+    const detalle = getAdminAccionesDetalle(row);
+    const hasAcciones = hasAdminAcciones(row);
+    const expanded = expandedAcciones.has(rowKey(row));
+
+    if (!hasAcciones) return <span style={pillMuted}>Sin acciones</span>;
+
+    return (
+      <button
+        type="button"
+        onClick={() => toggleAcciones(row)}
+        title={expanded ? 'Click para contraer' : 'Click para ver completo'}
+        style={expanded ? accionesExpanded : accionesCompact}
+      >
+        {detalle || 'Acciones: Sí'}
+      </button>
+    );
+  }
+
   return (
     <div style={{ padding: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'end' }}>
@@ -214,7 +309,7 @@ export default function IpanelPreproduccionValoresTable() {
       {err && <div style={{ color: 'crimson', fontWeight: 800, marginTop: 12 }}>{err}</div>}
 
       <div style={{ marginTop: 12, overflow: 'auto', border: '1px solid var(--border, #ddd)', borderRadius: 12 }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1180 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1380 }}>
           <thead>
             <tr style={{ background: '#f8fafc' }}>
               <th style={th}>Partida</th>
@@ -223,7 +318,9 @@ export default function IpanelPreproduccionValoresTable() {
               <th style={th}>Nombre</th>
               <th style={th}>Descripción</th>
               <th style={th}>Fecha producción</th>
-              <th style={th}>Fecha entrega</th>
+              <th style={th}>Fecha despacho</th>
+              <th style={th}>Aut. Admin</th>
+              <th style={{ ...th, width: 190 }}>Acciones admin</th>
               <th style={th}>Estado</th>
               <th style={th}>Acciones</th>
             </tr>
@@ -234,6 +331,7 @@ export default function IpanelPreproduccionValoresTable() {
               const hasFechaProd = !!toISODate10(r.fecha_prod);
               const enviado = r.produccion_enviada === true || !!r.ipanel_id;
               const id = r.id;
+              const authAdmin = isAdminAutorizado(r);
 
               return (
                 <tr key={rowKey(r)}>
@@ -241,7 +339,7 @@ export default function IpanelPreproduccionValoresTable() {
                   <td style={td}>{toStr(r.nv)}</td>
                   <td style={td}>{getCliente(r)}</td>
                   <td style={td}>{getNombre(r)}</td>
-                  <td style={{ ...td, maxWidth: 420, whiteSpace: 'pre-wrap' }}>{getDescripcion(r)}</td>
+                  <td style={{ ...td, maxWidth: 360, whiteSpace: 'pre-wrap' }}>{getDescripcion(r)}</td>
                   <td style={td}>
                     <input
                       type="date"
@@ -262,6 +360,16 @@ export default function IpanelPreproduccionValoresTable() {
                     />
                     {r.fecha_plan_entrega ? <div style={hint}>Guardada: {formatDate(r.fecha_plan_entrega)}</div> : null}
                   </td>
+                  <td style={td}>
+                    {authAdmin ? (
+                      <span style={pillOk}>Autorizado</span>
+                    ) : (
+                      <button className="btn btn--brand" type="button" onClick={() => openAdminModal(r)} disabled={savingId === id || sendingId === id}>
+                        Autorizar
+                      </button>
+                    )}
+                  </td>
+                  <td style={{ ...td, width: 190, maxWidth: 190 }}>{renderAccionesAdmin(r)}</td>
                   <td style={td}>
                     {enviado ? <span style={pillOk}>En producción</span> : dirty ? <span style={pillWarn}>Sin guardar</span> : <span style={pill}>Pendiente</span>}
                   </td>
@@ -291,11 +399,19 @@ export default function IpanelPreproduccionValoresTable() {
             })}
 
             {!loading && (!rows || !rows.length) ? (
-              <tr><td style={td} colSpan={9}>No hay iPanels para mostrar.</td></tr>
+              <tr><td style={td} colSpan={11}>No hay iPanels para mostrar.</td></tr>
             ) : null}
           </tbody>
         </table>
       </div>
+
+      <AdminAuthModal
+        open={adminModalOpen}
+        row={adminModalRow}
+        busy={adminModalBusy}
+        onClose={closeAdminModal}
+        onSubmit={submitAdminAuth}
+      />
     </div>
   );
 }
@@ -304,5 +420,30 @@ const th = { padding: 8, borderBottom: '1px solid #e5e7eb', textAlign: 'left', f
 const td = { padding: 8, borderBottom: '1px solid #e5e7eb', verticalAlign: 'top', fontSize: 13 };
 const hint = { fontSize: 11, opacity: 0.7, marginTop: 4 };
 const pill = { display: 'inline-block', padding: '3px 8px', borderRadius: 999, border: '1px solid #d1d5db', background: '#fff' };
+const pillMuted = { ...pill, color: '#6b7280', background: '#f9fafb' };
 const pillOk = { ...pill, borderColor: '#86efac', background: '#f0fdf4', color: '#166534', fontWeight: 800 };
 const pillWarn = { ...pill, borderColor: '#fcd34d', background: '#fffbeb', color: '#92400e', fontWeight: 800 };
+const accionesCompact = {
+  display: 'block',
+  width: '100%',
+  maxWidth: 170,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+  textAlign: 'left',
+  border: '1px solid #f59e0b',
+  background: '#fffbeb',
+  color: '#92400e',
+  borderRadius: 8,
+  padding: '4px 8px',
+  cursor: 'pointer',
+  fontSize: 12,
+  fontWeight: 800,
+};
+const accionesExpanded = {
+  ...accionesCompact,
+  maxWidth: 170,
+  whiteSpace: 'pre-wrap',
+  overflow: 'visible',
+  textOverflow: 'clip',
+};

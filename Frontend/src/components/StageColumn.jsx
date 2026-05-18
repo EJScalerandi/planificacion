@@ -109,6 +109,10 @@ function getProdDate10(item) {
 }
 function getSalidaDate10(item) {
   const raw =
+    item?.fecha_plan_entrega ??
+    item?.Fecha_Plan_Entrega ??
+    item?.fecha_plan ??
+    item?.Fecha_Plan ??
     item?.fecha_salida_imput ??
     item?.Fecha_Salida_Imput ??
     item?.fecha_salida ??
@@ -857,7 +861,7 @@ export default function StageColumn({
             const today10 = todayISO10Local();
             const vencida = salida10 ? salida10 <= today10 : false;
             const adminAutorizado = isAdminAutorizado(p);
-            const adminAcciones = isDespachoColumn && mode !== 'ipanel' && hasAdminAcciones(p);
+            const adminAcciones = isDespachoColumn && hasAdminAcciones(p);
             const adminAccionesDetalle = getAdminAccionesDetalle(p);
 
             // No tocar el comportamiento rojo existente: si falta autorización administrativa

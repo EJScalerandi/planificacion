@@ -16,6 +16,11 @@ function toIntOrNull(v) {
   return Number.isFinite(n) ? n : null;
 }
 
+function isTruthySi(v) {
+  if (v === true) return true;
+  return ['1', 'true', 'si', 'sí', 'yes'].includes(toStr(v).toLowerCase());
+}
+
 function normalizeDate10(v) {
   if (v === null || v === undefined || v === '') return null;
 
@@ -60,6 +65,10 @@ function assertDate10OrNull(value, fieldName) {
   return d;
 }
 
+function hasOwn(obj, key) {
+  return Object.prototype.hasOwnProperty.call(obj || {}, key);
+}
+
 function getDescripcionFromRowOrData(row = {}, data = {}) {
   return toStr(
     row.descripcion ??
@@ -77,6 +86,16 @@ function getDescripcionSimpleFromRowOrData(row = {}, data = {}) {
     data.DescripcionSimple ??
     data.descripcion_simple
   ) || null;
+}
+
+function getAdminAccionesDetalle(data = {}) {
+  return toStr(
+    data.admin_acciones_detalle ??
+    data.admin_acciones_observacion ??
+    data.admin_acciones_observacion_imput ??
+    data.acciones_detalle ??
+    data.acciones_observacion
+  );
 }
 
 function buildObservacionesFromData(data = {}) {
@@ -118,6 +137,7 @@ function normalizePreprodRow(row) {
   const enviado = row?.produccion_enviada_resolved === true || row?.produccion_enviada === true || !!ipanelId;
   const descripcion = getDescripcionFromRowOrData(row, data);
   const descripcionSimple = getDescripcionSimpleFromRowOrData(row, data);
+  const accionesDetalle = getAdminAccionesDetalle(data);
 
   return {
     ...row,
@@ -132,6 +152,11 @@ function normalizePreprodRow(row) {
     fecha_nv: firstDate10(row?.fecha_nv, data.fecha_nv, data.fecha),
     partida: toIntOrNull(row?.partida ?? data.partida ?? data.numero),
     nv: toIntOrNull(row?.nv ?? data.nv ?? data.numero),
+    auth_admin: isTruthySi(data.auth_admin),
+    auth_admin_at: data.auth_admin_at ?? null,
+    admin_cliente_en_regla: isTruthySi(data.admin_cliente_en_regla),
+    admin_acciones: isTruthySi(data.admin_acciones) || Boolean(accionesDetalle),
+    admin_acciones_detalle: accionesDetalle || null,
   };
 }
 
@@ -219,6 +244,21 @@ router.get('/ipanels/preproduccion', async (req, res, next) => {
   return router.handle(req, res, next);
 });
 
+function mergeAdminAuthFields(data, incoming = {}) {
+  const next = { ...(data || {}) };
+
+  if (hasOwn(incoming, 'admin_cliente_en_regla')) next.admin_cliente_en_regla = Boolean(incoming.admin_cliente_en_regla);
+  if (hasOwn(incoming, 'admin_acciones')) next.admin_acciones = Boolean(incoming.admin_acciones);
+  if (hasOwn(incoming, 'admin_acciones_detalle')) {
+    const detalle = toStr(incoming.admin_acciones_detalle);
+    next.admin_acciones_detalle = detalle || null;
+  }
+  if (hasOwn(incoming, 'auth_admin')) next.auth_admin = Boolean(incoming.auth_admin);
+  if (hasOwn(incoming, 'auth_admin_at')) next.auth_admin_at = incoming.auth_admin_at || null;
+
+  return next;
+}
+
 async function updatePreprodDates(req, res) {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) return res.status(400).json({ error: 'id invalido' });
@@ -228,16 +268,16 @@ async function updatePreprodDates(req, res) {
     if (!current) return res.status(404).json({ error: 'iPanel de preproduccion no encontrado' });
 
     const incoming = req.body || {};
-    const fechaProd = Object.prototype.hasOwnProperty.call(incoming, 'fecha_prod')
+    const fechaProd = hasOwn(incoming, 'fecha_prod')
       ? assertDate10OrNull(incoming.fecha_prod, 'fecha_prod')
       : current.fecha_prod;
-    const fechaPlanEntrega = Object.prototype.hasOwnProperty.call(incoming, 'fecha_plan_entrega')
+    const fechaPlanEntrega = hasOwn(incoming, 'fecha_plan_entrega')
       ? assertDate10OrNull(incoming.fecha_plan_entrega, 'fecha_plan_entrega')
       : current.fecha_plan_entrega;
 
     const descripcion = getDescripcionFromRowOrData(current, current.data || {});
     const descripcionSimple = getDescripcionSimpleFromRowOrData(current, current.data || {});
-    const data = {
+    const data = mergeAdminAuthFields({
       ...(current.data || {}),
       descripcion,
       DescripcionSimple: descripcionSimple,
@@ -246,7 +286,7 @@ async function updatePreprodDates(req, res) {
       fecha_plan_entrega: fechaPlanEntrega,
       inicio_prod_imput: fechaProd,
       fecha_salida_imput: fechaPlanEntrega,
-    };
+    }, incoming);
 
     const { rows } = await pool.query(
       `
@@ -291,10 +331,10 @@ router.post('/preproduccion-valores-ipanels/:id/enviar-produccion', async (req, 
       return res.status(404).json({ error: 'iPanel de preproduccion no encontrado' });
     }
 
-    const fechaProd = Object.prototype.hasOwnProperty.call(req.body || {}, 'fecha_prod')
+    const fechaProd = hasOwn(req.body || {}, 'fecha_prod')
       ? assertDate10OrNull(req.body.fecha_prod, 'fecha_prod')
       : current.fecha_prod;
-    const fechaPlanEntrega = Object.prototype.hasOwnProperty.call(req.body || {}, 'fecha_plan_entrega')
+    const fechaPlanEntrega = hasOwn(req.body || {}, 'fecha_plan_entrega')
       ? assertDate10OrNull(req.body.fecha_plan_entrega, 'fecha_plan_entrega')
       : current.fecha_plan_entrega;
 

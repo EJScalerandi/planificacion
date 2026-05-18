@@ -108,7 +108,6 @@ function FullBleed({ children }) {
 
 function Board({ stages }) {
   const { data: portones, loading, err, replaceItem, refresh, refreshing } = usePortones({ pollMs: 300000 });
-  // Solo trae los iPanels que logistica ya envio a produccion (public.ipanel, fecha_prod no null).
   const { data: ipanels, refresh: refreshIpanel } = useIpanel({ pollMs: 300000, onlyProduction: true });
 
   const [busyId, setBusyId] = useState(null);
@@ -436,6 +435,7 @@ export default function App() {
           <Route path="/admin" element={<AdminHomePage />} />
           <Route path="/admin/qc" element={<AdminQcPage />} />
           <Route path="/admin/workflow" element={<WorkflowDesignerPage />} />
+          <Route path="/usuarios" element={<UserAdminDashboard />} />
 
           <Route
             path="/a"
