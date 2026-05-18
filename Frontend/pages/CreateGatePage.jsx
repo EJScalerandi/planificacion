@@ -626,13 +626,15 @@ export default function CreateGatePage() {
   const nvCell     = { ...cellBase, background:'var(--surface)', minHeight:CELL_MIN_H, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, paddingLeft:10, paddingRight:10 };
   const scrollStyle = {
     overflowX:'auto',
-    overflowY:'visible',
+    overflowY:'auto',
     width:'100%',
     maxWidth:'100vw',
+    height:'calc(100vh - 210px)',
+    minHeight:320,
     position:'relative',
     scrollbarGutter:'stable both-edges',
     WebkitOverflowScrolling:'touch',
-    overscrollBehaviorX:'contain',
+    overscrollBehavior:'contain',
     paddingBottom:12
   };
 
