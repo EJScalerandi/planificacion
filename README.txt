@@ -1,18 +1,14 @@
-Reemplazo directo v7 - Acciones administrativas en /a
-
-Copiar el contenido del zip sobre la raíz del repo planificacion.
+Cambio: muestra semana despacho y fecha despacho en las cards de la columna despacho.
 
 Incluye:
-- Frontend/src/components/modals/AdminAuthModal.jsx
+- Frontend/src/components/StageColumn.jsx
 
-Cambios:
-- /a muestra una columna exclusiva "Acciones admin".
-- La columna tiene ancho fijo para no deformar la tabla.
-- El comentario aparece recortado en una línea.
-- Click sobre el comentario expande/contrae el texto completo dentro de la misma celda.
-- No usa popup para consultar el detalle en /a.
-- No toca /despacho.
+Aplicacion:
+1) Copiar el contenido del zip sobre la raiz del repo planificacion.
+2) Reemplazar el archivo indicado.
+3) Ejecutar: cd Frontend && npm run build
 
-Luego ejecutar:
-cd Frontend
-npm run build
+Alcance:
+- Solo afecta la visualizacion de cards cuando la columna/sector es despacho.
+- Aplica tanto para portones como para ipanels.
+- No modifica la logica de autorizacion, colores, QC ni acciones administrativas.

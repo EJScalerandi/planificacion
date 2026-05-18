@@ -160,6 +160,10 @@ function getProdWeekLabel(item) {
   const info = getIsoWeekInfo(getProdDate10(item));
   return info?.week != null ? `Semana N° ${info.week}` : 'Semana N° —';
 }
+function getSalidaWeekLabel(item) {
+  const info = getIsoWeekInfo(getSalidaDate10(item));
+  return info?.week != null ? `Semana N° ${info.week}` : 'Semana N° —';
+}
 
 function getPuertaPos(row) {
   return toText(
@@ -886,11 +890,21 @@ export default function StageColumn({
                 ) : null}
 
                 <div style={{ fontWeight: 900 }}>NV {p?.nv ?? p?.NV ?? '-'}</div>
-                <div>{getProdWeekLabel(p)}</div>
+                <div>
+                  {isDespachoColumn ? (
+                    <>Semana despacho: <b>{getSalidaWeekLabel(p)}</b></>
+                  ) : (
+                    getProdWeekLabel(p)
+                  )}
+                </div>
+                {isDespachoColumn ? (
+                  <div style={{ fontSize: 12, opacity: 0.85 }}>
+                    Fecha despacho: <b>{salida10 ? formatDate10DMY(salida10) : '—'}</b>
+                  </div>
+                ) : null}
                 <div style={{ fontSize: 12, opacity: 0.75 }}>
                   Estado: {p?.[effKey] || ''}
                   {prod10 ? <> {' '}· Producción: <b>{formatDate10DMY(prod10)}</b></> : null}
-                  {isDespachoColumn && salida10 ? <> {' '}· Salida: <b>{salida10}</b></> : null}
                   {needsAdminActionsYellow ? <> {' '}· <b style={{ color: '#92400e' }}>Acciones administrativas</b></> : null}
                   {needsAdminAuthRed ? <> {' '}· <b style={{ color: '#b91c1c' }}>Cliente NO en regla (Administración)</b></> : null}
                 </div>
