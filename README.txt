@@ -1,13 +1,23 @@
-Cambio solicitado para el repo EJScalerandi/planificacion.
+REEMPLAZO DIRECTO - admin acciones v3
 
-Copiar el contenido de este zip sobre la raiz del repo. Reemplaza:
-Frontend/pages/CreateGatePage.jsx
+Copiar la carpeta Frontend sobre la raiz del repo planificacion y reemplazar archivos.
 
-Cambios incluidos:
-- Se elimina el formulario de creacion manual de porton/iPanel.
-- Se oculta Partida y se reemplaza por Semana de produccion en la columna principal.
-- Se dejan solo Fecha NV, Fecha produccion y Fecha salida antes de las etapas.
-- Se quitan Medicion y Fecha planificada llegada de esta pantalla.
-- Se agrega scroll horizontal directo en la grilla.
+Archivos incluidos:
+- Frontend/src/components/modals/AdminAuthModal.jsx
+- Frontend/src/components/StageColumn.jsx
 
-- Se agrega Diseño en la vista de iPanel (`diseno`, `diseno_inicio`, `diseno_fin`).
+Cambios:
+- Administracion puede crear Acciones desde la autorizacion administrativa.
+- El dato queda en public.preproduccion_valores.data como JSONB:
+  - auth_admin
+  - auth_admin_at
+  - admin_cliente_en_regla
+  - admin_acciones
+  - admin_acciones_detalle
+- En /a, cualquier usuario que vea la tabla puede consultar el detalle con un boton Ver.
+- En /a, si el usuario es Administracion y falta autorizar, tambien aparece Completar para abrir el popup y cargar Acciones.
+- En /despacho, si falta autorizacion pero Acciones = Si, el porton se muestra amarillo y aparece boton Acciones con popup de detalle.
+
+Luego de copiar, correr:
+cd Frontend
+npm run build

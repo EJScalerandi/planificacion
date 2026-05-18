@@ -1,15 +1,209 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import BaseModal from './BaseModal';
+import { fetchPreproduccionValores } from '../../api';
 
 function normalizeText(v) {
   return String(v ?? '').trim().toLowerCase();
 }
 
-function ensureAdminAccionesColumn() {
+function toText(v) {
+  return String(v ?? '').trim();
+}
+
+function isTruthySi(v) {
+  if (v === true) return true;
+  const s = normalizeText(v);
+  return ['si', 'sí', 'true', '1', 'yes'].includes(s);
+}
+
+function getAny(obj, keys = []) {
+  if (!obj || typeof obj !== 'object') return null;
+
+  for (const k of keys) {
+    if (Object.prototype.hasOwnProperty.call(obj, k) && obj[k] != null) return obj[k];
+  }
+
+  const map = {};
+  for (const k of Object.keys(obj)) map[String(k).toLowerCase()] = k;
+
+  for (const k of keys) {
+    const realKey = map[String(k).toLowerCase()];
+    if (realKey && obj[realKey] != null) return obj[realKey];
+  }
+
+  return null;
+}
+
+function parseNv(v) {
+  const s = String(v ?? '').trim();
+  if (!s) return '';
+  const m = s.match(/\d+/);
+  return m ? m[0] : s;
+}
+
+function getNvFromRecord(record) {
+  const d = record?.data || {};
+  return parseNv(record?.nv ?? record?.NV ?? d?.NV ?? d?.nv ?? getAny(d, ['NV', 'nv']));
+}
+
+function getAdminAccionesInfo(record) {
+  const d = record?.data || {};
+  const accionesRaw = getAny(d, ['admin_acciones', 'Admin_Acciones', 'acciones_admin']);
+  const detalleRaw = getAny(d, [
+    'admin_acciones_detalle',
+    'admin_acciones_observacion',
+    'admin_acciones_observacion_imput',
+    'acciones_detalle',
+    'acciones_observacion',
+  ]);
+  const detalle = toText(detalleRaw);
+  const hasActions = isTruthySi(accionesRaw) || Boolean(detalle);
+
+  return {
+    hasActions,
+    detalle,
+  };
+}
+
+function escapeHtml(v) {
+  return String(v ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function showAdminAccionesPopup({ nv, nombre, detalle }) {
+  if (typeof document === 'undefined') return;
+
+  const prev = document.querySelector('[data-admin-acciones-popup="1"]');
+  if (prev) prev.remove();
+
+  const overlay = document.createElement('div');
+  overlay.setAttribute('data-admin-acciones-popup', '1');
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.style.position = 'fixed';
+  overlay.style.inset = '0';
+  overlay.style.background = 'rgba(15,23,42,0.55)';
+  overlay.style.display = 'flex';
+  overlay.style.alignItems = 'center';
+  overlay.style.justifyContent = 'center';
+  overlay.style.padding = '16px';
+  overlay.style.zIndex = '9999';
+
+  const title = `Acciones administrativas${nv ? ` · NV ${escapeHtml(nv)}` : ''}${nombre ? ` · ${escapeHtml(nombre)}` : ''}`;
+
+  overlay.innerHTML = `
+    <div style="width:min(760px,100%);background:#fff;border-radius:14px;border:1px solid #f59e0b;box-shadow:0 18px 55px rgba(0,0,0,0.25);overflow:hidden;">
+      <div style="padding:12px 14px;border-bottom:1px solid #fcd34d;display:flex;align-items:center;justify-content:space-between;gap:10px;background:#fffbeb;">
+        <div style="font-weight:900;color:#92400e;">${title}</div>
+        <button type="button" class="btn" data-admin-acciones-close="1">Cerrar</button>
+      </div>
+      <div style="padding:14px;">
+        <div style="border:1px solid #fcd34d;background:#fffbeb;border-radius:12px;padding:12px;white-space:pre-wrap;line-height:1.45;color:#111827;">
+          ${escapeHtml(detalle || 'Sin detalle cargado.')}
+        </div>
+      </div>
+    </div>
+  `;
+
+  const close = () => overlay.remove();
+  overlay.addEventListener('mousedown', (e) => {
+    if (e.target === overlay) close();
+  });
+  overlay.querySelector('[data-admin-acciones-close="1"]')?.addEventListener('click', close);
+  document.body.appendChild(overlay);
+}
+
+function readHeaderLabels(table) {
+  const row = table?.tHead?.rows?.[0];
+  return row ? Array.from(row.cells).map((cell) => normalizeText(cell.textContent)) : [];
+}
+
+function headerIndex(labels, candidates) {
+  return labels.findIndex((label) => candidates.some((c) => label === c || label.includes(c)));
+}
+
+function makeInjectedTd(sourceCell) {
+  const td = document.createElement('td');
+  td.setAttribute('data-admin-acciones-public-cell', '1');
+  td.style.borderBottom = sourceCell?.style?.borderBottom || '1px solid #f0f0f0';
+  td.style.padding = sourceCell?.style?.padding || '8px';
+  td.style.fontSize = sourceCell?.style?.fontSize || '12px';
+  td.style.whiteSpace = sourceCell?.style?.whiteSpace || 'nowrap';
+  td.style.verticalAlign = sourceCell?.style?.verticalAlign || 'top';
+  td.style.color = sourceCell?.style?.color || '#111827';
+  return td;
+}
+
+function renderAdminAccionesCell({ cell, record, nv, nombre, authCell }) {
+  if (!cell) return;
+
+  const info = record ? getAdminAccionesInfo(record) : { hasActions: false, detalle: '' };
+  const canOpenAuth = Boolean(authCell?.querySelector('button'));
+  const isInjected = cell.getAttribute('data-admin-acciones-public-cell') === '1';
+
+  if (isInjected) {
+    cell.innerHTML = '';
+  } else {
+    cell.querySelector('[data-admin-acciones-public-inline="1"]')?.remove();
+  }
+
+  const wrap = document.createElement('div');
+  wrap.setAttribute('data-admin-acciones-public-inline', '1');
+  wrap.style.display = 'inline-flex';
+  wrap.style.alignItems = 'center';
+  wrap.style.gap = '8px';
+  wrap.style.flexWrap = 'wrap';
+  if (!isInjected) wrap.style.marginLeft = '8px';
+
+  const badge = document.createElement('span');
+  badge.className = info.hasActions ? 'pp-badge pp-badge--pending' : 'pp-badge';
+  badge.textContent = info.hasActions ? 'Acciones: Sí' : 'Acciones: No';
+  badge.title = info.hasActions ? 'Tiene acciones administrativas cargadas' : 'No tiene acciones administrativas cargadas';
+  if (!info.hasActions) {
+    badge.style.background = '#f3f4f6';
+    badge.style.color = '#374151';
+  }
+  wrap.appendChild(badge);
+
+  if (info.hasActions) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'pp-btnCell';
+    btn.textContent = 'Ver';
+    btn.title = 'Ver detalle de acciones administrativas';
+    btn.style.borderColor = '#f59e0b';
+    btn.style.background = '#fffbeb';
+    btn.style.color = '#92400e';
+    btn.style.fontWeight = '900';
+    btn.addEventListener('click', () => showAdminAccionesPopup({ nv, nombre, detalle: info.detalle }));
+    wrap.appendChild(btn);
+  } else if (canOpenAuth) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'pp-btnCell';
+    btn.textContent = 'Completar';
+    btn.title = 'Abrir autorización administrativa y cargar acciones';
+    btn.style.borderColor = '#f59e0b';
+    btn.style.background = '#fffbeb';
+    btn.style.color = '#92400e';
+    btn.style.fontWeight = '900';
+    btn.addEventListener('click', () => authCell?.querySelector('button')?.click());
+    wrap.appendChild(btn);
+  }
+
+  cell.appendChild(wrap);
+}
+
+function applyAdminAccionesEnhancer(state) {
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
   if (window.location?.pathname !== '/a') return;
 
   const tables = Array.from(document.querySelectorAll('table.pp-table'));
+
   for (const table of tables) {
     const headRows = table.tHead?.rows ? Array.from(table.tHead.rows) : [];
     const bodyRows = table.tBodies?.[0]?.rows ? Array.from(table.tBodies[0].rows) : [];
@@ -17,122 +211,120 @@ function ensureAdminAccionesColumn() {
 
     const mainHead = headRows[0];
     const filterHead = headRows[1] || null;
-    const labels = Array.from(mainHead.cells).map((cell) => normalizeText(cell.textContent));
-    const authIdx = labels.findIndex((label) => label === 'aut. admin' || label === 'aut admin' || label.includes('aut. admin'));
-    if (authIdx < 0) continue;
+
+    let labels = readHeaderLabels(table);
+    const nvIdx = headerIndex(labels, ['nv']);
+    if (nvIdx < 0) continue;
 
     let accionesIdx = labels.findIndex((label) => label === 'acciones');
-    if (accionesIdx >= 0 && mainHead.cells[accionesIdx]?.getAttribute('data-admin-acciones-col') !== '1') {
-      // Si la tabla ya trae una columna Acciones real desde React, no tocamos nada.
-      continue;
-    }
-    if (accionesIdx < 0) {
+    const authIdxBefore = headerIndex(labels, ['aut. admin', 'aut admin']);
+    const distIdx = headerIndex(labels, ['distribuidor']);
+    const insertIdx = authIdxBefore >= 0 ? authIdxBefore : distIdx >= 0 ? distIdx + 1 : nvIdx + 1;
+    const shouldInjectColumn = accionesIdx < 0;
+
+    if (shouldInjectColumn) {
       const th = document.createElement('th');
-      th.className = mainHead.cells[authIdx]?.className || 'pp-th';
+      th.className = mainHead.cells[Math.min(insertIdx, mainHead.cells.length - 1)]?.className || 'pp-th';
       th.textContent = 'Acciones';
       th.style.textAlign = 'left';
       th.style.whiteSpace = 'nowrap';
       th.style.color = '#111827';
-      th.setAttribute('data-admin-acciones-col', '1');
-      mainHead.insertBefore(th, mainHead.cells[authIdx] || null);
-      accionesIdx = authIdx;
+      th.setAttribute('data-admin-acciones-public-col', '1');
+      mainHead.insertBefore(th, mainHead.cells[insertIdx] || null);
 
       if (filterHead) {
         const fth = document.createElement('th');
-        fth.className = filterHead.cells[authIdx]?.className || 'pp-th pp-th--filter';
-        fth.setAttribute('data-admin-acciones-col', '1');
-        fth.innerHTML = '<div style="font-size:12px;opacity:.75;padding:8px">(desde Autorizar)</div>';
-        filterHead.insertBefore(fth, filterHead.cells[authIdx] || null);
+        fth.className = filterHead.cells[Math.min(insertIdx, filterHead.cells.length - 1)]?.className || 'pp-th pp-th--filter';
+        fth.setAttribute('data-admin-acciones-public-col', '1');
+        fth.innerHTML = '<div style="font-size:12px;opacity:.75;padding:8px">Ver detalle</div>';
+        filterHead.insertBefore(fth, filterHead.cells[insertIdx] || null);
       }
+
+      labels = readHeaderLabels(table);
+      accionesIdx = labels.findIndex((label) => label === 'acciones');
     }
 
+    if (accionesIdx < 0) continue;
+
+    const authIdx = headerIndex(labels, ['aut. admin', 'aut admin']);
+    const nombreIdx = headerIndex(labels, ['nombre']);
+    const currentNvIdx = headerIndex(labels, ['nv']);
+
     for (const tr of bodyRows) {
-      if (tr.querySelector('td[data-admin-acciones-cell="1"]')) continue;
-
-      const currentLabels = Array.from(mainHead.cells).map((cell) => normalizeText(cell.textContent));
-      const currentAuthIdx = currentLabels.findIndex((label) => label === 'aut. admin' || label === 'aut admin' || label.includes('aut. admin'));
-      const insertIdx = currentAuthIdx >= 0 ? currentAuthIdx : tr.cells.length;
-      const authCell = currentAuthIdx >= 0 ? tr.cells[currentAuthIdx] : null;
-      const authText = normalizeText(authCell?.textContent);
-      const canOpen = Boolean(authCell?.querySelector('button'));
-
-      const td = document.createElement('td');
-      td.setAttribute('data-admin-acciones-cell', '1');
-      td.style.borderBottom = '1px solid #f0f0f0';
-      td.style.padding = '8px';
-      td.style.fontSize = '12px';
-      td.style.whiteSpace = 'nowrap';
-      td.style.verticalAlign = 'top';
-      td.style.color = '#111827';
-
-      if (canOpen) {
-        const wrap = document.createElement('div');
-        wrap.style.display = 'flex';
-        wrap.style.alignItems = 'center';
-        wrap.style.gap = '8px';
-
-        const badge = document.createElement('span');
-        badge.className = 'pp-badge pp-badge--pending';
-        badge.textContent = 'No';
-        badge.title = 'Por defecto queda en No. Se cambia desde Autorizar.';
-
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'pp-btnCell';
-        btn.textContent = 'Completar';
-        btn.title = 'Abrir autorización administrativa y cargar Acciones';
-        btn.style.borderColor = '#f59e0b';
-        btn.style.background = '#fffbeb';
-        btn.style.color = '#92400e';
-        btn.style.fontWeight = '900';
-        btn.addEventListener('click', () => {
-          const originalButton = authCell?.querySelector('button');
-          if (originalButton) originalButton.click();
-        });
-
-        wrap.appendChild(badge);
-        wrap.appendChild(btn);
-        td.appendChild(wrap);
-      } else {
-        const span = document.createElement('span');
-        span.className = 'pp-badge pp-badge--ok';
-        span.textContent = authText.includes('autorizado') ? 'Guardado' : '—';
-        span.title = 'La acción administrativa se carga antes de autorizar.';
-        td.appendChild(span);
+      if (shouldInjectColumn && !tr.cells[accionesIdx]?.matches?.('[data-admin-acciones-public-cell="1"]')) {
+        const source = tr.cells[Math.max(0, accionesIdx - 1)] || tr.cells[0] || null;
+        tr.insertBefore(makeInjectedTd(source), tr.cells[accionesIdx] || null);
       }
 
-      tr.insertBefore(td, tr.cells[insertIdx] || null);
+      const nv = parseNv(tr.cells[currentNvIdx]?.textContent);
+      const nombre = nombreIdx >= 0 ? toText(tr.cells[nombreIdx]?.textContent) : '';
+      const record = nv ? state.byNv.get(String(nv)) || null : null;
+      const cell = tr.cells[accionesIdx] || null;
+      const authCell = authIdx >= 0 ? tr.cells[authIdx] : null;
+
+      renderAdminAccionesCell({ cell, record, nv, nombre, authCell });
     }
   }
 }
 
-function useVisibleAdminAccionesColumn() {
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof document === 'undefined') return undefined;
-    if (window.location?.pathname !== '/a') return undefined;
+function startAdminAccionesPublicEnhancer() {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  const flag = '__dg_admin_acciones_public_enhancer_v4';
+  if (window[flag]) return;
 
-    let raf = 0;
-    const run = () => {
-      if (raf) cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => ensureAdminAccionesColumn());
-    };
+  const state = {
+    byNv: new Map(),
+    loading: false,
+    lastFetch: 0,
+  };
+  window[flag] = state;
 
+  const refreshData = async () => {
+    if (state.loading || window.location?.pathname !== '/a') return;
+    state.loading = true;
+    try {
+      const res = await fetchPreproduccionValores();
+      const list = Array.isArray(res?.data) ? res.data : res?.data ? [res.data] : [];
+      const byNv = new Map();
+      for (const record of list) {
+        const nv = getNvFromRecord(record);
+        if (nv) byNv.set(String(nv), record);
+      }
+      state.byNv = byNv;
+      state.lastFetch = Date.now();
+    } catch {
+      // No bloquea la tabla si falla la consulta auxiliar.
+    } finally {
+      state.loading = false;
+    }
+  };
+
+  let raf = 0;
+  const run = async () => {
+    if (window.location?.pathname !== '/a') return;
+    if (!state.lastFetch || Date.now() - state.lastFetch > 20000) await refreshData();
+    if (raf) cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(() => applyAdminAccionesEnhancer(state));
+  };
+
+  const setup = () => {
     run();
-    const interval = window.setInterval(run, 800);
-    const observer = new MutationObserver(run);
+    window.setInterval(run, 1200);
+    window.setInterval(refreshData, 30000);
+    const observer = new MutationObserver(() => run());
     observer.observe(document.body, { childList: true, subtree: true });
+  };
 
-    return () => {
-      if (raf) cancelAnimationFrame(raf);
-      window.clearInterval(interval);
-      observer.disconnect();
-    };
-  }, []);
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', setup, { once: true });
+  } else {
+    setup();
+  }
 }
 
-export default function AdminAuthModal({ open, row, onClose, onSubmit, busy }) {
-  useVisibleAdminAccionesColumn();
+startAdminAccionesPublicEnhancer();
 
+export default function AdminAuthModal({ open, row, onClose, onSubmit, busy }) {
   const data = row?.data || {};
 
   // Keys persistidas para la respuesta del form
