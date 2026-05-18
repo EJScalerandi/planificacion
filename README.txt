@@ -1,16 +1,17 @@
-admin_acciones_reemplazo_directo_v6
+Reemplazo directo v7 - Acciones administrativas en /a
 
-Copiar el contenido del ZIP sobre la raiz del repo planificacion y reemplazar archivos.
+Copiar el contenido del zip sobre la raíz del repo planificacion.
 
 Incluye:
 - Frontend/src/components/modals/AdminAuthModal.jsx
 
 Cambios:
-- /a deja de abrir popup para consultar acciones.
-- El detalle de acciones queda escrito directamente en la tabla.
-- Se elimina el click "Ver" y el listener global asociado.
-- Se elimina el refresco auxiliar periodico de 60 segundos.
-- /despacho no se toca.
+- /a muestra una columna exclusiva "Acciones admin".
+- La columna tiene ancho fijo para no deformar la tabla.
+- El comentario aparece recortado en una línea.
+- Click sobre el comentario expande/contrae el texto completo dentro de la misma celda.
+- No usa popup para consultar el detalle en /a.
+- No toca /despacho.
 
 Luego ejecutar:
 cd Frontend

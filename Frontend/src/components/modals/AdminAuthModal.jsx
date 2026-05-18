@@ -132,10 +132,23 @@ function makeInjectedTd(sourceCell) {
   td.style.borderBottom = sourceCell?.style?.borderBottom || '1px solid #f0f0f0';
   td.style.padding = sourceCell?.style?.padding || '8px';
   td.style.fontSize = sourceCell?.style?.fontSize || '12px';
-  td.style.whiteSpace = sourceCell?.style?.whiteSpace || 'nowrap';
+  td.style.whiteSpace = 'nowrap';
   td.style.verticalAlign = sourceCell?.style?.verticalAlign || 'top';
   td.style.color = sourceCell?.style?.color || '#111827';
+  td.style.width = '260px';
+  td.style.minWidth = '260px';
+  td.style.maxWidth = '260px';
   return td;
+}
+
+function setDetalleBoxExpanded(el, expanded) {
+  if (!el) return;
+  el.setAttribute('data-expanded', expanded ? '1' : '0');
+  el.style.whiteSpace = expanded ? 'normal' : 'nowrap';
+  el.style.overflow = expanded ? 'visible' : 'hidden';
+  el.style.textOverflow = expanded ? 'clip' : 'ellipsis';
+  el.style.maxHeight = expanded ? 'none' : '28px';
+  el.style.cursor = 'pointer';
 }
 
 function renderAdminAccionesCell({ cell, record, nv, nombre, authCell }) {
@@ -154,6 +167,10 @@ function renderAdminAccionesCell({ cell, record, nv, nombre, authCell }) {
   }
 
   cell.setAttribute('data-admin-acciones-render-key', renderKey);
+  cell.style.width = '260px';
+  cell.style.minWidth = '260px';
+  cell.style.maxWidth = '260px';
+  cell.style.whiteSpace = 'nowrap';
 
   if (isInjected) {
     cell.innerHTML = '';
@@ -163,32 +180,23 @@ function renderAdminAccionesCell({ cell, record, nv, nombre, authCell }) {
 
   const wrap = document.createElement('div');
   wrap.setAttribute('data-admin-acciones-public-inline', '1');
-  wrap.style.display = 'inline-flex';
+  wrap.style.display = 'flex';
   wrap.style.alignItems = 'center';
-  wrap.style.gap = '8px';
-  wrap.style.flexWrap = 'wrap';
-  wrap.style.maxWidth = '520px';
+  wrap.style.gap = '6px';
+  wrap.style.width = '244px';
+  wrap.style.maxWidth = '244px';
+  wrap.style.minWidth = '244px';
   if (!isInjected) wrap.style.marginLeft = '8px';
-
-  const badge = document.createElement('span');
-  badge.className = info.hasActions ? 'pp-badge pp-badge--pending' : 'pp-badge';
-  badge.textContent = info.hasActions ? 'Acciones: Sí' : 'Acciones: No';
-  badge.title = info.hasActions ? 'Tiene acciones administrativas cargadas' : 'No tiene acciones administrativas cargadas';
-  if (!info.hasActions) {
-    badge.style.background = '#f3f4f6';
-    badge.style.color = '#374151';
-  }
-  wrap.appendChild(badge);
 
   if (info.hasActions) {
     const detalleBox = document.createElement('span');
     detalleBox.setAttribute('data-admin-acciones-detalle-inline', '1');
     detalleBox.textContent = info.detalle || 'Sin detalle cargado.';
-    detalleBox.title = info.detalle || 'Sin detalle cargado.';
-    detalleBox.style.display = 'inline-block';
-    detalleBox.style.maxWidth = '420px';
-    detalleBox.style.whiteSpace = 'normal';
-    detalleBox.style.overflowWrap = 'anywhere';
+    detalleBox.title = 'Click para ver completo';
+    detalleBox.style.display = 'block';
+    detalleBox.style.width = '244px';
+    detalleBox.style.minWidth = '244px';
+    detalleBox.style.maxWidth = '244px';
     detalleBox.style.lineHeight = '1.25';
     detalleBox.style.border = '1px solid #fcd34d';
     detalleBox.style.background = '#fffbeb';
@@ -196,6 +204,15 @@ function renderAdminAccionesCell({ cell, record, nv, nombre, authCell }) {
     detalleBox.style.borderRadius = '8px';
     detalleBox.style.padding = '5px 8px';
     detalleBox.style.fontWeight = '700';
+    detalleBox.style.overflowWrap = 'anywhere';
+    detalleBox.style.boxSizing = 'border-box';
+    setDetalleBoxExpanded(detalleBox, false);
+    detalleBox.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const expanded = detalleBox.getAttribute('data-expanded') === '1';
+      setDetalleBoxExpanded(detalleBox, !expanded);
+    });
     wrap.appendChild(detalleBox);
   } else if (canOpenAuth) {
     const btn = document.createElement('button');
@@ -209,6 +226,14 @@ function renderAdminAccionesCell({ cell, record, nv, nombre, authCell }) {
     btn.style.fontWeight = '900';
     btn.addEventListener('click', () => authCell?.querySelector('button')?.click());
     wrap.appendChild(btn);
+  } else {
+    const badge = document.createElement('span');
+    badge.className = 'pp-badge';
+    badge.textContent = 'Sin acciones';
+    badge.title = 'No tiene acciones administrativas cargadas';
+    badge.style.background = '#f3f4f6';
+    badge.style.color = '#374151';
+    wrap.appendChild(badge);
   }
 
   cell.appendChild(wrap);
@@ -232,7 +257,7 @@ function applyAdminAccionesEnhancer(state) {
     const nvIdx = headerIndex(labels, ['nv']);
     if (nvIdx < 0) continue;
 
-    let accionesIdx = labels.findIndex((label) => label === 'acciones' || label === 'acciones admin');
+    let accionesIdx = labels.findIndex((label) => label === 'acciones admin' || label === 'detalle acciones admin');
     const authIdxBefore = headerIndex(labels, ['aut. admin', 'aut admin']);
     const distIdx = headerIndex(labels, ['distribuidor']);
     const insertIdx = authIdxBefore >= 0 ? authIdxBefore : distIdx >= 0 ? distIdx + 1 : nvIdx + 1;
@@ -245,6 +270,9 @@ function applyAdminAccionesEnhancer(state) {
       th.style.textAlign = 'left';
       th.style.whiteSpace = 'nowrap';
       th.style.color = '#111827';
+      th.style.width = '260px';
+      th.style.minWidth = '260px';
+      th.style.maxWidth = '260px';
       th.setAttribute('data-admin-acciones-public-col', '1');
       mainHead.insertBefore(th, mainHead.cells[insertIdx] || null);
 
@@ -252,12 +280,15 @@ function applyAdminAccionesEnhancer(state) {
         const fth = document.createElement('th');
         fth.className = filterHead.cells[Math.min(insertIdx, filterHead.cells.length - 1)]?.className || 'pp-th pp-th--filter';
         fth.setAttribute('data-admin-acciones-public-col', '1');
-        fth.innerHTML = '<div style="font-size:12px;opacity:.75;padding:8px">Detalle</div>';
+        fth.style.width = '260px';
+        fth.style.minWidth = '260px';
+        fth.style.maxWidth = '260px';
+        fth.innerHTML = '<div style="font-size:12px;opacity:.75;padding:8px">Click para expandir</div>';
         filterHead.insertBefore(fth, filterHead.cells[insertIdx] || null);
       }
 
       labels = readHeaderLabels(table);
-      accionesIdx = labels.findIndex((label) => label === 'acciones' || label === 'acciones admin');
+      accionesIdx = labels.findIndex((label) => label === 'acciones admin' || label === 'detalle acciones admin');
     }
 
     if (accionesIdx < 0) continue;
@@ -285,7 +316,7 @@ function applyAdminAccionesEnhancer(state) {
 
 function startAdminAccionesPublicEnhancer() {
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
-  const flag = '__dg_admin_acciones_public_enhancer_v6';
+  const flag = '__dg_admin_acciones_public_enhancer_v7';
   if (window[flag]) return;
 
   const state = {
