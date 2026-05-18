@@ -356,7 +356,7 @@ export default function IpanelPreproduccionValoresTable() {
       {err && <div style={{ color: 'crimson', fontWeight: 800, marginTop: 12 }}>{err}</div>}
 
       <div style={{ marginTop: 12, overflow: 'auto', border: '1px solid var(--border, #ddd)', borderRadius: 12 }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1380 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: canAdminAuth ? 1380 : 1180 }}>
           <thead>
             <tr style={{ background: '#f8fafc' }}>
               <th style={th}>Partida</th>
@@ -366,8 +366,8 @@ export default function IpanelPreproduccionValoresTable() {
               <th style={th}>Descripción</th>
               <th style={th}>Fecha producción</th>
               <th style={th}>Fecha despacho</th>
-              <th style={th}>Aut. Admin</th>
-              <th style={{ ...th, width: 190 }}>Acciones admin</th>
+              {canAdminAuth ? <th style={th}>Aut. Admin</th> : null}
+              {canAdminAuth ? <th style={{ ...th, width: 190 }}>Acciones admin</th> : null}
               <th style={th}>Estado</th>
               <th style={th}>Acciones</th>
             </tr>
@@ -407,18 +407,18 @@ export default function IpanelPreproduccionValoresTable() {
                     />
                     {r.fecha_plan_entrega ? <div style={hint}>Guardada: {formatDate(r.fecha_plan_entrega)}</div> : null}
                   </td>
-                  <td style={td}>
-                    {authAdmin ? (
-                      <span style={pillOk}>Autorizado</span>
-                    ) : canAdminAuth ? (
-                      <button className="btn btn--brand" type="button" onClick={() => openAdminModal(r)} disabled={savingId === id || sendingId === id}>
-                        Autorizar
-                      </button>
-                    ) : (
-                      <span style={pillWarn}>Pendiente admin</span>
-                    )}
-                  </td>
-                  <td style={{ ...td, width: 190, maxWidth: 190 }}>{renderAccionesAdmin(r)}</td>
+                  {canAdminAuth ? (
+                    <td style={td}>
+                      {authAdmin ? (
+                        <span style={pillOk}>Autorizado</span>
+                      ) : (
+                        <button className="btn btn--brand" type="button" onClick={() => openAdminModal(r)} disabled={savingId === id || sendingId === id}>
+                          Autorizar
+                        </button>
+                      )}
+                    </td>
+                  ) : null}
+                  {canAdminAuth ? <td style={{ ...td, width: 190, maxWidth: 190 }}>{renderAccionesAdmin(r)}</td> : null}
                   <td style={td}>
                     {enviado ? <span style={pillOk}>En producción</span> : dirty ? <span style={pillWarn}>Sin guardar</span> : <span style={pill}>Pendiente</span>}
                   </td>
@@ -448,7 +448,7 @@ export default function IpanelPreproduccionValoresTable() {
             })}
 
             {!loading && (!rows || !rows.length) ? (
-              <tr><td style={td} colSpan={11}>No hay iPanels para mostrar.</td></tr>
+              <tr><td style={td} colSpan={canAdminAuth ? 11 : 9}>No hay iPanels para mostrar.</td></tr>
             ) : null}
           </tbody>
         </table>
