@@ -1,0 +1,174 @@
+/*
+  Fuerza tema claro en toda la app.
+  Motivo: algunos celulares en modo oscuro activan prefers-color-scheme: dark
+  y cambian los tokens globales del tablero, haciendo que /despacho y otras
+  secciones se vean oscuras. Este archivo se importa despues de theme.css.
+*/
+
+:root,
+html,
+body,
+#root {
+  color-scheme: light !important;
+}
+
+:root {
+  --bg: #f6f7f9 !important;
+  --surface: #ffffff !important;
+  --surface-muted: #f3f4f6 !important;
+  --text: #101418 !important;
+  --ink: #0f172a !important;
+  --ink-weak: #475569 !important;
+  --muted: #6b7280 !important;
+
+  --brand: #008241 !important;
+  --brand-700: #0a6a33 !important;
+  --brand-100: #e8f6ee !important;
+  --border: #dfe3e8 !important;
+
+  --state-pending: #f7b1b1 !important;
+  --state-pending-ink: #991b1b !important;
+  --state-process: #ffe58a !important;
+  --state-process-ink: #92400e !important;
+  --state-done: #c9f2d7 !important;
+  --state-done-ink: #065f46 !important;
+
+  --shadow: 0 6px 18px rgba(0, 0, 0, .06) !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #f6f7f9 !important;
+    --surface: #ffffff !important;
+    --surface-muted: #f3f4f6 !important;
+    --text: #101418 !important;
+    --ink: #0f172a !important;
+    --ink-weak: #475569 !important;
+    --muted: #6b7280 !important;
+
+    --brand: #008241 !important;
+    --brand-700: #0a6a33 !important;
+    --brand-100: #e8f6ee !important;
+    --border: #dfe3e8 !important;
+
+    --state-pending: #f7b1b1 !important;
+    --state-pending-ink: #991b1b !important;
+    --state-process: #ffe58a !important;
+    --state-process-ink: #92400e !important;
+    --state-done: #c9f2d7 !important;
+    --state-done-ink: #065f46 !important;
+
+    --shadow: 0 6px 18px rgba(0, 0, 0, .06) !important;
+  }
+}
+
+html,
+body {
+  background: var(--bg) !important;
+  color: var(--text) !important;
+}
+
+body,
+.container,
+.pp-page {
+  background: var(--bg) !important;
+}
+
+.stage,
+.gate,
+.pp-card,
+.pp-tableWrap,
+.pp-table,
+.pp-xscroll,
+.pp-modal,
+.ua-card,
+.metric,
+.h1 {
+  background: var(--surface) !important;
+  color: var(--text) !important;
+}
+
+.gate,
+.pp-table th,
+.pp-table td,
+.pp-tableWrap,
+.pp-card,
+.stage,
+.pp-modal,
+.ua-card,
+.btn,
+.pp-btnCell,
+.pp-input,
+.pp-select,
+.pp-textarea,
+.ua-input,
+.ua-select {
+  border-color: var(--border) !important;
+}
+
+.pp-th {
+  background: linear-gradient(180deg, var(--surface-muted), #ffffff) !important;
+  color: var(--ink) !important;
+}
+
+.pp-th--filter,
+.pp-table tbody tr:nth-child(even) {
+  background: #f8fafc !important;
+  color: var(--ink) !important;
+}
+
+.pp-table tbody tr:hover {
+  background: #e8f6ee !important;
+}
+
+input,
+select,
+textarea,
+button,
+.btn,
+.pp-btnCell,
+.pp-input,
+.pp-select,
+.pp-textarea,
+.ua-input,
+.ua-select {
+  color-scheme: light !important;
+  background-color: #ffffff !important;
+  color: var(--ink) !important;
+}
+
+.btn--brand,
+.pp-btnCell--brand {
+  background: var(--brand) !important;
+  color: #ffffff !important;
+  border-color: var(--brand) !important;
+}
+
+.pp-btnCell--danger,
+.pp-btn--danger {
+  background: #fff5f5 !important;
+  color: #991b1b !important;
+  border-color: #ef4444 !important;
+}
+
+.stage__head {
+  background: var(--brand-700) !important;
+  color: #ffffff !important;
+}
+
+.stage-card__grid,
+.stage-card__info {
+  background: var(--surface) !important;
+  color: var(--text) !important;
+}
+
+.gate__list,
+.gate__status,
+.pp-dateLabel,
+.pp-help,
+.pp-hint,
+.pp-pagerInfo,
+.pp-subInfo,
+.pp-modal__sub {
+  color: var(--muted) !important;
+}
