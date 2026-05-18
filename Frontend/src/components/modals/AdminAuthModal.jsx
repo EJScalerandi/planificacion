@@ -277,27 +277,33 @@ function applyAdminAccionesEnhancer(state) {
 
 function startAdminAccionesPublicEnhancer() {
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
-  const flag = '__dg_admin_acciones_public_enhancer_v4';
+  const flag = '__dg_admin_acciones_public_enhancer_v5';
   if (window[flag]) return;
 
   const state = {
     byNv: new Map(),
     loading: false,
-    lastFetch: 0,
+    loaded: false,
+    applying: false,
+    applyTimer: 0,
+    refreshTimer: 0,
   };
   window[flag] = state;
 
-  document.addEventListener('click', (e) => {
-    const btn = e.target?.closest?.('[data-admin-acciones-public-open="1"]');
-    if (!btn) return;
-    e.preventDefault();
-    e.stopPropagation();
-    showAdminAccionesPopup({
-      nv: btn.getAttribute('data-admin-acciones-nv') || '',
-      nombre: btn.getAttribute('data-admin-acciones-nombre') || '',
-      detalle: btn.getAttribute('data-admin-acciones-detalle') || '',
-    });
-  }, true);
+  const scheduleApply = (delay = 80) => {
+    if (window.location?.pathname !== '/a') return;
+    if (state.applyTimer) window.clearTimeout(state.applyTimer);
+    state.applyTimer = window.setTimeout(() => {
+      state.applyTimer = 0;
+      if (state.applying) return;
+      state.applying = true;
+      try {
+        applyAdminAccionesEnhancer(state);
+      } finally {
+        state.applying = false;
+      }
+    }, delay);
+  };
 
   const refreshData = async () => {
     if (state.loading || window.location?.pathname !== '/a') return;
@@ -311,7 +317,8 @@ function startAdminAccionesPublicEnhancer() {
         if (nv) byNv.set(String(nv), record);
       }
       state.byNv = byNv;
-      state.lastFetch = Date.now();
+      state.loaded = true;
+      scheduleApply(0);
     } catch {
       // No bloquea la tabla si falla la consulta auxiliar.
     } finally {
@@ -319,20 +326,39 @@ function startAdminAccionesPublicEnhancer() {
     }
   };
 
-  let raf = 0;
-  const run = async () => {
-    if (window.location?.pathname !== '/a') return;
-    if (!state.lastFetch || Date.now() - state.lastFetch > 20000) await refreshData();
-    if (raf) cancelAnimationFrame(raf);
-    raf = requestAnimationFrame(() => applyAdminAccionesEnhancer(state));
-  };
+  document.addEventListener(
+    'click',
+    (e) => {
+      const btn = e.target?.closest?.('[data-admin-acciones-public-open="1"]');
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      showAdminAccionesPopup({
+        nv: btn.getAttribute('data-admin-acciones-nv') || '',
+        nombre: btn.getAttribute('data-admin-acciones-nombre') || '',
+        detalle: btn.getAttribute('data-admin-acciones-detalle') || '',
+      });
+    },
+    true
+  );
 
   const setup = () => {
-    run();
-    window.setInterval(run, 1200);
-    window.setInterval(refreshData, 30000);
-    const observer = new MutationObserver(() => run());
+    // Una sola consulta inicial para armar el mapa NV -> acciones.
+    refreshData();
+
+    // Aplica sobre la tabla cuando React la termina de dibujar, sin volver a consultar backend.
+    scheduleApply(0);
+
+    const observer = new MutationObserver(() => {
+      if (state.applying) return;
+      scheduleApply(120);
+    });
     observer.observe(document.body, { childList: true, subtree: true });
+
+    // Refresco suave por si se autoriza algo desde otra sesión. No consulta en cada click ni cada render.
+    state.refreshTimer = window.setInterval(() => {
+      if (window.location?.pathname === '/a') refreshData();
+    }, 60000);
   };
 
   if (document.readyState === 'loading') {
