@@ -1,20 +1,24 @@
-Cambios incluidos:
+ipanel_admin_ipanels_en_i_reemplazo_directo_v3.zip
 
-- La autorizacion administrativa de iPanels queda en /i, no en /b.
-- /b vuelve a quedar como Administracion de Usuarios.
-- Tambien queda disponible /usuarios como acceso alternativo a Administracion de Usuarios.
-- En /i se agregan Aut. Admin y Acciones admin para iPanels, usando el mismo usuario administrativo que autoriza en /a.
-- La autorizacion administrativa de iPanels se guarda en public.preproduccion_valores_ipanels.data.
-- GET /ipanel expone auth_admin, admin_acciones y admin_acciones_detalle desde la preproduccion de iPanels.
-- En /despacho, iPanels se comportan como portones:
-  * rojo si fecha despacho vencida y falta auth_admin
-  * amarillo si auth_admin=true y admin_acciones=true
-  * boton Acciones para ver el detalle
-  * muestra semana despacho y fecha despacho
+Aplicacion:
+1) Copiar el contenido del zip sobre la raiz del repo planificacion.
+2) Reemplazar archivos existentes cuando el sistema lo pida.
+3) Build frontend:
+   cd Frontend
+   npm run build
+4) Redeployar backend porque se modifica Backend/server/routes/public/ipanelPreprod.js.
 
-Reemplazar copiando el contenido de este zip sobre la raiz del repo.
-Luego ejecutar:
-cd Frontend
-npm run build
+Cambio v3:
+- /i mantiene la autorizacion administrativa para iPanels.
+- Solo usuarios con scope preproduccion:admin ven el boton Autorizar y pueden abrir/cargar el modal.
+- Usuarios sin ese scope solo ven el estado Pendiente admin o Autorizado, y pueden consultar Acciones admin si existen.
+- Backend bloquea cambios de auth_admin/admin_acciones si el token no tiene preproduccion:admin.
+- No toca la logica de /despacho agregada en v2.
 
-Si desplegas backend separado, redeployar tambien el Backend.
+Archivos incluidos:
+- Frontend/src/App.jsx
+- Frontend/src/components/IpanelPreproduccionValoresTable.jsx
+- Frontend/src/components/StageColumn.jsx
+- Frontend/src/components/modals/AdminAuthModal.jsx
+- Backend/server/routes/public/ipanelPreprod.js
+- Backend/server/routes/public/ipanel.js

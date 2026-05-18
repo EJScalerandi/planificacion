@@ -1,6 +1,7 @@
 const express = require('express');
 const { pool } = require('../../db');
 const { isValidISODate10 } = require('../../lib/common');
+const { adminAuth } = require('../../middleware/adminAuth');
 
 const router = express.Router();
 
@@ -67,6 +68,46 @@ function assertDate10OrNull(value, fieldName) {
 
 function hasOwn(obj, key) {
   return Object.prototype.hasOwnProperty.call(obj || {}, key);
+}
+
+
+const ADMIN_AUTH_FIELDS = new Set([
+  'admin_cliente_en_regla',
+  'admin_acciones',
+  'admin_acciones_detalle',
+  'auth_admin',
+  'auth_admin_at',
+]);
+
+function touchesAdminAuthFields(body = {}) {
+  return Object.keys(body || {}).some((key) => ADMIN_AUTH_FIELDS.has(key));
+}
+
+function normalizeScopes(scopesRaw) {
+  if (Array.isArray(scopesRaw)) return scopesRaw.map((s) => String(s || '').trim()).filter(Boolean);
+  if (typeof scopesRaw === 'string') {
+    return scopesRaw
+      .split(/[\s,]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function hasAdminPreproduccionScope(req) {
+  const scopes = normalizeScopes(req?.admin?.scopes ?? req?.admin?.scope ?? req?.admin?.permissions ?? []);
+  return scopes.includes('preproduccion:admin');
+}
+
+function requireAdminForAdminAuthPatch(req, res, next) {
+  if (!touchesAdminAuthFields(req.body || {})) return next();
+
+  return adminAuth(req, res, () => {
+    if (!hasAdminPreproduccionScope(req)) {
+      return res.status(403).json({ error: 'No tenés permiso para autorizar iPanels' });
+    }
+    return next();
+  });
 }
 
 function getDescripcionFromRowOrData(row = {}, data = {}) {
@@ -314,8 +355,8 @@ async function updatePreprodDates(req, res) {
   }
 }
 
-router.patch('/preproduccion-valores-ipanels/:id', updatePreprodDates);
-router.put('/preproduccion-valores-ipanels/:id', updatePreprodDates);
+router.patch('/preproduccion-valores-ipanels/:id', requireAdminForAdminAuthPatch, updatePreprodDates);
+router.put('/preproduccion-valores-ipanels/:id', requireAdminForAdminAuthPatch, updatePreprodDates);
 
 router.post('/preproduccion-valores-ipanels/:id/enviar-produccion', async (req, res) => {
   const id = Number(req.params.id);

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import api from '../api';
+import api, { getAdminToken } from '../api';
 import AdminAuthModal from './modals/AdminAuthModal';
 
 function toStr(v) {
@@ -52,6 +52,45 @@ function isTruthySi(v) {
   if (v === true) return true;
   const s = String(v ?? '').trim().toLowerCase();
   return ['si', 'sí', 'true', '1', 'yes'].includes(s);
+}
+
+
+function parseJwt(token) {
+  try {
+    const part = String(token || '').split('.')[1];
+    if (!part) return null;
+    const base64 = part.replace(/-/g, '+').replace(/_/g, '/');
+    const json = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
+function normalizeScopes(scopesRaw) {
+  if (Array.isArray(scopesRaw)) return scopesRaw.map((s) => String(s || '').trim()).filter(Boolean);
+  if (typeof scopesRaw === 'string') {
+    return scopesRaw
+      .split(/[\s,]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function getCurrentScopes() {
+  const payload = parseJwt(getAdminToken()) || {};
+  return normalizeScopes(payload.scopes ?? payload.scope ?? payload.permissions ?? []);
+}
+
+function hasAny(scopes, needed) {
+  const set = new Set((scopes || []).map((s) => String(s || '').trim()));
+  return (needed || []).some((n) => set.has(n));
 }
 
 function getNombre(row) {
@@ -120,6 +159,9 @@ export default function IpanelPreproduccionValoresTable() {
   const [adminModalOpen, setAdminModalOpen] = useState(false);
   const [adminModalRow, setAdminModalRow] = useState(null);
   const [adminModalBusy, setAdminModalBusy] = useState(false);
+
+  const userScopes = useMemo(() => getCurrentScopes(), []);
+  const canAdminAuth = useMemo(() => hasAny(userScopes, ['preproduccion:admin']), [userScopes]);
 
   const load = useCallback(async () => {
     try {
@@ -224,6 +266,7 @@ export default function IpanelPreproduccionValoresTable() {
   }
 
   function openAdminModal(row) {
+    if (!canAdminAuth) return;
     setAdminModalRow(makeAuthModalRow(row));
     setAdminModalOpen(true);
   }
@@ -235,6 +278,10 @@ export default function IpanelPreproduccionValoresTable() {
   }
 
   async function submitAdminAuth(patch) {
+    if (!canAdminAuth) {
+      window.alert('No tenés permiso para autorizar iPanels.');
+      return;
+    }
     const id = adminModalRow?.id;
     if (!id) return;
     try {
@@ -363,10 +410,12 @@ export default function IpanelPreproduccionValoresTable() {
                   <td style={td}>
                     {authAdmin ? (
                       <span style={pillOk}>Autorizado</span>
-                    ) : (
+                    ) : canAdminAuth ? (
                       <button className="btn btn--brand" type="button" onClick={() => openAdminModal(r)} disabled={savingId === id || sendingId === id}>
                         Autorizar
                       </button>
+                    ) : (
+                      <span style={pillWarn}>Pendiente admin</span>
                     )}
                   </td>
                   <td style={{ ...td, width: 190, maxWidth: 190 }}>{renderAccionesAdmin(r)}</td>
@@ -405,13 +454,15 @@ export default function IpanelPreproduccionValoresTable() {
         </table>
       </div>
 
-      <AdminAuthModal
-        open={adminModalOpen}
-        row={adminModalRow}
-        busy={adminModalBusy}
-        onClose={closeAdminModal}
-        onSubmit={submitAdminAuth}
-      />
+      {canAdminAuth ? (
+        <AdminAuthModal
+          open={adminModalOpen}
+          row={adminModalRow}
+          busy={adminModalBusy}
+          onClose={closeAdminModal}
+          onSubmit={submitAdminAuth}
+        />
+      ) : null}
     </div>
   );
 }
