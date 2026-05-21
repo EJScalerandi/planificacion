@@ -898,7 +898,7 @@ export default function StageColumn({
                   {isDespachoColumn ? (
                     <>Semana despacho: <b>{getSalidaWeekLabel(p)}</b></>
                   ) : (
-                    getProdWeekLabel(p)
+                    <>Semana producción: <b>{getProdWeekLabel(p)}</b></>
                   )}
                 </div>
                 {isDespachoColumn ? (
