@@ -306,14 +306,14 @@ function getLaserSectionData(item, sectionKey) {
   }
 }
 
-function ShellModal({ open, onClose, headerBg = '#f8fafc', borderColor = '#e5e7eb', title, children, width = 'min(760px, 100%)' }) {
+function ShellModal({ open, onClose, headerBg = '#f8fafc', borderColor = '#e5e7eb', title, children, width = 'min(760px, 100%)', disableClose = false }) {
   if (!open) return null;
   return (
     <div
       role="dialog"
       aria-modal="true"
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose?.();
+        if (!disableClose && e.target === e.currentTarget) onClose?.();
       }}
       style={{
         position: 'fixed',
@@ -348,9 +348,11 @@ function ShellModal({ open, onClose, headerBg = '#f8fafc', borderColor = '#e5e7e
           }}
         >
           <div style={{ fontWeight: 900 }}>{title}</div>
-          <button className="btn" type="button" onClick={onClose}>
-            Cerrar
-          </button>
+          {!disableClose ? (
+            <button className="btn" type="button" onClick={onClose}>
+              Cerrar
+            </button>
+          ) : null}
         </div>
         {children}
       </div>
@@ -415,7 +417,7 @@ function DatosModal({ open, onClose, item, title }) {
   );
 }
 
-function QcModal({ open, onClose, item, line, stageKey, title, onSaved }) {
+function QcModal({ open, onClose, item, line, stageKey, title, onSaved, forceComplete = false }) {
   const [pin, setPin] = useState('');
   const [status, setStatus] = useState('APROBADO');
   const [motiveId, setMotiveId] = useState('');
@@ -510,7 +512,7 @@ function QcModal({ open, onClose, item, line, stageKey, title, onSaved }) {
 
   if (!open || !item) return null;
   return (
-    <ShellModal open={open} onClose={onClose} title={`QC – ${title}`} width="min(720px, 100%)">
+    <ShellModal open={open} onClose={onClose} title={`QC – ${title}`} width="min(720px, 100%)" disableClose={forceComplete}>
       <form onSubmit={handleSubmit} style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
         {err && <div style={{ color: 'crimson', fontWeight: 800 }}>{err}</div>}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -793,6 +795,14 @@ export default function StageColumn({
     return filtered;
   }, [items, effKey]);
 
+  const handleStopAndOpenQc = async (p) => {
+    if (!onStop || !p) return;
+    const resp = await onStop(p.id, effKey);
+    if (!resp?.ok) return;
+    setQcTarget(resp.item || p);
+    setQcOpen(true);
+  };
+
   const historyLast10 = useMemo(() => {
     if (mode === 'ipanel') return [];
     const key = String(keyTrim || '').trim();
@@ -918,8 +928,6 @@ export default function StageColumn({
                     <button className="btn" type="button" onClick={() => { setDatosTarget(p); setDatosOpen(true); }} style={{ fontWeight: 900 }} title="Ver datos del sector Laser">Datos</button>
                   ) : null}
 
-                  <button className="btn" type="button" onClick={() => { setQcTarget(p); setQcOpen(true); }} style={{ fontWeight: 900 }}>QC</button>
-
                   {needsAdminActionsYellow ? (
                     <button
                       className="btn"
@@ -933,7 +941,7 @@ export default function StageColumn({
                   ) : null}
 
                   <button className="btn btn--brand" onClick={() => onStart && onStart(p.id, effKey)} disabled={!canStart || disabledId === p.id}>▶</button>
-                  <button className="btn" onClick={() => onStop && onStop(p.id, effKey)} disabled={!canStop || disabledId === p.id}>⏹</button>
+                  <button className="btn" onClick={() => handleStopAndOpenQc(p)} disabled={!canStop || disabledId === p.id}>⏹</button>
                 </div>
               </div>
             );
@@ -943,7 +951,7 @@ export default function StageColumn({
       <HistoryModal open={histOpen} onClose={() => setHistOpen(false)} title={title} effKey={String(effKey || '').trim()} rows={historyLast10} />
       <PortonHistoryModal open={portonHistOpen} onClose={() => setPortonHistOpen(false)} title={title} effKey={String(effKey || '').trim()} items={allItems} />
       <DatosModal open={datosOpen} onClose={() => { setDatosOpen(false); setDatosTarget(null); }} item={datosTarget} title={title} />
-      <QcModal open={qcOpen} onClose={() => { setQcOpen(false); setQcTarget(null); }} item={qcTarget} line={line} stageKey={effKey} title={title} onSaved={() => onQcSaved?.()} />
+      <QcModal open={qcOpen} onClose={() => { setQcOpen(false); setQcTarget(null); }} item={qcTarget} line={line} stageKey={effKey} title={title} onSaved={() => onQcSaved?.()} forceComplete />
       <AdminAccionesModal open={adminAccionesOpen} onClose={() => { setAdminAccionesOpen(false); setAdminAccionesTarget(null); }} title={title} item={adminAccionesTarget} />
       <ObservacionesModal open={obsOpen} onClose={() => { setObsOpen(false); setObsTarget(null); }} title={title} item={obsTarget} line={line} />
     </div>

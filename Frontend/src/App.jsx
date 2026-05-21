@@ -190,8 +190,10 @@ function Board({ stages }) {
       setBusyId(id);
       const { data: updated } = await stopStage(id, stage);
       replaceItem(updated);
+      return { ok: true, item: updated || null };
     } catch (e) {
       alert(e?.response?.data?.error || e.message);
+      return { ok: false };
     } finally {
       setBusyId(null);
     }
@@ -212,10 +214,12 @@ function Board({ stages }) {
   const handleStopIpanel = async (id, stage) => {
     try {
       setBusyId(id);
-      await stopIpanelStage(id, stage);
+      const { data: updated } = await stopIpanelStage(id, stage);
       await refreshIpanel();
+      return { ok: true, item: updated || null };
     } catch (e) {
       alert(e?.response?.data?.error || e.message);
+      return { ok: false };
     } finally {
       setBusyId(null);
     }
