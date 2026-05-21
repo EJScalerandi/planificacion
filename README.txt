@@ -1,4 +1,4 @@
-Reemplazo directo - QC automático al hacer Stop
+Reemplazo directo - QC automático + etiquetas cortas de semana
 
 Copiar el contenido de este zip sobre la raíz del repo planificacion y reemplazar archivos existentes.
 
@@ -9,10 +9,9 @@ Archivos incluidos:
 Cambios:
 - Al hacer Stop, si el servidor responde exitosamente, se abre automáticamente el modal de QC.
 - Se elimina el botón QC manual de cada tarjeta.
-- El modal QC queda obligatorio: no muestra botón Cerrar y no se cierra tocando el fondo.
-- El modal se cierra solo después de confirmar QC correctamente.
-- Se mantiene el cambio anterior:
-  - Despacho muestra "Semana despacho".
-  - El resto muestra "Semana producción".
+- El modal QC queda obligatorio: no se puede cerrar hasta confirmar QC correctamente.
+- Etiquetas de semana abreviadas:
+  - Despacho: Semana N° X
+  - Producción: Semana N° X
 
 No se modifica backend.

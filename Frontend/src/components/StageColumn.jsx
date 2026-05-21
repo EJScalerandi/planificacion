@@ -906,9 +906,9 @@ export default function StageColumn({
                 <div style={{ fontWeight: 900 }}>NV {p?.nv ?? p?.NV ?? '-'}</div>
                 <div>
                   {isDespachoColumn ? (
-                    <>Semana despacho: <b>{getSalidaWeekLabel(p)}</b></>
+                    <>Despacho: <b>{getSalidaWeekLabel(p)}</b></>
                   ) : (
-                    <>Semana producción: <b>{getProdWeekLabel(p)}</b></>
+                    <>Producción: <b>{getProdWeekLabel(p)}</b></>
                   )}
                 </div>
                 {isDespachoColumn ? (
