@@ -70,7 +70,6 @@ function hasOwn(obj, key) {
   return Object.prototype.hasOwnProperty.call(obj || {}, key);
 }
 
-
 const ADMIN_AUTH_FIELDS = new Set([
   'admin_cliente_en_regla',
   'admin_acciones',
@@ -224,6 +223,44 @@ async function getPreprodById(clientOrPool, id) {
   return rows[0] ? normalizePreprodRow(rows[0]) : null;
 }
 
+async function syncLinkedIpanelDates(clientOrPool, preprodRow, { fechaProd, fechaPlanEntrega }) {
+  const ipanelId = toIntOrNull(preprodRow?.ipanel_id);
+  const partida = toIntOrNull(preprodRow?.partida);
+  const nv = toIntOrNull(preprodRow?.nv);
+
+  const where = [];
+  const params = [fechaProd, fechaPlanEntrega];
+
+  if (ipanelId) {
+    params.push(ipanelId);
+    where.push(`id = $${params.length}`);
+  }
+  if (partida) {
+    params.push(partida);
+    where.push(`partida = $${params.length}`);
+  }
+  if (nv) {
+    params.push(nv);
+    where.push(`nv = $${params.length}`);
+  }
+
+  if (!where.length) return null;
+
+  const { rows } = await clientOrPool.query(
+    `
+    update public.ipanel
+    set fecha_prod = $1::date,
+        fecha_plan_entrega = $2::date,
+        updated_at = now()
+    where ${where.join(' or ')}
+    returning *;
+    `,
+    params
+  );
+
+  return rows[0] || null;
+}
+
 router.get('/preproduccion-valores-ipanels', async (req, res) => {
   try {
     const q = toStr(req.query.q);
@@ -343,6 +380,10 @@ async function updatePreprodDates(req, res) {
       `,
       [id, fechaProd, fechaPlanEntrega, descripcion, descripcionSimple, JSON.stringify(data)]
     );
+
+    if (current.produccion_enviada === true || current.ipanel_id) {
+      await syncLinkedIpanelDates(pool, current, { fechaProd, fechaPlanEntrega });
+    }
 
     const updated = await getPreprodById(pool, rows[0].id);
     return res.json(updated);

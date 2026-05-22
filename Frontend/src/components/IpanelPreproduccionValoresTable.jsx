@@ -54,7 +54,6 @@ function isTruthySi(v) {
   return ['si', 'sí', 'true', '1', 'yes'].includes(s);
 }
 
-
 function parseJwt(token) {
   try {
     const part = String(token || '').split('.')[1];
@@ -379,6 +378,7 @@ export default function IpanelPreproduccionValoresTable() {
               const enviado = r.produccion_enviada === true || !!r.ipanel_id;
               const id = r.id;
               const authAdmin = isAdminAutorizado(r);
+              const isBusy = savingId === id || sendingId === id;
 
               return (
                 <tr key={rowKey(r)}>
@@ -393,7 +393,7 @@ export default function IpanelPreproduccionValoresTable() {
                       className="btn"
                       value={getDraft(r, 'fecha_prod')}
                       onChange={(e) => setDraft(r, 'fecha_prod', e.target.value)}
-                      disabled={enviado || savingId === id || sendingId === id}
+                      disabled={enviado || isBusy}
                     />
                     {r.fecha_prod ? <div style={hint}>Guardada: {formatDate(r.fecha_prod)}</div> : null}
                   </td>
@@ -403,7 +403,7 @@ export default function IpanelPreproduccionValoresTable() {
                       className="btn"
                       value={getDraft(r, 'fecha_plan_entrega')}
                       onChange={(e) => setDraft(r, 'fecha_plan_entrega', e.target.value)}
-                      disabled={enviado || savingId === id || sendingId === id}
+                      disabled={isBusy}
                     />
                     {r.fecha_plan_entrega ? <div style={hint}>Guardada: {formatDate(r.fecha_plan_entrega)}</div> : null}
                   </td>
@@ -420,7 +420,7 @@ export default function IpanelPreproduccionValoresTable() {
                   ) : null}
                   {canAdminAuth ? <td style={{ ...td, width: 190, maxWidth: 190 }}>{renderAccionesAdmin(r)}</td> : null}
                   <td style={td}>
-                    {enviado ? <span style={pillOk}>En producción</span> : dirty ? <span style={pillWarn}>Sin guardar</span> : <span style={pill}>Pendiente</span>}
+                    {dirty ? <span style={pillWarn}>Sin guardar</span> : enviado ? <span style={pillOk}>En producción</span> : <span style={pill}>Pendiente</span>}
                   </td>
                   <td style={td}>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -428,7 +428,7 @@ export default function IpanelPreproduccionValoresTable() {
                         className="btn"
                         type="button"
                         onClick={() => saveDates(r)}
-                        disabled={enviado || !dirty || savingId === id || sendingId === id}
+                        disabled={!dirty || isBusy}
                       >
                         {savingId === id ? 'Guardando...' : 'Guardar fecha'}
                       </button>

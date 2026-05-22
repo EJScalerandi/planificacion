@@ -6,13 +6,14 @@ const { signAdminToken } = require('../../middleware/adminAuth');
 const router = express.Router();
 
 // POST /admin/login
-// POST /admin/login
 router.post('/login', async (req, res, next) => {
   try {
     const { username, password } = req.body || {};
     if (!username || !password) {
       return res.status(400).json({ error: 'username y password son requeridos' });
     }
+
+    const normalizedUsername = String(username).trim();
 
     const { rows } = await pool.query(
       `
@@ -23,10 +24,10 @@ router.post('/login', async (req, res, next) => {
         is_active,
         coalesce(scopes, '{}'::text[]) as scopes
       from public.admin_users
-      where username = $1
+      where lower(username) = lower($1)
       limit 1;
       `,
-      [String(username).trim()]
+      [normalizedUsername]
     );
 
     const u = rows[0];
@@ -47,6 +48,5 @@ router.post('/login', async (req, res, next) => {
     return res.status(500).json({ error: 'Error en login admin', detail: err.message });
   }
 });
-
 
 module.exports = router;
