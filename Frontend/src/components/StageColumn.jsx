@@ -743,6 +743,7 @@ export default function StageColumn({
 }) {
   const [qcOpen, setQcOpen] = useState(false);
   const [qcTarget, setQcTarget] = useState(null);
+  const [qcForceComplete, setQcForceComplete] = useState(false);
   const [obsOpen, setObsOpen] = useState(false);
   const [obsTarget, setObsTarget] = useState(null);
   const [adminAccionesOpen, setAdminAccionesOpen] = useState(false);
@@ -800,6 +801,7 @@ export default function StageColumn({
     const resp = await onStop(p.id, effKey);
     if (!resp?.ok) return;
     setQcTarget(resp.item || p);
+    setQcForceComplete(true);
     setQcOpen(true);
   };
 
@@ -928,6 +930,15 @@ export default function StageColumn({
                     <button className="btn" type="button" onClick={() => { setDatosTarget(p); setDatosOpen(true); }} style={{ fontWeight: 900 }} title="Ver datos del sector Laser">Datos</button>
                   ) : null}
 
+                  <button
+                    className="btn"
+                    type="button"
+                    onClick={() => { setQcTarget(p); setQcForceComplete(false); setQcOpen(true); }}
+                    style={{ fontWeight: 900 }}
+                  >
+                    QC
+                  </button>
+
                   {needsAdminActionsYellow ? (
                     <button
                       className="btn"
@@ -951,7 +962,7 @@ export default function StageColumn({
       <HistoryModal open={histOpen} onClose={() => setHistOpen(false)} title={title} effKey={String(effKey || '').trim()} rows={historyLast10} />
       <PortonHistoryModal open={portonHistOpen} onClose={() => setPortonHistOpen(false)} title={title} effKey={String(effKey || '').trim()} items={allItems} />
       <DatosModal open={datosOpen} onClose={() => { setDatosOpen(false); setDatosTarget(null); }} item={datosTarget} title={title} />
-      <QcModal open={qcOpen} onClose={() => { setQcOpen(false); setQcTarget(null); }} item={qcTarget} line={line} stageKey={effKey} title={title} onSaved={() => onQcSaved?.()} forceComplete />
+      <QcModal open={qcOpen} onClose={() => { setQcOpen(false); setQcTarget(null); setQcForceComplete(false); }} item={qcTarget} line={line} stageKey={effKey} title={title} onSaved={() => onQcSaved?.()} forceComplete={qcForceComplete} />
       <AdminAccionesModal open={adminAccionesOpen} onClose={() => { setAdminAccionesOpen(false); setAdminAccionesTarget(null); }} title={title} item={adminAccionesTarget} />
       <ObservacionesModal open={obsOpen} onClose={() => { setObsOpen(false); setObsTarget(null); }} title={title} item={obsTarget} line={line} />
     </div>
