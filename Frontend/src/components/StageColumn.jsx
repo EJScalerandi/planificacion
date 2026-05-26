@@ -659,7 +659,7 @@ function HistoryModal({ open, onClose, title, effKey, rows = [] }) {
             {rows.map((r) => (
               <div key={r._key} style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 12, background: '#ffffff', display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, alignItems: 'center' }}>
                 <div style={{ fontSize: 13 }}>
-                  <div style={{ fontWeight: 900 }}>Portón {r.nlista} · NV {r.nv} · Partida {r.partida}</div>
+                  <div style={{ fontWeight: 900 }}>Portón {r.nlista} · NV {r.nv}</div>
                   <div style={{ opacity: 0.8, marginTop: 2 }}>Fin etapa: <b>{r.fin ? fmt(r.fin) : '-'}</b></div>
                 </div>
                 <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.9 }}>{r.qcLatest ? `QC: ${r.qcLatest}` : ''}</div>
