@@ -1,0 +1,510 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Actualizar listas de precios</title>
+  <style>
+    :root {
+      --brand: #2563eb;
+      --brand-dark: #1d4ed8;
+      --border: #d6dbe7;
+      --muted: #64748b;
+      --surface: #ffffff;
+      --surface-2: #f8fafc;
+      --danger: #b91c1c;
+      --ok: #166534;
+      --warn: #92400e;
+      --text: #0f172a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--text);
+      background: #eef2f7;
+    }
+    .wrap { max-width: 1280px; margin: 0 auto; padding: 22px; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+    h1 { margin: 0; font-size: 28px; line-height: 1.15; }
+    h2 { margin: 0; font-size: 18px; }
+    h3 { margin: 0 0 10px; font-size: 16px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 8px 26px rgba(15,23,42,.08); }
+    .card-pad { padding: 16px; }
+    .grid { display: grid; gap: 14px; }
+    .grid-main { grid-template-columns: 280px 1fr; align-items: start; }
+    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .space { justify-content: space-between; }
+    .muted { color: var(--muted); font-size: 13px; }
+    .pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 5px 9px; border: 1px solid var(--border); background: var(--surface-2); font-size: 12px; font-weight: 800; }
+    .pill-ok { color: var(--ok); border-color: #bbf7d0; background: #f0fdf4; }
+    .pill-warn { color: var(--warn); border-color: #fed7aa; background: #fff7ed; }
+    .pill-danger { color: var(--danger); border-color: #fecaca; background: #fef2f2; }
+    button, input, select { font: inherit; }
+    button, .btn {
+      appearance: none;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 9px 12px;
+      cursor: pointer;
+      text-decoration: none;
+      font-weight: 800;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    button.primary, .btn.primary { background: var(--brand); border-color: var(--brand); color: white; }
+    button.primary:hover, .btn.primary:hover { background: var(--brand-dark); }
+    button:disabled { cursor: not-allowed; opacity: .55; }
+    input, select {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: white;
+      padding: 9px 10px;
+      min-height: 38px;
+    }
+    input[type="number"] { max-width: 130px; }
+    .side-list { display: grid; gap: 8px; }
+    .side-btn { justify-content: flex-start; width: 100%; text-align: left; }
+    .side-btn.active { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(37,99,235,.12); }
+    .toolbar { display: grid; grid-template-columns: 1fr; gap: 10px; margin-bottom: 12px; }
+    .table-wrap { overflow: auto; border: 1px solid var(--border); border-radius: 12px; background: white; }
+    table { border-collapse: collapse; width: 100%; min-width: 880px; }
+    th, td { padding: 10px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: middle; font-size: 14px; }
+    th { background: var(--surface-2); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: #475569; }
+    tr:last-child td { border-bottom: 0; }
+    .price-input { width: 130px; }
+    .msg { margin: 10px 0 0; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface-2); font-weight: 700; }
+    .msg.err { color: var(--danger); border-color: #fecaca; background: #fef2f2; }
+    .msg.ok { color: var(--ok); border-color: #bbf7d0; background: #f0fdf4; }
+    .hidden { display: none !important; }
+    @media (max-width: 900px) { .grid-main { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div>
+        <h1>Actualizar listas de precios</h1>
+        <div class="muted">Vert permite editar todas sus listas. Dflex permite editar la lista Predeterminada y consultar las demás.</div>
+      </div>
+      <div class="row">
+        <a href="/index" class="btn">Volver al índice</a>
+        <button id="reloadBtn" class="primary">Actualizar datos</button>
+      </div>
+    </div>
+
+    <div class="card card-pad" style="margin-bottom:14px">
+      <div class="row space">
+        <div>
+          <h2>Conexión</h2>
+          <div class="muted">Base API del presupuestador. Se guarda en este navegador.</div>
+        </div>
+        <div class="row">
+          <input id="apiBaseInput" style="min-width:320px" placeholder="http://localhost:4000/api" />
+          <button id="saveApiBaseBtn">Guardar</button>
+        </div>
+      </div>
+      <div id="message" class="msg hidden"></div>
+    </div>
+
+    <div class="grid grid-main">
+      <aside class="card card-pad">
+        <h3>Empresas</h3>
+        <div id="companiesBox" class="side-list"></div>
+      </aside>
+
+      <main class="grid">
+        <section class="card card-pad">
+          <div class="row space">
+            <div>
+              <h2 id="companyTitle">Seleccioná una empresa</h2>
+              <div id="companySub" class="muted">Se muestran las listas asociadas en Odoo.</div>
+            </div>
+            <span id="companyMode" class="pill">Sin selección</span>
+          </div>
+          <div id="listsBox" class="side-list" style="grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); margin-top:12px"></div>
+        </section>
+
+        <section id="workPanel" class="card card-pad hidden">
+          <div class="row space" style="margin-bottom:12px">
+            <div>
+              <h2 id="listTitle">Lista</h2>
+              <div id="listSub" class="muted"></div>
+            </div>
+            <span id="editMode" class="pill">Consulta</span>
+          </div>
+
+          <div class="toolbar">
+            <div class="row">
+              <input id="productSearch" style="min-width:280px" placeholder="Buscar producto por nombre o código" />
+              <button id="searchBtn">Buscar</button>
+              <button id="clearSearchBtn">Limpiar</button>
+            </div>
+
+            <div class="row" id="bulkPanel">
+              <input id="percentInput" type="number" step="0.01" placeholder="% aumento" />
+              <button id="increaseSelectedListBtn" class="primary">Aumento general en esta lista</button>
+              <button id="increaseAllCompanyBtn">Aumento general en todas las listas de Vert</button>
+              <button id="increasePartialBtn">Aumento parcial seleccionados</button>
+              <span id="selectedCounter" class="muted">0 seleccionados</span>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th><input type="checkbox" id="checkAll" /></th>
+                  <th>Producto</th>
+                  <th>Código</th>
+                  <th>Precio lista</th>
+                  <th>Precio base</th>
+                  <th>Estado</th>
+                  <th>Acción</th>
+                </tr>
+              </thead>
+              <tbody id="productsBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    const els = {
+      apiBaseInput: document.getElementById('apiBaseInput'),
+      saveApiBaseBtn: document.getElementById('saveApiBaseBtn'),
+      reloadBtn: document.getElementById('reloadBtn'),
+      message: document.getElementById('message'),
+      companiesBox: document.getElementById('companiesBox'),
+      companyTitle: document.getElementById('companyTitle'),
+      companySub: document.getElementById('companySub'),
+      companyMode: document.getElementById('companyMode'),
+      listsBox: document.getElementById('listsBox'),
+      workPanel: document.getElementById('workPanel'),
+      listTitle: document.getElementById('listTitle'),
+      listSub: document.getElementById('listSub'),
+      editMode: document.getElementById('editMode'),
+      productSearch: document.getElementById('productSearch'),
+      searchBtn: document.getElementById('searchBtn'),
+      clearSearchBtn: document.getElementById('clearSearchBtn'),
+      percentInput: document.getElementById('percentInput'),
+      increaseSelectedListBtn: document.getElementById('increaseSelectedListBtn'),
+      increaseAllCompanyBtn: document.getElementById('increaseAllCompanyBtn'),
+      increasePartialBtn: document.getElementById('increasePartialBtn'),
+      selectedCounter: document.getElementById('selectedCounter'),
+      checkAll: document.getElementById('checkAll'),
+      productsBody: document.getElementById('productsBody'),
+      bulkPanel: document.getElementById('bulkPanel'),
+    };
+
+    const state = {
+      companies: [],
+      pricelists: [],
+      products: [],
+      selectedCompanyId: null,
+      selectedPricelistId: null,
+      selectedProducts: new Set(),
+      loading: false,
+    };
+
+    function defaultApiBase() {
+      const saved = localStorage.getItem('dg_price_lists_api_base');
+      if (saved) return saved;
+      if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') return 'http://localhost:4000/api';
+      return location.origin.replace(/\/$/, '') + '/api';
+    }
+
+    function normalize(s) {
+      return String(s || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    }
+
+    function money(n) {
+      const v = Number(n || 0);
+      return Number.isFinite(v) ? v.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0,00';
+    }
+
+    function apiBase() {
+      return String(els.apiBaseInput.value || '').trim().replace(/\/+$/, '');
+    }
+
+    async function api(path, options = {}) {
+      const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+      const res = await fetch(apiBase() + path, { ...options, headers });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.ok === false) throw new Error(data.error || `Error HTTP ${res.status}`);
+      return data;
+    }
+
+    function showMessage(text, kind = '') {
+      els.message.textContent = text;
+      els.message.className = 'msg ' + (kind || '');
+      els.message.classList.toggle('hidden', !text);
+    }
+
+    function selectedCompany() {
+      return state.companies.find(c => Number(c.id) === Number(state.selectedCompanyId)) || null;
+    }
+
+    function selectedList() {
+      return state.pricelists.find(p => Number(p.id) === Number(state.selectedPricelistId)) || null;
+    }
+
+    function companyLists(companyId) {
+      return state.pricelists.filter(p => {
+        const cid = Array.isArray(p.company_id) ? Number(p.company_id[0]) : Number(p.company_id || 0);
+        return Number(cid) === Number(companyId);
+      });
+    }
+
+    function isDflexCompany(company) {
+      return normalize(company?.name).includes('dflex');
+    }
+
+    function isVertCompany(company) {
+      return normalize(company?.name).includes('vert');
+    }
+
+    function isDefaultPricelist(list) {
+      return normalize(list?.name) === 'predeterminada';
+    }
+
+    function canEditList(company, list) {
+      if (!company || !list) return false;
+      if (isDflexCompany(company)) return isDefaultPricelist(list);
+      return true;
+    }
+
+    function renderCompanies() {
+      els.companiesBox.innerHTML = '';
+      if (!state.companies.length) {
+        els.companiesBox.innerHTML = '<div class="muted">No se encontraron empresas.</div>';
+        return;
+      }
+      for (const company of state.companies) {
+        const listsCount = companyLists(company.id).length;
+        const btn = document.createElement('button');
+        btn.className = 'side-btn' + (Number(company.id) === Number(state.selectedCompanyId) ? ' active' : '');
+        btn.innerHTML = `<span>${company.name}</span><span class="muted">${listsCount} listas</span>`;
+        btn.onclick = () => selectCompany(company.id);
+        els.companiesBox.appendChild(btn);
+      }
+    }
+
+    function renderLists() {
+      const company = selectedCompany();
+      els.listsBox.innerHTML = '';
+      els.companyTitle.textContent = company ? company.name : 'Seleccioná una empresa';
+      els.companySub.textContent = company ? 'Listas de precios encontradas en Odoo.' : 'Se muestran las listas asociadas en Odoo.';
+
+      if (!company) {
+        els.companyMode.textContent = 'Sin selección';
+        els.companyMode.className = 'pill';
+        return;
+      }
+
+      if (isDflexCompany(company)) {
+        els.companyMode.textContent = 'Dflex: solo Predeterminada editable';
+        els.companyMode.className = 'pill pill-warn';
+      } else if (isVertCompany(company)) {
+        els.companyMode.textContent = 'Vert: edición completa';
+        els.companyMode.className = 'pill pill-ok';
+      } else {
+        els.companyMode.textContent = 'Edición completa';
+        els.companyMode.className = 'pill pill-ok';
+      }
+
+      const lists = companyLists(company.id);
+      if (!lists.length) {
+        els.listsBox.innerHTML = '<div class="muted">Esta empresa no tiene listas asociadas.</div>';
+        return;
+      }
+
+      for (const list of lists) {
+        const editable = canEditList(company, list);
+        const btn = document.createElement('button');
+        btn.className = 'side-btn' + (Number(list.id) === Number(state.selectedPricelistId) ? ' active' : '');
+        btn.innerHTML = `
+          <span>${list.name}</span>
+          <span class="pill ${editable ? 'pill-ok' : 'pill-warn'}">${editable ? 'Editable' : 'Consulta'}</span>
+        `;
+        btn.onclick = () => selectPricelist(list.id);
+        els.listsBox.appendChild(btn);
+      }
+    }
+
+    function renderProducts() {
+      const company = selectedCompany();
+      const list = selectedList();
+      const editable = canEditList(company, list);
+
+      els.workPanel.classList.toggle('hidden', !list);
+      if (!list) return;
+
+      els.listTitle.textContent = list.name;
+      els.listSub.textContent = `Productos: ${state.products.length}`;
+      els.editMode.textContent = editable ? 'Editable' : 'Solo consulta';
+      els.editMode.className = 'pill ' + (editable ? 'pill-ok' : 'pill-warn');
+      els.bulkPanel.classList.toggle('hidden', !editable);
+      els.increaseAllCompanyBtn.classList.toggle('hidden', !editable || !isVertCompany(company));
+
+      els.productsBody.innerHTML = '';
+      state.selectedProducts.clear();
+      els.checkAll.checked = false;
+      updateSelectedCounter();
+
+      if (!state.products.length) {
+        els.productsBody.innerHTML = '<tr><td colspan="7" class="muted">No hay productos para mostrar.</td></tr>';
+        return;
+      }
+
+      for (const product of state.products) {
+        const tr = document.createElement('tr');
+        const price = Number(product.current_price || 0);
+        const hasRule = Boolean(product.item_id);
+        tr.innerHTML = `
+          <td><input type="checkbox" class="row-check" data-id="${product.id}" ${editable ? '' : 'disabled'} /></td>
+          <td><strong>${product.name || ''}</strong><div class="muted">ID ${product.id}</div></td>
+          <td>${product.default_code || '-'}</td>
+          <td><input class="price-input" type="number" step="0.01" min="0" value="${Number.isFinite(price) ? price : 0}" ${editable ? '' : 'disabled'} /></td>
+          <td>${money(product.base_price)}</td>
+          <td><span class="pill ${hasRule ? 'pill-ok' : 'pill-warn'}">${hasRule ? 'Precio específico' : 'Usa precio base'}</span></td>
+          <td><button class="save-row primary" ${editable ? '' : 'disabled'}>Guardar</button></td>
+        `;
+        const check = tr.querySelector('.row-check');
+        const input = tr.querySelector('.price-input');
+        const save = tr.querySelector('.save-row');
+        check?.addEventListener('change', () => {
+          if (check.checked) state.selectedProducts.add(Number(product.id));
+          else state.selectedProducts.delete(Number(product.id));
+          updateSelectedCounter();
+        });
+        save?.addEventListener('click', () => saveProductPrice(product.id, input.value));
+        els.productsBody.appendChild(tr);
+      }
+    }
+
+    function updateSelectedCounter() {
+      els.selectedCounter.textContent = `${state.selectedProducts.size} seleccionados`;
+    }
+
+    async function loadDashboard() {
+      try {
+        state.loading = true;
+        showMessage('Cargando datos...', '');
+        const data = await api('/price-lists/dashboard');
+        state.companies = Array.isArray(data.companies) ? data.companies : [];
+        state.pricelists = Array.isArray(data.pricelists) ? data.pricelists : [];
+        if (!state.selectedCompanyId && state.companies[0]) state.selectedCompanyId = Number(state.companies[0].id);
+        renderCompanies();
+        renderLists();
+        if (state.selectedPricelistId) await loadProducts();
+        showMessage('Datos actualizados.', 'ok');
+      } catch (e) {
+        showMessage(e.message || 'Error cargando datos.', 'err');
+      } finally {
+        state.loading = false;
+      }
+    }
+
+    async function selectCompany(companyId) {
+      state.selectedCompanyId = Number(companyId);
+      const lists = companyLists(companyId);
+      state.selectedPricelistId = lists[0] ? Number(lists[0].id) : null;
+      state.products = [];
+      renderCompanies();
+      renderLists();
+      if (state.selectedPricelistId) await loadProducts();
+      else renderProducts();
+    }
+
+    async function selectPricelist(pricelistId) {
+      state.selectedPricelistId = Number(pricelistId);
+      renderLists();
+      await loadProducts();
+    }
+
+    async function loadProducts() {
+      try {
+        const q = String(els.productSearch.value || '').trim();
+        showMessage('Cargando productos...', '');
+        const data = await api(`/price-lists/pricelists/${state.selectedPricelistId}/products${q ? `?search=${encodeURIComponent(q)}` : ''}`);
+        state.products = Array.isArray(data.products) ? data.products : [];
+        renderProducts();
+        showMessage('Productos cargados.', 'ok');
+      } catch (e) {
+        showMessage(e.message || 'Error cargando productos.', 'err');
+      }
+    }
+
+    async function saveProductPrice(productTemplateId, fixedPrice) {
+      try {
+        await api(`/price-lists/pricelists/${state.selectedPricelistId}/products/${productTemplateId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ fixed_price: Number(fixedPrice) }),
+        });
+        await loadProducts();
+        showMessage('Precio actualizado.', 'ok');
+      } catch (e) {
+        showMessage(e.message || 'Error actualizando precio.', 'err');
+      }
+    }
+
+    async function applyIncrease({ allCompany = false, partial = false } = {}) {
+      try {
+        const pct = Number(els.percentInput.value);
+        if (!Number.isFinite(pct)) throw new Error('Ingresá un porcentaje válido.');
+
+        const company = selectedCompany();
+        const list = selectedList();
+        let pricelistIds = [Number(list.id)];
+
+        if (allCompany) {
+          pricelistIds = companyLists(company.id).map(l => Number(l.id));
+        }
+
+        const productIds = partial ? Array.from(state.selectedProducts) : [];
+        if (partial && !productIds.length) throw new Error('Seleccioná al menos un producto.');
+
+        showMessage('Aplicando aumento...', '');
+        const data = await api('/price-lists/increase', {
+          method: 'POST',
+          body: JSON.stringify({ pricelist_ids: pricelistIds, product_template_ids: productIds, percent: pct }),
+        });
+        await loadProducts();
+        showMessage(`Aumento aplicado. Actualizados: ${data.updated || 0}. Creados: ${data.created || 0}.`, 'ok');
+      } catch (e) {
+        showMessage(e.message || 'Error aplicando aumento.', 'err');
+      }
+    }
+
+    els.saveApiBaseBtn.onclick = () => {
+      localStorage.setItem('dg_price_lists_api_base', apiBase());
+      showMessage('Base API guardada.', 'ok');
+    };
+    els.reloadBtn.onclick = loadDashboard;
+    els.searchBtn.onclick = loadProducts;
+    els.clearSearchBtn.onclick = () => { els.productSearch.value = ''; loadProducts(); };
+    els.increaseSelectedListBtn.onclick = () => applyIncrease();
+    els.increaseAllCompanyBtn.onclick = () => applyIncrease({ allCompany: true });
+    els.increasePartialBtn.onclick = () => applyIncrease({ partial: true });
+    els.checkAll.onchange = () => {
+      const checks = [...document.querySelectorAll('.row-check:not(:disabled)')];
+      state.selectedProducts.clear();
+      for (const check of checks) {
+        check.checked = els.checkAll.checked;
+        if (check.checked) state.selectedProducts.add(Number(check.dataset.id));
+      }
+      updateSelectedCounter();
+    };
+
+    els.apiBaseInput.value = defaultApiBase();
+    loadDashboard();
+  </script>
+</body>
+</html>

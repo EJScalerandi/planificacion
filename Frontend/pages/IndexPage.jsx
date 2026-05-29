@@ -63,6 +63,10 @@ function clearAdminSession() {
   for (const k of keys) sessionStorage.removeItem(k);
 }
 
+function isStaticPage(path) {
+  return /\.html(?:$|[?#])/.test(String(path || ''));
+}
+
 export default function IndexPage({ routes = [] }) {
   const nav = useNavigate();
 
@@ -113,6 +117,7 @@ export default function IndexPage({ routes = [] }) {
   const preprodRoutes = useMemo(() => [
     { path: '/a', label: 'Autorizaciones · Preproducción Portones' },
     { path: '/i', label: 'Autorizaciones · Preproducción iPanels' },
+    { path: '/listas-precios.html', label: 'Actualizar listas de precios' },
   ], []);
 
   const infoRoutes = useMemo(() => {
@@ -136,13 +141,27 @@ export default function IndexPage({ routes = [] }) {
     ];
   }, [isPreprodOnly, isPreprodAdmin, isQcAdmin, isWfAdmin, preprodRoutes]);
 
+  const NavTitle = ({ r }) => {
+    if (isStaticPage(r.path)) {
+      return <a href={r.path} className="idx-linkTitle">{r.label}</a>;
+    }
+    return <Link to={r.path} className="idx-linkTitle">{r.label}</Link>;
+  };
+
+  const NavButton = ({ r }) => {
+    if (isStaticPage(r.path)) {
+      return <a href={r.path} className="btn btn--brand">Ir</a>;
+    }
+    return <Link to={r.path} className="btn btn--brand">Ir</Link>;
+  };
+
   const LinkRow = ({ r }) => (
     <li className="idx-linkItem">
       <div className="idx-linkText">
-        <Link to={r.path} className="idx-linkTitle">{r.label}</Link>
+        <NavTitle r={r} />
         <div className="idx-linkMeta">Ruta: <code>{r.path}</code></div>
       </div>
-      <Link to={r.path} className="btn btn--brand">Ir</Link>
+      <NavButton r={r} />
     </li>
   );
 
