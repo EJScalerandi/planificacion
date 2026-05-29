@@ -291,7 +291,7 @@
 
     function isDefaultPricelist(list) {
       const name = low(list?.name);
-      return name === 'predeterminada' || name.includes('predeterminada');
+      return name === 'predeterminada' || name === 'predeterminado' || name.includes('predeterminada') || name.includes('predeterminado') || name === 'default';
     }
 
     function canEditList(company, list) {
@@ -420,11 +420,13 @@
 
       const rows = filtered.map((p) => {
         const price = Number(p.fixed_price || 0);
-        const checkbox = editable ? `<input type="checkbox" class="row-check" data-id="${p.id}" />` : '';
+        const rowId = String(p.id || '');
+        const attrId = escapeHtml(rowId);
+        const checkbox = editable ? `<input type="checkbox" class="row-check" data-id="${attrId}" />` : '';
         const edit = editable ? `
           <div class="edit-row">
-            <input type="number" step="0.01" min="0" value="${Number.isFinite(price) ? price : 0}" data-price-input="${p.id}" />
-            <button class="btn" type="button" data-save-price="${p.id}">Guardar</button>
+            <input type="number" step="0.01" min="0" value="${Number.isFinite(price) ? price : 0}" data-price-input="${attrId}" />
+            <button class="btn" type="button" data-save-price="${attrId}">Guardar</button>
           </div>
         ` : `<span class="muted">Consulta</span>`;
         return `
@@ -432,7 +434,7 @@
             <td style="width:42px">${checkbox}</td>
             <td>
               <div style="font-weight:900">${escapeHtml(p.product_name || 'Sin producto asignado')}</div>
-              <div class="small muted">${escapeHtml(p.default_code || '')}${p.product_tmpl_id ? ' · Producto: ' + escapeHtml(p.product_tmpl_id) : ''}</div>
+              <div class="small muted">${escapeHtml(p.default_code || '')}${p.product_tmpl_id ? ' · Producto: ' + escapeHtml(p.product_tmpl_id) : ''}${p.item_model === 'product.template' ? ' · Precio base' : ''}</div>
             </td>
             <td>${escapeHtml(p.compute_price || '')}</td>
             <td class="num">${fmtMoney(p.fixed_price)}</td>
@@ -457,7 +459,7 @@
       `;
 
       for (const btn of document.querySelectorAll('[data-save-price]')) {
-        btn.addEventListener('click', () => saveItemPrice(Number(btn.getAttribute('data-save-price'))));
+        btn.addEventListener('click', () => saveItemPrice(btn.getAttribute('data-save-price')));
       }
       for (const cb of document.querySelectorAll('.row-check')) {
         cb.addEventListener('change', updateCheckedCount);
@@ -471,8 +473,8 @@
 
     function getCheckedItemIds() {
       return Array.from(document.querySelectorAll('.row-check:checked'))
-        .map((el) => Number(el.getAttribute('data-id')))
-        .filter((n) => Number.isFinite(n) && n > 0);
+        .map((el) => String(el.getAttribute('data-id') || '').trim())
+        .filter(Boolean);
     }
 
     async function loadCompanies() {
@@ -565,7 +567,7 @@
       try {
         await api(`/price-lists/items/${encodeURIComponent(itemId)}`, {
           method: 'PATCH',
-          body: JSON.stringify({ fixed_price: price }),
+          body: JSON.stringify({ fixed_price: price, company_id: state.company?.id || null, pricelist_id: state.list?.id || null }),
         });
         setStatus('Precio actualizado.', 'ok');
         await loadProducts();
@@ -586,7 +588,7 @@
       }
 
       const target = $('increaseTarget').value;
-      const payload = { percent };
+      const payload = { percent, company_id: state.company?.id || null };
       if (target === 'checked') {
         const ids = getCheckedItemIds();
         if (!ids.length) {
