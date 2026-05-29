@@ -6,272 +6,292 @@
   <title>Actualizar listas de precios</title>
   <style>
     :root {
-      --brand: #2563eb;
-      --brand-dark: #1d4ed8;
-      --border: #d6dbe7;
-      --muted: #64748b;
+      --bg: #eef3f9;
       --surface: #ffffff;
-      --surface-2: #f8fafc;
+      --surface2: #f7faff;
+      --text: #071633;
+      --muted: #5f708f;
+      --border: #d7dfed;
+      --brand: #2563eb;
+      --brand2: #1d4ed8;
       --danger: #b91c1c;
-      --ok: #166534;
-      --warn: #92400e;
-      --text: #0f172a;
+      --ok: #047857;
+      --warn: #b45309;
+      --shadow: 0 18px 40px rgba(15, 23, 42, 0.10);
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: var(--bg);
       color: var(--text);
-      background: #eef2f7;
     }
-    .wrap { max-width: 1280px; margin: 0 auto; padding: 22px; }
-    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
-    h1 { margin: 0; font-size: 28px; line-height: 1.15; }
-    h2 { margin: 0; font-size: 18px; }
-    h3 { margin: 0 0 10px; font-size: 16px; }
-    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 8px 26px rgba(15,23,42,.08); }
-    .card-pad { padding: 16px; }
-    .grid { display: grid; gap: 14px; }
-    .grid-main { grid-template-columns: 280px 1fr; align-items: start; }
-    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-    .space { justify-content: space-between; }
-    .muted { color: var(--muted); font-size: 13px; }
-    .pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 5px 9px; border: 1px solid var(--border); background: var(--surface-2); font-size: 12px; font-weight: 800; }
-    .pill-ok { color: var(--ok); border-color: #bbf7d0; background: #f0fdf4; }
-    .pill-warn { color: var(--warn); border-color: #fed7aa; background: #fff7ed; }
-    .pill-danger { color: var(--danger); border-color: #fecaca; background: #fef2f2; }
-    button, input, select { font: inherit; }
-    button, .btn {
-      appearance: none;
+    .page { max-width: 1480px; margin: 0 auto; padding: 32px; }
+    .top { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+    h1 { font-size: 30px; margin: 0 0 4px; letter-spacing: -0.02em; }
+    h2 { font-size: 18px; margin: 0 0 6px; }
+    h3 { font-size: 16px; margin: 0 0 8px; }
+    p { margin: 0; color: var(--muted); }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+    .btn {
       border: 1px solid var(--border);
       background: var(--surface);
       color: var(--text);
       border-radius: 10px;
-      padding: 9px 12px;
+      padding: 10px 14px;
+      font-weight: 800;
       cursor: pointer;
       text-decoration: none;
-      font-weight: 800;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 6px;
+      gap: 8px;
+      min-height: 42px;
     }
-    button.primary, .btn.primary { background: var(--brand); border-color: var(--brand); color: white; }
-    button.primary:hover, .btn.primary:hover { background: var(--brand-dark); }
-    button:disabled { cursor: not-allowed; opacity: .55; }
+    .btn:hover { border-color: #9fb0ca; }
+    .btn--brand { background: var(--brand); border-color: var(--brand); color: #fff; }
+    .btn--brand:hover { background: var(--brand2); border-color: var(--brand2); }
+    .btn--danger { color: var(--danger); }
+    .btn:disabled { opacity: .55; cursor: not-allowed; }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      padding: 18px;
+    }
+    .grid { display: grid; grid-template-columns: 320px 1fr; gap: 16px; align-items: start; }
+    .subgrid { display: grid; grid-template-columns: 300px 1fr; gap: 16px; align-items: start; margin-top: 16px; }
+    .conn { margin-bottom: 16px; }
+    .conn-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
     input, select {
       border: 1px solid var(--border);
       border-radius: 10px;
-      background: white;
-      padding: 9px 10px;
-      min-height: 38px;
+      padding: 10px 12px;
+      font: inherit;
+      background: #fff;
+      color: var(--text);
+      min-height: 42px;
     }
-    input[type="number"] { max-width: 130px; }
-    .side-list { display: grid; gap: 8px; }
-    .side-btn { justify-content: flex-start; width: 100%; text-align: left; }
-    .side-btn.active { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(37,99,235,.12); }
-    .toolbar { display: grid; grid-template-columns: 1fr; gap: 10px; margin-bottom: 12px; }
-    .table-wrap { overflow: auto; border: 1px solid var(--border); border-radius: 12px; background: white; }
-    table { border-collapse: collapse; width: 100%; min-width: 880px; }
-    th, td { padding: 10px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: middle; font-size: 14px; }
-    th { background: var(--surface-2); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: #475569; }
+    input[type="number"] { width: 130px; }
+    input[type="text"], input[type="url"] { min-width: 320px; flex: 1; }
+    .status {
+      margin-top: 10px;
+      border-radius: 10px;
+      padding: 11px 12px;
+      font-weight: 800;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      background: var(--surface2);
+      white-space: pre-wrap;
+    }
+    .status.ok { color: #065f46; border-color: #bbf7d0; background: #f0fdf4; }
+    .status.err { color: #991b1b; border-color: #fecaca; background: #fef2f2; }
+    .status.warn { color: #92400e; border-color: #fde68a; background: #fffbeb; }
+    .list { display: grid; gap: 8px; margin-top: 12px; }
+    .item {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      background: var(--surface2);
+      cursor: pointer;
+    }
+    .item:hover { border-color: #9fb0ca; }
+    .item.active { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(37, 99, 235, .12); background: #fff; }
+    .item-title { font-weight: 900; }
+    .item-meta { color: var(--muted); font-size: 13px; margin-top: 3px; }
+    .pill {
+      border: 1px solid var(--border);
+      background: #fff;
+      border-radius: 999px;
+      padding: 5px 9px;
+      font-size: 12px;
+      font-weight: 900;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .pill.ok { color: var(--ok); border-color: #bbf7d0; background: #f0fdf4; }
+    .pill.warn { color: var(--warn); border-color: #fde68a; background: #fffbeb; }
+    .pill.off { color: var(--muted); }
+    .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; justify-content: space-between; margin: 14px 0; }
+    .toolbar-left, .toolbar-right { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    table { width: 100%; border-collapse: separate; border-spacing: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 12px; background: #fff; }
+    th, td { padding: 10px 11px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: middle; }
+    th { background: #f6f9ff; font-size: 13px; color: #31415f; }
     tr:last-child td { border-bottom: 0; }
-    .price-input { width: 130px; }
-    .msg { margin: 10px 0 0; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface-2); font-weight: 700; }
-    .msg.err { color: var(--danger); border-color: #fecaca; background: #fef2f2; }
-    .msg.ok { color: var(--ok); border-color: #bbf7d0; background: #f0fdf4; }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .muted { color: var(--muted); }
+    .small { font-size: 13px; }
     .hidden { display: none !important; }
-    @media (max-width: 900px) { .grid-main { grid-template-columns: 1fr; } }
+    .empty { color: var(--muted); padding: 12px 0; }
+    .edit-row { display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
+    .notice { border: 1px solid #fde68a; background: #fffbeb; color: #92400e; border-radius: 12px; padding: 11px 12px; font-weight: 700; margin: 10px 0; }
+    .danger { color: var(--danger); font-weight: 800; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    @media (max-width: 1100px) { .grid, .subgrid { grid-template-columns: 1fr; } .page { padding: 18px; } input[type="text"], input[type="url"] { min-width: 220px; } }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="topbar">
+  <main class="page">
+    <div class="top">
       <div>
         <h1>Actualizar listas de precios</h1>
-        <div class="muted">Vert permite editar todas sus listas. Dflex permite editar la lista Predeterminada y consultar las demás.</div>
+        <p>Vert permite editar todas sus listas. Dflex permite editar la lista Predeterminada y consultar las demás.</p>
       </div>
-      <div class="row">
-        <a href="/index" class="btn">Volver al índice</a>
-        <button id="reloadBtn" class="primary">Actualizar datos</button>
+      <div class="actions">
+        <a class="btn" href="/index">Volver al índice</a>
+        <button class="btn btn--brand" id="refreshBtn" type="button">Actualizar datos</button>
       </div>
     </div>
 
-    <div class="card card-pad" style="margin-bottom:14px">
-      <div class="row space">
-        <div>
-          <h2>Conexión</h2>
-          <div class="muted">Base API del presupuestador. Se guarda en este navegador.</div>
-        </div>
-        <div class="row">
-          <input id="apiBaseInput" style="min-width:320px" placeholder="http://localhost:4000/api" />
-          <button id="saveApiBaseBtn">Guardar</button>
-        </div>
+    <section class="card conn">
+      <h2>Conexión</h2>
+      <p>Base API del presupuestador. Esta pantalla debe consultar Render, no Vercel.</p>
+      <div class="conn-row">
+        <input id="apiBaseInput" type="url" autocomplete="off" />
+        <button class="btn" id="saveApiBtn" type="button">Guardar</button>
+        <button class="btn" id="resetApiBtn" type="button">Usar Render</button>
       </div>
-      <div id="message" class="msg hidden"></div>
-    </div>
+      <div id="status" class="status">Inicializando…</div>
+    </section>
 
-    <div class="grid grid-main">
-      <aside class="card card-pad">
-        <h3>Empresas</h3>
-        <div id="companiesBox" class="side-list"></div>
+    <section class="grid">
+      <aside class="card">
+        <h2>Empresas</h2>
+        <p class="small">Se toman desde <span class="mono">/api/price-lists/companies</span>.</p>
+        <div id="companiesList" class="list"></div>
       </aside>
 
-      <main class="grid">
-        <section class="card card-pad">
-          <div class="row space">
+      <section>
+        <div class="card">
+          <div class="toolbar" style="margin:0;">
             <div>
               <h2 id="companyTitle">Seleccioná una empresa</h2>
-              <div id="companySub" class="muted">Se muestran las listas asociadas en Odoo.</div>
+              <p id="companySub">Se muestran las listas asociadas en Odoo.</p>
             </div>
-            <span id="companyMode" class="pill">Sin selección</span>
+            <span id="companyMode" class="pill off">Sin selección</span>
           </div>
-          <div id="listsBox" class="side-list" style="grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); margin-top:12px"></div>
-        </section>
+        </div>
 
-        <section id="workPanel" class="card card-pad hidden">
-          <div class="row space" style="margin-bottom:12px">
-            <div>
-              <h2 id="listTitle">Lista</h2>
-              <div id="listSub" class="muted"></div>
+        <div class="subgrid">
+          <aside id="listsCard" class="card hidden">
+            <h2>Listas</h2>
+            <p class="small">Seleccioná una lista para ver productos.</p>
+            <div id="priceLists" class="list"></div>
+          </aside>
+
+          <section id="productsCard" class="card hidden">
+            <div class="toolbar" style="margin-top:0;">
+              <div>
+                <h2 id="listTitle">Lista</h2>
+                <p id="listSub">Productos cargados en la lista seleccionada.</p>
+              </div>
+              <span id="editMode" class="pill off">Consulta</span>
             </div>
-            <span id="editMode" class="pill">Consulta</span>
-          </div>
 
-          <div class="toolbar">
-            <div class="row">
-              <input id="productSearch" style="min-width:280px" placeholder="Buscar producto por nombre o código" />
-              <button id="searchBtn">Buscar</button>
-              <button id="clearSearchBtn">Limpiar</button>
+            <div id="dflexNotice" class="notice hidden">
+              Esta lista de Dflex se muestra solo para consulta. Las listas dependientes se acomodan cuando se actualiza la Predeterminada.
             </div>
 
-            <div class="row" id="bulkPanel">
-              <input id="percentInput" type="number" step="0.01" placeholder="% aumento" />
-              <button id="increaseSelectedListBtn" class="primary">Aumento general en esta lista</button>
-              <button id="increaseAllCompanyBtn">Aumento general en todas las listas de Vert</button>
-              <button id="increasePartialBtn">Aumento parcial seleccionados</button>
-              <span id="selectedCounter" class="muted">0 seleccionados</span>
+            <div id="bulkPanel" class="toolbar hidden">
+              <div class="toolbar-left">
+                <select id="increaseTarget">
+                  <option value="selected">Aumentar esta lista</option>
+                  <option value="all">Aumentar todas las listas editables de la empresa</option>
+                  <option value="checked">Aumentar productos seleccionados</option>
+                </select>
+                <input id="increasePercent" type="number" step="0.01" placeholder="%" />
+                <button id="applyIncreaseBtn" class="btn btn--brand" type="button">Aplicar aumento</button>
+              </div>
+              <div class="toolbar-right small muted">
+                Seleccionados: <b id="checkedCount">0</b>
+              </div>
             </div>
-          </div>
 
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th><input type="checkbox" id="checkAll" /></th>
-                  <th>Producto</th>
-                  <th>Código</th>
-                  <th>Precio lista</th>
-                  <th>Precio base</th>
-                  <th>Estado</th>
-                  <th>Acción</th>
-                </tr>
-              </thead>
-              <tbody id="productsBody"></tbody>
-            </table>
-          </div>
-        </section>
-      </main>
-    </div>
-  </div>
+            <div class="toolbar">
+              <div class="toolbar-left">
+                <input id="productFilter" type="text" placeholder="Buscar producto / código" />
+              </div>
+              <div class="toolbar-right">
+                <button id="reloadProductsBtn" class="btn" type="button">Recargar productos</button>
+              </div>
+            </div>
+
+            <div id="productsWrap"></div>
+          </section>
+        </div>
+      </section>
+    </section>
+  </main>
 
   <script>
-    const els = {
-      apiBaseInput: document.getElementById('apiBaseInput'),
-      saveApiBaseBtn: document.getElementById('saveApiBaseBtn'),
-      reloadBtn: document.getElementById('reloadBtn'),
-      message: document.getElementById('message'),
-      companiesBox: document.getElementById('companiesBox'),
-      companyTitle: document.getElementById('companyTitle'),
-      companySub: document.getElementById('companySub'),
-      companyMode: document.getElementById('companyMode'),
-      listsBox: document.getElementById('listsBox'),
-      workPanel: document.getElementById('workPanel'),
-      listTitle: document.getElementById('listTitle'),
-      listSub: document.getElementById('listSub'),
-      editMode: document.getElementById('editMode'),
-      productSearch: document.getElementById('productSearch'),
-      searchBtn: document.getElementById('searchBtn'),
-      clearSearchBtn: document.getElementById('clearSearchBtn'),
-      percentInput: document.getElementById('percentInput'),
-      increaseSelectedListBtn: document.getElementById('increaseSelectedListBtn'),
-      increaseAllCompanyBtn: document.getElementById('increaseAllCompanyBtn'),
-      increasePartialBtn: document.getElementById('increasePartialBtn'),
-      selectedCounter: document.getElementById('selectedCounter'),
-      checkAll: document.getElementById('checkAll'),
-      productsBody: document.getElementById('productsBody'),
-      bulkPanel: document.getElementById('bulkPanel'),
-    };
+    const DEFAULT_API_BASE = 'https://presupuestador-kdbl.onrender.com/api';
+    const LS_API_BASE = 'dg_price_lists_api_base';
 
     const state = {
+      apiBase: '',
       companies: [],
-      pricelists: [],
+      company: null,
+      lists: [],
+      list: null,
       products: [],
-      selectedCompanyId: null,
-      selectedPricelistId: null,
-      selectedProducts: new Set(),
-      loading: false,
+      busy: false,
     };
 
-    function defaultApiBase() {
-      const saved = localStorage.getItem('dg_price_lists_api_base');
-      if (saved) return saved;
-      if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') return 'http://localhost:4000/api';
-      return location.origin.replace(/\/$/, '') + '/api';
+    const $ = (id) => document.getElementById(id);
+
+    function normalizeApiBase(value) {
+      let v = String(value || '').trim();
+      if (!v) return '';
+      v = v.replace(/\/+$/, '');
+      if (!/\/api$/i.test(v)) v += '/api';
+      return v;
     }
 
-    function normalize(s) {
-      return String(s || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    function shouldReplaceStoredBase(value) {
+      const v = String(value || '').toLowerCase();
+      if (!v) return true;
+      if (v.includes('planificacion-pi.vercel.app')) return true;
+      if (typeof location !== 'undefined' && location.origin && v.startsWith(location.origin.toLowerCase())) return true;
+      return false;
     }
 
-    function money(n) {
-      const v = Number(n || 0);
-      return Number.isFinite(v) ? v.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0,00';
+    function getInitialApiBase() {
+      const stored = normalizeApiBase(localStorage.getItem(LS_API_BASE));
+      if (shouldReplaceStoredBase(stored)) {
+        localStorage.setItem(LS_API_BASE, DEFAULT_API_BASE);
+        return DEFAULT_API_BASE;
+      }
+      return stored || DEFAULT_API_BASE;
     }
 
-    function apiBase() {
-      return String(els.apiBaseInput.value || '').trim().replace(/\/+$/, '');
+    function setStatus(message, kind = '') {
+      const el = $('status');
+      el.className = 'status' + (kind ? ' ' + kind : '');
+      el.textContent = message;
     }
 
-    async function api(path, options = {}) {
-      const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
-      const res = await fetch(apiBase() + path, { ...options, headers });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || data.ok === false) throw new Error(data.error || `Error HTTP ${res.status}`);
-      return data;
+    function fmtMoney(value) {
+      const n = Number(value || 0);
+      return n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
-    function showMessage(text, kind = '') {
-      els.message.textContent = text;
-      els.message.className = 'msg ' + (kind || '');
-      els.message.classList.toggle('hidden', !text);
-    }
-
-    function selectedCompany() {
-      return state.companies.find(c => Number(c.id) === Number(state.selectedCompanyId)) || null;
-    }
-
-    function selectedList() {
-      return state.pricelists.find(p => Number(p.id) === Number(state.selectedPricelistId)) || null;
-    }
-
-    function companyLists(companyId) {
-      return state.pricelists.filter(p => {
-        const cid = Array.isArray(p.company_id) ? Number(p.company_id[0]) : Number(p.company_id || 0);
-        return Number(cid) === Number(companyId);
-      });
+    function low(value) {
+      return String(value || '').trim().toLowerCase();
     }
 
     function isDflexCompany(company) {
-      return normalize(company?.name).includes('dflex');
+      return low(company?.name).includes('dflex');
     }
 
     function isVertCompany(company) {
-      return normalize(company?.name).includes('vert');
+      return low(company?.name).includes('vert');
     }
 
     function isDefaultPricelist(list) {
-      return normalize(list?.name) === 'predeterminada';
+      const name = low(list?.name);
+      return name === 'predeterminada' || name.includes('predeterminada');
     }
 
     function canEditList(company, list) {
@@ -280,231 +300,362 @@
       return true;
     }
 
+    async function api(path, options = {}) {
+      const url = `${state.apiBase}${path}`;
+      const resp = await fetch(url, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(options.headers || {}),
+        },
+      });
+      let data = null;
+      const text = await resp.text();
+      try { data = text ? JSON.parse(text) : null; } catch { data = { ok: false, error: text || 'Respuesta no JSON' }; }
+      if (!resp.ok || data?.ok === false) {
+        const err = new Error(data?.error || `Error HTTP ${resp.status}`);
+        err.status = resp.status;
+        err.data = data;
+        throw err;
+      }
+      return data;
+    }
+
+    function setBusy(value) {
+      state.busy = !!value;
+      $('refreshBtn').disabled = state.busy;
+      $('saveApiBtn').disabled = state.busy;
+      $('resetApiBtn').disabled = state.busy;
+      $('applyIncreaseBtn').disabled = state.busy;
+      $('reloadProductsBtn').disabled = state.busy;
+    }
+
     function renderCompanies() {
-      els.companiesBox.innerHTML = '';
+      const wrap = $('companiesList');
+      wrap.innerHTML = '';
       if (!state.companies.length) {
-        els.companiesBox.innerHTML = '<div class="muted">No se encontraron empresas.</div>';
+        wrap.innerHTML = `<div class="empty">No se encontraron empresas.</div>`;
         return;
       }
-      for (const company of state.companies) {
-        const listsCount = companyLists(company.id).length;
-        const btn = document.createElement('button');
-        btn.className = 'side-btn' + (Number(company.id) === Number(state.selectedCompanyId) ? ' active' : '');
-        btn.innerHTML = `<span>${company.name}</span><span class="muted">${listsCount} listas</span>`;
-        btn.onclick = () => selectCompany(company.id);
-        els.companiesBox.appendChild(btn);
+      for (const c of state.companies) {
+        const div = document.createElement('div');
+        div.className = 'item' + (state.company?.id === c.id ? ' active' : '');
+        div.innerHTML = `
+          <div class="item-title">${escapeHtml(c.name || c.display_name || ('Empresa #' + c.id))}</div>
+          <div class="item-meta">ID Odoo: ${escapeHtml(c.id)}</div>
+        `;
+        div.onclick = () => selectCompany(c.id);
+        wrap.appendChild(div);
+      }
+    }
+
+    function renderCompanyHeader() {
+      if (!state.company) {
+        $('companyTitle').textContent = 'Seleccioná una empresa';
+        $('companySub').textContent = 'Se muestran las listas asociadas en Odoo.';
+        $('companyMode').className = 'pill off';
+        $('companyMode').textContent = 'Sin selección';
+        return;
+      }
+      $('companyTitle').textContent = state.company.name || state.company.display_name || `Empresa #${state.company.id}`;
+      $('companySub').textContent = 'Listas de precios disponibles para esta empresa.';
+      if (isDflexCompany(state.company)) {
+        $('companyMode').className = 'pill warn';
+        $('companyMode').textContent = 'Dflex · Predeterminada editable';
+      } else if (isVertCompany(state.company)) {
+        $('companyMode').className = 'pill ok';
+        $('companyMode').textContent = 'Vert · Listas editables';
+      } else {
+        $('companyMode').className = 'pill ok';
+        $('companyMode').textContent = 'Editable';
       }
     }
 
     function renderLists() {
-      const company = selectedCompany();
-      els.listsBox.innerHTML = '';
-      els.companyTitle.textContent = company ? company.name : 'Seleccioná una empresa';
-      els.companySub.textContent = company ? 'Listas de precios encontradas en Odoo.' : 'Se muestran las listas asociadas en Odoo.';
-
-      if (!company) {
-        els.companyMode.textContent = 'Sin selección';
-        els.companyMode.className = 'pill';
+      $('listsCard').classList.toggle('hidden', !state.company);
+      const wrap = $('priceLists');
+      wrap.innerHTML = '';
+      if (!state.lists.length) {
+        wrap.innerHTML = '<div class="empty">No se encontraron listas para esta empresa.</div>';
         return;
       }
-
-      if (isDflexCompany(company)) {
-        els.companyMode.textContent = 'Dflex: solo Predeterminada editable';
-        els.companyMode.className = 'pill pill-warn';
-      } else if (isVertCompany(company)) {
-        els.companyMode.textContent = 'Vert: edición completa';
-        els.companyMode.className = 'pill pill-ok';
-      } else {
-        els.companyMode.textContent = 'Edición completa';
-        els.companyMode.className = 'pill pill-ok';
-      }
-
-      const lists = companyLists(company.id);
-      if (!lists.length) {
-        els.listsBox.innerHTML = '<div class="muted">Esta empresa no tiene listas asociadas.</div>';
-        return;
-      }
-
-      for (const list of lists) {
-        const editable = canEditList(company, list);
-        const btn = document.createElement('button');
-        btn.className = 'side-btn' + (Number(list.id) === Number(state.selectedPricelistId) ? ' active' : '');
-        btn.innerHTML = `
-          <span>${list.name}</span>
-          <span class="pill ${editable ? 'pill-ok' : 'pill-warn'}">${editable ? 'Editable' : 'Consulta'}</span>
+      for (const l of state.lists) {
+        const editable = canEditList(state.company, l);
+        const div = document.createElement('div');
+        div.className = 'item' + (state.list?.id === l.id ? ' active' : '');
+        div.innerHTML = `
+          <div class="item-title">${escapeHtml(l.name || ('Lista #' + l.id))}</div>
+          <div class="item-meta">
+            ID: ${escapeHtml(l.id)} · ${editable ? '<span class="pill ok">Editable</span>' : '<span class="pill off">Consulta</span>'}
+          </div>
         `;
-        btn.onclick = () => selectPricelist(list.id);
-        els.listsBox.appendChild(btn);
+        div.onclick = () => selectList(l.id);
+        wrap.appendChild(div);
       }
     }
 
     function renderProducts() {
-      const company = selectedCompany();
-      const list = selectedList();
-      const editable = canEditList(company, list);
+      $('productsCard').classList.toggle('hidden', !state.list);
+      if (!state.list) return;
 
-      els.workPanel.classList.toggle('hidden', !list);
-      if (!list) return;
+      const editable = canEditList(state.company, state.list);
+      $('listTitle').textContent = state.list.name || `Lista #${state.list.id}`;
+      $('listSub').textContent = `Productos encontrados: ${state.products.length}`;
+      $('editMode').className = 'pill ' + (editable ? 'ok' : 'off');
+      $('editMode').textContent = editable ? 'Editable' : 'Solo consulta';
+      $('dflexNotice').classList.toggle('hidden', editable || !isDflexCompany(state.company));
+      $('bulkPanel').classList.toggle('hidden', !editable);
 
-      els.listTitle.textContent = list.name;
-      els.listSub.textContent = `Productos: ${state.products.length}`;
-      els.editMode.textContent = editable ? 'Editable' : 'Solo consulta';
-      els.editMode.className = 'pill ' + (editable ? 'pill-ok' : 'pill-warn');
-      els.bulkPanel.classList.toggle('hidden', !editable);
-      els.increaseAllCompanyBtn.classList.toggle('hidden', !editable || !isVertCompany(company));
+      const q = low($('productFilter').value);
+      const filtered = state.products.filter((p) => {
+        if (!q) return true;
+        return low(p.product_name).includes(q) || low(p.default_code).includes(q) || String(p.id || '').includes(q);
+      });
 
-      els.productsBody.innerHTML = '';
-      state.selectedProducts.clear();
-      els.checkAll.checked = false;
-      updateSelectedCounter();
-
-      if (!state.products.length) {
-        els.productsBody.innerHTML = '<tr><td colspan="7" class="muted">No hay productos para mostrar.</td></tr>';
+      if (!filtered.length) {
+        $('productsWrap').innerHTML = '<div class="empty">No hay productos para mostrar.</div>';
+        updateCheckedCount();
         return;
       }
 
-      for (const product of state.products) {
-        const tr = document.createElement('tr');
-        const price = Number(product.current_price || 0);
-        const hasRule = Boolean(product.item_id);
-        tr.innerHTML = `
-          <td><input type="checkbox" class="row-check" data-id="${product.id}" ${editable ? '' : 'disabled'} /></td>
-          <td><strong>${product.name || ''}</strong><div class="muted">ID ${product.id}</div></td>
-          <td>${product.default_code || '-'}</td>
-          <td><input class="price-input" type="number" step="0.01" min="0" value="${Number.isFinite(price) ? price : 0}" ${editable ? '' : 'disabled'} /></td>
-          <td>${money(product.base_price)}</td>
-          <td><span class="pill ${hasRule ? 'pill-ok' : 'pill-warn'}">${hasRule ? 'Precio específico' : 'Usa precio base'}</span></td>
-          <td><button class="save-row primary" ${editable ? '' : 'disabled'}>Guardar</button></td>
+      const rows = filtered.map((p) => {
+        const price = Number(p.fixed_price || 0);
+        const checkbox = editable ? `<input type="checkbox" class="row-check" data-id="${p.id}" />` : '';
+        const edit = editable ? `
+          <div class="edit-row">
+            <input type="number" step="0.01" min="0" value="${Number.isFinite(price) ? price : 0}" data-price-input="${p.id}" />
+            <button class="btn" type="button" data-save-price="${p.id}">Guardar</button>
+          </div>
+        ` : `<span class="muted">Consulta</span>`;
+        return `
+          <tr>
+            <td style="width:42px">${checkbox}</td>
+            <td>
+              <div style="font-weight:900">${escapeHtml(p.product_name || 'Sin producto asignado')}</div>
+              <div class="small muted">${escapeHtml(p.default_code || '')}${p.product_tmpl_id ? ' · Producto: ' + escapeHtml(p.product_tmpl_id) : ''}</div>
+            </td>
+            <td>${escapeHtml(p.compute_price || '')}</td>
+            <td class="num">${fmtMoney(p.fixed_price)}</td>
+            <td>${edit}</td>
+          </tr>
         `;
-        const check = tr.querySelector('.row-check');
-        const input = tr.querySelector('.price-input');
-        const save = tr.querySelector('.save-row');
-        check?.addEventListener('change', () => {
-          if (check.checked) state.selectedProducts.add(Number(product.id));
-          else state.selectedProducts.delete(Number(product.id));
-          updateSelectedCounter();
-        });
-        save?.addEventListener('click', () => saveProductPrice(product.id, input.value));
-        els.productsBody.appendChild(tr);
+      }).join('');
+
+      $('productsWrap').innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th></th>
+              <th>Producto</th>
+              <th>Modo</th>
+              <th class="num">Precio fijo</th>
+              <th>Actualizar</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+
+      for (const btn of document.querySelectorAll('[data-save-price]')) {
+        btn.addEventListener('click', () => saveItemPrice(Number(btn.getAttribute('data-save-price'))));
       }
+      for (const cb of document.querySelectorAll('.row-check')) {
+        cb.addEventListener('change', updateCheckedCount);
+      }
+      updateCheckedCount();
     }
 
-    function updateSelectedCounter() {
-      els.selectedCounter.textContent = `${state.selectedProducts.size} seleccionados`;
+    function updateCheckedCount() {
+      $('checkedCount').textContent = String(getCheckedItemIds().length);
     }
 
-    async function loadDashboard() {
+    function getCheckedItemIds() {
+      return Array.from(document.querySelectorAll('.row-check:checked'))
+        .map((el) => Number(el.getAttribute('data-id')))
+        .filter((n) => Number.isFinite(n) && n > 0);
+    }
+
+    async function loadCompanies() {
+      setBusy(true);
       try {
-        state.loading = true;
-        showMessage('Cargando datos...', '');
-        const data = await api('/price-lists/dashboard');
+        setStatus(`Consultando ${state.apiBase}/price-lists/companies …`);
+        const data = await api('/price-lists/companies');
         state.companies = Array.isArray(data.companies) ? data.companies : [];
-        state.pricelists = Array.isArray(data.pricelists) ? data.pricelists : [];
-        if (!state.selectedCompanyId && state.companies[0]) state.selectedCompanyId = Number(state.companies[0].id);
+        state.company = null;
+        state.lists = [];
+        state.list = null;
+        state.products = [];
         renderCompanies();
+        renderCompanyHeader();
         renderLists();
-        if (state.selectedPricelistId) await loadProducts();
-        showMessage('Datos actualizados.', 'ok');
+        renderProducts();
+        if (!state.companies.length) {
+          setStatus(`No se encontraron empresas desde ${state.apiBase}.\nEn Render debería aparecer un GET /api/price-lists/companies. Si no aparece, el frontend no está consultando Render o el backend no fue redeployado.`, 'warn');
+        } else {
+          setStatus(`Datos actualizados desde ${state.apiBase}.`, 'ok');
+        }
       } catch (e) {
-        showMessage(e.message || 'Error cargando datos.', 'err');
+        renderCompanies();
+        setStatus(`No se pudieron cargar empresas desde ${state.apiBase}.\n${e.message || e}\nVerificá que el backend tenga montado /api/price-lists y que Render esté deployado.`, 'err');
       } finally {
-        state.loading = false;
+        setBusy(false);
       }
     }
 
-    async function selectCompany(companyId) {
-      state.selectedCompanyId = Number(companyId);
-      const lists = companyLists(companyId);
-      state.selectedPricelistId = lists[0] ? Number(lists[0].id) : null;
+    async function selectCompany(id) {
+      state.company = state.companies.find((c) => Number(c.id) === Number(id)) || null;
+      state.list = null;
       state.products = [];
       renderCompanies();
-      renderLists();
-      if (state.selectedPricelistId) await loadProducts();
-      else renderProducts();
+      renderCompanyHeader();
+      renderProducts();
+      if (!state.company) return;
+      await loadLists();
     }
 
-    async function selectPricelist(pricelistId) {
-      state.selectedPricelistId = Number(pricelistId);
+    async function loadLists() {
+      setBusy(true);
+      try {
+        const data = await api(`/price-lists?company_id=${encodeURIComponent(state.company.id)}`);
+        state.lists = Array.isArray(data.pricelists) ? data.pricelists : [];
+        renderLists();
+        setStatus(`Listas actualizadas para ${state.company.name || state.company.id}.`, 'ok');
+      } catch (e) {
+        state.lists = [];
+        renderLists();
+        setStatus(`No se pudieron cargar listas.\n${e.message || e}`, 'err');
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function selectList(id) {
+      state.list = state.lists.find((l) => Number(l.id) === Number(id)) || null;
       renderLists();
       await loadProducts();
     }
 
     async function loadProducts() {
+      if (!state.list) return;
+      setBusy(true);
       try {
-        const q = String(els.productSearch.value || '').trim();
-        showMessage('Cargando productos...', '');
-        const data = await api(`/price-lists/pricelists/${state.selectedPricelistId}/products${q ? `?search=${encodeURIComponent(q)}` : ''}`);
+        const data = await api(`/price-lists/${encodeURIComponent(state.list.id)}/products`);
         state.products = Array.isArray(data.products) ? data.products : [];
         renderProducts();
-        showMessage('Productos cargados.', 'ok');
+        setStatus(`Productos actualizados para ${state.list.name || state.list.id}.`, 'ok');
       } catch (e) {
-        showMessage(e.message || 'Error cargando productos.', 'err');
+        state.products = [];
+        renderProducts();
+        setStatus(`No se pudieron cargar productos.\n${e.message || e}`, 'err');
+      } finally {
+        setBusy(false);
       }
     }
 
-    async function saveProductPrice(productTemplateId, fixedPrice) {
+    async function saveItemPrice(itemId) {
+      const editable = canEditList(state.company, state.list);
+      if (!editable) return;
+      const input = document.querySelector(`[data-price-input="${itemId}"]`);
+      const price = Number(input?.value);
+      if (!Number.isFinite(price) || price < 0) {
+        setStatus('Precio inválido.', 'err');
+        return;
+      }
+      setBusy(true);
       try {
-        await api(`/price-lists/pricelists/${state.selectedPricelistId}/products/${productTemplateId}`, {
+        await api(`/price-lists/items/${encodeURIComponent(itemId)}`, {
           method: 'PATCH',
-          body: JSON.stringify({ fixed_price: Number(fixedPrice) }),
+          body: JSON.stringify({ fixed_price: price }),
         });
+        setStatus('Precio actualizado.', 'ok');
         await loadProducts();
-        showMessage('Precio actualizado.', 'ok');
       } catch (e) {
-        showMessage(e.message || 'Error actualizando precio.', 'err');
+        setStatus(`No se pudo actualizar el precio.\n${e.message || e}`, 'err');
+      } finally {
+        setBusy(false);
       }
     }
 
-    async function applyIncrease({ allCompany = false, partial = false } = {}) {
-      try {
-        const pct = Number(els.percentInput.value);
-        if (!Number.isFinite(pct)) throw new Error('Ingresá un porcentaje válido.');
+    async function applyIncrease() {
+      const editable = canEditList(state.company, state.list);
+      if (!editable) return;
+      const percent = Number($('increasePercent').value);
+      if (!Number.isFinite(percent)) {
+        setStatus('Ingresá un porcentaje válido.', 'err');
+        return;
+      }
 
-        const company = selectedCompany();
-        const list = selectedList();
-        let pricelistIds = [Number(list.id)];
-
-        if (allCompany) {
-          pricelistIds = companyLists(company.id).map(l => Number(l.id));
+      const target = $('increaseTarget').value;
+      const payload = { percent };
+      if (target === 'checked') {
+        const ids = getCheckedItemIds();
+        if (!ids.length) {
+          setStatus('Seleccioná productos para aplicar aumento parcial.', 'err');
+          return;
         }
+        payload.item_ids = ids;
+      } else if (target === 'all') {
+        payload.pricelist_ids = state.lists
+          .filter((l) => canEditList(state.company, l))
+          .map((l) => Number(l.id));
+        if (!payload.pricelist_ids.length) {
+          setStatus('No hay listas editables para actualizar.', 'err');
+          return;
+        }
+      } else {
+        payload.pricelist_ids = [Number(state.list.id)];
+      }
 
-        const productIds = partial ? Array.from(state.selectedProducts) : [];
-        if (partial && !productIds.length) throw new Error('Seleccioná al menos un producto.');
+      const ok = confirm(`Aplicar aumento de ${percent}%?`);
+      if (!ok) return;
 
-        showMessage('Aplicando aumento...', '');
+      setBusy(true);
+      try {
         const data = await api('/price-lists/increase', {
           method: 'POST',
-          body: JSON.stringify({ pricelist_ids: pricelistIds, product_template_ids: productIds, percent: pct }),
+          body: JSON.stringify(payload),
         });
+        setStatus(`Aumento aplicado. Ítems actualizados: ${data.updated || 0}.`, 'ok');
         await loadProducts();
-        showMessage(`Aumento aplicado. Actualizados: ${data.updated || 0}. Creados: ${data.created || 0}.`, 'ok');
       } catch (e) {
-        showMessage(e.message || 'Error aplicando aumento.', 'err');
+        setStatus(`No se pudo aplicar el aumento.\n${e.message || e}`, 'err');
+      } finally {
+        setBusy(false);
       }
     }
 
-    els.saveApiBaseBtn.onclick = () => {
-      localStorage.setItem('dg_price_lists_api_base', apiBase());
-      showMessage('Base API guardada.', 'ok');
-    };
-    els.reloadBtn.onclick = loadDashboard;
-    els.searchBtn.onclick = loadProducts;
-    els.clearSearchBtn.onclick = () => { els.productSearch.value = ''; loadProducts(); };
-    els.increaseSelectedListBtn.onclick = () => applyIncrease();
-    els.increaseAllCompanyBtn.onclick = () => applyIncrease({ allCompany: true });
-    els.increasePartialBtn.onclick = () => applyIncrease({ partial: true });
-    els.checkAll.onchange = () => {
-      const checks = [...document.querySelectorAll('.row-check:not(:disabled)')];
-      state.selectedProducts.clear();
-      for (const check of checks) {
-        check.checked = els.checkAll.checked;
-        if (check.checked) state.selectedProducts.add(Number(check.dataset.id));
-      }
-      updateSelectedCounter();
-    };
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
 
-    els.apiBaseInput.value = defaultApiBase();
-    loadDashboard();
+    $('saveApiBtn').addEventListener('click', () => {
+      const next = normalizeApiBase($('apiBaseInput').value);
+      state.apiBase = next || DEFAULT_API_BASE;
+      localStorage.setItem(LS_API_BASE, state.apiBase);
+      $('apiBaseInput').value = state.apiBase;
+      loadCompanies();
+    });
+
+    $('resetApiBtn').addEventListener('click', () => {
+      state.apiBase = DEFAULT_API_BASE;
+      localStorage.setItem(LS_API_BASE, state.apiBase);
+      $('apiBaseInput').value = state.apiBase;
+      loadCompanies();
+    });
+
+    $('refreshBtn').addEventListener('click', loadCompanies);
+    $('reloadProductsBtn').addEventListener('click', loadProducts);
+    $('productFilter').addEventListener('input', renderProducts);
+    $('applyIncreaseBtn').addEventListener('click', applyIncrease);
+
+    state.apiBase = getInitialApiBase();
+    $('apiBaseInput').value = state.apiBase;
+    loadCompanies();
   </script>
 </body>
 </html>
