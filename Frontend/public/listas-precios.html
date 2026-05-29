@@ -159,7 +159,7 @@
     <section class="grid">
       <aside class="card">
         <h2>Empresas</h2>
-        <p class="small">Se toman desde <span class="mono">/api/price-lists/companies</span>.</p>
+        <p class="small">Se toman desde <span class="mono">/api/price-lists/companies</span> y las listas desde <span class="mono">/api/price-lists/lists</span>.</p>
         <div id="companiesList" class="list"></div>
       </aside>
 
@@ -376,7 +376,7 @@
       const wrap = $('priceLists');
       wrap.innerHTML = '';
       if (!state.lists.length) {
-        wrap.innerHTML = '<div class="empty">No se encontraron listas para esta empresa.</div>';
+        wrap.innerHTML = '<div class="empty">No se encontraron listas para esta empresa. Si existen en Odoo, verificá que el backend tenga la versión v3: endpoint /api/price-lists/lists.</div>';
         return;
       }
       for (const l of state.lists) {
@@ -516,7 +516,7 @@
     async function loadLists() {
       setBusy(true);
       try {
-        const data = await api(`/price-lists?company_id=${encodeURIComponent(state.company.id)}`);
+        const data = await api(`/price-lists/lists?company_id=${encodeURIComponent(state.company.id)}`);
         state.lists = Array.isArray(data.pricelists) ? data.pricelists : [];
         renderLists();
         setStatus(`Listas actualizadas para ${state.company.name || state.company.id}.`, 'ok');
