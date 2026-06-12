@@ -8,9 +8,40 @@ router.get('/preproduccion-valores', async (_req, res) => {
   try {
     const { rows } = await pool.query(
       `
-      select id, nv, data, updated_at
-      from public.preproduccion_valores
-      order by coalesce(nv, 0) asc, id asc;
+      with pq_raw as (
+        select
+          case
+            when regexp_replace(coalesce(final_sale_order_name, odoo_sale_order_name, ''), '^[A-Za-z]+', '') ~ '^[0-9]+$'
+            then regexp_replace(coalesce(final_sale_order_name, odoo_sale_order_name, ''), '^[A-Za-z]+', '')::integer
+            else null
+          end as nv_num,
+          end_customer->>'phone'    as phone,
+          end_customer->>'maps_url' as maps_url,
+          to_char(measurement_scheduled_for, 'YYYY-MM-DD') as fecha_medicion,
+          measurement_scheduled_for
+        from public.presupuestador_quotes
+        where quote_kind = 'original'
+      ),
+      pq_best as (
+        select distinct on (nv_num)
+          nv_num, phone, maps_url, fecha_medicion
+        from pq_raw
+        where nv_num is not null
+        order by nv_num, measurement_scheduled_for desc nulls last
+      )
+      select
+        pv.id,
+        pv.nv,
+        coalesce(pv.data, '{}'::jsonb)
+          || jsonb_strip_nulls(jsonb_build_object(
+               'pq_phone',          pqb.phone,
+               'pq_maps_url',       pqb.maps_url,
+               'pq_fecha_medicion', pqb.fecha_medicion
+             )) as data,
+        pv.updated_at
+      from public.preproduccion_valores pv
+      left join pq_best pqb on pqb.nv_num = pv.nv
+      order by coalesce(pv.nv, 0) asc, pv.id asc;
       `
     );
     res.setHeader('Cache-Control', 'no-store');
