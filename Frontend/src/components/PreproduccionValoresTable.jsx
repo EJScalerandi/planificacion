@@ -361,8 +361,7 @@ async function openRemitoPdf(row) {
     return;
   }
   try {
-    const apiBase = (import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE || 'http://localhost:4000').replace(/\/+$/, '');
-    const response = await fetch(`${apiBase}/pdf/remito/${nvNum}`, { signal: AbortSignal.timeout(30000) });
+    const response = await fetch(`https://presupuestador-kdbl.onrender.com/api/pdf/remito/nv/${nvNum}`, { signal: AbortSignal.timeout(30000) });
     if (!response.ok) throw new Error(`Error ${response.status}`);
     const blob = await response.blob();
     const blobUrl = URL.createObjectURL(blob);
