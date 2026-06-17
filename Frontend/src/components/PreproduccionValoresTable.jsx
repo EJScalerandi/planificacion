@@ -8,7 +8,6 @@ import {
   setFechaProd,
   setSistemaPorton,
   getAdminToken,
-  fetchNvQuoteLines,
 } from '../api';
 
 import LogisticaAuthModal from './modals/LogisticaAuthModal';
@@ -354,7 +353,7 @@ function getPdfFieldDefs() {
 // =====================
 // Remito PDF
 // =====================
-async function openRemitoPdf(row) {
+function openRemitoPdf(row) {
   const d = row?.data || {};
 
   const nvNum = Number(row?.nv ?? getAny(d, ['NV', 'nv']));
@@ -367,24 +366,18 @@ async function openRemitoPdf(row) {
   const today = new Date();
   const fechaEmision = `${pad2(today.getDate())}/${pad2(today.getMonth() + 1)}/${today.getFullYear()}`;
 
-  // Fetch real NV product lines
+  // Usar líneas reales de la NV almacenadas en nv_lines
   let tableRowsHtml = '';
-  if (nvNum > 0) {
-    try {
-      const { data } = await fetchNvQuoteLines(nvNum);
-      const lines = Array.isArray(data?.lines) ? data.lines : [];
-      const validLines = lines.filter((l) => l && (l.name || l.raw_name));
-      if (validLines.length > 0) {
-        tableRowsHtml = validLines
-          .map((l) => `<tr><td>${toStr(l.name || l.raw_name)}</td><td class="qty">${Number(l.qty) || 1}</td></tr>`)
-          .join('');
-      }
-    } catch (err) {
-      console.error('Error fetching NV quote lines:', err);
-    }
+  const nvLines = Array.isArray(row?.nv_lines)
+    ? row.nv_lines.filter((l) => l && (l.name || l.raw_name))
+    : [];
+  if (nvLines.length > 0) {
+    tableRowsHtml = nvLines
+      .map((l) => `<tr><td>${toStr(l.name || l.raw_name)}</td><td class="qty">${Number(l.qty) || 1}</td></tr>`)
+      .join('');
   }
 
-  // Fallback to NP-era specs if no lines found
+  // Fallback a datos de la NP si nv_lines no está disponible
   if (!tableRowsHtml) {
     const sistema = toStr(getAny(d, ['Sistema', 'Sistemas', 'sistema']) ?? '');
     const color = toStr(getAny(d, ['Color', 'Color_Hoja', 'color']) ?? '');

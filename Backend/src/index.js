@@ -1779,7 +1779,7 @@ app.get('/preproduccion-valores', async (_req, res) => {
   try {
     const { rows } = await pool.query(
       `
-      select id, nv, data, updated_at
+      select id, nv, data, nv_lines, updated_at
       from public.preproduccion_valores
       order by coalesce(nv, 0) asc, id asc;
       `
