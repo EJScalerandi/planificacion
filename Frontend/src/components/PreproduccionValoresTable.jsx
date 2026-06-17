@@ -366,11 +366,15 @@ function openRemitoPdf(row) {
   const today = new Date();
   const fechaEmision = `${pad2(today.getDate())}/${pad2(today.getMonth() + 1)}/${today.getFullYear()}`;
 
-  // Usar líneas reales de la NV almacenadas en nv_lines
+  // Usar líneas reales de la NV: nv_lines si está, sino data.lines
   let tableRowsHtml = '';
-  const nvLines = Array.isArray(row?.nv_lines)
-    ? row.nv_lines.filter((l) => l && (l.name || l.raw_name))
-    : [];
+  const nvLines = (
+    Array.isArray(row?.nv_lines) && row.nv_lines.length > 0
+      ? row.nv_lines
+      : Array.isArray(row?.data?.lines)
+        ? row.data.lines
+        : []
+  ).filter((l) => l && (l.name || l.raw_name));
   if (nvLines.length > 0) {
     tableRowsHtml = nvLines
       .map((l) => `<tr><td>${toStr(l.name || l.raw_name)}</td><td class="qty">${Number(l.qty) || 1}</td></tr>`)
