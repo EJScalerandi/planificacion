@@ -1870,7 +1870,7 @@ app.get('/pdf/remito/:nv', async (req, res) => {
   try {
     const nv = String(req.params.nv || '').trim();
     if (!nv || !/^\d+$/.test(nv)) return res.status(400).json({ error: 'NV inválido' });
-    const upstream = `https://presupuestador-kdbl.onrender.com/pdf/remito/nv/${nv}`;
+    const upstream = `https://presupuestador-kdbl.onrender.com/api/pdf/remito/nv/${nv}`;
     const response = await fetch(upstream, { signal: AbortSignal.timeout(30000) });
     if (!response.ok) {
       const text = await response.text();
