@@ -351,6 +351,134 @@ function getPdfFieldDefs() {
 }
 
 // =====================
+// Remito PDF
+// =====================
+function openRemitoPdf(row) {
+  const d = row?.data || {};
+
+  const nv = toStr(getAny(d, ['NV', 'nv']) ?? '');
+  const nombre = toStr(getAny(d, ['Nombre', 'nombre']) ?? '');
+  const razsoc = toStr(getAny(d, ['RazSoc', 'razsoc']) ?? '');
+  const direccion = toStr(getAny(d, ['Direccion', 'Dirección', 'direccion']) ?? '');
+  const sistema = toStr(getAny(d, ['Sistema', 'Sistemas', 'sistema']) ?? '');
+  const color = toStr(getAny(d, ['Color', 'Color_Hoja', 'color']) ?? '');
+  const condicion = toStr(getAny(d, ['Tipo_embalaje', 'Tipo_Embalaje', 'tipo_embalaje']) ?? '');
+  const medidas = medidasDisplayFromRow(row);
+  const observacion = toStr(d.observacion_imput ?? '');
+
+  const today = new Date();
+  const fechaEmision = `${pad2(today.getDate())}/${pad2(today.getMonth() + 1)}/${today.getFullYear()}`;
+
+  const descripcion = [sistema, medidas, color, condicion].filter(Boolean).join(' · ') || 'Portón';
+
+  const css = `
+    <style>
+      * { box-sizing: border-box; }
+      body { font-family: Arial, sans-serif; margin: 0; padding: 20mm; color: #111; font-size: 12px; }
+      .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; border-bottom: 2px solid #111; padding-bottom: 12px; }
+      .company { font-size: 20px; font-weight: 900; letter-spacing: 1px; }
+      .company-sub { font-size: 11px; color: #555; margin-top: 3px; }
+      .doc-title { font-size: 26px; font-weight: 900; text-align: right; letter-spacing: 3px; color: #111; }
+      .doc-number { font-size: 13px; text-align: right; margin-top: 4px; font-weight: 700; }
+      .doc-date { font-size: 11px; text-align: right; margin-top: 3px; color: #555; }
+      .info-block { margin-bottom: 16px; padding: 10px 12px; background: #f9f9f9; border: 1px solid #e5e7eb; border-radius: 6px; }
+      .info-row { display: flex; gap: 8px; margin-bottom: 5px; font-size: 12px; }
+      .info-row:last-child { margin-bottom: 0; }
+      .label { font-weight: 700; min-width: 90px; color: #444; }
+      table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+      th { background: #111; color: #fff; padding: 9px 12px; text-align: left; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+      th.th-qty { text-align: center; width: 90px; }
+      td { padding: 10px 12px; border-bottom: 1px solid #e5e7eb; vertical-align: middle; }
+      td.qty { text-align: center; font-weight: 700; font-size: 14px; }
+      .obs { margin-top: 16px; padding: 10px 12px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; font-size: 11px; }
+      .obs-label { font-weight: 700; margin-bottom: 4px; }
+      .footer { margin-top: 40px; display: flex; justify-content: space-between; }
+      .sign-block { text-align: center; width: 180px; }
+      .sign-line { border-top: 1px solid #333; padding-top: 6px; font-size: 11px; color: #555; }
+      @media print { body { padding: 12mm; } }
+    </style>
+  `;
+
+  const html = `
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>Remito${nv ? ' NV' + nv : ''}</title>
+        ${css}
+      </head>
+      <body>
+        <div class="header">
+          <div>
+            <div class="company">DG PORTONES</div>
+            <div class="company-sub">Distribución de Portones</div>
+          </div>
+          <div>
+            <div class="doc-title">REMITO</div>
+            ${nv ? `<div class="doc-number">NV ${nv}</div>` : ''}
+            <div class="doc-date">Fecha: ${fechaEmision}</div>
+          </div>
+        </div>
+
+        <div class="info-block">
+          ${nombre ? `<div class="info-row"><span class="label">Cliente:</span><span>${nombre}</span></div>` : ''}
+          ${razsoc ? `<div class="info-row"><span class="label">Distribuidor:</span><span>${razsoc}</span></div>` : ''}
+          ${direccion ? `<div class="info-row"><span class="label">Dirección:</span><span>${direccion}</span></div>` : ''}
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Descripción</th>
+              <th class="th-qty">Cantidad</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>${descripcion}</td>
+              <td class="qty">1</td>
+            </tr>
+          </tbody>
+        </table>
+
+        ${observacion ? `<div class="obs"><div class="obs-label">Observaciones:</div><div>${observacion}</div></div>` : ''}
+
+        <div class="footer">
+          <div class="sign-block"><div class="sign-line">Firma</div></div>
+          <div class="sign-block"><div class="sign-line">Aclaración</div></div>
+          <div class="sign-block"><div class="sign-line">Fecha recepción</div></div>
+        </div>
+      </body>
+    </html>
+  `;
+
+  try {
+    const w = window.open('about:blank', '_blank');
+    if (w && w.document) {
+      w.document.open();
+      w.document.write(html);
+      w.document.close();
+      w.focus();
+      setTimeout(() => { try { w.print(); } catch {} }, 250);
+      return;
+    }
+  } catch {}
+
+  const iframe = document.createElement('iframe');
+  iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
+  iframe.setAttribute('aria-hidden', 'true');
+  document.body.appendChild(iframe);
+  const idoc = iframe.contentWindow?.document;
+  if (idoc) {
+    idoc.open(); idoc.write(html); idoc.close();
+    setTimeout(() => {
+      try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } finally {
+        setTimeout(() => { try { document.body.removeChild(iframe); } catch {} }, 500);
+      }
+    }, 250);
+  }
+}
+
+// =====================
 // Print
 // =====================
 function openPdfPrintWindow({ title, rows, cols }) {
@@ -495,6 +623,7 @@ const BASE_COLS = [
 
   { id: 'nombre', label: 'Nombre', sourceKeys: ['Nombre'] },
   { id: 'contacto', label: 'Contacto', type: 'contacto' },
+  { id: 'documentacion', label: 'Documentación', type: 'documentacion' },
   { id: 'distribuidor', label: 'Distribuidor', sourceKeys: ['RazSoc'] },
 
   { id: 'tipo', label: 'Tipo', patchKey: 'tipo_imput' },
@@ -1579,6 +1708,20 @@ export default function PreproduccionValoresTable() {
             </a>
           ) : null}
         </div>
+      );
+    }
+
+    // ===== Documentación (remito) =====
+    if (col.type === 'documentacion') {
+      return (
+        <button
+          type="button"
+          className="pp-btnCell"
+          onClick={() => openRemitoPdf(row)}
+          title="Descargar remito (sin precios)"
+        >
+          Remito
+        </button>
       );
     }
 
