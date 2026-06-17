@@ -1865,6 +1865,38 @@ app.put('/preproduccion-valores/:id', async (req, res) => {
   }
 });
 
+// GET /preproduccion-valores/:nv/quote-lines
+// Devuelve las líneas de la NV desde presupuestador_quotes (revision quote)
+app.get('/preproduccion-valores/:nv/quote-lines', async (req, res) => {
+  const nv = Number(req.params.nv);
+  if (!Number.isInteger(nv) || nv <= 0) {
+    return res.status(400).json({ error: 'nv debe ser un entero positivo' });
+  }
+  try {
+    const nvStr = 'NV' + nv;
+    const { rows } = await pool.query(
+      `
+      SELECT lines, end_customer, final_sale_order_name
+      FROM public.presupuestador_quotes
+      WHERE final_sale_order_name = $1
+        AND quote_kind = 'copy'
+      ORDER BY updated_at DESC
+      LIMIT 1;
+      `,
+      [nvStr]
+    );
+    res.setHeader('Cache-Control', 'no-store');
+    if (!rows.length) return res.json({ lines: null });
+    return res.json({
+      lines: rows[0].lines,
+      final_sale_order_name: rows[0].final_sale_order_name,
+    });
+  } catch (err) {
+    console.error('quote-lines get error:', err);
+    return res.status(500).json({ error: 'Error leyendo quote lines', detail: err.message });
+  }
+});
+
 // ============================================================================
 // 11) Cierre prolijo
 // ============================================================================

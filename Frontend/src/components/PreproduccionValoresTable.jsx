@@ -8,6 +8,7 @@ import {
   setFechaProd,
   setSistemaPorton,
   getAdminToken,
+  fetchNvQuoteLines,
 } from '../api';
 
 import LogisticaAuthModal from './modals/LogisticaAuthModal';
@@ -353,23 +354,45 @@ function getPdfFieldDefs() {
 // =====================
 // Remito PDF
 // =====================
-function openRemitoPdf(row) {
+async function openRemitoPdf(row) {
   const d = row?.data || {};
 
-  const nv = toStr(getAny(d, ['NV', 'nv']) ?? '');
+  const nvNum = Number(row?.nv ?? getAny(d, ['NV', 'nv']));
+  const nv = Number.isInteger(nvNum) && nvNum > 0 ? String(nvNum) : '';
   const nombre = toStr(getAny(d, ['Nombre', 'nombre']) ?? '');
   const razsoc = toStr(getAny(d, ['RazSoc', 'razsoc']) ?? '');
   const direccion = toStr(getAny(d, ['Direccion', 'Dirección', 'direccion']) ?? '');
-  const sistema = toStr(getAny(d, ['Sistema', 'Sistemas', 'sistema']) ?? '');
-  const color = toStr(getAny(d, ['Color', 'Color_Hoja', 'color']) ?? '');
-  const condicion = toStr(getAny(d, ['Tipo_embalaje', 'Tipo_Embalaje', 'tipo_embalaje']) ?? '');
-  const medidas = medidasDisplayFromRow(row);
   const observacion = toStr(d.observacion_imput ?? '');
 
   const today = new Date();
   const fechaEmision = `${pad2(today.getDate())}/${pad2(today.getMonth() + 1)}/${today.getFullYear()}`;
 
-  const descripcion = [sistema, medidas, color, condicion].filter(Boolean).join(' · ') || 'Portón';
+  // Fetch real NV product lines
+  let tableRowsHtml = '';
+  if (nvNum > 0) {
+    try {
+      const { data } = await fetchNvQuoteLines(nvNum);
+      const lines = Array.isArray(data?.lines) ? data.lines : [];
+      const validLines = lines.filter((l) => l && (l.name || l.raw_name));
+      if (validLines.length > 0) {
+        tableRowsHtml = validLines
+          .map((l) => `<tr><td>${toStr(l.name || l.raw_name)}</td><td class="qty">${Number(l.qty) || 1}</td></tr>`)
+          .join('');
+      }
+    } catch (err) {
+      console.error('Error fetching NV quote lines:', err);
+    }
+  }
+
+  // Fallback to NP-era specs if no lines found
+  if (!tableRowsHtml) {
+    const sistema = toStr(getAny(d, ['Sistema', 'Sistemas', 'sistema']) ?? '');
+    const color = toStr(getAny(d, ['Color', 'Color_Hoja', 'color']) ?? '');
+    const condicion = toStr(getAny(d, ['Tipo_embalaje', 'Tipo_Embalaje', 'tipo_embalaje']) ?? '');
+    const medidas = medidasDisplayFromRow(row);
+    const descripcion = [sistema, medidas, color, condicion].filter(Boolean).join(' · ') || 'Portón';
+    tableRowsHtml = `<tr><td>${descripcion}</td><td class="qty">1</td></tr>`;
+  }
 
   const css = `
     <style>
@@ -433,10 +456,7 @@ function openRemitoPdf(row) {
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <td>${descripcion}</td>
-              <td class="qty">1</td>
-            </tr>
+            ${tableRowsHtml}
           </tbody>
         </table>
 

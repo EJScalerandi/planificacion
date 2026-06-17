@@ -222,6 +222,7 @@ export const getDespacharBases = () => api.get('/despachar/bases');
 /* ========= Preproducción portones ========= */
 export const fetchPreproduccionValores = () => api.get('/preproduccion-valores');
 export const updatePreproduccionValor = (id, patch) => api.put(`/preproduccion-valores/${id}`, { patch });
+export const fetchNvQuoteLines = (nv) => api.get(`/preproduccion-valores/${nv}/quote-lines`);
 
 // --------------------
 // ADMIN USERS / SCOPES
