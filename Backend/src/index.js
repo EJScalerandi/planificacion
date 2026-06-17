@@ -1865,6 +1865,27 @@ app.put('/preproduccion-valores/:id', async (req, res) => {
   }
 });
 
+// GET /pdf/remito/:nv — proxy al backend del presupuestador
+app.get('/pdf/remito/:nv', async (req, res) => {
+  try {
+    const nv = String(req.params.nv || '').trim();
+    if (!nv || !/^\d+$/.test(nv)) return res.status(400).json({ error: 'NV inválido' });
+    const upstream = `https://presupuestador-kdbl.onrender.com/pdf/remito/nv/${nv}`;
+    const response = await fetch(upstream, { signal: AbortSignal.timeout(30000) });
+    if (!response.ok) {
+      const text = await response.text();
+      return res.status(response.status).json({ error: 'Error generando remito', detail: text });
+    }
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', response.headers.get('Content-Disposition') || `inline; filename="remito_NV${nv}.pdf"`);
+    const buffer = await response.arrayBuffer();
+    return res.send(Buffer.from(buffer));
+  } catch (err) {
+    console.error('pdf remito proxy error:', err);
+    return res.status(500).json({ error: 'Error generando remito', detail: err.message });
+  }
+});
+
 // GET /preproduccion-valores/:nv/quote-lines
 // Devuelve las líneas de la NV desde presupuestador_quotes (revision quote)
 app.get('/preproduccion-valores/:nv/quote-lines', async (req, res) => {
