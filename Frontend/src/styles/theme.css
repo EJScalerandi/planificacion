@@ -1341,6 +1341,48 @@ html, body{
 }
 
 /* =========================================================
+   Badges extra
+   ========================================================= */
+.pp-badge--warn{
+  background: #fffbeb;
+  border-color: #fcd34d;
+  color: #92400e;
+}
+
+.pp-badge--muted{
+  background: #f9fafb;
+  border-color: #e5e7eb;
+  color: #6b7280;
+}
+
+/* =========================================================
+   Botón de "acciones admin" en /i (IpanelPreproduccion)
+   ========================================================= */
+.pp-accionBtn{
+  display: block;
+  width: 100%;
+  max-width: 170px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  border: 1px solid #f59e0b;
+  background: #fffbeb;
+  color: #92400e;
+  border-radius: 8px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.pp-accionBtn--expanded{
+  white-space: pre-wrap;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+/* =========================================================
    Si tenés “scrollbar espejo” siempre visible:
    ocultá la scrollbar REAL del contenedor de la tabla
    (así no quedan 2 barras)

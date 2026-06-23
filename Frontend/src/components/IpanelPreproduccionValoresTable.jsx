@@ -310,14 +310,14 @@ export default function IpanelPreproduccionValoresTable() {
     const hasAcciones = hasAdminAcciones(row);
     const expanded = expandedAcciones.has(rowKey(row));
 
-    if (!hasAcciones) return <span style={pillMuted}>Sin acciones</span>;
+    if (!hasAcciones) return <span className="pp-badge pp-badge--muted">Sin acciones</span>;
 
     return (
       <button
         type="button"
         onClick={() => toggleAcciones(row)}
         title={expanded ? 'Click para contraer' : 'Click para ver completo'}
-        style={expanded ? accionesExpanded : accionesCompact}
+        className={expanded ? 'pp-accionBtn pp-accionBtn--expanded' : 'pp-accionBtn'}
       >
         {detalle || 'Acciones: Sí'}
       </button>
@@ -325,11 +325,11 @@ export default function IpanelPreproduccionValoresTable() {
   }
 
   return (
-    <div style={{ padding: 16 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'end' }}>
+    <div className="pp-page">
+      <div className="pp-headerRow">
         <div>
-          <h1 style={{ margin: 0, fontSize: 22 }}>Preproducción iPanels</h1>
-          <div style={{ fontSize: 12, opacity: 0.7 }}>Origen: preproduccion_valores_ipanels. Producción: public.ipanel.</div>
+          <h2 className="pp-title">Preproducción iPanels</h2>
+          <p className="pp-hint" style={{ margin: '4px 0 0' }}>Origen: preproduccion_valores_ipanels. Producción: public.ipanel.</p>
         </div>
 
         <form
@@ -352,23 +352,23 @@ export default function IpanelPreproduccionValoresTable() {
         </form>
       </div>
 
-      {err && <div style={{ color: 'crimson', fontWeight: 800, marginTop: 12 }}>{err}</div>}
+      {err && <div className="pp-errorBox" style={{ marginTop: 8 }}>{err}</div>}
 
-      <div style={{ marginTop: 12, overflow: 'auto', border: '1px solid var(--border, #ddd)', borderRadius: 12 }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: canAdminAuth ? 1380 : 1180 }}>
+      <div className="pp-tableWrap" style={{ marginTop: 12 }}>
+        <table className="pp-table" style={{ minWidth: canAdminAuth ? 1380 : 1180 }}>
           <thead>
-            <tr style={{ background: '#f8fafc' }}>
-              <th style={th}>Partida</th>
-              <th style={th}>NV</th>
-              <th style={th}>Cliente</th>
-              <th style={th}>Nombre</th>
-              <th style={th}>Descripción</th>
-              <th style={th}>Fecha producción</th>
-              <th style={th}>Fecha despacho</th>
-              {canAdminAuth ? <th style={th}>Aut. Admin</th> : null}
-              {canAdminAuth ? <th style={{ ...th, width: 190 }}>Acciones admin</th> : null}
-              <th style={th}>Estado</th>
-              <th style={th}>Acciones</th>
+            <tr>
+              <th className="pp-th">Partida</th>
+              <th className="pp-th">NV</th>
+              <th className="pp-th">Cliente</th>
+              <th className="pp-th">Nombre</th>
+              <th className="pp-th">Descripción</th>
+              <th className="pp-th">Fecha producción</th>
+              <th className="pp-th">Fecha despacho</th>
+              {canAdminAuth ? <th className="pp-th">Aut. Admin</th> : null}
+              {canAdminAuth ? <th className="pp-th" style={{ width: 190 }}>Acciones admin</th> : null}
+              <th className="pp-th">Estado</th>
+              <th className="pp-th">Acciones</th>
             </tr>
           </thead>
           <tbody>
@@ -382,12 +382,12 @@ export default function IpanelPreproduccionValoresTable() {
 
               return (
                 <tr key={rowKey(r)}>
-                  <td style={td}>{toStr(r.partida)}</td>
-                  <td style={td}>{toStr(r.nv)}</td>
-                  <td style={td}>{getCliente(r)}</td>
-                  <td style={td}>{getNombre(r)}</td>
-                  <td style={{ ...td, maxWidth: 360, whiteSpace: 'pre-wrap' }}>{getDescripcion(r)}</td>
-                  <td style={td}>
+                  <td>{toStr(r.partida)}</td>
+                  <td>{toStr(r.nv)}</td>
+                  <td>{getCliente(r)}</td>
+                  <td>{getNombre(r)}</td>
+                  <td style={{ maxWidth: 360, whiteSpace: 'pre-wrap' }}>{getDescripcion(r)}</td>
+                  <td>
                     <input
                       type="date"
                       className="btn"
@@ -395,7 +395,7 @@ export default function IpanelPreproduccionValoresTable() {
                       onChange={(e) => setDraft(r, 'fecha_prod', e.target.value)}
                       disabled={enviado || isBusy}
                     />
-                    {r.fecha_prod ? <div style={hint}>Guardada: {formatDate(r.fecha_prod)}</div> : null}
+                    {r.fecha_prod ? <div className="pp-hint">Guardada: {formatDate(r.fecha_prod)}</div> : null}
                   </td>
                   <td style={td}>
                     <input
@@ -405,12 +405,12 @@ export default function IpanelPreproduccionValoresTable() {
                       onChange={(e) => setDraft(r, 'fecha_plan_entrega', e.target.value)}
                       disabled={isBusy}
                     />
-                    {r.fecha_plan_entrega ? <div style={hint}>Guardada: {formatDate(r.fecha_plan_entrega)}</div> : null}
+                    {r.fecha_plan_entrega ? <div className="pp-hint">Guardada: {formatDate(r.fecha_plan_entrega)}</div> : null}
                   </td>
                   {canAdminAuth ? (
-                    <td style={td}>
+                    <td>
                       {authAdmin ? (
-                        <span style={pillOk}>Autorizado</span>
+                        <span className="pp-badge pp-badge--ok">Autorizado</span>
                       ) : (
                         <button className="btn btn--brand" type="button" onClick={() => openAdminModal(r)} disabled={savingId === id || sendingId === id}>
                           Autorizar
@@ -418,11 +418,11 @@ export default function IpanelPreproduccionValoresTable() {
                       )}
                     </td>
                   ) : null}
-                  {canAdminAuth ? <td style={{ ...td, width: 190, maxWidth: 190 }}>{renderAccionesAdmin(r)}</td> : null}
-                  <td style={td}>
-                    {dirty ? <span style={pillWarn}>Sin guardar</span> : enviado ? <span style={pillOk}>En producción</span> : <span style={pill}>Pendiente</span>}
+                  {canAdminAuth ? <td style={{ width: 190, maxWidth: 190 }}>{renderAccionesAdmin(r)}</td> : null}
+                  <td>
+                    {dirty ? <span className="pp-badge pp-badge--warn">Sin guardar</span> : enviado ? <span className="pp-badge pp-badge--ok">En producción</span> : <span className="pp-badge pp-badge--muted">Pendiente</span>}
                   </td>
-                  <td style={td}>
+                  <td>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                       <button
                         className="btn"
@@ -448,7 +448,7 @@ export default function IpanelPreproduccionValoresTable() {
             })}
 
             {!loading && (!rows || !rows.length) ? (
-              <tr><td style={td} colSpan={canAdminAuth ? 11 : 9}>No hay iPanels para mostrar.</td></tr>
+              <tr><td colSpan={canAdminAuth ? 11 : 9} style={{ padding: 12, color: '#6b7280', fontSize: 12 }}>No hay iPanels para mostrar.</td></tr>
             ) : null}
           </tbody>
         </table>
@@ -467,34 +467,3 @@ export default function IpanelPreproduccionValoresTable() {
   );
 }
 
-const th = { padding: 8, borderBottom: '1px solid #e5e7eb', textAlign: 'left', fontSize: 13 };
-const td = { padding: 8, borderBottom: '1px solid #e5e7eb', verticalAlign: 'top', fontSize: 13 };
-const hint = { fontSize: 11, opacity: 0.7, marginTop: 4 };
-const pill = { display: 'inline-block', padding: '3px 8px', borderRadius: 999, border: '1px solid #d1d5db', background: '#fff' };
-const pillMuted = { ...pill, color: '#6b7280', background: '#f9fafb' };
-const pillOk = { ...pill, borderColor: '#86efac', background: '#f0fdf4', color: '#166534', fontWeight: 800 };
-const pillWarn = { ...pill, borderColor: '#fcd34d', background: '#fffbeb', color: '#92400e', fontWeight: 800 };
-const accionesCompact = {
-  display: 'block',
-  width: '100%',
-  maxWidth: 170,
-  overflow: 'hidden',
-  textOverflow: 'ellipsis',
-  whiteSpace: 'nowrap',
-  textAlign: 'left',
-  border: '1px solid #f59e0b',
-  background: '#fffbeb',
-  color: '#92400e',
-  borderRadius: 8,
-  padding: '4px 8px',
-  cursor: 'pointer',
-  fontSize: 12,
-  fontWeight: 800,
-};
-const accionesExpanded = {
-  ...accionesCompact,
-  maxWidth: 170,
-  whiteSpace: 'pre-wrap',
-  overflow: 'visible',
-  textOverflow: 'clip',
-};
