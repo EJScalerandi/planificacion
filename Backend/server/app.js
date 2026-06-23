@@ -17,6 +17,7 @@ const workflowRoutes = require('./routes/public/workflow');
 const portonesRoutes = require('./routes/public/portones');
 const ipanelRoutes = require('./routes/public/ipanel');
 const ipanelPreprodRoutes = require('./routes/public/ipanelPreprod');
+const remitosProxyRoutes = require('./routes/public/remitosProxy');
 
 const { errorHandler } = require('./middleware/errorHandler');
 
@@ -82,6 +83,7 @@ app.use('/', qcRoutes);
 app.use('/', workflowRoutes);
 app.use('/', portonesRoutes);
 app.use('/', ipanelRoutes);
+app.use('/', remitosProxyRoutes);
 
 app.use(errorHandler);
 
