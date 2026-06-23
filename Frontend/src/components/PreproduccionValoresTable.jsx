@@ -353,7 +353,7 @@ function getPdfFieldDefs() {
 // =====================
 // Remito PDF
 // =====================
-const REMITOS_API = 'https://remitos.onrender.com/api';
+const REMITOS_API = 'https://remitos-c77t.onrender.com/api';
 
 async function openRemitoPdf(row) {
   const d = row?.data || {};

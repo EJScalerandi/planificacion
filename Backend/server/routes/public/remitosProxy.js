@@ -3,7 +3,7 @@ const axios = require('axios');
 
 const router = express.Router();
 
-const REMITOS_BASE = 'https://remitos.onrender.com/api';
+const REMITOS_BASE = 'https://remitos-c77t.onrender.com/api';
 
 // GET /remitos-proxy/search-by-nv?nv=X
 router.get('/remitos-proxy/search-by-nv', async (req, res) => {
