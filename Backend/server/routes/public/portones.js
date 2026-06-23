@@ -255,6 +255,7 @@ router.get('/portones', async (_req, res) => {
 	      npartida,
 	      sistema,
 	      Sistema,
+	      nv_tipo: bodyNvTipo,
 	      fecha_plan,
 	      fecha_prod,
 	      fecha_nv,
@@ -280,7 +281,19 @@ router.get('/portones', async (_req, res) => {
 	      sistemaStr = String(sistemaRaw).trim() || null;
     }
 
-	    // Fechas opcionales (ISO yyyy-mm-dd). Si no son válidas, se guardan como null.
+	    // Anexos (ONV/PLNV/PNV) sin sistema: hereda el del portón NV del mismo número
+    const nvTipo = String(bodyNvTipo || 'NV').trim().toUpperCase() || 'NV';
+    if (!sistemaStr && nvTipo !== 'NV') {
+      const parentRow = await client.query(
+        'SELECT sistema FROM public.portones WHERE nv = $1 AND sistema IS NOT NULL ORDER BY id LIMIT 1',
+        [nNv]
+      );
+      if (parentRow.rows[0]?.sistema) {
+        sistemaStr = parentRow.rows[0].sistema;
+      }
+    }
+
+    // Fechas opcionales (ISO yyyy-mm-dd). Si no son válidas, se guardan como null.
 	    const date10OrNull = (v) => {
 	      const s = String(v ?? '').trim();
 	      if (!s) return null;
