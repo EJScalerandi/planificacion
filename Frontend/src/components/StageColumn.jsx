@@ -829,6 +829,20 @@ function AnexoDetailModal({ open, onClose, item }) {
   );
 }
 
+function PreObsModal({ open, onClose, item }) {
+  if (!open || !item) return null;
+  const obs = String(item?.observacion_imput || '').trim();
+  const nv = item?.nv != null ? `NV ${item.nv}` : '';
+  const nlista = item?.nlista != null ? `Portón ${item.nlista}` : '';
+  return (
+    <ShellModal open={open} onClose={onClose} title={`Observación · ${[nv, nlista].filter(Boolean).join(' · ')}`} headerBg="#f0fdf4" borderColor="#86efac" width="min(560px, 100%)">
+      <div style={{ padding: 16, fontSize: 14, whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
+        {obs || <span style={{ opacity: 0.5 }}>Sin observaciones.</span>}
+      </div>
+    </ShellModal>
+  );
+}
+
 export default function StageColumn({
   title,
   stageKey,
@@ -852,6 +866,8 @@ export default function StageColumn({
   const [portonHistOpen, setPortonHistOpen] = useState(false);
   const [datosOpen, setDatosOpen] = useState(false);
   const [datosTarget, setDatosTarget] = useState(null);
+  const [preObsOpen, setPreObsOpen] = useState(false);
+  const [preObsTarget, setPreObsTarget] = useState(null);
   const [anexoOpen, setAnexoOpen] = useState(false);
   const [anexoTarget, setAnexoTarget] = useState(null);
 
@@ -1060,6 +1076,18 @@ export default function StageColumn({
                     </button>
                   ) : null}
 
+                  {String(p?.observacion_imput || '').trim() ? (
+                    <button
+                      className="btn"
+                      type="button"
+                      onClick={() => { setPreObsTarget(p); setPreObsOpen(true); }}
+                      style={{ fontWeight: 900, background: '#16a34a', color: '#fff', borderColor: '#15803d' }}
+                      title="Ver observación de preproducción"
+                    >
+                      OBS
+                    </button>
+                  ) : null}
+
                   {isLaserColumn ? (
                     <button className="btn" type="button" onClick={() => { setDatosTarget(p); setDatosOpen(true); }} style={{ fontWeight: 900 }} title="Ver datos del sector Laser">Datos</button>
                   ) : null}
@@ -1097,6 +1125,7 @@ export default function StageColumn({
       <PortonHistoryModal open={portonHistOpen} onClose={() => setPortonHistOpen(false)} title={title} effKey={String(effKey || '').trim()} items={allItems} />
       <DatosModal open={datosOpen} onClose={() => { setDatosOpen(false); setDatosTarget(null); }} item={datosTarget} title={title} />
       <AnexoDetailModal open={anexoOpen} onClose={() => { setAnexoOpen(false); setAnexoTarget(null); }} item={anexoTarget} />
+      <PreObsModal open={preObsOpen} onClose={() => { setPreObsOpen(false); setPreObsTarget(null); }} item={preObsTarget} />
       <QcModal open={qcOpen} onClose={() => { setQcOpen(false); setQcTarget(null); setQcForceComplete(false); }} item={qcTarget} line={line} stageKey={effKey} title={title} onSaved={() => onQcSaved?.()} forceComplete={qcForceComplete} />
       <AdminAccionesModal open={adminAccionesOpen} onClose={() => { setAdminAccionesOpen(false); setAdminAccionesTarget(null); }} title={title} item={adminAccionesTarget} />
       <ObservacionesModal open={obsOpen} onClose={() => { setObsOpen(false); setObsTarget(null); }} title={title} item={obsTarget} line={line} />
