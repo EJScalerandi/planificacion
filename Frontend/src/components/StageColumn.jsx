@@ -1010,8 +1010,8 @@ export default function StageColumn({
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontWeight: 900 }}>{getNvLabel(p)}</span>
                   {isDespachoColumn ? (() => {
-                    const phone = String(p?.contact_phone ?? '').trim().replace(/\D/g, '');
-                    const mapsUrl = String(p?.contact_maps_url ?? '').trim();
+                    const phone = String(p?.pq_phone ?? p?.cliente_telefono ?? '').trim().replace(/\D/g, '');
+                    const mapsUrl = String(p?.pq_maps_url ?? p?.cliente_maps_url ?? p?.logistica_maps_url ?? '').trim();
                     return (
                       <>
                         {phone ? (

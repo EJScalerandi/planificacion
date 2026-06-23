@@ -32,6 +32,7 @@ router.get('/preproduccion-valores', async (_req, res) => {
       select
         pv.id,
         pv.nv,
+        pv.nv_tipo,
         coalesce(pv.data, '{}'::jsonb)
           || jsonb_strip_nulls(jsonb_build_object(
                'pq_phone',          pqb.phone,
@@ -116,6 +117,46 @@ router.put('/preproduccion-valores/:id', async (req, res) => {
   } catch (err) {
     console.error('preproduccion-valores put error:', err);
     return res.status(500).json({ error: 'Error actualizando preproduccion_valores', detail: err.message });
+  }
+});
+
+// GET /preproduccion-valores/:nv/nv-lines?tipo=ONV
+router.get('/preproduccion-valores/:nv/nv-lines', async (req, res) => {
+  const nv = Number(req.params.nv);
+  if (!Number.isInteger(nv) || nv <= 0) {
+    return res.status(400).json({ error: 'nv debe ser un entero positivo' });
+  }
+  const tipo = String(req.query.tipo || 'NV').trim().toUpperCase() || 'NV';
+  try {
+    const { rows } = await pool.query(
+      `SELECT pv.nv, pv.nv_tipo, pv.nv_lines, pv.data,
+              q.end_customer->>'name'     AS nombre,
+              q.end_customer->>'address'  AS direccion,
+              q.end_customer->>'locality' AS localidad,
+              q.note
+       FROM public.preproduccion_valores pv
+       LEFT JOIN public.presupuestador_quotes q
+         ON q.odoo_sale_order_name = 'NV' || pv.nv::text
+       WHERE pv.nv = $1 AND pv.nv_tipo = $2
+       LIMIT 1`,
+      [nv, tipo]
+    );
+    res.setHeader('Cache-Control', 'no-store');
+    if (!rows.length) return res.json({ found: false });
+    const r = rows[0];
+    return res.json({
+      found: true,
+      nv: r.nv,
+      nv_tipo: r.nv_tipo,
+      nv_lines: r.nv_lines || [],
+      nombre: r.nombre || '',
+      direccion: r.direccion || '',
+      localidad: r.localidad || '',
+      note: r.note || '',
+    });
+  } catch (err) {
+    console.error('nv-lines get error:', err);
+    return res.status(500).json({ error: 'Error leyendo nv-lines', detail: err.message });
   }
 });
 
