@@ -353,6 +353,8 @@ function getPdfFieldDefs() {
 // =====================
 // Remito PDF
 // =====================
+const REMITOS_API = 'https://remitos.onrender.com/api';
+
 async function openRemitoPdf(row) {
   const d = row?.data || {};
   const nvNum = Number(row?.nv ?? getAny(d, ['NV', 'nv']));
@@ -361,9 +363,22 @@ async function openRemitoPdf(row) {
     return;
   }
   try {
-    const response = await fetch(`https://presupuestador-kdbl.onrender.com/api/pdf/remito/nv/${nvNum}`, { signal: AbortSignal.timeout(30000) });
-    if (!response.ok) throw new Error(`Error ${response.status}`);
-    const blob = await response.blob();
+    // 1. Buscar remito por NV (con fallback a Supabase para ONV/PLNV/PNV)
+    const searchRes = await fetch(`${REMITOS_API}/remitos/search-by-nv?nv=${nvNum}`, { signal: AbortSignal.timeout(30000) });
+    if (!searchRes.ok) {
+      const body = await searchRes.json().catch(() => ({}));
+      throw new Error(body?.error || `Error ${searchRes.status} buscando remito`);
+    }
+    const searchData = await searchRes.json();
+    const item = searchData?.items?.[0];
+    if (!item) throw new Error('La NV no tiene remito aún.');
+
+    const { tipo, sucursal, numero } = item;
+
+    // 2. Descargar PDF
+    const pdfRes = await fetch(`${REMITOS_API}/remitos/${tipo}/${sucursal}/${numero}/pdf`, { signal: AbortSignal.timeout(30000) });
+    if (!pdfRes.ok) throw new Error(`Error ${pdfRes.status} generando PDF`);
+    const blob = await pdfRes.blob();
     const blobUrl = URL.createObjectURL(blob);
     const w = window.open(blobUrl, '_blank');
     if (!w) {
@@ -377,7 +392,7 @@ async function openRemitoPdf(row) {
     setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
   } catch (err) {
     console.error('Error generando remito:', err);
-    alert('Error generando el remito. Intente de nuevo.');
+    alert(`Error generando el remito: ${err.message}`);
   }
 }
 
