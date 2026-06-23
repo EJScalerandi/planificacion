@@ -108,21 +108,27 @@ function getProdDate10(item) {
   return toISODate10(raw);
 }
 function getSalidaDate10(item) {
+  // fecha_salida_imput (editada en /a) tiene prioridad sobre fecha_plan_entrega (fijada al crear)
   const raw =
+    item?.fecha_salida_imput ??
+    item?.Fecha_Salida_Imput ??
+    item?.fecha_entrega_imput ??
+    item?.Fecha_Entrega_Imput ??
     item?.fecha_plan_entrega ??
     item?.Fecha_Plan_Entrega ??
     item?.fecha_plan ??
     item?.Fecha_Plan ??
-    item?.fecha_salida_imput ??
-    item?.Fecha_Salida_Imput ??
     item?.fecha_salida ??
     item?.Fecha_Salida ??
-    item?.fecha_entrega_imput ??
-    item?.Fecha_Entrega_Imput ??
     item?.fecha_entrega ??
     item?.Fecha_Entrega ??
     null;
   return toISODate10(raw);
+}
+function isFechaEntregaActualizada(item) {
+  const fromImput = toISODate10(item?.fecha_salida_imput ?? item?.Fecha_Salida_Imput ?? null);
+  const fromPlan = toISODate10(item?.fecha_plan_entrega ?? item?.Fecha_Plan_Entrega ?? null);
+  return !!(fromImput && fromPlan && fromImput !== fromPlan);
 }
 function isClienteEnRegla(item) {
   return isTruthySi(item?.admin_cliente_en_regla);
@@ -1050,6 +1056,11 @@ export default function StageColumn({
                   ) : (
                     <>Producción: <b>{getProdWeekLabel(p)}</b></>
                   )}
+                  {isFechaEntregaActualizada(p) ? (
+                    <span style={{ marginLeft: 6, fontSize: 11, background: '#dcfce7', color: '#15803d', border: '1px solid #86efac', borderRadius: 4, padding: '1px 5px', fontWeight: 700 }}>
+                      Fecha actualizada
+                    </span>
+                  ) : null}
                 </div>
                 {isDespachoColumn ? (
                   <div style={{ fontSize: 12, opacity: 0.85 }}>
