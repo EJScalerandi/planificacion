@@ -34,7 +34,7 @@ const PORTON_STAGE_KEYS_ORDER = [
 // No usar p.* porque public.portones todavía tiene columnas de etapa con default Pendiente.
 // Eso rompe el workflow porque hace que “aparezca en todos lados”.
 const PORTON_BASE_COLS_SQL = `
-  p.id, p.nv, p.nv_tipo, p.nlista, p.partida,
+  p.id, p.nv, p.nlista, p.partida,
   p.fecha_plan, p.fecha_prod, p.fecha_nv, p.fecha_med, p.fecha_plan_entrega,
   p.observaciones,
   p.sistema,
