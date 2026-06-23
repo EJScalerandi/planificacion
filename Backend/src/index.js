@@ -1160,6 +1160,10 @@ app.get('/portones', async (_req, res) => {
       select
         p.*,
 
+        -- ====== CONTACTO (desde preproduccion_valores) ======
+        coalesce(max(pv.data->>'pq_phone'), max(pv.data->>'cliente_telefono')) as contact_phone,
+        coalesce(max(pv.data->>'pq_maps_url'), max(pv.data->>'cliente_maps_url'), max(pv.data->>'logistica_maps_url')) as contact_maps_url,
+
         -- ====== ESTADOS ======
         max(case when e.etapa = 'diseno'::public.porton_etapa then e.estado end) as diseno,
         max(case when e.etapa = 'laser'::public.porton_etapa then e.estado end) as laser,
@@ -1228,6 +1232,8 @@ app.get('/portones', async (_req, res) => {
         on e.porton_id = p.id
       left join public.porton_etapas_tiempos t
         on t.porton_id = p.id
+      left join public.preproduccion_valores pv
+        on pv.nv = p.nv and pv.nv_tipo = 'NV'
       group by p.id
       order by p.nv asc;
       `
@@ -1243,11 +1249,12 @@ app.get('/portones', async (_req, res) => {
 // POST /portones -> crea base y devuelve shape completo (asumiendo trigger crea etapas)
 app.post('/portones', async (req, res) => {
   try {
-    const { nv, nlista, partida: bodyPartida, npartida } = req.body || {};
+    const { nv, nlista, partida: bodyPartida, npartida, nv_tipo: bodyNvTipo } = req.body || {};
 
     const nNv = Number(nv);
     const nNl = Number(nlista);
     const nPa = Number(bodyPartida ?? npartida);
+    const nvTipo = String(bodyNvTipo || 'NV').trim().toUpperCase() || 'NV';
 
     if (![nNv, nNl, nPa].every(Number.isInteger)) {
       return res.status(400).json({ error: 'nv, nlista y partida/npartida deben ser enteros' });
@@ -1263,11 +1270,11 @@ app.post('/portones', async (req, res) => {
 
     const ins = await pool.query(
       `
-      insert into public.portones (nv, nlista, partida)
-      values ($1, $2, $3)
+      insert into public.portones (nv, nlista, partida, nv_tipo)
+      values ($1, $2, $3, $4)
       returning id;
       `,
-      [nNv, nNl, nPa]
+      [nNv, nNl, nPa, nvTipo]
     );
 
     const id = ins.rows[0]?.id;
@@ -1779,7 +1786,7 @@ app.get('/preproduccion-valores', async (_req, res) => {
   try {
     const { rows } = await pool.query(
       `
-      select id, nv, data, nv_lines, updated_at
+      select id, nv, nv_tipo, data, nv_lines, updated_at
       from public.preproduccion_valores
       order by coalesce(nv, 0) asc, id asc;
       `
@@ -1883,6 +1890,47 @@ app.get('/pdf/remito/:nv', async (req, res) => {
   } catch (err) {
     console.error('pdf remito proxy error:', err);
     return res.status(500).json({ error: 'Error generando remito', detail: err.message });
+  }
+});
+
+// GET /preproduccion-valores/:nv/nv-lines?tipo=ONV
+// Devuelve nv_lines y datos básicos de un NV+tipo desde preproduccion_valores
+app.get('/preproduccion-valores/:nv/nv-lines', async (req, res) => {
+  const nv = Number(req.params.nv);
+  if (!Number.isInteger(nv) || nv <= 0) {
+    return res.status(400).json({ error: 'nv debe ser un entero positivo' });
+  }
+  const tipo = String(req.query.tipo || 'NV').trim().toUpperCase() || 'NV';
+  try {
+    const { rows } = await pool.query(
+      `SELECT pv.nv, pv.nv_tipo, pv.nv_lines, pv.data,
+              q.end_customer->>'name'    AS nombre,
+              q.end_customer->>'address' AS direccion,
+              q.end_customer->>'locality' AS localidad,
+              q.note
+       FROM public.preproduccion_valores pv
+       LEFT JOIN public.presupuestador_quotes q
+         ON q.odoo_sale_order_name = 'NV' || pv.nv::text
+       WHERE pv.nv = $1 AND pv.nv_tipo = $2
+       LIMIT 1`,
+      [nv, tipo]
+    );
+    res.setHeader('Cache-Control', 'no-store');
+    if (!rows.length) return res.json({ found: false });
+    const r = rows[0];
+    return res.json({
+      found: true,
+      nv: r.nv,
+      nv_tipo: r.nv_tipo,
+      nv_lines: r.nv_lines || [],
+      nombre: r.nombre || '',
+      direccion: r.direccion || '',
+      localidad: r.localidad || '',
+      note: r.note || '',
+    });
+  } catch (err) {
+    console.error('nv-lines get error:', err);
+    return res.status(500).json({ error: 'Error leyendo nv-lines', detail: err.message });
   }
 });
 

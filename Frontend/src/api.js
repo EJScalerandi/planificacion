@@ -223,6 +223,8 @@ export const getDespacharBases = () => api.get('/despachar/bases');
 export const fetchPreproduccionValores = () => api.get('/preproduccion-valores');
 export const updatePreproduccionValor = (id, patch) => api.put(`/preproduccion-valores/${id}`, { patch });
 export const fetchNvQuoteLines = (nv) => api.get(`/preproduccion-valores/${nv}/quote-lines`);
+export const fetchNvLines = (nv, tipo = 'NV') =>
+  api.get(`/preproduccion-valores/${nv}/nv-lines`, { params: { tipo } });
 
 // --------------------
 // ADMIN USERS / SCOPES

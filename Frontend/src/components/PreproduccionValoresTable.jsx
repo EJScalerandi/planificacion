@@ -1,4 +1,4 @@
-// src/components/PreproduccionValoresTable.jsx
+﻿// src/components/PreproduccionValoresTable.jsx
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import {
   fetchPreproduccionValores,
@@ -970,6 +970,7 @@ export default function PreproduccionValoresTable() {
                   partida: Number.isInteger(partida) ? partida : 800,
                   fecha_prod: fecha10 || null,
                   sistema: sistemaStr,
+                  nv_tipo: updated?.nv_tipo || 'NV',
                 };
 
                 const cr = await createPorton(payload);
@@ -1326,6 +1327,7 @@ export default function PreproduccionValoresTable() {
             fecha_nv: dateOrNull(getAny(d, ['Fecha_NV', 'fecha_nv', 'Fecha_Venta', 'fecha_venta'])),
             fecha_med: dateOrNull(d.fecha_medicion_imput ?? d.Fecha_Medicion_Imput ?? null),
             sistema: sistemaStr,
+            nv_tipo: row?.nv_tipo || 'NV',
           };
 
           const cr = await createPorton(payload);
@@ -1879,10 +1881,10 @@ export default function PreproduccionValoresTable() {
   };
 
   return (
-    <div style={{ padding: 16 }}>
-      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 12 }}>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
-          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800 }}>
+    <div className="pp-page">
+      <div className="pp-card">
+        <div className="pp-headerRow">
+          <h2 className="pp-title">
             Preproducción {accessMode === 'limited' ? <span style={{ fontSize: 12, fontWeight: 700 }}>(Vista)</span> : null}
             {accessMode === 'admin' ? (
               <span style={{ fontSize: 12, fontWeight: 700 }}>(Administración)</span>
@@ -1905,41 +1907,26 @@ export default function PreproduccionValoresTable() {
           ) : null}
 
           {accessMode === 'full' && portonesIndexState === 'error' ? (
-            <div style={{ background: '#fff5f5', border: '1px solid #fecaca', padding: 8, borderRadius: 10 }}>
-              No se pudo cargar <b>Portones</b>. El estado “Enviado” puede ser incorrecto hasta recargar.
+            <div className="pp-warnInline">
+              No se pudo cargar <b>Portones</b>. El estado "Enviado" puede ser incorrecto hasta recargar.
             </div>
           ) : null}
 
           {accessMode === 'full' && blockedNvState === 'error' ? (
-            <div style={{ background: '#fff5f5', border: '1px solid #fecaca', padding: 8, borderRadius: 10 }}>
+            <div className="pp-warnInline">
               No se pudo cargar <b>blocked_nvs.txt</b>. No se aplicaron exclusiones por NV.
             </div>
           ) : null}
 
           {/* Panel Columnas (solo full) */}
           {accessMode === 'full' ? (
-            <div style={{ position: 'relative' }} ref={colsPanelRef}>
+            <div className="pp-panelWrap" ref={colsPanelRef}>
               <button onClick={() => setShowColsPanel((p) => !p)} className="btn" disabled={loading}>
                 Columnas
               </button>
 
               {showColsPanel ? (
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: 40,
-                    left: 0,
-                    width: 380,
-                    maxHeight: 460,
-                    overflow: 'auto',
-                    background: '#fff',
-                    border: '1px solid #e5e7eb',
-                    borderRadius: 12,
-                    boxShadow: '0 8px 24px rgba(0,0,0,0.08)',
-                    padding: 10,
-                    zIndex: 5,
-                  }}
-                >
+                <div className="pp-panel">
                   <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 8 }}>Mostrar/Ocultar columnas (Tabla)</div>
                   <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
                     <button className="btn" onClick={() => toggleAllCols(true)}>
@@ -2086,17 +2073,7 @@ export default function PreproduccionValoresTable() {
         </div>
 
         {err ? (
-          <div
-            style={{
-              background: '#fff5f5',
-              border: '1px solid #fecaca',
-              padding: 10,
-              borderRadius: 10,
-              marginBottom: 10,
-              color: '#7f1d1d',
-              fontSize: 12,
-            }}
-          >
+          <div className="pp-errorBox" style={{ marginBottom: 10 }}>
             <b>Error:</b> {err}
           </div>
         ) : null}
@@ -2181,17 +2158,7 @@ export default function PreproduccionValoresTable() {
                 {pagedRows.map((row) => (
                   <tr key={row.id}>
                     {visibleColsList.map((col) => (
-                      <td
-                        key={`${row.id}_${col.id}`}
-                        style={{
-                          borderBottom: '1px solid #f0f0f0',
-                          padding: 8,
-                          fontSize: 12,
-                          whiteSpace: 'nowrap',
-                          verticalAlign: 'top',
-                          color: '#111827',
-                        }}
-                      >
+                      <td key={`${row.id}_${col.id}`}>
                         {renderCell(row, col)}
                       </td>
                     ))}
@@ -2251,7 +2218,7 @@ export default function PreproduccionValoresTable() {
 
         <div style={{ marginTop: 8, fontSize: 11, color: '#6b7280' }}>
           Fechas: podés usar <b>Desde/Hasta</b> (intervalo), y/o <b>Con fecha</b>, y/o <b>Sin fecha</b>. Si combinás
-          intervalo + “Sin fecha” trae <i>intervalo OR sin fecha</i>.
+          intervalo + "Sin fecha" trae <i>intervalo OR sin fecha</i>.
         </div>
       </div>
 
