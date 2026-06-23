@@ -353,6 +353,8 @@ function getPdfFieldDefs() {
 // =====================
 // Remito PDF
 // =====================
+const REMITOS_API = 'https://remitos.onrender.com/api';
+
 async function openRemitoPdf(row) {
   const d = row?.data || {};
   const nvNum = Number(row?.nv ?? getAny(d, ['NV', 'nv']));
@@ -360,10 +362,9 @@ async function openRemitoPdf(row) {
     alert('No se encontró el número de NV');
     return;
   }
-  const API_BASE = (import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE || '').replace(/\/+$/, '');
   try {
-    // 1. Buscar remito por NV via proxy (evita CORS)
-    const searchRes = await fetch(`${API_BASE}/remitos-proxy/search-by-nv?nv=${nvNum}`, { signal: AbortSignal.timeout(30000) });
+    // 1. Buscar remito por NV (con fallback a Supabase para ONV/PLNV/PNV)
+    const searchRes = await fetch(`${REMITOS_API}/remitos/search-by-nv?nv=${nvNum}`, { signal: AbortSignal.timeout(30000) });
     if (!searchRes.ok) {
       const body = await searchRes.json().catch(() => ({}));
       throw new Error(body?.error || `Error ${searchRes.status} buscando remito`);
@@ -374,8 +375,8 @@ async function openRemitoPdf(row) {
 
     const { tipo, sucursal, numero } = item;
 
-    // 2. Descargar PDF via proxy
-    const pdfRes = await fetch(`${API_BASE}/remitos-proxy/${tipo}/${sucursal}/${numero}/pdf`, { signal: AbortSignal.timeout(30000) });
+    // 2. Descargar PDF
+    const pdfRes = await fetch(`${REMITOS_API}/remitos/${tipo}/${sucursal}/${numero}/pdf`, { signal: AbortSignal.timeout(30000) });
     if (!pdfRes.ok) {
       const body = await pdfRes.json().catch(() => ({}));
       throw new Error(body?.error || `Error ${pdfRes.status} generando PDF`);
