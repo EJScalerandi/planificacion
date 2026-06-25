@@ -58,7 +58,7 @@ function Modal({ open, onClose, title, children, width = 'min(680px,100%)' }) {
 function RefabricacionModal({ open, onClose, porton, onCreated }) {
   const [fechaProd, setFechaProd] = useState(todayISO());
   const [detalle, setDetalle] = useState('');
-  const [etapasCompletadas, setEtapasCompletadas] = useState([]);
+  const [etapasARealizar, setEtapasARealizar] = useState([]);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
 
@@ -66,13 +66,13 @@ function RefabricacionModal({ open, onClose, porton, onCreated }) {
     if (!open) return;
     setFechaProd(todayISO());
     setDetalle('');
-    setEtapasCompletadas([]);
+    setEtapasARealizar([]);
     setErr('');
     setSaving(false);
   }, [open, porton?.id]);
 
   const toggleEtapa = (key) => {
-    setEtapasCompletadas((prev) =>
+    setEtapasARealizar((prev) =>
       prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
     );
   };
@@ -81,13 +81,14 @@ function RefabricacionModal({ open, onClose, porton, onCreated }) {
     e?.preventDefault?.();
     setErr('');
     if (!porton?.id) { setErr('Portón inválido'); return; }
+    if (etapasARealizar.length === 0) { setErr('Seleccioná al menos una sección a fabricar'); return; }
     try {
       setSaving(true);
       await crearRefabricacion({
         parent_id: porton.id,
         fecha_prod: fechaProd || null,
         detalle_refabricacion: detalle.trim() || null,
-        etapas_completadas: etapasCompletadas,
+        etapas_a_realizar: etapasARealizar,
       });
       alert(`Refabricación creada para NV ${porton.nv} · Portón ${porton.nlista}`);
       onCreated?.();
@@ -135,18 +136,21 @@ function RefabricacionModal({ open, onClose, porton, onCreated }) {
         </label>
 
         <div>
-          <div style={{ fontWeight: 800, marginBottom: 8 }}>Secciones ya completadas (marcar las que no hay que repetir)</div>
+          <div style={{ fontWeight: 800, marginBottom: 4 }}>Secciones a fabricar (marcá las que sí deben producirse)</div>
+          <div style={{ fontSize: 12, opacity: 0.65, marginBottom: 8 }}>
+            Las marcadas quedan como Pendiente en el flujo; el resto se da por finalizado.
+          </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {ETAPAS.map((e) => {
-              const checked = etapasCompletadas.includes(e.key);
+              const checked = etapasARealizar.includes(e.key);
               return (
                 <label
                   key={e.key}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
-                    border: checked ? '2px solid #16a34a' : '1px solid #d1d5db',
+                    border: checked ? '2px solid #dc2626' : '1px solid #d1d5db',
                     borderRadius: 8, padding: '5px 10px',
-                    background: checked ? '#f0fdf4' : '#fff',
+                    background: checked ? '#fff5f5' : '#fff',
                     fontWeight: checked ? 800 : 500,
                     fontSize: 13,
                   }}
@@ -155,18 +159,13 @@ function RefabricacionModal({ open, onClose, porton, onCreated }) {
                     type="checkbox"
                     checked={checked}
                     onChange={() => toggleEtapa(e.key)}
-                    style={{ accentColor: '#16a34a' }}
+                    style={{ accentColor: '#dc2626' }}
                   />
                   {e.label}
                 </label>
               );
             })}
           </div>
-          {etapasCompletadas.length === 0 && (
-            <div style={{ fontSize: 12, opacity: 0.6, marginTop: 6 }}>
-              Sin secciones marcadas → la refabricación arranca desde el inicio del flujo.
-            </div>
-          )}
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
@@ -208,7 +207,7 @@ function PortonCard({ porton, tipo, onRefabricar, onAprobar }) {
         </div>
         {isAprobado && (
           <span style={{ fontSize: 11, fontWeight: 900, background: '#16a34a', color: '#fff', borderRadius: 4, padding: '2px 6px' }}>
-            Aprobado ✓
+            Aprobado ✓ {porton.revision_ok_at ? fmt(porton.revision_ok_at) : ''}
           </span>
         )}
       </div>
@@ -231,6 +230,12 @@ function PortonCard({ porton, tipo, onRefabricar, onAprobar }) {
       {porton.ultimo_qc_note && (
         <div style={{ fontSize: 12, background: 'rgba(0,0,0,0.04)', borderRadius: 6, padding: '4px 8px' }}>
           <b>Nota:</b> {porton.ultimo_qc_note}
+        </div>
+      )}
+
+      {porton.etapas_en_proceso && (
+        <div style={{ fontSize: 12, fontWeight: 700, color: '#1d4ed8' }}>
+          En proceso: <b>{porton.etapas_en_proceso}</b>
         </div>
       )}
 

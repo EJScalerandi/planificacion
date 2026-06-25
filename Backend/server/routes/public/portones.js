@@ -42,6 +42,7 @@ const PORTON_BASE_COLS_SQL = `
   p.tipo,
   p.parent_id,
   p.revision_ok,
+  p.revision_ok_at,
   p.detalle_refabricacion,
   pv.data as preprod_data
 `;

@@ -81,6 +81,7 @@ router.get('/refabricacion/pendientes', async (_req, res) => {
         p.tipo,
         p.parent_id,
         p.revision_ok,
+        p.revision_ok_at,
         p.detalle_refabricacion,
         p.fecha_prod,
         p.fecha_plan,
@@ -93,7 +94,12 @@ router.get('/refabricacion/pendientes', async (_req, res) => {
         uq.motive_id    as ultimo_qc_motive_id,
         m.label         as ultimo_qc_motive_label,
         u.name          as ultimo_qc_usuario,
-        pd.despacho_estado
+        pd.despacho_estado,
+        (
+          select string_agg(etapa::text, ', ' order by etapa)
+          from public.porton_etapas_estado
+          where porton_id = p.id and estado = 'En Proceso'
+        ) as etapas_en_proceso
       from public.portones p
       inner join ultimo_qc uq on uq.item_id = p.nv
       left join public.qc_motive m on m.id = uq.motive_id
@@ -122,11 +128,12 @@ router.get('/refabricacion/pendientes', async (_req, res) => {
 //   parent_id: number,
 //   fecha_prod: 'YYYY-MM-DD',
 //   detalle_refabricacion: string,
-//   etapas_completadas: string[]   // status_col keys ya hechos
+//   etapas_a_realizar: string[]   // status_col keys que el usuario debe fabricar (→ PENDIENTE)
 // }
+// El resto de etapas del portón padre quedan como FINALIZADO.
 // =============================================================
 router.post('/refabricacion', async (req, res) => {
-  const { parent_id, fecha_prod, detalle_refabricacion, etapas_completadas } = req.body || {};
+  const { parent_id, fecha_prod, detalle_refabricacion, etapas_a_realizar } = req.body || {};
 
   const nParentId = Number(parent_id);
   if (!Number.isInteger(nParentId)) {
@@ -138,9 +145,10 @@ router.post('/refabricacion', async (req, res) => {
     return res.status(400).json({ error: 'fecha_prod debe ser YYYY-MM-DD o vacío' });
   }
 
-  const etapas = Array.isArray(etapas_completadas)
-    ? etapas_completadas.map(String).filter(e => PORTON_ETAPAS.has(e) && e !== 'despacho')
+  const etapasARealizar = Array.isArray(etapas_a_realizar)
+    ? etapas_a_realizar.map(String).filter(e => PORTON_ETAPAS.has(e) && e !== 'despacho')
     : [];
+  const etapasARealiarSet = new Set(etapasARealizar);
 
   const detalle = String(detalle_refabricacion || '').trim() || null;
 
@@ -159,7 +167,7 @@ router.post('/refabricacion', async (req, res) => {
     }
     const parent = parentQ.rows[0];
 
-    // Insertar la refabricación (se permite mismo nv+nlista que el padre)
+    // Insertar la refabricación
     const ins = await client.query(
       `insert into public.portones (
         nv, nlista, partida, sistema,
@@ -175,61 +183,40 @@ router.post('/refabricacion', async (req, res) => {
     );
     const newId = ins.rows[0].id;
 
-    const completedSet = new Set(etapas);
     const now = new Date().toISOString();
 
-    // Insertar etapas completadas como FINALIZADO
-    if (etapas.length > 0) {
+    // Obtener etapas reales del portón padre (evita insertar etapas fantasma)
+    const parentStagesQ = await client.query(
+      `select etapa::text as etapa
+       from public.porton_etapas_estado
+       where porton_id = $1 and etapa::text != 'despacho'`,
+      [nParentId]
+    );
+    const parentStageCols = parentStagesQ.rows.map(r => r.etapa);
+    const parentStageSet = new Set(parentStageCols);
+
+    // Etapas a finalizar = etapas del padre que el usuario NO va a rehacer
+    const etapasAFinalizar = parentStageCols.filter(e => !etapasARealiarSet.has(e));
+
+    if (etapasAFinalizar.length > 0) {
       await client.query(
         `insert into public.porton_etapas_estado(porton_id, etapa, estado)
          select $1, x::public.porton_etapa, $2
          from unnest($3::text[]) as x
          on conflict (porton_id, etapa) do nothing`,
-        [newId, STATUS.FINALIZADO, etapas]
+        [newId, STATUS.FINALIZADO, etapasAFinalizar]
       );
-      // Registrar tiempos para que el workflow los reconozca
       await client.query(
         `insert into public.porton_etapas_tiempos(porton_id, etapa, inicio, fin)
          select $1, x::public.porton_etapa, $2, $2
          from unnest($3::text[]) as x
          on conflict (porton_id, etapa) do nothing`,
-        [newId, now, etapas]
+        [newId, now, etapasAFinalizar]
       );
     }
 
-    // Construir shape con secciones completadas para evaluar condiciones del workflow
-    const shape = await getPortonShapeById(client, newId);
-
-    // BFS por el workflow desde 'inicio' para determinar qué etapas activar (PENDIENTE)
-    const stageMap = await loadStageMap('portones');
-    const pendienteSet = new Set();
-    const visitedKeys = new Set(['inicio']);
-    const queue = ['inicio'];
-
-    while (queue.length > 0) {
-      const currentKey = queue.shift();
-      const nextKeys = await getNextStages('portones', currentKey, shape || {});
-
-      for (const nk of nextKeys || []) {
-        const ns = stageMap.get(nk);
-        if (!ns || !ns.enabled) continue;
-        const col = String(ns.status_col || '').trim();
-        if (!col || !PORTON_ETAPAS.has(col) || col === 'despacho') continue;
-
-        if (completedSet.has(col)) {
-          // Ya completada → continuar traversal desde esta stage key
-          if (!visitedKeys.has(nk)) {
-            visitedKeys.add(nk);
-            queue.push(nk);
-          }
-        } else {
-          pendienteSet.add(col);
-          // No expandir desde stages no completadas (el operador debe hacerlas)
-        }
-      }
-    }
-
-    const pendienteCols = Array.from(pendienteSet);
+    // Etapas a realizar = seleccionadas por el usuario (filtradas a las del padre)
+    const pendienteCols = etapasARealizar.filter(e => parentStageSet.has(e));
     if (pendienteCols.length > 0) {
       await client.query(
         `insert into public.porton_etapas_estado(porton_id, etapa, estado)
@@ -240,8 +227,10 @@ router.post('/refabricacion', async (req, res) => {
       );
     }
 
-    // Fallback: si no se determinó ninguna etapa inicial, usar las del workflow desde inicio
-    if (pendienteCols.length === 0 && etapas.length === 0) {
+    // Fallback: si el padre no tenía etapas registradas, arrancar desde el inicio del workflow
+    if (parentStageSet.size === 0) {
+      const shape = await getPortonShapeById(client, newId);
+      const stageMap = await loadStageMap('portones');
       const initNextKeys = await getNextStages('portones', 'inicio', shape || {});
       const initCols = [];
       for (const nk of initNextKeys || []) {
@@ -312,9 +301,9 @@ router.post('/portones/:id/revision-ok', async (req, res) => {
       return res.status(409).json({ error: 'armado_final debe estar Finalizado antes de aprobar' });
     }
 
-    // Marcar revision_ok = true
+    // Marcar revision_ok = true y guardar timestamp de aprobación
     await client.query(
-      `update public.portones set revision_ok = true where id = $1`,
+      `update public.portones set revision_ok = true, revision_ok_at = now() where id = $1`,
       [nId]
     );
 

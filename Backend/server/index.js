@@ -29,6 +29,13 @@ const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_portones_tipo ON public.portones(tipo);
     `,
   },
+  {
+    name: 'refabricacion_revision_ok_at',
+    sql: `
+      ALTER TABLE public.portones
+        ADD COLUMN IF NOT EXISTS revision_ok_at TIMESTAMPTZ;
+    `,
+  },
 ];
 
 async function runMigrations() {
