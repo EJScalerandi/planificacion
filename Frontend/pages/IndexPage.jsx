@@ -114,6 +114,14 @@ export default function IndexPage({ routes = [] }) {
     ];
   }, [isPreprodOnly, isQcAdmin, isWfAdmin, routes]);
 
+  const revisionRoutes = useMemo(() => {
+    if (isPreprodOnly) return [];
+    if (!(isQcAdmin || isWfAdmin)) return [];
+    return [
+      { path: '/refabricacion', label: 'Revisión · Observados / Rechazados / Refabricación' },
+    ];
+  }, [isPreprodOnly, isQcAdmin, isWfAdmin]);
+
   const preprodRoutes = useMemo(() => [
     { path: '/a', label: 'Autorizaciones · Preproducción Portones' },
     { path: '/i', label: 'Autorizaciones · Preproducción iPanels' },
@@ -165,7 +173,7 @@ export default function IndexPage({ routes = [] }) {
     </li>
   );
 
-  const hasAny = publicRoutes.length || adminRoutes.length || opsRoutes.length || infoRoutes.length;
+  const hasAny = publicRoutes.length || adminRoutes.length || opsRoutes.length || revisionRoutes.length || infoRoutes.length;
 
   return (
     <div className="container">
@@ -219,6 +227,19 @@ export default function IndexPage({ routes = [] }) {
                 <span className="idx-pill">Operativo</span>
               </div>
               <div className="idx-section__body"><ul className="idx-links">{opsRoutes.map((r) => <LinkRow key={r.path} r={r} />)}</ul></div>
+            </section>
+          )}
+
+          {revisionRoutes.length > 0 && (
+            <section className="idx-section idx-section--admin" style={{ gridColumn: '1 / -1' }}>
+              <div className="idx-section__head">
+                <div>
+                  <div className="idx-section__title">Revisión</div>
+                  <div className="idx-section__sub">Control de calidad · Observados, rechazados y refabricaciones</div>
+                </div>
+                <span className="idx-pill">Revisión</span>
+              </div>
+              <div className="idx-section__body"><ul className="idx-links">{revisionRoutes.map((r) => <LinkRow key={r.path} r={r} />)}</ul></div>
             </section>
           )}
 
