@@ -60,7 +60,8 @@ router.get('/refabricacion/pendientes', async (_req, res) => {
           stage_key,
           note,
           created_at,
-          motive_id
+          motive_id,
+          by_user_id
         from public.qc_event
         where line = 'portones'
           and qc_status in ('OBSERVADO', 'RECHAZADO')
@@ -91,10 +92,12 @@ router.get('/refabricacion/pendientes', async (_req, res) => {
         uq.created_at   as ultimo_qc_fecha,
         uq.motive_id    as ultimo_qc_motive_id,
         m.label         as ultimo_qc_motive_label,
+        u.name          as ultimo_qc_usuario,
         pd.despacho_estado
       from public.portones p
       inner join ultimo_qc uq on uq.item_id = p.nv
       left join public.qc_motive m on m.id = uq.motive_id
+      left join public.qc_users u on u.id = uq.by_user_id
       left join porton_despacho pd on pd.porton_id = p.id
       where
         -- No mostrar los que ya terminaron despacho

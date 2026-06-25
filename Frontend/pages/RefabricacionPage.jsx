@@ -224,7 +224,8 @@ function PortonCard({ porton, tipo, onRefabricar, onAprobar }) {
       <div style={{ fontSize: 13 }}>
         <b>Motivo:</b> {motivoLabel} &nbsp;·&nbsp;
         <b>Sector:</b> {porton.ultimo_qc_stage || '—'} &nbsp;·&nbsp;
-        <b>Fecha:</b> {fecha}
+        <b>Fecha:</b> {fecha} &nbsp;·&nbsp;
+        <b>Firmado por:</b> {porton.ultimo_qc_usuario || '—'}
       </div>
 
       {porton.ultimo_qc_note && (
