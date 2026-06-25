@@ -17,9 +17,27 @@ const MIGRATIONS = [
     sql: `
       ALTER TABLE public.portones
         ADD COLUMN IF NOT EXISTS tipo TEXT NOT NULL DEFAULT 'normal',
-        ADD COLUMN IF NOT EXISTS parent_id INTEGER REFERENCES public.portones(id),
+        ADD COLUMN IF NOT EXISTS parent_id INTEGER,
         ADD COLUMN IF NOT EXISTS revision_ok BOOLEAN NOT NULL DEFAULT FALSE,
         ADD COLUMN IF NOT EXISTS detalle_refabricacion TEXT;
+    `,
+  },
+  {
+    name: 'refabricacion_fk_and_indexes',
+    sql: `
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.table_constraints
+          WHERE constraint_name = 'portones_parent_id_fkey'
+            AND table_name = 'portones'
+            AND table_schema = 'public'
+        ) THEN
+          ALTER TABLE public.portones
+            ADD CONSTRAINT portones_parent_id_fkey
+            FOREIGN KEY (parent_id) REFERENCES public.portones(id);
+        END IF;
+      END $$;
       CREATE INDEX IF NOT EXISTS idx_portones_parent_id ON public.portones(parent_id);
       CREATE INDEX IF NOT EXISTS idx_portones_tipo ON public.portones(tipo);
     `,
