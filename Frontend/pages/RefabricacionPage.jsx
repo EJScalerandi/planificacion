@@ -1,5 +1,5 @@
 // pages/RefabricacionPage.jsx
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchRefabricacionPendientes, crearRefabricacion, aprobarRevision } from '../src/api';
 
 const ETAPAS = [
@@ -20,9 +20,7 @@ const ETAPAS = [
   { key: 'armado_final',         label: 'Armado final' },
 ];
 
-function pad2(n) {
-  return String(n).padStart(2, '0');
-}
+function pad2(n) { return String(n).padStart(2, '0'); }
 function todayISO() {
   const d = new Date();
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
@@ -54,11 +52,60 @@ function Modal({ open, onClose, title, children, width = 'min(680px,100%)' }) {
   );
 }
 
+// ───── Modal PIN QC (para aprobar despacho) ─────
+function QcPinModal({ open, onClose, onConfirm, title, loading }) {
+  const [pin, setPin] = useState('');
+  const [err, setErr] = useState('');
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (open) { setPin(''); setErr(''); setTimeout(() => inputRef.current?.focus(), 80); }
+  }, [open]);
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!/^\d{3,10}$/.test(pin.trim())) {
+      setErr('PIN inválido: solo números, entre 3 y 10 dígitos');
+      return;
+    }
+    onConfirm(pin.trim());
+  };
+
+  if (!open) return null;
+  return (
+    <Modal open={open} onClose={onClose} title={title || 'Confirmar con PIN QC'} width="min(380px,100%)">
+      <form onSubmit={handleSubmit} style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {err && <div style={{ color: 'crimson', fontWeight: 800 }}>{err}</div>}
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <span style={{ fontWeight: 800 }}>PIN de QC global</span>
+          <input
+            ref={inputRef}
+            type="password"
+            inputMode="numeric"
+            value={pin}
+            onChange={(e) => { setPin(e.target.value); setErr(''); }}
+            placeholder="Ingresá tu PIN"
+            className="btn"
+            style={{ letterSpacing: 4, fontSize: 18 }}
+          />
+        </label>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button type="button" className="btn" onClick={onClose}>Cancelar</button>
+          <button type="submit" className="btn btn--brand" disabled={loading}>
+            {loading ? 'Validando…' : 'Confirmar'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 // ───── Modal crear refabricación ─────
 function RefabricacionModal({ open, onClose, porton, onCreated }) {
   const [fechaProd, setFechaProd] = useState(todayISO());
   const [detalle, setDetalle] = useState('');
   const [etapasARealizar, setEtapasARealizar] = useState([]);
+  const [pin, setPin] = useState('');
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
 
@@ -67,6 +114,7 @@ function RefabricacionModal({ open, onClose, porton, onCreated }) {
     setFechaProd(todayISO());
     setDetalle('');
     setEtapasARealizar([]);
+    setPin('');
     setErr('');
     setSaving(false);
   }, [open, porton?.id]);
@@ -80,12 +128,14 @@ function RefabricacionModal({ open, onClose, porton, onCreated }) {
   const handleSubmit = async (e) => {
     e?.preventDefault?.();
     setErr('');
-    if (!porton?.id) { setErr('Portón inválido'); return; }
+    if (!porton?.nv) { setErr('Portón inválido'); return; }
     if (etapasARealizar.length === 0) { setErr('Seleccioná al menos una sección a fabricar'); return; }
+    if (!/^\d{3,10}$/.test(pin.trim())) { setErr('PIN inválido (solo números, 3-10 dígitos)'); return; }
     try {
       setSaving(true);
       await crearRefabricacion({
-        parent_id: porton.id,
+        parent_nv: porton.nv,
+        pin: pin.trim(),
         fecha_prod: fechaProd || null,
         detalle_refabricacion: detalle.trim() || null,
         etapas_a_realizar: etapasARealizar,
@@ -167,6 +217,19 @@ function RefabricacionModal({ open, onClose, porton, onCreated }) {
             })}
           </div>
         </div>
+
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <span style={{ fontWeight: 800 }}>PIN de QC (usuario global)</span>
+          <input
+            type="password"
+            inputMode="numeric"
+            value={pin}
+            onChange={(e) => setPin(e.target.value)}
+            placeholder="Ingresá tu PIN para autorizar"
+            className="btn"
+            style={{ maxWidth: 200, letterSpacing: 4 }}
+          />
+        </label>
 
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
           <button className="btn btn--brand" type="submit" disabled={saving}>
@@ -279,6 +342,10 @@ export default function RefabricacionPage() {
   const [refabModal, setRefabModal] = useState(false);
   const [refabTarget, setRefabTarget] = useState(null);
 
+  const [pinModal, setPinModal] = useState(false);
+  const [pinTarget, setPinTarget] = useState(null);
+  const [pinLoading, setPinLoading] = useState(false);
+
   const load = useCallback(async () => {
     setErr('');
     setLoading(true);
@@ -295,13 +362,23 @@ export default function RefabricacionPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const handleAprobar = async (porton) => {
-    if (!window.confirm(`¿Aprobar NV ${porton.nv} · Portón ${porton.nlista} para despacho?`)) return;
+  const handleAprobar = (porton) => {
+    setPinTarget(porton);
+    setPinModal(true);
+  };
+
+  const handlePinConfirm = async (pin) => {
+    if (!pinTarget) return;
+    setPinLoading(true);
     try {
-      await aprobarRevision(porton.id);
+      await aprobarRevision(pinTarget.nv, pin);
+      setPinModal(false);
+      setPinTarget(null);
       await load();
     } catch (e) {
       alert(e?.response?.data?.error || e.message);
+    } finally {
+      setPinLoading(false);
     }
   };
 
@@ -382,6 +459,14 @@ export default function RefabricacionPage() {
         onClose={() => { setRefabModal(false); setRefabTarget(null); }}
         porton={refabTarget}
         onCreated={load}
+      />
+
+      <QcPinModal
+        open={pinModal}
+        onClose={() => { setPinModal(false); setPinTarget(null); }}
+        onConfirm={handlePinConfirm}
+        title={pinTarget ? `Aprobar NV ${pinTarget.nv} · Portón ${pinTarget.nlista} → Despacho` : 'Confirmar'}
+        loading={pinLoading}
       />
     </div>
   );

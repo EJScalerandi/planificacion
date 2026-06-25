@@ -1,15 +1,22 @@
 // routes/public/refabricacion.js
 const express = require('express');
+const crypto = require('crypto');
 const { pool } = require('../../db');
 const { STATUS, loadStageMap, getNextStages, checkRequirements } = require('../../lib/workflow');
 
 const router = express.Router();
 
+const QC_PIN_SALT = process.env.QC_PIN_SALT || 'dev_change_me_pin_salt';
+
+function hashPin(pin) {
+  return crypto.createHmac('sha256', QC_PIN_SALT).update(String(pin)).digest('hex');
+}
+
 const PORTON_ETAPAS = new Set([
   'diseno', 'laser', 'guillotina', 'plegadora',
   'armado_marco_piernas', 'armado_piernas', 'armado_primario', 'armado_hojas',
   'inyeccion', 'revestimiento', 'pintura', 'pintura_revestimiento',
-  'armado_final', 'despacho', 'corte_revest', 'plegado_revest',
+  'armado_final', 'despacho', 'corte_revest', 'plegad_revest',
 ]);
 
 function isValidISODate10(v) {
@@ -18,6 +25,21 @@ function isValidISODate10(v) {
   if (!m) return false;
   const d = new Date(s);
   return !Number.isNaN(d.getTime());
+}
+
+async function validateGlobalPin(db, pin) {
+  if (!/^\d{3,10}$/.test(String(pin || '').trim())) {
+    return { error: 'PIN inválido (solo numérico, 3-10 dígitos)' };
+  }
+  const pinHash = hashPin(String(pin).trim());
+  const { rows } = await db.query(
+    `select id, name, is_global, is_active from public.qc_users where pin_hash = $1 limit 1`,
+    [pinHash]
+  );
+  const user = rows[0];
+  if (!user || !user.is_active) return { error: 'PIN incorrecto o usuario inactivo' };
+  if (!user.is_global) return { error: 'Solo usuarios QC globales pueden realizar esta acción' };
+  return { user };
 }
 
 // Reconstruye el shape de un portón (etapas + datos base) desde la DB
@@ -125,20 +147,26 @@ router.get('/refabricacion/pendientes', async (_req, res) => {
 // POST /refabricacion
 // Crea un portón de tipo 'refabricacion' basado en uno existente.
 // Body: {
-//   parent_id: number,
+//   parent_nv: number,             // NV entero del portón padre (igual que qc_event.item_id)
+//   pin: string,                   // PIN del usuario QC global
 //   fecha_prod: 'YYYY-MM-DD',
 //   detalle_refabricacion: string,
-//   etapas_a_realizar: string[]   // status_col keys que el usuario debe fabricar (→ PENDIENTE)
+//   etapas_a_realizar: string[]    // status_col keys que deben fabricarse (→ PENDIENTE)
 // }
-// El resto de etapas del portón padre quedan como FINALIZADO.
 // =============================================================
 router.post('/refabricacion', async (req, res) => {
-  const { parent_id, fecha_prod, detalle_refabricacion, etapas_a_realizar } = req.body || {};
+  const { parent_nv, pin, fecha_prod, detalle_refabricacion, etapas_a_realizar } = req.body || {};
 
-  const nParentId = Number(parent_id);
-  if (!Number.isInteger(nParentId)) {
-    return res.status(400).json({ error: 'parent_id debe ser un entero' });
+  // Validar NV del padre
+  const nParentNv = Number(parent_nv);
+  if (!Number.isInteger(nParentNv)) {
+    return res.status(400).json({ error: 'parent_nv debe ser el NV del portón (entero)' });
   }
+
+  // Validar PIN QC global
+  const pinResult = await validateGlobalPin(pool, pin);
+  if (pinResult.error) return res.status(401).json({ error: pinResult.error });
+  const qcUser = pinResult.user;
 
   const fechaProd = String(fecha_prod || '').trim();
   if (fechaProd && !isValidISODate10(fechaProd)) {
@@ -156,10 +184,11 @@ router.post('/refabricacion', async (req, res) => {
   try {
     await client.query('begin');
 
+    // Buscar padre por NV (igual que el sistema QC)
     const parentQ = await client.query(
       `select id, nv, nlista, partida, sistema, fecha_plan, fecha_plan_entrega, fecha_nv
-       from public.portones where id = $1 limit 1`,
-      [nParentId]
+       from public.portones where nv = $1 order by created_at desc, id desc limit 1`,
+      [nParentNv]
     );
     if (!parentQ.rows.length) {
       await client.query('rollback');
@@ -178,7 +207,7 @@ router.post('/refabricacion', async (req, res) => {
       [
         parent.nv, parent.nlista, parent.partida, parent.sistema,
         parent.fecha_plan, fechaProd || null, parent.fecha_plan_entrega, parent.fecha_nv,
-        nParentId, detalle,
+        parent.id, detalle,
       ]
     );
     const newId = ins.rows[0].id;
@@ -190,7 +219,7 @@ router.post('/refabricacion', async (req, res) => {
       `select etapa::text as etapa
        from public.porton_etapas_estado
        where porton_id = $1 and etapa::text != 'despacho'`,
-      [nParentId]
+      [parent.id]
     );
     const parentStageCols = parentStagesQ.rows.map(r => r.etapa);
     const parentStageSet = new Set(parentStageCols);
@@ -250,6 +279,13 @@ router.post('/refabricacion', async (req, res) => {
       }
     }
 
+    // Registrar evento QC para auditoría
+    await client.query(
+      `insert into public.qc_event(line, item_id, stage_key, qc_status, note, by_user_id)
+       values ('portones', $1, 'refabricacion', 'APROBADO', $2, $3)`,
+      [nParentNv, `Refabricación creada (ID nuevo: ${newId})`, qcUser.id]
+    );
+
     await client.query('commit');
 
     const result = await getPortonShapeById(pool, newId);
@@ -264,30 +300,39 @@ router.post('/refabricacion', async (req, res) => {
 });
 
 // =============================================================
-// POST /portones/:id/revision-ok
+// POST /portones/:nv/revision-ok
 // Aprueba un portón observado/rechazado para que pase a despacho.
-// Requiere que armado_final esté Finalizado.
+// Body: { pin: string }   — PIN del usuario QC global
 // =============================================================
-router.post('/portones/:id/revision-ok', async (req, res) => {
-  const { id } = req.params;
-  const nId = Number(id);
-  if (!Number.isInteger(nId)) {
-    return res.status(400).json({ error: 'id inválido' });
+router.post('/portones/:nv/revision-ok', async (req, res) => {
+  const { nv: nvParam } = req.params;
+  const { pin } = req.body || {};
+
+  const nNv = Number(nvParam);
+  if (!Number.isInteger(nNv)) {
+    return res.status(400).json({ error: 'NV inválido' });
   }
+
+  // Validar PIN QC global
+  const pinResult = await validateGlobalPin(pool, pin);
+  if (pinResult.error) return res.status(401).json({ error: pinResult.error });
+  const qcUser = pinResult.user;
 
   const client = await pool.connect();
   try {
     await client.query('begin');
 
-    // Verificar que existe y que armado_final está Finalizado
+    // Buscar portón por NV (igual que el sistema QC)
     const { rows: portRows } = await client.query(
       `select p.id, p.nv, p.revision_ok,
               e.estado as armado_final_estado
        from public.portones p
        left join public.porton_etapas_estado e
          on e.porton_id = p.id and e.etapa = 'armado_final'
-       where p.id = $1 limit 1`,
-      [nId]
+       where p.nv = $1
+       order by p.created_at desc, p.id desc
+       limit 1`,
+      [nNv]
     );
 
     if (!portRows.length) {
@@ -304,7 +349,7 @@ router.post('/portones/:id/revision-ok', async (req, res) => {
     // Marcar revision_ok = true y guardar timestamp de aprobación
     await client.query(
       `update public.portones set revision_ok = true, revision_ok_at = now() where id = $1`,
-      [nId]
+      [port.id]
     );
 
     // Activar despacho si no está ya activo
@@ -313,12 +358,19 @@ router.post('/portones/:id/revision-ok', async (req, res) => {
        values ($1, 'despacho'::public.porton_etapa, $2)
        on conflict (porton_id, etapa)
        do update set estado = coalesce(public.porton_etapas_estado.estado, excluded.estado)`,
-      [nId, STATUS.PENDIENTE]
+      [port.id, STATUS.PENDIENTE]
+    );
+
+    // Registrar evento QC para auditoría
+    await client.query(
+      `insert into public.qc_event(line, item_id, stage_key, qc_status, note, by_user_id)
+       values ('portones', $1, 'revision_despacho', 'APROBADO', 'Aprobado para despacho', $2)`,
+      [nNv, qcUser.id]
     );
 
     await client.query('commit');
 
-    const shape = await getPortonShapeById(pool, nId);
+    const shape = await getPortonShapeById(pool, port.id);
     return res.json({ ok: true, porton: shape });
   } catch (err) {
     await client.query('rollback');

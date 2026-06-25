@@ -252,8 +252,10 @@ export function fetchScopes() {
 /* ========= Refabricación ========= */
 export const fetchRefabricacionPendientes = () => api.get('/refabricacion/pendientes');
 
+// payload debe incluir { parent_nv, pin, fecha_prod, detalle_refabricacion, etapas_a_realizar }
 export const crearRefabricacion = (payload) => api.post('/refabricacion', payload);
 
-export const aprobarRevision = (id) => api.post(`/portones/${id}/revision-ok`);
+// nv: NV entero del portón; pin: PIN del usuario QC global
+export const aprobarRevision = (nv, pin) => api.post(`/portones/${nv}/revision-ok`, { pin });
 
 export default api;
