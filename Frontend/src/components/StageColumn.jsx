@@ -849,6 +849,20 @@ function PreObsModal({ open, onClose, item }) {
   );
 }
 
+function DetalleRefabricacionModal({ open, onClose, item }) {
+  if (!open || !item) return null;
+  const detalle = String(item?.detalle_refabricacion || '').trim();
+  const nv = item?.nv != null ? `NV ${item.nv}` : '';
+  const nlista = item?.nlista != null ? `Portón ${item.nlista}` : '';
+  return (
+    <ShellModal open={open} onClose={onClose} title={`Detalle Refabricación · ${[nv, nlista].filter(Boolean).join(' · ')}`} headerBg="#fff1f2" borderColor="#fda4af" width="min(560px, 100%)">
+      <div style={{ padding: 16, fontSize: 14, whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
+        {detalle || <span style={{ opacity: 0.5 }}>Sin detalle cargado.</span>}
+      </div>
+    </ShellModal>
+  );
+}
+
 export default function StageColumn({
   title,
   stageKey,
@@ -876,6 +890,8 @@ export default function StageColumn({
   const [preObsTarget, setPreObsTarget] = useState(null);
   const [anexoOpen, setAnexoOpen] = useState(false);
   const [anexoTarget, setAnexoTarget] = useState(null);
+  const [detalleRefabOpen, setDetalleRefabOpen] = useState(false);
+  const [detalleRefabTarget, setDetalleRefabTarget] = useState(null);
 
   const effKey = mode === 'ipanel' && stageKey === 'plegadora' ? 'plegado' : stageKey;
   const line = mapModeToLine(mode);
@@ -1005,17 +1021,36 @@ export default function StageColumn({
             // Regla nueva: si ya fue autorizado por Administración y tiene Acciones = Sí, va amarillo.
             const needsAdminActionsYellow = isDespachoColumn && adminAutorizado && adminAcciones;
             const needsAdminAuthRed = isDespachoColumn && vencida && !adminAutorizado;
+            const isRefabricacion = String(p?.tipo || '').trim() === 'refabricacion';
+            const hasDetalleRefab = isRefabricacion && String(p?.detalle_refabricacion || '').trim();
+
+            // Refabricaciones tienen borde rojo propio (distinto al de admin)
+            const borderStyle = isRefabricacion
+              ? '2px solid #dc2626'
+              : needsAdminActionsYellow ? '2px solid #f59e0b'
+              : needsAdminAuthRed ? '2px solid #ef4444'
+              : '1px solid var(--border)';
+            const bgStyle = isRefabricacion
+              ? '#fff5f5'
+              : needsAdminActionsYellow ? '#fffbeb'
+              : needsAdminAuthRed ? '#fff5f5'
+              : 'var(--surface)';
+            const shadowStyle = isRefabricacion
+              ? '0 8px 22px rgba(220,38,38,0.18)'
+              : needsAdminActionsYellow ? '0 8px 22px rgba(245,158,11,0.18)'
+              : needsAdminAuthRed ? '0 8px 22px rgba(239,68,68,0.16)'
+              : undefined;
 
             return (
               <div
                 key={`${mode}-${p?.id ?? `${p?.nv}-${p?.nlista}-${p?.partida}`}`}
                 style={{
-                  border: needsAdminActionsYellow ? '2px solid #f59e0b' : needsAdminAuthRed ? '2px solid #ef4444' : '1px solid var(--border)',
+                  border: borderStyle,
                   borderRadius: 12,
                   padding: '10px 12px',
-                  background: needsAdminActionsYellow ? '#fffbeb' : needsAdminAuthRed ? '#fff5f5' : 'var(--surface)',
+                  background: bgStyle,
                   position: 'relative',
-                  boxShadow: needsAdminActionsYellow ? '0 8px 22px rgba(245,158,11,0.18)' : needsAdminAuthRed ? '0 8px 22px rgba(239,68,68,0.16)' : undefined,
+                  boxShadow: shadowStyle,
                 }}
               >
                 {hasObs ? (
@@ -1031,6 +1066,11 @@ export default function StageColumn({
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontWeight: 900 }}>{getNvLabel(p)}</span>
+                  {isRefabricacion ? (
+                    <span style={{ fontSize: 11, fontWeight: 900, background: '#dc2626', color: '#fff', borderRadius: 4, padding: '2px 6px', letterSpacing: 0.3 }}>
+                      Refabricación
+                    </span>
+                  ) : null}
                   {isDespachoColumn ? (() => {
                     const phone = String(p?.pq_phone ?? p?.cliente_telefono ?? '').trim().replace(/\D/g, '');
                     const mapsUrl = String(p?.pq_maps_url ?? p?.cliente_maps_url ?? p?.logistica_maps_url ?? '').trim();
@@ -1087,6 +1127,18 @@ export default function StageColumn({
                     </button>
                   ) : null}
 
+                  {hasDetalleRefab ? (
+                    <button
+                      className="btn"
+                      type="button"
+                      onClick={() => { setDetalleRefabTarget(p); setDetalleRefabOpen(true); }}
+                      style={{ fontWeight: 900, background: '#dc2626', color: '#fff', borderColor: '#b91c1c' }}
+                      title="Ver detalle de refabricación"
+                    >
+                      Detalle
+                    </button>
+                  ) : null}
+
                   {String(p?.observacion_imput || '').trim() ? (
                     <button
                       className="btn"
@@ -1140,6 +1192,7 @@ export default function StageColumn({
       <QcModal open={qcOpen} onClose={() => { setQcOpen(false); setQcTarget(null); setQcForceComplete(false); }} item={qcTarget} line={line} stageKey={effKey} title={title} onSaved={() => onQcSaved?.()} forceComplete={qcForceComplete} />
       <AdminAccionesModal open={adminAccionesOpen} onClose={() => { setAdminAccionesOpen(false); setAdminAccionesTarget(null); }} title={title} item={adminAccionesTarget} />
       <ObservacionesModal open={obsOpen} onClose={() => { setObsOpen(false); setObsTarget(null); }} title={title} item={obsTarget} line={line} />
+      <DetalleRefabricacionModal open={detalleRefabOpen} onClose={() => { setDetalleRefabOpen(false); setDetalleRefabTarget(null); }} item={detalleRefabTarget} />
     </div>
   );
 }

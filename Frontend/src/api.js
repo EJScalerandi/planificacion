@@ -249,4 +249,11 @@ export function fetchScopes() {
   return api.get('/admin/scopes');
 }
 
+/* ========= Refabricación ========= */
+export const fetchRefabricacionPendientes = () => api.get('/refabricacion/pendientes');
+
+export const crearRefabricacion = (payload) => api.post('/refabricacion', payload);
+
+export const aprobarRevision = (id) => api.post(`/portones/${id}/revision-ok`);
+
 export default api;

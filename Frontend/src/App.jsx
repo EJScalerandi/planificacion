@@ -25,6 +25,7 @@ import IpanelPreproduccionValoresTable from '../src/components/IpanelPreproducci
 import UserAdminDashboard from './components/UserAdminDashboard';
 
 import IndexPage from '../pages/IndexPage';
+import RefabricacionPage from '../pages/RefabricacionPage';
 import NonProductionLayout from './components/NonProductionLayout';
 
 const color = 'var(--brand)';
@@ -475,6 +476,7 @@ export default function App() {
         <Route path="/plantasimple" element={<PlantaReadOnlySimplePage />} />
         <Route path="/statusIpanels" element={<StatusIpanelsPage />} />
         <Route path="/stats/portones" element={<PortonesStatsPage />} />
+        <Route path="/refabricacion" element={<RefabricacionPage />} />
 
         <Route path="*" element={<Navigate to="/admin/login" replace />} />
       </Routes>

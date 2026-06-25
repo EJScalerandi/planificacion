@@ -362,6 +362,20 @@ router.post('/qc/authorize', async (req, res) => {
           const nextStageCol = String(ns.status_col || '').trim();
           if (!PORTON_ETAPAS.has(nextStageCol)) continue;
 
+          // Gate: si el siguiente stage es despacho, verificar que el portón
+          // no tenga eventos OBSERVADO o RECHAZADO. Si los tiene, queda retenido
+          // hasta que la página de revisión lo apruebe (revision_ok).
+          if (nextStageCol === 'despacho') {
+            const obsQ = await client.query(
+              `SELECT 1 FROM public.qc_event
+               WHERE line = 'portones' AND item_id = $1
+               AND qc_status IN ('OBSERVADO', 'RECHAZADO')
+               LIMIT 1`,
+              [nItemId]
+            );
+            if (obsQ.rows.length > 0) continue;
+          }
+
           const req = await checkRequirements('portones', nextStageCol, ctx);
           if (!req?.ok) continue;
 
