@@ -36,6 +36,29 @@ const MIGRATIONS = [
         ADD COLUMN IF NOT EXISTS revision_ok_at TIMESTAMPTZ;
     `,
   },
+  {
+    name: 'fix_parent_id_to_uuid',
+    sql: `
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'public' AND table_name = 'portones'
+            AND column_name = 'parent_id' AND data_type = 'integer'
+        ) THEN
+          ALTER TABLE public.portones DROP COLUMN parent_id;
+          ALTER TABLE public.portones ADD COLUMN parent_id UUID;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'public' AND table_name = 'portones'
+            AND column_name = 'parent_id'
+        ) THEN
+          ALTER TABLE public.portones ADD COLUMN parent_id UUID;
+        END IF;
+      END $$;
+    `,
+  },
 ];
 
 async function runMigrations() {

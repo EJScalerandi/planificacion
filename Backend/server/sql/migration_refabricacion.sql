@@ -6,7 +6,7 @@
 
 ALTER TABLE public.portones
   ADD COLUMN IF NOT EXISTS tipo TEXT NOT NULL DEFAULT 'normal',
-  ADD COLUMN IF NOT EXISTS parent_id INTEGER REFERENCES public.portones(id),
+  ADD COLUMN IF NOT EXISTS parent_id UUID REFERENCES public.portones(id),
   ADD COLUMN IF NOT EXISTS revision_ok BOOLEAN NOT NULL DEFAULT FALSE,
   ADD COLUMN IF NOT EXISTS detalle_refabricacion TEXT;
 
