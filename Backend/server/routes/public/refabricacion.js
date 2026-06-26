@@ -121,15 +121,45 @@ router.get('/refabricacion/pendientes', async (_req, res) => {
           select string_agg(etapa::text, ', ' order by etapa)
           from public.porton_etapas_estado
           where porton_id = p.id and estado = 'En Proceso'
-        ) as etapas_en_proceso
+        ) as etapas_en_proceso,
+        -- Info de la refabricación más reciente desprendida de este portón
+        (
+          select json_build_object(
+            'id',             r.id,
+            'created_at',     r.created_at,
+            'detalle',        r.detalle_refabricacion,
+            'fecha_prod',     r.fecha_prod,
+            'etapas_proceso', (
+              select string_agg(etapa::text, ', ' order by etapa)
+              from public.porton_etapas_estado
+              where porton_id = r.id and estado = 'En Proceso'
+            ),
+            'armado_final', (
+              select estado from public.porton_etapas_estado
+              where porton_id = r.id and etapa = 'armado_final'::public.porton_etapa
+              limit 1
+            ),
+            'despacho', (
+              select estado from public.porton_etapas_estado
+              where porton_id = r.id and etapa = 'despacho'::public.porton_etapa
+              limit 1
+            )
+          )
+          from public.portones r
+          where r.parent_id = p.id
+          order by r.created_at desc
+          limit 1
+        ) as ultima_refabricacion
       from public.portones p
       inner join ultimo_qc uq on uq.item_id = p.nv
       left join public.qc_motive m on m.id = uq.motive_id
       left join public.qc_users u on u.id = uq.by_user_id
       left join porton_despacho pd on pd.porton_id = p.id
       where
+        -- Solo portones originales, no refabricaciones
+        (p.tipo is null or p.tipo = 'normal')
         -- No mostrar los que ya terminaron despacho
-        (pd.despacho_estado is null or pd.despacho_estado != 'Finalizado')
+        and (pd.despacho_estado is null or pd.despacho_estado != 'Finalizado')
       order by p.nv asc, p.id asc
     `);
 

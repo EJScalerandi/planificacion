@@ -241,12 +241,56 @@ function RefabricacionModal({ open, onClose, porton, onCreated }) {
   );
 }
 
+// ───── Badge de estado de refabricación ─────
+function RefabricacionBadge({ r }) {
+  if (!r) return null;
+  const desp = r.despacho;
+  const af = r.armado_final;
+  let estadoLabel, color, bg;
+  if (desp === 'Finalizado') {
+    estadoLabel = 'Despachada'; color = '#fff'; bg = '#16a34a';
+  } else if (desp === 'En Proceso' || desp === 'Pendiente') {
+    estadoLabel = 'En despacho'; color = '#fff'; bg = '#2563eb';
+  } else if (af === 'Finalizado') {
+    estadoLabel = 'Armado final listo'; color = '#fff'; bg = '#7c3aed';
+  } else if (r.etapas_proceso) {
+    estadoLabel = `En proceso: ${r.etapas_proceso}`; color = '#1d4ed8'; bg = '#eff6ff';
+  } else {
+    estadoLabel = 'Pendiente de iniciar'; color = '#92400e'; bg = '#fef3c7';
+  }
+  return (
+    <div style={{
+      marginTop: 2,
+      border: '1px solid #e5e7eb',
+      borderRadius: 8,
+      padding: '6px 10px',
+      background: '#f8fafc',
+      fontSize: 12,
+      display: 'flex', flexDirection: 'column', gap: 3,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ fontWeight: 900, background: '#dc2626', color: '#fff', borderRadius: 4, padding: '1px 6px', fontSize: 11 }}>
+          Refabricación
+        </span>
+        <span style={{ fontWeight: 800, background: bg, color, borderRadius: 4, padding: '1px 6px' }}>
+          {estadoLabel}
+        </span>
+        <span style={{ opacity: 0.55 }}>{fmt(r.created_at)}</span>
+      </div>
+      {r.detalle && (
+        <div style={{ opacity: 0.7 }}><b>Detalle:</b> {r.detalle}</div>
+      )}
+    </div>
+  );
+}
+
 // ───── Tarjeta de portón ─────
 function PortonCard({ porton, tipo, onRefabricar, onAprobar }) {
   const motivoLabel = porton.ultimo_qc_motive_label || '—';
   const fecha = fmt(porton.ultimo_qc_fecha);
   const isAprobado = Boolean(porton.revision_ok);
   const enDespacho = porton.despacho_estado != null;
+  const refab = porton.ultima_refabricacion || null;
 
   return (
     <div style={{
@@ -262,11 +306,6 @@ function PortonCard({ porton, tipo, onRefabricar, onAprobar }) {
           <span style={{ fontWeight: 700 }}>Portón {porton.nlista}</span>
           {' · '}
           <span style={{ fontSize: 12, opacity: 0.75 }}>Partida {porton.partida}</span>
-          {porton.tipo === 'refabricacion' && (
-            <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 900, background: '#dc2626', color: '#fff', borderRadius: 4, padding: '1px 5px' }}>
-              Refabricación
-            </span>
-          )}
         </div>
         {isAprobado && (
           <span style={{ fontSize: 11, fontWeight: 900, background: '#16a34a', color: '#fff', borderRadius: 4, padding: '2px 6px' }}>
@@ -307,6 +346,8 @@ function PortonCard({ porton, tipo, onRefabricar, onAprobar }) {
           En cola de despacho: <b>{porton.despacho_estado}</b>
         </div>
       )}
+
+      <RefabricacionBadge r={refab} />
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
         <button
