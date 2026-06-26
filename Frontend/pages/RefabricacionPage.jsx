@@ -244,41 +244,57 @@ function RefabricacionModal({ open, onClose, porton, onCreated }) {
 // ───── Badge de estado de refabricación ─────
 function RefabricacionBadge({ r }) {
   if (!r) return null;
+
   const desp = r.despacho;
-  const af = r.armado_final;
-  let estadoLabel, color, bg;
+  let resumenColor, resumenLabel;
   if (desp === 'Finalizado') {
-    estadoLabel = 'Despachada'; color = '#fff'; bg = '#16a34a';
+    resumenColor = '#16a34a'; resumenLabel = 'Despachada';
   } else if (desp === 'En Proceso' || desp === 'Pendiente') {
-    estadoLabel = 'En despacho'; color = '#fff'; bg = '#2563eb';
-  } else if (af === 'Finalizado') {
-    estadoLabel = 'Armado final listo'; color = '#fff'; bg = '#7c3aed';
+    resumenColor = '#2563eb'; resumenLabel = 'En despacho';
   } else if (r.etapas_proceso) {
-    estadoLabel = `En proceso: ${r.etapas_proceso}`; color = '#1d4ed8'; bg = '#eff6ff';
+    resumenColor = '#d97706'; resumenLabel = 'En producción';
+  } else if (r.etapas_pendiente) {
+    resumenColor = '#6b7280'; resumenLabel = 'Pendiente de iniciar';
   } else {
-    estadoLabel = 'Pendiente de iniciar'; color = '#92400e'; bg = '#fef3c7';
+    resumenColor = '#16a34a'; resumenLabel = 'Finalizada';
   }
+
   return (
     <div style={{
-      marginTop: 2,
-      border: '1px solid #e5e7eb',
+      marginTop: 4,
+      border: '1.5px solid #fca5a5',
       borderRadius: 8,
-      padding: '6px 10px',
-      background: '#f8fafc',
+      padding: '8px 10px',
+      background: '#fff5f5',
       fontSize: 12,
-      display: 'flex', flexDirection: 'column', gap: 3,
+      display: 'flex', flexDirection: 'column', gap: 4,
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <span style={{ fontWeight: 900, background: '#dc2626', color: '#fff', borderRadius: 4, padding: '1px 6px', fontSize: 11 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        <span style={{ fontWeight: 900, background: '#dc2626', color: '#fff', borderRadius: 4, padding: '1px 7px', fontSize: 11 }}>
           Refabricación
         </span>
-        <span style={{ fontWeight: 800, background: bg, color, borderRadius: 4, padding: '1px 6px' }}>
-          {estadoLabel}
+        <span style={{ fontWeight: 800, color: resumenColor }}>
+          {resumenLabel}
         </span>
-        <span style={{ opacity: 0.55 }}>{fmt(r.created_at)}</span>
+        <span style={{ opacity: 0.5 }}>{fmt(r.created_at)}</span>
       </div>
       {r.detalle && (
-        <div style={{ opacity: 0.7 }}><b>Detalle:</b> {r.detalle}</div>
+        <div style={{ opacity: 0.75 }}><b>Motivo:</b> {r.detalle}</div>
+      )}
+      {r.etapas_proceso && (
+        <div style={{ color: '#d97706', fontWeight: 700 }}>
+          En proceso: <b>{r.etapas_proceso}</b>
+        </div>
+      )}
+      {r.etapas_pendiente && (
+        <div style={{ color: '#6b7280' }}>
+          Pendiente: {r.etapas_pendiente}
+        </div>
+      )}
+      {r.etapas_finalizado && (
+        <div style={{ color: '#16a34a' }}>
+          Finalizado: {r.etapas_finalizado}
+        </div>
       )}
     </div>
   );

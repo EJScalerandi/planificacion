@@ -125,19 +125,24 @@ router.get('/refabricacion/pendientes', async (_req, res) => {
         -- Info de la refabricación más reciente desprendida de este portón
         (
           select json_build_object(
-            'id',             r.id,
-            'created_at',     r.created_at,
-            'detalle',        r.detalle_refabricacion,
-            'fecha_prod',     r.fecha_prod,
+            'id',              r.id,
+            'created_at',      r.created_at,
+            'detalle',         r.detalle_refabricacion,
+            'fecha_prod',      r.fecha_prod,
+            'etapas_pendiente', (
+              select string_agg(etapa::text, ', ' order by etapa)
+              from public.porton_etapas_estado
+              where porton_id = r.id and estado = 'Pendiente'
+            ),
             'etapas_proceso', (
               select string_agg(etapa::text, ', ' order by etapa)
               from public.porton_etapas_estado
               where porton_id = r.id and estado = 'En Proceso'
             ),
-            'armado_final', (
-              select estado from public.porton_etapas_estado
-              where porton_id = r.id and etapa = 'armado_final'::public.porton_etapa
-              limit 1
+            'etapas_finalizado', (
+              select string_agg(etapa::text, ', ' order by etapa)
+              from public.porton_etapas_estado
+              where porton_id = r.id and estado = 'Finalizado'
             ),
             'despacho', (
               select estado from public.porton_etapas_estado
