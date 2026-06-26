@@ -16,7 +16,7 @@ const PORTON_ETAPAS = new Set([
   'diseno', 'laser', 'guillotina', 'plegadora',
   'armado_marco_piernas', 'armado_piernas', 'armado_primario', 'armado_hojas',
   'inyeccion', 'revestimiento', 'pintura', 'pintura_revestimiento',
-  'armado_final', 'despacho', 'corte_revest', 'plegad_revest',
+  'armado_final', 'despacho', 'corte_revest', 'plegado_revest',
 ]);
 
 function isValidISODate10(v) {
@@ -212,8 +212,6 @@ router.post('/refabricacion', async (req, res) => {
     );
     const newId = ins.rows[0].id;
 
-    const now = new Date().toISOString();
-
     // Obtener etapas reales del portón padre (evita insertar etapas fantasma)
     const parentStagesQ = await client.query(
       `select etapa::text as etapa
@@ -237,10 +235,10 @@ router.post('/refabricacion', async (req, res) => {
       );
       await client.query(
         `insert into public.porton_etapas_tiempos(porton_id, etapa, inicio, fin)
-         select $1, x::public.porton_etapa, $2, $2
-         from unnest($3::text[]) as x
+         select $1, x::public.porton_etapa, NOW(), NOW()
+         from unnest($2::text[]) as x
          on conflict (porton_id, etapa) do nothing`,
-        [newId, now, etapasAFinalizar]
+        [newId, etapasAFinalizar]
       );
     }
 
