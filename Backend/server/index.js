@@ -37,6 +37,15 @@ const MIGRATIONS = [
     `,
   },
   {
+    name: 'fix_nv_nlista_partial_unique',
+    sql: `
+      ALTER TABLE public.portones DROP CONSTRAINT IF EXISTS portones_nv_nlista_uniq;
+      CREATE UNIQUE INDEX IF NOT EXISTS portones_nv_nlista_normal_uniq
+        ON public.portones(nv, nlista)
+        WHERE tipo = 'normal';
+    `,
+  },
+  {
     name: 'fix_parent_id_to_uuid',
     sql: `
       DO $$
