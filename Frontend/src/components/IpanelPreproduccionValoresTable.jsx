@@ -467,3 +467,5 @@ export default function IpanelPreproduccionValoresTable() {
   );
 }
 
+const td = { verticalAlign: 'middle', padding: '6px 8px' };
+
