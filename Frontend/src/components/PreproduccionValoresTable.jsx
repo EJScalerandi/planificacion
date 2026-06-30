@@ -1918,6 +1918,16 @@ export default function PreproduccionValoresTable() {
             Recargar
           </button>
 
+          <a
+            href={`${import.meta.env.VITE_PRESUPUESTADOR_URL || ''}/aprobacion/tecnica/portones-estado`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn"
+            style={{ textDecoration: 'none' }}
+          >
+            Estado Portones
+          </a>
+
           {accessMode === 'full' ? (
             <>
               <button onClick={() => setShowLogisticaPresets(true)} disabled={loading} className="btn">
