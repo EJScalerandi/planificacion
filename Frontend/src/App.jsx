@@ -19,6 +19,7 @@ import AdminLoginPage from '../pages/admin/AdminLoginPage';
 import AdminHomePage from '../pages/admin/AdminHomePage';
 import WorkflowDesignerPage from '../pages/admin/WorkflowDesignerPage';
 import AdminQcPage from '../pages/admin/AdminQcPage';
+import AdminExcelInfoPage from '../pages/admin/AdminExcelInfoPage';
 
 import PreproduccionValoresTable from '../src/components/PreproduccionValoresTable';
 import IpanelPreproduccionValoresTable from '../src/components/IpanelPreproduccionValoresTable';
@@ -440,6 +441,7 @@ export default function App() {
           <Route path="/admin" element={<AdminHomePage />} />
           <Route path="/admin/qc" element={<AdminQcPage />} />
           <Route path="/admin/workflow" element={<WorkflowDesignerPage />} />
+          <Route path="/admin/excel-info" element={<AdminExcelInfoPage />} />
           <Route path="/usuarios" element={<UserAdminDashboard />} />
 
           <Route
