@@ -155,6 +155,15 @@ router.get('/portones', async (_req, res) => {
       select
         ${PORTON_BASE_COLS_SQL},
 
+        -- ====== CLIENTE (desde presupuestador_quotes, con fallback a preproduccion_valores) ======
+        max(coalesce(
+          pv.data->>'Nombre',
+          pv.data->>'nombre',
+          pv.data->>'nombre_cliente',
+          pv.data->>'NombreCliente',
+          sq.cliente_nombre
+        )) as nombre_cliente,
+
         -- ====== ESTADOS ======
         max(case when e.etapa = 'diseno'::public.porton_etapa then e.estado end) as diseno,
         max(case when e.etapa = 'laser'::public.porton_etapa then e.estado end) as laser,
@@ -229,6 +238,17 @@ router.get('/portones', async (_req, res) => {
         on t.porton_id = p.id
       left join public.preproduccion_valores pv
         on pv.nv = p.nv
+      left join lateral (
+        select q.end_customer->>'name' as cliente_nombre
+        from public.presupuestador_quotes q
+        where q.quote_kind = 'original'
+          and (
+            q.final_sale_order_name  = 'NV' || p.nv::text
+            or q.odoo_sale_order_name = 'NV' || p.nv::text
+          )
+        order by q.id desc
+        limit 1
+      ) sq on true
       group by p.id, pv.data
       order by p.nv asc;
       `

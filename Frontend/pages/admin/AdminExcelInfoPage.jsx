@@ -39,6 +39,7 @@ const PORTON_BASE_FIELDS = [
   { key: 'nlista', label: 'N° Portón (Lista)', get: (r) => r.nlista ?? '' },
   { key: 'partida', label: 'Partida', get: (r) => r.partida ?? '' },
   { key: 'nv_tipo', label: 'Tipo NV', get: (r) => r.nv_tipo ?? '' },
+  { key: 'nombre_cliente', label: 'Nombre Cliente', get: (r) => r.nombre_cliente ?? '' },
   { key: 'fecha_nv', label: 'Fecha NV', get: (r) => dateOnly(r.fecha_nv) },
   { key: 'fecha_prod', label: 'Fecha Producción', get: (r) => dateOnly(r.fecha_prod) },
   { key: 'fecha_plan', label: 'Fecha Salida (Plan)', get: (r) => dateOnly(r.fecha_plan) },
