@@ -282,6 +282,7 @@
       products: [],
       tags: [],
       categoryMap: {},
+      templateTags: {},
       busy: false,
     };
 
@@ -367,6 +368,32 @@
       return data;
     }
 
+    // Backend propio del planificador (independiente del presupuestador) para tags/categorías de Odoo.
+    const PLANIFICADOR_API_BASE = 'https://planificacion-uprm.onrender.com';
+    const PLANIFICADOR_API_KEY = 'FidelitytoolsDeGrandisPortones';
+
+    async function planificadorApi(path, options = {}) {
+      const url = `${PLANIFICADOR_API_BASE}${path}`;
+      const resp = await fetch(url, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': PLANIFICADOR_API_KEY,
+          ...(options.headers || {}),
+        },
+      });
+      let data = null;
+      const text = await resp.text();
+      try { data = text ? JSON.parse(text) : null; } catch { data = { ok: false, error: text || 'Respuesta no JSON' }; }
+      if (!resp.ok || data?.ok === false) {
+        const err = new Error(data?.error || `Error HTTP ${resp.status}`);
+        err.status = resp.status;
+        err.data = data;
+        throw err;
+      }
+      return data;
+    }
+
     function setBusy(value) {
       state.busy = !!value;
       $('refreshBtn').disabled = state.busy;
@@ -378,7 +405,8 @@
     }
 
     function productCategory(product) {
-      const ids = Array.isArray(product?.tag_ids) ? product.tag_ids.map(Number) : [];
+      const tmplId = String(product?.product_tmpl_id || '');
+      const ids = Array.isArray(state.templateTags[tmplId]) ? state.templateTags[tmplId].map(Number) : [];
       for (const id of ids) {
         const kind = state.categoryMap[String(id)];
         if (kind) return kind;
@@ -609,7 +637,7 @@
       if (!state.list) return;
       setBusy(true);
       try {
-        const data = await api(`/price-lists/${encodeURIComponent(state.list.id)}/products-with-tags`);
+        const data = await api(`/price-lists/${encodeURIComponent(state.list.id)}/products`);
         state.products = Array.isArray(data.products) ? data.products : [];
         renderProducts();
         setStatus(`Productos actualizados para ${state.list.name || state.list.id}.`, 'ok');
@@ -762,16 +790,18 @@
 
     async function loadTagsAndMap() {
       try {
-        const [tagsData, mapData] = await Promise.all([
-          api('/price-lists/tags'),
-          api('/price-lists/category-map'),
+        const [tagsData, mapData, templateTagsData] = await Promise.all([
+          planificadorApi('/price-categories/tags'),
+          planificadorApi('/price-categories/map'),
+          planificadorApi('/price-categories/template-tags'),
         ]);
         state.tags = Array.isArray(tagsData.tags) ? tagsData.tags : [];
         state.categoryMap = mapData.map && typeof mapData.map === 'object' ? { ...mapData.map } : {};
+        state.templateTags = templateTagsData.template_tags && typeof templateTagsData.template_tags === 'object' ? { ...templateTagsData.template_tags } : {};
         renderCategoriesTab();
         renderProducts();
       } catch (e) {
-        $('tagsWrap').innerHTML = `<div class="empty">No se pudieron cargar los tags.\n${escapeHtml(e.message || String(e))}</div>`;
+        $('tagsWrap').innerHTML = `<div class="empty">No se pudieron cargar los tags (backend del planificador).\n${escapeHtml(e.message || String(e))}</div>`;
       }
     }
 
@@ -782,7 +812,7 @@
       statusEl.textContent = 'Guardando…';
       setBusy(true);
       try {
-        const data = await api('/price-lists/category-map', {
+        const data = await planificadorApi('/price-categories/map', {
           method: 'PUT',
           body: JSON.stringify({ map: state.categoryMap }),
         });

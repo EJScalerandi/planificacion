@@ -19,6 +19,7 @@ const ipanelRoutes = require('./routes/public/ipanel');
 const ipanelPreprodRoutes = require('./routes/public/ipanelPreprod');
 const remitosProxyRoutes = require('./routes/public/remitosProxy');
 const refabricacionRoutes = require('./routes/public/refabricacion');
+const priceCategoriesRoutes = require('./routes/public/priceCategories');
 const iaRoutes = require('./routes/external/ia');
 
 const { errorHandler } = require('./middleware/errorHandler');
@@ -87,6 +88,7 @@ app.use('/', portonesRoutes);
 app.use('/', ipanelRoutes);
 app.use('/', remitosProxyRoutes);
 app.use('/', refabricacionRoutes);
+app.use('/', priceCategoriesRoutes);
 app.use('/', iaRoutes);
 
 app.use(errorHandler);
