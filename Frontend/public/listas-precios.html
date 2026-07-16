@@ -609,7 +609,7 @@
       if (!state.list) return;
       setBusy(true);
       try {
-        const data = await api(`/price-lists/${encodeURIComponent(state.list.id)}/products`);
+        const data = await api(`/price-lists/${encodeURIComponent(state.list.id)}/products-with-tags`);
         state.products = Array.isArray(data.products) ? data.products : [];
         renderProducts();
         setStatus(`Productos actualizados para ${state.list.name || state.list.id}.`, 'ok');
