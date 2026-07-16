@@ -53,6 +53,17 @@
     .btn--brand:hover { background: var(--brand2); border-color: var(--brand2); }
     .btn--danger { color: var(--danger); }
     .btn:disabled { opacity: .55; cursor: not-allowed; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 18px; }
+    .tab-btn {
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--muted);
+      border-radius: 10px;
+      padding: 10px 16px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .tab-btn.active { background: var(--brand); border-color: var(--brand); color: #fff; }
     .card {
       background: var(--surface);
       border: 1px solid var(--border);
@@ -156,6 +167,26 @@
       <div id="status" class="status">Inicializando…</div>
     </section>
 
+    <div class="tabs">
+      <button class="tab-btn active" id="tabBtnPrices" type="button">Precios</button>
+      <button class="tab-btn" id="tabBtnCategories" type="button">Categorías</button>
+    </div>
+
+    <div id="tabCategories" class="hidden">
+      <section class="card">
+        <div class="toolbar" style="margin:0 0 6px;">
+          <div>
+            <h2>Categorías de productos</h2>
+            <p class="small">Asigná cada tag de Odoo a una categoría. Se usa para filtrar y aumentar precios solo de un tipo de producto (Portones, Ipanels, Puertas, Plegados, Otros).</p>
+          </div>
+          <button class="btn btn--brand" id="saveCategoryMapBtn" type="button">Guardar asignaciones</button>
+        </div>
+        <div id="categoryMapStatus" class="status hidden"></div>
+        <div id="tagsWrap" style="margin-top:12px;"></div>
+      </section>
+    </div>
+
+    <div id="tabPrices">
     <section class="grid">
       <aside class="card">
         <h2>Empresas</h2>
@@ -200,6 +231,7 @@
                   <option value="selected">Aumentar esta lista</option>
                   <option value="all">Aumentar todas las listas editables de la empresa</option>
                   <option value="checked">Aumentar productos seleccionados</option>
+                  <option value="category">Aumentar solo la categoría filtrada (esta lista)</option>
                 </select>
                 <input id="increasePercent" type="number" step="0.01" placeholder="%" />
                 <button id="applyIncreaseBtn" class="btn btn--brand" type="button">Aplicar aumento</button>
@@ -211,6 +243,15 @@
 
             <div class="toolbar">
               <div class="toolbar-left">
+                <select id="categoryFilter">
+                  <option value="">Todas las categorías</option>
+                  <option value="porton">Portones</option>
+                  <option value="ipanel">Ipanels</option>
+                  <option value="puerta">Puertas</option>
+                  <option value="plegados">Plegados</option>
+                  <option value="otros">Otros</option>
+                  <option value="__none__">Sin categoría asignada</option>
+                </select>
                 <input id="productFilter" type="text" placeholder="Buscar producto / código" />
               </div>
               <div class="toolbar-right">
@@ -223,11 +264,14 @@
         </div>
       </section>
     </section>
+    </div>
   </main>
 
   <script>
     const DEFAULT_API_BASE = 'https://presupuestador-kdbl.onrender.com/api';
     const LS_API_BASE = 'dg_price_lists_api_base';
+    const CATEGORY_LABELS = { porton: 'Portones', ipanel: 'Ipanels', puerta: 'Puertas', plegados: 'Plegados', otros: 'Otros' };
+    const CATEGORY_ORDER = ['porton', 'ipanel', 'puerta', 'plegados', 'otros'];
 
     const state = {
       apiBase: '',
@@ -236,6 +280,8 @@
       lists: [],
       list: null,
       products: [],
+      tags: [],
+      categoryMap: {},
       busy: false,
     };
 
@@ -328,6 +374,30 @@
       $('resetApiBtn').disabled = state.busy;
       $('applyIncreaseBtn').disabled = state.busy;
       $('reloadProductsBtn').disabled = state.busy;
+      $('saveCategoryMapBtn').disabled = state.busy;
+    }
+
+    function productCategory(product) {
+      const ids = Array.isArray(product?.tag_ids) ? product.tag_ids.map(Number) : [];
+      for (const id of ids) {
+        const kind = state.categoryMap[String(id)];
+        if (kind) return kind;
+      }
+      return '';
+    }
+
+    function getFilteredProducts() {
+      const q = low($('productFilter').value);
+      const categoryFilter = $('categoryFilter').value;
+      return state.products.filter((p) => {
+        if (q && !(low(p.product_name).includes(q) || low(p.default_code).includes(q) || String(p.id || '').includes(q))) return false;
+        if (categoryFilter) {
+          const cat = productCategory(p);
+          if (categoryFilter === '__none__') { if (cat) return false; }
+          else if (cat !== categoryFilter) return false;
+        }
+        return true;
+      });
     }
 
     function renderCompanies() {
@@ -406,11 +476,7 @@
       $('dflexNotice').classList.toggle('hidden', editable || !isDflexCompany(state.company));
       $('bulkPanel').classList.toggle('hidden', !editable);
 
-      const q = low($('productFilter').value);
-      const filtered = state.products.filter((p) => {
-        if (!q) return true;
-        return low(p.product_name).includes(q) || low(p.default_code).includes(q) || String(p.id || '').includes(q);
-      });
+      const filtered = getFilteredProducts();
 
       if (!filtered.length) {
         $('productsWrap').innerHTML = '<div class="empty">No hay productos para mostrar.</div>';
@@ -429,12 +495,14 @@
             <button class="btn" type="button" data-save-price="${attrId}">Guardar</button>
           </div>
         ` : `<span class="muted">Consulta</span>`;
+        const cat = productCategory(p);
+        const catBadge = `<span class="pill ${cat ? 'ok' : 'off'}">${escapeHtml(cat ? CATEGORY_LABELS[cat] : 'Sin categoría')}</span>`;
         return `
           <tr>
             <td style="width:42px">${checkbox}</td>
             <td>
               <div style="font-weight:900">${escapeHtml(p.product_name || 'Sin producto asignado')}</div>
-              <div class="small muted">${escapeHtml(p.default_code || '')}${p.product_tmpl_id ? ' · Producto: ' + escapeHtml(p.product_tmpl_id) : ''}${p.item_model === 'product.template' ? ' · Precio base' : ''}</div>
+              <div class="small muted">${escapeHtml(p.default_code || '')}${p.product_tmpl_id ? ' · Producto: ' + escapeHtml(p.product_tmpl_id) : ''}${p.item_model === 'product.template' ? ' · Precio base' : ''} · ${catBadge}</div>
             </td>
             <td>${escapeHtml(p.compute_price || '')}</td>
             <td class="num">${fmtMoney(p.fixed_price)}</td>
@@ -589,6 +657,7 @@
 
       const target = $('increaseTarget').value;
       const payload = { percent, company_id: state.company?.id || null };
+      let confirmLabel = '';
       if (target === 'checked') {
         const ids = getCheckedItemIds();
         if (!ids.length) {
@@ -596,6 +665,19 @@
           return;
         }
         payload.item_ids = ids;
+      } else if (target === 'category') {
+        const categoryFilter = $('categoryFilter').value;
+        if (!categoryFilter) {
+          setStatus('Elegí una categoría en el filtro para usar esta opción.', 'err');
+          return;
+        }
+        const ids = getFilteredProducts().map((p) => String(p.id));
+        if (!ids.length) {
+          setStatus('No hay productos de esa categoría en esta lista.', 'err');
+          return;
+        }
+        payload.item_ids = ids;
+        confirmLabel = ` (categoría: ${categoryFilter === '__none__' ? 'Sin categoría asignada' : CATEGORY_LABELS[categoryFilter]})`;
       } else if (target === 'all') {
         payload.pricelist_ids = state.lists
           .filter((l) => canEditList(state.company, l))
@@ -608,7 +690,7 @@
         payload.pricelist_ids = [Number(state.list.id)];
       }
 
-      const ok = confirm(`Aplicar aumento de ${percent}%?`);
+      const ok = confirm(`Aplicar aumento de ${percent}%${confirmLabel}?`);
       if (!ok) return;
 
       setBusy(true);
@@ -635,12 +717,95 @@
         .replace(/'/g, '&#039;');
     }
 
+    function showTab(tab) {
+      const isPrices = tab === 'prices';
+      $('tabBtnPrices').classList.toggle('active', isPrices);
+      $('tabBtnCategories').classList.toggle('active', !isPrices);
+      $('tabPrices').classList.toggle('hidden', !isPrices);
+      $('tabCategories').classList.toggle('hidden', isPrices);
+    }
+
+    function renderCategoriesTab() {
+      const wrap = $('tagsWrap');
+      if (!state.tags.length) {
+        wrap.innerHTML = '<div class="empty">No se encontraron tags de productos en Odoo.</div>';
+        return;
+      }
+      const rows = state.tags.map((tag) => {
+        const tagId = String(tag.id);
+        const current = state.categoryMap[tagId] || '';
+        const options = ['<option value="">Sin asignar</option>']
+          .concat(CATEGORY_ORDER.map((k) => `<option value="${k}" ${current === k ? 'selected' : ''}>${escapeHtml(CATEGORY_LABELS[k])}</option>`))
+          .join('');
+        return `
+          <tr>
+            <td>${escapeHtml(tag.name || ('Tag #' + tag.id))}</td>
+            <td><select data-tag-category="${escapeHtml(tagId)}">${options}</select></td>
+          </tr>
+        `;
+      }).join('');
+      wrap.innerHTML = `
+        <table>
+          <thead><tr><th>Tag (Odoo)</th><th>Categoría</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+      for (const sel of document.querySelectorAll('[data-tag-category]')) {
+        sel.addEventListener('change', () => {
+          const tagId = sel.getAttribute('data-tag-category');
+          const value = sel.value;
+          if (value) state.categoryMap[tagId] = value;
+          else delete state.categoryMap[tagId];
+        });
+      }
+    }
+
+    async function loadTagsAndMap() {
+      try {
+        const [tagsData, mapData] = await Promise.all([
+          api('/price-lists/tags'),
+          api('/price-lists/category-map'),
+        ]);
+        state.tags = Array.isArray(tagsData.tags) ? tagsData.tags : [];
+        state.categoryMap = mapData.map && typeof mapData.map === 'object' ? { ...mapData.map } : {};
+        renderCategoriesTab();
+        renderProducts();
+      } catch (e) {
+        $('tagsWrap').innerHTML = `<div class="empty">No se pudieron cargar los tags.\n${escapeHtml(e.message || String(e))}</div>`;
+      }
+    }
+
+    async function saveCategoryMap() {
+      const statusEl = $('categoryMapStatus');
+      statusEl.classList.remove('hidden');
+      statusEl.className = 'status';
+      statusEl.textContent = 'Guardando…';
+      setBusy(true);
+      try {
+        const data = await api('/price-lists/category-map', {
+          method: 'PUT',
+          body: JSON.stringify({ map: state.categoryMap }),
+        });
+        state.categoryMap = data.map && typeof data.map === 'object' ? { ...data.map } : state.categoryMap;
+        statusEl.className = 'status ok';
+        statusEl.textContent = 'Asignaciones guardadas.';
+        renderCategoriesTab();
+        renderProducts();
+      } catch (e) {
+        statusEl.className = 'status err';
+        statusEl.textContent = `No se pudo guardar.\n${e.message || e}`;
+      } finally {
+        setBusy(false);
+      }
+    }
+
     $('saveApiBtn').addEventListener('click', () => {
       const next = normalizeApiBase($('apiBaseInput').value);
       state.apiBase = next || DEFAULT_API_BASE;
       localStorage.setItem(LS_API_BASE, state.apiBase);
       $('apiBaseInput').value = state.apiBase;
       loadCompanies();
+      loadTagsAndMap();
     });
 
     $('resetApiBtn').addEventListener('click', () => {
@@ -648,16 +813,22 @@
       localStorage.setItem(LS_API_BASE, state.apiBase);
       $('apiBaseInput').value = state.apiBase;
       loadCompanies();
+      loadTagsAndMap();
     });
 
-    $('refreshBtn').addEventListener('click', loadCompanies);
+    $('refreshBtn').addEventListener('click', () => { loadCompanies(); loadTagsAndMap(); });
     $('reloadProductsBtn').addEventListener('click', loadProducts);
     $('productFilter').addEventListener('input', renderProducts);
+    $('categoryFilter').addEventListener('change', renderProducts);
     $('applyIncreaseBtn').addEventListener('click', applyIncrease);
+    $('tabBtnPrices').addEventListener('click', () => showTab('prices'));
+    $('tabBtnCategories').addEventListener('click', () => showTab('categories'));
+    $('saveCategoryMapBtn').addEventListener('click', saveCategoryMap);
 
     state.apiBase = getInitialApiBase();
     $('apiBaseInput').value = state.apiBase;
     loadCompanies();
+    loadTagsAndMap();
   </script>
 </body>
 </html>
