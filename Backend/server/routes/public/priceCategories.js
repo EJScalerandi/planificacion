@@ -19,30 +19,28 @@ function relationLooksLikeTag(fieldName, meta = {}) {
 
 async function detectProductTagField(odoo) {
   if (tagFieldCache !== null) return tagFieldCache;
-  try {
-    const meta = await odoo.executeKw('product.template', 'fields_get', [], {
-      attributes: ['string', 'type', 'relation'],
-    });
-    const preferred = ['product_tag_ids', 'product_template_tag_ids', 'tag_ids'];
-    let found = null;
-    for (const field of preferred) {
-      if (meta[field] && relationLooksLikeTag(field, meta[field])) {
-        found = { field, relation: meta[field].relation };
+  // Sin try/catch: si esto falla (credenciales, red, etc.) queremos que el error real
+  // suba a la respuesta HTTP en vez de esconderse detras de un "tags: []" enganoso.
+  const meta = await odoo.executeKw('product.template', 'fields_get', [], {
+    attributes: ['string', 'type', 'relation'],
+  });
+  const preferred = ['product_tag_ids', 'product_template_tag_ids', 'tag_ids'];
+  let found = null;
+  for (const field of preferred) {
+    if (meta[field] && relationLooksLikeTag(field, meta[field])) {
+      found = { field, relation: meta[field].relation };
+      break;
+    }
+  }
+  if (!found) {
+    for (const [field, info] of Object.entries(meta || {})) {
+      if (relationLooksLikeTag(field, info)) {
+        found = { field, relation: info.relation };
         break;
       }
     }
-    if (!found) {
-      for (const [field, info] of Object.entries(meta || {})) {
-        if (relationLooksLikeTag(field, info)) {
-          found = { field, relation: info.relation };
-          break;
-        }
-      }
-    }
-    tagFieldCache = found;
-  } catch (_e) {
-    tagFieldCache = null;
   }
+  tagFieldCache = found;
   return tagFieldCache;
 }
 
