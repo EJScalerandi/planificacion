@@ -40,6 +40,7 @@ const PORTON_BASE_FIELDS = [
   { key: 'partida', label: 'Partida', get: (r) => r.partida ?? '' },
   { key: 'nv_tipo', label: 'Tipo NV', get: (r) => r.nv_tipo ?? '' },
   { key: 'nombre_cliente', label: 'Nombre Cliente', get: (r) => r.nombre_cliente ?? '' },
+  { key: 'fecha_aprobacion_cliente', label: 'Fecha Aprobación Cliente', get: (r) => fmtDateTime(r.fecha_aprobacion_cliente) },
   { key: 'fecha_nv', label: 'Fecha NV', get: (r) => dateOnly(r.fecha_nv) },
   { key: 'fecha_prod', label: 'Fecha Producción', get: (r) => dateOnly(r.fecha_prod) },
   { key: 'fecha_plan', label: 'Fecha Salida (Plan)', get: (r) => dateOnly(r.fecha_plan) },

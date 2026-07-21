@@ -163,6 +163,7 @@ router.get('/portones', async (_req, res) => {
           pv.data->>'NombreCliente',
           sq.cliente_nombre
         )) as nombre_cliente,
+        max(sq.fecha_aprobacion_cliente) as fecha_aprobacion_cliente,
 
         -- ====== ESTADOS ======
         max(case when e.etapa = 'diseno'::public.porton_etapa then e.estado end) as diseno,
@@ -239,7 +240,9 @@ router.get('/portones', async (_req, res) => {
       left join public.preproduccion_valores pv
         on pv.nv = p.nv
       left join lateral (
-        select q.end_customer->>'name' as cliente_nombre
+        select
+          q.end_customer->>'name' as cliente_nombre,
+          q.measurement_client_accepted_at as fecha_aprobacion_cliente
         from public.presupuestador_quotes q
         where q.quote_kind = 'original'
           and (
