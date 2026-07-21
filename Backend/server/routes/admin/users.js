@@ -1,8 +1,22 @@
 const express = require('express');
 const router = express.Router();
+const bcrypt = require('bcryptjs');
 
 const { pool } = require('../../db');
 const { adminAuth } = require('../../middleware/adminAuth');
+
+// Alcances válidos de la app: los que realmente chequea el frontend
+// (menú de Índice, panel de Preproducción, etc.). Es una lista fija de la
+// aplicación, no una config de entorno: si se agrega un scope acá sin
+// enchufarlo en el frontend (o viceversa), no hace nada.
+const CANONICAL_SCOPES = [
+  'qc:admin',
+  'workflow:admin',
+  'users:admin',
+  'preproduccion:full',
+  'preproduccion:admin',
+  'preproduccion:comercial_view',
+];
 
 function normalizeScopes(scopes) {
   if (!Array.isArray(scopes)) return [];
@@ -40,14 +54,17 @@ router.post('/users', adminAuth, async (req, res) => {
   try {
     const body = req.body || {};
     const username = String(body.username || '').trim();
-    const password_hash = String(body.password_hash || '').trim(); // si lo manejás así
+    const password = String(body.password || '').trim();
     const is_active = body.is_active === false ? false : true;
     const name = body.name == null ? null : String(body.name || '').trim();
     const email = body.email == null ? null : String(body.email || '').trim();
     const scopes = normalizeScopes(body.scopes);
 
     if (!username) return res.status(400).json({ error: 'username requerido' });
-    if (!password_hash) return res.status(400).json({ error: 'password_hash requerido' });
+    if (!password) return res.status(400).json({ error: 'password requerido' });
+    if (password.length < 6) return res.status(400).json({ error: 'password debe tener al menos 6 caracteres' });
+
+    const password_hash = await bcrypt.hash(password, 10);
 
     const ins = await pool.query(
       `
@@ -132,8 +149,11 @@ router.post('/users/:id/password', adminAuth, async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) return res.status(400).json({ error: 'id inválido' });
 
-    const password_hash = String(req.body?.password_hash || '').trim();
-    if (!password_hash) return res.status(400).json({ error: 'password_hash requerido' });
+    const password = String(req.body?.password || '').trim();
+    if (!password) return res.status(400).json({ error: 'password requerido' });
+    if (password.length < 6) return res.status(400).json({ error: 'password debe tener al menos 6 caracteres' });
+
+    const password_hash = await bcrypt.hash(password, 10);
 
     const upd = await pool.query(
       `
@@ -155,20 +175,7 @@ router.post('/users/:id/password', adminAuth, async (req, res) => {
 
 // GET /admin/scopes
 router.get('/scopes', adminAuth, async (_req, res) => {
-  // FIX: ADMIN_SCOPES puede no existir en Render. No debe crashear.
-  // Podés setear ADMIN_SCOPES en Render: "qc:admin,workflow:admin,users:admin"
-  const raw = String(process.env.ADMIN_SCOPES || '').trim();
-
-  const scopes = raw
-    ? raw.split(',').map((s) => String(s || '').trim()).filter(Boolean)
-    : [
-        // fallback razonable para no romper UI
-        'qc:admin',
-        'workflow:admin',
-        'users:admin',
-      ];
-
-  return res.json(scopes);
+  return res.json(CANONICAL_SCOPES);
 });
 
 module.exports = router;

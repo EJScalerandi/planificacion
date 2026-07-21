@@ -76,7 +76,7 @@ export default function IndexPage({ routes = [] }) {
   const isQcAdmin = has('qc:admin');
   const isWfAdmin = has('workflow:admin');
   const isPreprodAdmin = has('preproduccion:admin') || has('preproduccion:full');
-  const canUsers = has('users:read') || has('users:write');
+  const canUsers = has('users:admin');
 
   const isPreprodOnly = isPreprodAdmin && !isQcAdmin && !isWfAdmin && !canUsers;
 
