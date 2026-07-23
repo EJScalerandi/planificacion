@@ -1,5 +1,11 @@
 // Universo de claves de sección física de planta, con su etiqueta legible.
 // Usado por los pickers de workflow de Prefabricados y Servicio Técnico.
+// Importante: no hay claves "extra" solo para estas líneas — los ítems de
+// Prefabricados/Servicio Técnico se mezclan dentro de la columna de portones
+// que ya existe para cada una de estas claves (ver merge en App.jsx), así que
+// el workflow de un tipo/orden debe terminar en una de estas mismas secciones
+// físicas (ej. un prefabricado que termina en "Prefabricados" usa
+// armado_piernas, la misma columna que ya existe para esa sección).
 export const SECTION_LABELS = {
   diseno: 'Diseño',
   laser: 'Laser',
@@ -17,7 +23,6 @@ export const SECTION_LABELS = {
   pintura_revestimiento: 'Pintura Revestimiento',
   armado_final: 'Armado Final',
   despacho: 'Despacho',
-  prefabricados: 'Prefabricados (stock)',
 };
 
 export const SECTION_KEYS = Object.keys(SECTION_LABELS);

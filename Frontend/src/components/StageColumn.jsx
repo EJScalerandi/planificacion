@@ -17,10 +17,7 @@ function fmt(dt) {
     : '';
 }
 function mapModeToLine(mode) {
-  if (mode === 'ipanel') return 'ipanel';
-  if (mode === 'prefabricado') return 'prefabricados';
-  if (mode === 'servicio_tecnico') return 'servicio_tecnico';
-  return 'portones';
+  return mode === 'ipanel' ? 'ipanel' : 'portones';
 }
 function toText(v) {
   return String(v ?? '').trim();
@@ -753,9 +750,9 @@ function getNvLabel(p) {
 }
 
 // Prefabricados: número propio (secuencia global). Servicio Técnico: reusa el NV del portón.
-function getOrderLabel(p, mode) {
-  if (mode === 'prefabricado') return `Pref ${p?.numero ?? '-'}`;
-  if (mode === 'servicio_tecnico') return `ST ${p?.nv ?? '-'}`;
+function getOrderLabel(p, kind) {
+  if (kind === 'prefabricado') return `Pref ${p?.numero ?? '-'}`;
+  if (kind === 'servicio_tecnico') return `ST ${p?.nv ?? '-'}`;
   return getNvLabel(p);
 }
 
@@ -883,6 +880,10 @@ export default function StageColumn({
   allItems = [],
   onStart,
   onStop,
+  onStartPrefab,
+  onStopPrefab,
+  onStartSt,
+  onStopSt,
   disabledId,
   qcSummaryMap = {},
   onQcSaved,
@@ -915,13 +916,14 @@ export default function StageColumn({
   const isLaserColumn = mode === 'porton' && keyTrim === 'laser';
 
   const eligiblePrefabTipos = useMemo(() => {
-    if (mode !== 'prefabricado') return [];
+    if (mode !== 'porton') return [];
     return (prefabTipos || []).filter(
       (t) => t?.enabled !== false && Array.isArray(t?.seccion_solicitante) && t.seccion_solicitante.includes(stageKey)
     );
   }, [mode, prefabTipos, stageKey]);
 
   function shouldHideFinalizado(p) {
+    if (p?.__kind) return false; // Prefabricados/Servicio Técnico no tienen QC.
     const qcId = getQcItemId(p, line);
     if (!Number.isInteger(qcId)) return false;
     const info = qcSummaryMap?.[qcId];
@@ -973,23 +975,6 @@ export default function StageColumn({
     const finKey = `${key}_fin`;
     const src = Array.isArray(allItems) ? allItems : [];
 
-    if (mode === 'prefabricado' || mode === 'servicio_tecnico') {
-      const done = src.filter((p) => low(p?.[key]) === 'finalizado');
-      done.sort((a, b) => {
-        const aT = a?.[finKey] ? new Date(a[finKey]).getTime() : 0;
-        const bT = b?.[finKey] ? new Date(b[finKey]).getTime() : 0;
-        return bT - aT;
-      });
-      return done.slice(0, 10).map((p) => ({
-        _key: String(p?.id ?? `${Math.random()}`),
-        label: mode === 'prefabricado'
-          ? `Pref ${p?.numero ?? '-'}${p?.tipo_nombre ? ` · ${p.tipo_nombre}` : ''}`
-          : `ST ${p?.nv ?? '-'}`,
-        fin: p?.[finKey] ?? null,
-        qcLatest: '',
-      }));
-    }
-
     const done = src.filter((p) => {
       const st = low(p?.[key]);
       if (st !== 'finalizado') return false;
@@ -1030,7 +1015,7 @@ export default function StageColumn({
             {mode === 'porton' ? (
               <button type="button" className="btn" onClick={() => setPortonHistOpen(true)} title="Ver historial de un portón por NV" style={{ background: 'rgba(255,255,255,0.18)', color: '#fff', borderColor: 'rgba(255,255,255,0.35)', fontWeight: 900, padding: '6px 10px' }}>Hist. portón</button>
             ) : null}
-            {mode === 'prefabricado' && eligiblePrefabTipos.length > 0 ? (
+            {mode === 'porton' && eligiblePrefabTipos.length > 0 ? (
               <button type="button" className="btn" onClick={() => setNuevoPedidoOpen(true)} title="Crear pedido de fabricación de prefabricado" style={{ background: 'rgba(255,255,255,0.18)', color: '#fff', borderColor: 'rgba(255,255,255,0.35)', fontWeight: 900, padding: '6px 10px' }}>+ Nuevo pedido</button>
             ) : null}
           </div>
@@ -1049,27 +1034,30 @@ export default function StageColumn({
             const canStop = st === 'en proceso';
             const canStart = st === 'pendiente';
 
-            if (mode === 'prefabricado' || mode === 'servicio_tecnico') {
+            if (p?.__kind === 'prefabricado' || p?.__kind === 'servicio_tecnico') {
+              const kind = p.__kind;
+              const startFn = kind === 'prefabricado' ? onStartPrefab : onStartSt;
+              const stopFn = kind === 'prefabricado' ? onStopPrefab : onStopSt;
               return (
                 <div
-                  key={`${mode}-${p?.id}`}
+                  key={`${kind}-${p?.id}`}
                   style={{ border: `2px solid ${cardBorder}`, borderRadius: 12, padding: '10px 12px', background: 'var(--surface)' }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    <span style={{ fontWeight: 900 }}>{getOrderLabel(p, mode)}</span>
-                    {mode === 'prefabricado' && p?.tipo_nombre ? (
+                    <span style={{ fontWeight: 900 }}>{getOrderLabel(p, kind)}</span>
+                    {kind === 'prefabricado' && p?.tipo_nombre ? (
                       <span style={{ fontSize: 12, opacity: 0.75 }}>{p.tipo_nombre}</span>
                     ) : null}
                   </div>
-                  {mode === 'servicio_tecnico' ? (
+                  {kind === 'servicio_tecnico' ? (
                     <div style={{ fontSize: 12, opacity: 0.85, marginTop: 2 }}>
                       Cant.: <b>{p?.cantidad ?? '-'}</b>{p?.descripcion ? <> · {p.descripcion}</> : null}
                     </div>
                   ) : null}
                   <div style={{ fontSize: 12, opacity: 0.75, marginTop: 2 }}>Estado: {p?.[effKey] || ''}</div>
                   <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                    <button className="btn btn--brand" onClick={() => onStart && onStart(p.id, effKey)} disabled={!canStart || disabledId === p.id}>▶</button>
-                    <button className="btn" onClick={() => onStop && onStop(p.id, effKey)} disabled={!canStop || disabledId === p.id}>⏹</button>
+                    <button className="btn btn--brand" onClick={() => startFn && startFn(p.id, effKey)} disabled={!canStart || disabledId === p.id}>▶</button>
+                    <button className="btn" onClick={() => stopFn && stopFn(p.id, effKey)} disabled={!canStop || disabledId === p.id}>⏹</button>
                   </div>
                 </div>
               );
@@ -1263,7 +1251,7 @@ export default function StageColumn({
       <AdminAccionesModal open={adminAccionesOpen} onClose={() => { setAdminAccionesOpen(false); setAdminAccionesTarget(null); }} title={title} item={adminAccionesTarget} />
       <ObservacionesModal open={obsOpen} onClose={() => { setObsOpen(false); setObsTarget(null); }} title={title} item={obsTarget} line={line} />
       <DetalleRefabricacionModal open={detalleRefabOpen} onClose={() => { setDetalleRefabOpen(false); setDetalleRefabTarget(null); }} item={detalleRefabTarget} />
-      {mode === 'prefabricado' ? (
+      {mode === 'porton' ? (
         <NuevoPedidoPrefabricadoModal
           open={nuevoPedidoOpen}
           onClose={() => setNuevoPedidoOpen(false)}

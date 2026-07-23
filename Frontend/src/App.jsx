@@ -398,57 +398,56 @@ function Board({ stages }) {
       <div className="stage-grid">
         {stages.map((s) => {
           const m = s.mode || 'porton';
-          let baseItems;
-          let allItemsForMode;
-          let onStartFn;
-          let onStopFn;
-          let qcMap = {};
-          let reqIndex = null;
-          let extraProps = {};
 
           if (m === 'ipanel') {
-            baseItems = filteredIpanels;
-            allItemsForMode = ipanels;
-            onStartFn = handleStartIpanel;
-            onStopFn = handleStopIpanel;
-            qcMap = qcSumIpanel;
-            reqIndex = reqIndexIpanel;
-          } else if (m === 'prefabricado') {
-            baseItems = filteredPrefab;
-            allItemsForMode = prefabricados;
-            onStartFn = handleStartPrefab;
-            onStopFn = handleStopPrefab;
-            extraProps = { prefabTipos, onCreatePrefabOrden: handleCreatePrefabOrden };
-          } else if (m === 'servicio_tecnico') {
-            baseItems = filteredSt;
-            allItemsForMode = stOrdenes;
-            onStartFn = handleStartSt;
-            onStopFn = handleStopSt;
-          } else {
-            baseItems = filteredPortones;
-            allItemsForMode = portones;
-            onStartFn = handleStart;
-            onStopFn = handleStop;
-            qcMap = qcSumPortones;
-            reqIndex = reqIndexPortones;
+            const itemsForStage = filteredIpanels.filter((item) => canAppearInStage({ item, stageKey: s.key, reqIndex: reqIndexIpanel }));
+            return (
+              <StageColumn
+                key={`ipanel-${s.key}-${s.label}`}
+                title={s.label}
+                stageKey={s.key}
+                mode="ipanel"
+                items={itemsForStage}
+                onStart={handleStartIpanel}
+                onStop={handleStopIpanel}
+                disabledId={busyId}
+                allItems={ipanels}
+                qcSummaryMap={qcSumIpanel}
+                onQcSaved={refreshQcSummary}
+              />
+            );
           }
 
-          const itemsForStage = baseItems.filter((item) => canAppearInStage({ item, stageKey: s.key, reqIndex }));
+          // Portones: se mezclan acá mismo los pedidos de Prefabricados y las
+          // órdenes de Servicio Técnico que comparten esta misma clave de
+          // sección física (misma columna, sin sumar columnas nuevas).
+          const portonItems = filteredPortones.filter((item) => canAppearInStage({ item, stageKey: s.key, reqIndex: reqIndexPortones }));
+          const prefabItems = filteredPrefab
+            .filter((item) => canAppearInStage({ item, stageKey: s.key, reqIndex: null }))
+            .map((item) => ({ ...item, __kind: 'prefabricado' }));
+          const stItems = filteredSt
+            .filter((item) => canAppearInStage({ item, stageKey: s.key, reqIndex: null }))
+            .map((item) => ({ ...item, __kind: 'servicio_tecnico' }));
 
           return (
             <StageColumn
-              key={`${m}-${s.key}-${s.label}`}
+              key={`porton-${s.key}-${s.label}`}
               title={s.label}
               stageKey={s.key}
-              mode={m}
-              items={itemsForStage}
-              onStart={onStartFn}
-              onStop={onStopFn}
+              mode="porton"
+              items={[...portonItems, ...prefabItems, ...stItems]}
+              onStart={handleStart}
+              onStop={handleStop}
+              onStartPrefab={handleStartPrefab}
+              onStopPrefab={handleStopPrefab}
+              onStartSt={handleStartSt}
+              onStopSt={handleStopSt}
               disabledId={busyId}
-              allItems={allItemsForMode}
-              qcSummaryMap={qcMap}
+              allItems={portones}
+              qcSummaryMap={qcSumPortones}
               onQcSaved={refreshQcSummary}
-              {...extraProps}
+              prefabTipos={prefabTipos}
+              onCreatePrefabOrden={handleCreatePrefabOrden}
             />
           );
         })}
@@ -459,14 +458,10 @@ function Board({ stages }) {
 
 const ONE = (key, label) => [{ key, label, mode: 'porton' }];
 
-// Servicio Técnico es ad-hoc: una orden puede pasar por cualquier sección física,
-// así que se agrega una columna "ST" en cada sección existente (mismo mecanismo
-// que ya se usó para sumar ipanel a cada ruta).
-const ST = (key, sectionLabel) => ({ key, label: `${sectionLabel} (Servicio Técnico)`, mode: 'servicio_tecnico' });
-// Prefabricados solo aparece en las secciones físicas por las que efectivamente
-// puede pasar un prefabricado (definidas por el workflow de cada tipo).
-const PREF = (key, sectionLabel) => ({ key, label: `${sectionLabel} (Prefabricados)`, mode: 'prefabricado' });
-
+// Prefabricados y Servicio Técnico ya NO tienen columna propia: sus ítems se
+// mezclan dentro de la misma columna de portones que comparte la clave de
+// sección (ver merge en Board), para no sumar columnas nuevas en tablets con
+// poco espacio. Solo se distinguen por el borde azul de la card.
 const ROUTES = [
   {
     path: '/board',
@@ -474,50 +469,26 @@ const ROUTES = [
     stages: [
       { key: 'diseno', label: 'Diseño (Portones)', mode: 'porton' },
       { key: 'diseno', label: 'Diseño (iPanel)', mode: 'ipanel' },
-      ST('diseno', 'Diseño'),
       { key: 'laser', label: 'Laser', mode: 'porton' },
-      PREF('laser', 'Laser'),
-      ST('laser', 'Laser'),
       { key: 'guillotina', label: 'Corte piernas', mode: 'porton' },
       { key: 'corte_revest', label: 'Corte revestimiento', mode: 'porton' },
       { key: 'guillotina', label: 'Corte Ipanel', mode: 'ipanel' },
-      PREF('guillotina', 'Corte piernas'),
-      PREF('corte_revest', 'Corte revestimiento'),
-      ST('guillotina', 'Corte piernas'),
-      ST('corte_revest', 'Corte revestimiento'),
       { key: 'plegadora', label: 'Plegado Piernas', mode: 'porton' },
       { key: 'plegado_revest', label: 'Plegado Revestimiento', mode: 'porton' },
       { key: 'plegado', label: 'Plegado Ipanel', mode: 'ipanel' },
-      PREF('plegadora', 'Plegado Piernas'),
-      PREF('plegado_revest', 'Plegado Revestimiento'),
-      ST('plegadora', 'Plegado Piernas'),
-      ST('plegado_revest', 'Plegado Revestimiento'),
       { key: 'armado_piernas', label: 'Prefabricados (Armado de piernas)', mode: 'porton' },
       { key: 'armado_marco_piernas', label: 'Armado de marcos piernas', mode: 'porton' },
       { key: 'armado_hojas', label: 'Armado de hoja', mode: 'porton' },
-      ST('armado_piernas', 'Armado de piernas'),
-      ST('armado_marco_piernas', 'Armado de marcos piernas'),
-      ST('armado_hojas', 'Armado de hoja'),
       { key: 'armado_primario', label: 'Armado Primario', mode: 'porton' },
-      ST('armado_primario', 'Armado Primario'),
       { key: 'revestimiento', label: 'Revestimiento', mode: 'porton' },
-      ST('revestimiento', 'Revestimiento'),
       { key: 'pintura', label: 'Pintura Sistemas (Portones)', mode: 'porton' },
       { key: 'pintura_revestimiento', label: 'Pintura Revestimiento (Portones)', mode: 'porton' },
       { key: 'pintura', label: 'Pintura (Ipanels)', mode: 'ipanel' },
-      PREF('pintura', 'Pintura Sistemas'),
-      PREF('pintura_revestimiento', 'Pintura Revestimiento'),
-      ST('pintura', 'Pintura Sistemas'),
-      ST('pintura_revestimiento', 'Pintura Revestimiento'),
       { key: 'inyeccion', label: 'Inyeccion (Portones)', mode: 'porton' },
       { key: 'inyeccion', label: 'Inyeccion Ipanel', mode: 'ipanel' },
-      ST('inyeccion', 'Inyección'),
       { key: 'armado_final', label: 'Armado Final', mode: 'porton' },
-      ST('armado_final', 'Armado Final'),
       { key: 'despacho', label: 'Despacho (Portones)', mode: 'porton' },
       { key: 'despacho', label: 'Despacho (iPanel)', mode: 'ipanel' },
-      ST('despacho', 'Despacho'),
-      { key: 'prefabricados', label: 'Prefabricados (stock)', mode: 'prefabricado' },
     ],
   },
   {
@@ -526,14 +497,9 @@ const ROUTES = [
     stages: [
       { key: 'diseno', label: 'Diseño (Portones)', mode: 'porton' },
       { key: 'diseno', label: 'Diseño (iPanel)', mode: 'ipanel' },
-      ST('diseno', 'Diseño'),
     ],
   },
-  {
-    path: '/laser',
-    label: 'Producción · Laser',
-    stages: [...ONE('laser', 'Laser'), PREF('laser', 'Laser'), ST('laser', 'Laser')],
-  },
+  { path: '/laser', label: 'Producción · Laser', stages: ONE('laser', 'Laser') },
   {
     path: '/corte',
     label: 'Producción · Corte',
@@ -541,10 +507,6 @@ const ROUTES = [
       { key: 'guillotina', label: 'Corte piernas', mode: 'porton' },
       { key: 'corte_revest', label: 'Corte revestimiento', mode: 'porton' },
       { key: 'guillotina', label: 'Corte Ipanel', mode: 'ipanel' },
-      PREF('guillotina', 'Corte piernas'),
-      PREF('corte_revest', 'Corte revestimiento'),
-      ST('guillotina', 'Corte piernas'),
-      ST('corte_revest', 'Corte revestimiento'),
     ],
   },
   {
@@ -554,10 +516,6 @@ const ROUTES = [
       { key: 'plegadora', label: 'Plegado Piernas', mode: 'porton' },
       { key: 'plegado_revest', label: 'Plegado Revestimiento', mode: 'porton' },
       { key: 'plegado', label: 'Plegado Ipanel', mode: 'ipanel' },
-      PREF('plegadora', 'Plegado Piernas'),
-      PREF('plegado_revest', 'Plegado Revestimiento'),
-      ST('plegadora', 'Plegado Piernas'),
-      ST('plegado_revest', 'Plegado Revestimiento'),
     ],
   },
   {
@@ -567,17 +525,9 @@ const ROUTES = [
       { key: 'armado_piernas', label: 'Prefabricados (Armado de piernas)', mode: 'porton' },
       { key: 'armado_marco_piernas', label: 'Armado de marcos piernas', mode: 'porton' },
       { key: 'armado_hojas', label: 'Armado de hoja', mode: 'porton' },
-      ST('armado_piernas', 'Armado de piernas'),
-      ST('armado_marco_piernas', 'Armado de marcos piernas'),
-      ST('armado_hojas', 'Armado de hoja'),
-      { key: 'prefabricados', label: 'Prefabricados (stock)', mode: 'prefabricado' },
     ],
   },
-  {
-    path: '/armado-primario',
-    label: 'Producción · Armado Primario',
-    stages: [...ONE('armado_primario', 'Armado Primario'), ST('armado_primario', 'Armado Primario')],
-  },
+  { path: '/armado-primario', label: 'Producción · Armado Primario', stages: ONE('armado_primario', 'Armado Primario') },
   {
     path: '/pintura',
     label: 'Producción · Pintura',
@@ -585,10 +535,6 @@ const ROUTES = [
       { key: 'pintura', label: 'Pintura Sistemas (Portones)', mode: 'porton' },
       { key: 'pintura_revestimiento', label: 'Pintura Revestimiento (Portones)', mode: 'porton' },
       { key: 'pintura', label: 'Pintura (Ipanels)', mode: 'ipanel' },
-      PREF('pintura', 'Pintura Sistemas'),
-      PREF('pintura_revestimiento', 'Pintura Revestimiento'),
-      ST('pintura', 'Pintura Sistemas'),
-      ST('pintura_revestimiento', 'Pintura Revestimiento'),
     ],
   },
   {
@@ -597,26 +543,16 @@ const ROUTES = [
     stages: [
       { key: 'inyeccion', label: 'Inyeccion (Portones)', mode: 'porton' },
       { key: 'inyeccion', label: 'Inyeccion Ipanel', mode: 'ipanel' },
-      ST('inyeccion', 'Inyección'),
     ],
   },
-  {
-    path: '/revestimiento',
-    label: 'Producción · Revestimiento',
-    stages: [...ONE('revestimiento', 'Revestimiento'), ST('revestimiento', 'Revestimiento')],
-  },
-  {
-    path: '/armado-final',
-    label: 'Producción · Armado Final',
-    stages: [...ONE('armado_final', 'Armado Final'), ST('armado_final', 'Armado Final')],
-  },
+  { path: '/revestimiento', label: 'Producción · Revestimiento', stages: ONE('revestimiento', 'Revestimiento') },
+  { path: '/armado-final', label: 'Producción · Armado Final', stages: ONE('armado_final', 'Armado Final') },
   {
     path: '/despacho',
     label: 'Producción · Despacho',
     stages: [
       { key: 'despacho', label: 'Despacho (Portones)', mode: 'porton' },
       { key: 'despacho', label: 'Despacho (iPanel)', mode: 'ipanel' },
-      ST('despacho', 'Despacho'),
     ],
   },
 ];
