@@ -4,6 +4,7 @@ import NuevoPedidoPrefabricadoModal from './modals/NuevoPedidoPrefabricadoModal'
 
 const bordo = '#008241ff';
 const cardBorder = '#1d4ed8';
+const cardBg = '#e0f2fe';
 
 function low(v) {
   return String(v ?? '').toLowerCase();
@@ -45,6 +46,11 @@ function isTruthySi(v) {
 }
 
 function getQcItemId(item, line) {
+  if (line === 'prefabricados') {
+    const num = Number(item?.numero);
+    return Number.isInteger(num) ? num : null;
+  }
+
   const nv = Number(item?.nv ?? item?.NV);
   if (Number.isInteger(nv)) return nv;
 
@@ -55,6 +61,14 @@ function getQcItemId(item, line) {
   const pa = Number(item?.partida ?? item?.PARTIDA);
   if (Number.isInteger(pa)) return pa;
 
+  return null;
+}
+
+// Prefabricados/Servicio Técnico tienen su propia línea de QC (separada de
+// portones), aunque visualmente compartan la columna de la sección.
+function getItemQcLine(item) {
+  if (item?.__kind === 'prefabricado') return 'prefabricados';
+  if (item?.__kind === 'servicio_tecnico') return 'servicio_tecnico';
   return null;
 }
 
@@ -598,10 +612,11 @@ function ObservacionesModal({ open, onClose, title, item, line }) {
   }, [open, item, line]);
 
   if (!open || !item) return null;
-  const nv = item?.nv != null ? `NV ${item.nv}` : '';
+  const pref = item?.__kind === 'prefabricado' && item?.numero != null ? `Pref ${item.numero}` : '';
+  const nv = item?.nv != null ? (item?.__kind === 'servicio_tecnico' ? `ST ${item.nv}` : `NV ${item.nv}`) : '';
   const nlista = item?.nlista != null ? `Portón ${item.nlista}` : '';
   const partida = item?.partida != null ? `Partida ${item.partida}` : '';
-  const head = [title, nv, nlista, partida].filter(Boolean).join(' · ');
+  const head = [title, pref, nv, nlista, partida].filter(Boolean).join(' · ');
   const rows = (observations || []).map((o) => ({
     sector: o?.stage_key || o?.sector || o?.stage || '-',
     fecha: o?.created_at || o?.timestamp || null,
@@ -725,7 +740,11 @@ function PortonHistoryModal({ open, onClose, title, effKey, items = [] }) {
         {searchDone && !invalidNv && !result ? <div style={{ opacity: 0.8 }}>No se encontró ningún portón con NV <b>{normalizedNv}</b>.</div> : null}
         {result ? (
           <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div style={{ fontWeight: 900, fontSize: 16 }}>Portón {result?.nlista ?? result?.NLista ?? '-'} · NV {result?.nv ?? result?.NV ?? '-'} · Partida {result?.partida ?? result?.PARTIDA ?? '-'}</div>
+            <div style={{ fontWeight: 900, fontSize: 16 }}>
+              {result?.__kind === 'servicio_tecnico'
+                ? `ST ${result?.nv ?? '-'}`
+                : `Portón ${result?.nlista ?? result?.NLista ?? '-'} · NV ${result?.nv ?? result?.NV ?? '-'} · Partida ${result?.partida ?? result?.PARTIDA ?? '-'}`}
+            </div>
             <div style={{ fontSize: 14 }}><b>Sector:</b> {title}</div>
             <div style={{ fontSize: 14 }}><b>Estado:</b> {displayValue(result?.[cleanEffKey], 'Sin datos')}</div>
             <div style={{ fontSize: 14 }}><b>Inicio:</b> {result?.[startKey] ? fmt(result[startKey]) : '-'}</div>
@@ -886,6 +905,8 @@ export default function StageColumn({
   onStopSt,
   disabledId,
   qcSummaryMap = {},
+  qcSummaryMapPrefab = {},
+  qcSummaryMapSt = {},
   onQcSaved,
   prefabTipos = [],
   onCreatePrefabOrden,
@@ -922,11 +943,17 @@ export default function StageColumn({
     );
   }, [mode, prefabTipos, stageKey]);
 
+  function qcMapForItem(p) {
+    if (p?.__kind === 'prefabricado') return qcSummaryMapPrefab;
+    if (p?.__kind === 'servicio_tecnico') return qcSummaryMapSt;
+    return qcSummaryMap;
+  }
+
   function shouldHideFinalizado(p) {
-    if (p?.__kind) return false; // Prefabricados/Servicio Técnico no tienen QC.
-    const qcId = getQcItemId(p, line);
+    const itemLine = getItemQcLine(p) || line;
+    const qcId = getQcItemId(p, itemLine);
     if (!Number.isInteger(qcId)) return false;
-    const info = qcSummaryMap?.[qcId];
+    const info = qcMapForItem(p)?.[qcId];
     const latest = up(info?.latest_by_stage?.[keyTrim] || '');
     if (!latest) return false;
     return latest === 'APROBADO' || latest === 'OBSERVADO';
@@ -961,8 +988,9 @@ export default function StageColumn({
   }, [items, effKey]);
 
   const handleStopAndOpenQc = async (p) => {
-    if (!onStop || !p) return;
-    const resp = await onStop(p.id, effKey);
+    const stopFn = p?.__kind === 'prefabricado' ? onStopPrefab : p?.__kind === 'servicio_tecnico' ? onStopSt : onStop;
+    if (!stopFn || !p) return;
+    const resp = await stopFn(p.id, effKey);
     if (!resp?.ok) return;
     setQcTarget(resp.item || p);
     setQcForceComplete(true);
@@ -975,11 +1003,16 @@ export default function StageColumn({
     const finKey = `${key}_fin`;
     const src = Array.isArray(allItems) ? allItems : [];
 
+    const qcInfoFor = (p) => {
+      const itemLine = getItemQcLine(p) || 'portones';
+      const qcId = getQcItemId(p, itemLine);
+      return Number.isInteger(qcId) ? qcMapForItem(p)?.[qcId] : null;
+    };
+
     const done = src.filter((p) => {
       const st = low(p?.[key]);
       if (st !== 'finalizado') return false;
-      const qcId = getQcItemId(p, 'portones');
-      const info = Number.isInteger(qcId) ? qcSummaryMap?.[qcId] : null;
+      const info = qcInfoFor(p);
       const latest = up(info?.latest_by_stage?.[key] || '');
       if (latest) return latest === 'APROBADO' || latest === 'OBSERVADO';
       return true;
@@ -993,17 +1026,20 @@ export default function StageColumn({
       return (Number(b?.nv) || 0) - (Number(a?.nv) || 0);
     });
     return done.slice(0, 10).map((p) => {
-      const qcId = getQcItemId(p, 'portones');
-      const info = Number.isInteger(qcId) ? qcSummaryMap?.[qcId] : null;
-      const qcLatest = up(info?.latest_by_stage?.[key] || '');
+      const qcLatest = up(qcInfoFor(p)?.latest_by_stage?.[key] || '');
+      const label = p?.__kind === 'prefabricado'
+        ? `Pref ${p?.numero ?? '-'}${p?.tipo_nombre ? ` · ${p.tipo_nombre}` : ''}`
+        : p?.__kind === 'servicio_tecnico'
+          ? `ST ${p?.nv ?? '-'}`
+          : `Portón ${p?.nlista ?? '-'} · NV ${p?.nv ?? '-'}`;
       return {
         _key: String(p?.id ?? p?.nv ?? `${Math.random()}`),
-        label: `Portón ${p?.nlista ?? '-'} · NV ${p?.nv ?? '-'}`,
+        label,
         fin: p?.[finKey] ?? null,
         qcLatest,
       };
     });
-  }, [mode, keyTrim, allItems, qcSummaryMap]);
+  }, [mode, keyTrim, allItems, qcSummaryMap, qcSummaryMapPrefab, qcSummaryMapSt]);
 
   return (
     <div style={{ border: `2px solid ${bordo}`, borderRadius: 12, overflow: 'hidden', background: 'var(--surface)', display: 'flex', flexDirection: 'column', minHeight: 320 }}>
@@ -1037,12 +1073,25 @@ export default function StageColumn({
             if (p?.__kind === 'prefabricado' || p?.__kind === 'servicio_tecnico') {
               const kind = p.__kind;
               const startFn = kind === 'prefabricado' ? onStartPrefab : onStartSt;
-              const stopFn = kind === 'prefabricado' ? onStopPrefab : onStopSt;
+              const itemLine = getItemQcLine(p);
+              const itemQcId = getQcItemId(p, itemLine);
+              const itemQcInfo = Number.isInteger(itemQcId) ? qcMapForItem(p)?.[itemQcId] : null;
+              const itemHasObs = Boolean(itemQcInfo?.has_obs);
               return (
                 <div
                   key={`${kind}-${p?.id}`}
-                  style={{ border: `2px solid ${cardBorder}`, borderRadius: 12, padding: '10px 12px', background: 'var(--surface)' }}
+                  style={{ border: `2px solid ${cardBorder}`, borderRadius: 12, padding: '10px 12px', background: cardBg, position: 'relative' }}
                 >
+                  {itemHasObs ? (
+                    <button
+                      type="button"
+                      onClick={() => { setObsTarget(p); setObsOpen(true); }}
+                      title="Ver observaciones"
+                      style={{ position: 'absolute', top: 8, right: 8, width: 28, height: 28, borderRadius: 999, border: '1px solid #b91c1c', background: '#ef4444', color: '#fff', fontWeight: 900, cursor: 'pointer', display: 'grid', placeItems: 'center', boxShadow: '0 6px 18px rgba(0,0,0,0.18)' }}
+                    >
+                      !
+                    </button>
+                  ) : null}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <span style={{ fontWeight: 900 }}>{getOrderLabel(p, kind)}</span>
                     {kind === 'prefabricado' && p?.tipo_nombre ? (
@@ -1055,9 +1104,17 @@ export default function StageColumn({
                     </div>
                   ) : null}
                   <div style={{ fontSize: 12, opacity: 0.75, marginTop: 2 }}>Estado: {p?.[effKey] || ''}</div>
-                  <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+                    <button
+                      className="btn"
+                      type="button"
+                      onClick={() => { setQcTarget(p); setQcForceComplete(false); setQcOpen(true); }}
+                      style={{ fontWeight: 900 }}
+                    >
+                      QC
+                    </button>
                     <button className="btn btn--brand" onClick={() => startFn && startFn(p.id, effKey)} disabled={!canStart || disabledId === p.id}>▶</button>
-                    <button className="btn" onClick={() => stopFn && stopFn(p.id, effKey)} disabled={!canStop || disabledId === p.id}>⏹</button>
+                    <button className="btn" onClick={() => handleStopAndOpenQc(p)} disabled={!canStop || disabledId === p.id}>⏹</button>
                   </div>
                 </div>
               );
@@ -1247,9 +1304,9 @@ export default function StageColumn({
       <DatosModal open={datosOpen} onClose={() => { setDatosOpen(false); setDatosTarget(null); }} item={datosTarget} title={title} />
       <AnexoDetailModal open={anexoOpen} onClose={() => { setAnexoOpen(false); setAnexoTarget(null); }} item={anexoTarget} />
       <PreObsModal open={preObsOpen} onClose={() => { setPreObsOpen(false); setPreObsTarget(null); }} item={preObsTarget} />
-      <QcModal open={qcOpen} onClose={() => { setQcOpen(false); setQcTarget(null); setQcForceComplete(false); }} item={qcTarget} line={line} stageKey={effKey} title={title} onSaved={() => onQcSaved?.()} forceComplete={qcForceComplete} />
+      <QcModal open={qcOpen} onClose={() => { setQcOpen(false); setQcTarget(null); setQcForceComplete(false); }} item={qcTarget} line={getItemQcLine(qcTarget) || line} stageKey={effKey} title={title} onSaved={() => onQcSaved?.()} forceComplete={qcForceComplete} />
       <AdminAccionesModal open={adminAccionesOpen} onClose={() => { setAdminAccionesOpen(false); setAdminAccionesTarget(null); }} title={title} item={adminAccionesTarget} />
-      <ObservacionesModal open={obsOpen} onClose={() => { setObsOpen(false); setObsTarget(null); }} title={title} item={obsTarget} line={line} />
+      <ObservacionesModal open={obsOpen} onClose={() => { setObsOpen(false); setObsTarget(null); }} title={title} item={obsTarget} line={getItemQcLine(obsTarget) || line} />
       <DetalleRefabricacionModal open={detalleRefabOpen} onClose={() => { setDetalleRefabOpen(false); setDetalleRefabTarget(null); }} item={detalleRefabTarget} />
       {mode === 'porton' ? (
         <NuevoPedidoPrefabricadoModal

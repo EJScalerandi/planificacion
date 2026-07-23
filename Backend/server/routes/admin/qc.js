@@ -9,7 +9,7 @@ const QC_PIN_SALT = process.env.QC_PIN_SALT || 'dev_change_me_pin_salt';
 function hashPin(pin) {
   return crypto.createHmac('sha256', QC_PIN_SALT).update(String(pin)).digest('hex');
 }
-function isValidLine(line) { return ['portones', 'ipanel'].includes(line); }
+function isValidLine(line) { return ['portones', 'ipanel', 'prefabricados', 'servicio_tecnico'].includes(line); }
 function isValidKind(k) { return ['OBSERVADO', 'RECHAZADO'].includes(k); }
 
 // GET /admin/qc/users

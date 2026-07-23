@@ -133,18 +133,8 @@ router.post('/servicio-tecnico/:id/stage', async (req, res) => {
         `,
         [id, stageKey]
       );
-
-      const nextStage = stages[idx + 1];
-      if (nextStage) {
-        await client.query(
-          `
-          insert into public.st_orden_etapas_estado(orden_id, etapa, estado)
-          values ($1, $2, $3)
-          on conflict (orden_id, etapa) do nothing;
-          `,
-          [id, nextStage, STATUS.PENDIENTE]
-        );
-      }
+      // El avance a la siguiente etapa ya NO se hace acá: requiere QC aprobado
+      // (ver /qc/authorize), igual que portones.
     }
 
     await client.query('commit');

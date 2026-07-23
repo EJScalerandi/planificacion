@@ -108,6 +108,32 @@ async function getIpanelByNv(db, nv) {
   return rows[0] || null;
 }
 
+// Prefabricados: item_id del QC es el "numero" (secuencia propia, único por pedido).
+async function getPrefabOrdenByNumero(db, numero) {
+  const { rows } = await db.query(
+    `
+    select o.id, t.workflow_stages
+    from public.prefabricado_ordenes o
+    join public.prefabricado_tipos t on t.id = o.tipo_id
+    where o.numero = $1
+    limit 1;
+    `,
+    [numero]
+  );
+  return rows[0] || null;
+}
+
+// Servicio Técnico: item_id del QC es el NV del portón (no hay secuencia propia).
+// Si hay más de una orden ST para el mismo NV, se toma la más reciente
+// (mismo criterio que ya usa getPortonIdByNv para NVs duplicados).
+async function getStOrdenByNv(db, nv) {
+  const { rows } = await db.query(
+    `select id, workflow_stages from public.st_ordenes where nv = $1 order by created_at desc, id desc limit 1;`,
+    [nv]
+  );
+  return rows[0] || null;
+}
+
 const QC_PIN_SALT = process.env.QC_PIN_SALT || 'dev_change_me_pin_salt';
 
 function hashPin(pin) {
@@ -115,7 +141,7 @@ function hashPin(pin) {
 }
 
 function isValidLine(line) {
-  return ['portones', 'ipanel'].includes(line);
+  return ['portones', 'ipanel', 'prefabricados', 'servicio_tecnico'].includes(line);
 }
 function isValidQcStatus(s) {
   return ['APROBADO', 'OBSERVADO', 'RECHAZADO'].includes(s);
@@ -412,6 +438,62 @@ router.post('/qc/authorize', async (req, res) => {
           await client.query(
             `update public.ipanel set ${nextStageCol} = coalesce(${nextStageCol}, $2) where id = $1;`,
             [ip.id, STATUS.PENDIENTE]
+          );
+        }
+      } else if (lineStr === 'prefabricados') {
+        const orden = await getPrefabOrdenByNumero(client, nItemId);
+        if (!orden) {
+          await client.query('rollback');
+          return res.status(404).json({ error: 'Pedido de prefabricado no encontrado para ese número' });
+        }
+
+        const estQ = await client.query(
+          `select estado from public.prefabricado_orden_etapas_estado where orden_id = $1 and etapa = $2;`,
+          [orden.id, statusCol]
+        );
+        if (low(estQ.rows[0]?.estado) !== low(STATUS.FINALIZADO)) {
+          await client.query('rollback');
+          return res.status(409).json({ error: `La etapa ${statusCol} debe estar FINALIZADO antes de completar QC` });
+        }
+
+        const stages = Array.isArray(orden.workflow_stages) ? orden.workflow_stages : [];
+        const nextStage = stages[stages.indexOf(statusCol) + 1];
+        if (nextStage) {
+          await client.query(
+            `
+            insert into public.prefabricado_orden_etapas_estado(orden_id, etapa, estado)
+            values ($1, $2, $3)
+            on conflict (orden_id, etapa) do nothing;
+            `,
+            [orden.id, nextStage, STATUS.PENDIENTE]
+          );
+        }
+      } else if (lineStr === 'servicio_tecnico') {
+        const orden = await getStOrdenByNv(client, nItemId);
+        if (!orden) {
+          await client.query('rollback');
+          return res.status(404).json({ error: 'Orden de servicio técnico no encontrada para ese NV' });
+        }
+
+        const estQ = await client.query(
+          `select estado from public.st_orden_etapas_estado where orden_id = $1 and etapa = $2;`,
+          [orden.id, statusCol]
+        );
+        if (low(estQ.rows[0]?.estado) !== low(STATUS.FINALIZADO)) {
+          await client.query('rollback');
+          return res.status(409).json({ error: `La etapa ${statusCol} debe estar FINALIZADO antes de completar QC` });
+        }
+
+        const stages = Array.isArray(orden.workflow_stages) ? orden.workflow_stages : [];
+        const nextStage = stages[stages.indexOf(statusCol) + 1];
+        if (nextStage) {
+          await client.query(
+            `
+            insert into public.st_orden_etapas_estado(orden_id, etapa, estado)
+            values ($1, $2, $3)
+            on conflict (orden_id, etapa) do nothing;
+            `,
+            [orden.id, nextStage, STATUS.PENDIENTE]
           );
         }
       }

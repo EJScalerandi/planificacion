@@ -6,6 +6,8 @@ import api, { clearAdminToken, getAdminToken } from '../../src/api';
 const LINES = [
   { key: 'portones', label: 'Portones' },
   { key: 'ipanel', label: 'iPanel' },
+  { key: 'prefabricados', label: 'Prefabricados' },
+  { key: 'servicio_tecnico', label: 'Servicio Técnico' },
 ];
 
 const KINDS = [
@@ -16,25 +18,30 @@ const KINDS = [
 // Stages conocidas para permisos QC.
 // IMPORTANTE: el value real que se guarda en DB es stage_key.
 // Solo cambia el label visible para que sea claro en la pantalla.
+// Prefabricados y Servicio Técnico circulan por las mismas secciones físicas
+// que portones (ver Frontend/src/constants/sections.js), así que reusan la
+// misma lista de etapas para configurar motivos/scopes de QC.
+const PORTON_STAGES = [
+  { key: 'diseno', label: 'Diseño' },
+  { key: 'laser', label: 'Láser' },
+  { key: 'guillotina', label: 'Guillotina / Corte piernas' },
+  { key: 'corte_revest', label: 'Corte revestimiento' },
+  { key: 'plegadora', label: 'Plegadora / Plegado piernas' },
+  { key: 'plegado_revest', label: 'Plegado revestimiento' },
+  { key: 'armado_piernas', label: 'Armado piernas' },
+  { key: 'armado_marco_piernas', label: 'Armado marco piernas' },
+  { key: 'armado_hojas', label: 'Armado hojas' },
+  { key: 'armado_primario', label: 'Armado primario' },
+  { key: 'revestimiento', label: 'Revestimiento' },
+  { key: 'pintura', label: 'Pintura sistemas' },
+  { key: 'pintura_revestimiento', label: 'Pintura revestimiento' },
+  { key: 'inyeccion', label: 'Inyección' },
+  { key: 'armado_final', label: 'Armado final' },
+  { key: 'despacho', label: 'Despacho' },
+];
+
 const STAGES_BY_LINE = {
-  portones: [
-    { key: 'diseno', label: 'Diseño' },
-    { key: 'laser', label: 'Láser' },
-    { key: 'guillotina', label: 'Guillotina / Corte piernas' },
-    { key: 'corte_revest', label: 'Corte revestimiento' },
-    { key: 'plegadora', label: 'Plegadora / Plegado piernas' },
-    { key: 'plegado_revest', label: 'Plegado revestimiento' },
-    { key: 'armado_piernas', label: 'Armado piernas' },
-    { key: 'armado_marco_piernas', label: 'Armado marco piernas' },
-    { key: 'armado_hojas', label: 'Armado hojas' },
-    { key: 'armado_primario', label: 'Armado primario' },
-    { key: 'revestimiento', label: 'Revestimiento' },
-    { key: 'pintura', label: 'Pintura sistemas' },
-    { key: 'pintura_revestimiento', label: 'Pintura revestimiento' },
-    { key: 'inyeccion', label: 'Inyección' },
-    { key: 'armado_final', label: 'Armado final' },
-    { key: 'despacho', label: 'Despacho' },
-  ],
+  portones: PORTON_STAGES,
   ipanel: [
     { key: 'diseno', label: 'Diseño' },
     { key: 'guillotina', label: 'Guillotina / Corte iPanel' },
@@ -43,6 +50,8 @@ const STAGES_BY_LINE = {
     { key: 'inyeccion', label: 'Inyección' },
     { key: 'despacho', label: 'Despacho' },
   ],
+  prefabricados: PORTON_STAGES,
+  servicio_tecnico: PORTON_STAGES,
 };
 
 const STAGE_LABELS = Object.fromEntries(

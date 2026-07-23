@@ -132,6 +132,8 @@ function Board({ stages }) {
 
   const [qcSumPortones, setQcSumPortones] = useState({});
   const [qcSumIpanel, setQcSumIpanel] = useState({});
+  const [qcSumPrefab, setQcSumPrefab] = useState({});
+  const [qcSumSt, setQcSumSt] = useState({});
 
   useEffect(() => {
     let cancelled = false;
@@ -201,6 +203,15 @@ function Board({ stages }) {
     if (Number.isNaN(n)) return stOrdenes;
     return stOrdenes.filter((s) => s.nv === n);
   }, [stOrdenes, filter]);
+
+  // Set completo (sin filtro de búsqueda) para "Hist. sección"/"Hist. portón":
+  // deben poder encontrar un pedido de Prefabricados o una orden de Servicio
+  // Técnico aunque el buscador de arriba esté filtrando por otro NV/partida.
+  const allMergedItems = useMemo(() => ([
+    ...(Array.isArray(portones) ? portones : []),
+    ...(Array.isArray(prefabricados) ? prefabricados : []).map((item) => ({ ...item, __kind: 'prefabricado' })),
+    ...(Array.isArray(stOrdenes) ? stOrdenes : []).map((item) => ({ ...item, __kind: 'servicio_tecnico' })),
+  ]), [portones, prefabricados, stOrdenes]);
 
   const handleStart = async (id, stage) => {
     try {
@@ -284,8 +295,10 @@ function Board({ stages }) {
       setBusyId(id);
       const { data: updated } = await stopPrefabricadoStage(id, stage);
       replacePrefab(updated);
+      return { ok: true, item: updated ? { ...updated, __kind: 'prefabricado' } : null };
     } catch (e) {
       alert(e?.response?.data?.error || e.message);
+      return { ok: false };
     } finally {
       setBusyId(null);
     }
@@ -313,8 +326,10 @@ function Board({ stages }) {
       setBusyId(id);
       const { data: updated } = await stopStStage(id, stage);
       replaceSt(updated);
+      return { ok: true, item: updated ? { ...updated, __kind: 'servicio_tecnico' } : null };
     } catch (e) {
       alert(e?.response?.data?.error || e.message);
+      return { ok: false };
     } finally {
       setBusyId(null);
     }
@@ -330,8 +345,18 @@ function Board({ stages }) {
         .map((p) => Number(p?.nv))
         .filter((n) => Number.isInteger(n));
 
+      const prefIds = (Array.isArray(prefabricados) ? prefabricados : [])
+        .map((p) => Number(p?.numero))
+        .filter((n) => Number.isInteger(n));
+
+      const stIds = (Array.isArray(stOrdenes) ? stOrdenes : [])
+        .map((p) => Number(p?.nv))
+        .filter((n) => Number.isInteger(n));
+
       if (!pIds.length) setQcSumPortones({});
       if (!iIds.length) setQcSumIpanel({});
+      if (!prefIds.length) setQcSumPrefab({});
+      if (!stIds.length) setQcSumSt({});
 
       async function loadLine(line, ids) {
         const out = {};
@@ -344,17 +369,21 @@ function Board({ stages }) {
         return out;
       }
 
-      const [pMap, iMap] = await Promise.all([
+      const [pMap, iMap, prefMap, stMap] = await Promise.all([
         pIds.length ? loadLine('portones', pIds) : Promise.resolve({}),
         iIds.length ? loadLine('ipanel', iIds) : Promise.resolve({}),
+        prefIds.length ? loadLine('prefabricados', prefIds) : Promise.resolve({}),
+        stIds.length ? loadLine('servicio_tecnico', stIds) : Promise.resolve({}),
       ]);
 
       setQcSumPortones(pMap);
       setQcSumIpanel(iMap);
+      setQcSumPrefab(prefMap);
+      setQcSumSt(stMap);
     } catch (e) {
       console.warn('No se pudo cargar qcSummary:', e?.message || e);
     }
-  }, [portones, ipanels]);
+  }, [portones, ipanels, prefabricados, stOrdenes]);
 
   useEffect(() => {
     refreshQcSummary();
@@ -443,8 +472,10 @@ function Board({ stages }) {
               onStartSt={handleStartSt}
               onStopSt={handleStopSt}
               disabledId={busyId}
-              allItems={portones}
+              allItems={allMergedItems}
               qcSummaryMap={qcSumPortones}
+              qcSummaryMapPrefab={qcSumPrefab}
+              qcSummaryMapSt={qcSumSt}
               onQcSaved={refreshQcSummary}
               prefabTipos={prefabTipos}
               onCreatePrefabOrden={handleCreatePrefabOrden}
