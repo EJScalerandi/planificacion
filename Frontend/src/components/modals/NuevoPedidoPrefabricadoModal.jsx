@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react';
 
 export default function NuevoPedidoPrefabricadoModal({ open, onClose, tipos = [], seccion, onCreate }) {
   const [tipoId, setTipoId] = useState('');
+  const [cantidad, setCantidad] = useState(1);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
 
   useEffect(() => {
     if (!open) return;
     setTipoId(tipos?.[0]?.id != null ? String(tipos[0].id) : '');
+    setCantidad(1);
     setSaving(false);
     setErr('');
   }, [open, tipos]);
@@ -16,14 +18,19 @@ export default function NuevoPedidoPrefabricadoModal({ open, onClose, tipos = []
 
   const submit = async () => {
     const id = Number(tipoId);
+    const nCantidad = Number(cantidad);
     if (!Number.isInteger(id)) {
       setErr('Elegí un tipo de prefabricado.');
+      return;
+    }
+    if (!Number.isInteger(nCantidad) || nCantidad <= 0) {
+      setErr('Ingresá una cantidad válida (entero mayor a 0).');
       return;
     }
     try {
       setSaving(true);
       setErr('');
-      await onCreate?.(id, seccion);
+      await onCreate?.(id, seccion, nCantidad);
       onClose?.();
     } catch (e) {
       setErr(e?.response?.data?.error || e.message || 'Error creando el pedido');
@@ -58,6 +65,18 @@ export default function NuevoPedidoPrefabricadoModal({ open, onClose, tipos = []
               </select>
             </label>
           )}
+          {tipos.length > 0 ? (
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <span style={{ fontWeight: 800 }}>Cantidad</span>
+              <input
+                className="btn"
+                type="number"
+                min={1}
+                value={cantidad}
+                onChange={(e) => setCantidad(e.target.value)}
+              />
+            </label>
+          ) : null}
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
             <button className="btn btn--brand" type="button" onClick={submit} disabled={saving || !tipos.length}>
               {saving ? 'Creando…' : 'Crear pedido'}

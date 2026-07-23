@@ -40,7 +40,7 @@ function shapeOrders(orders, estadoRows, tiemposRows) {
 async function loadOrders(db, whereSql = '', params = []) {
   const { rows: orders } = await db.query(
     `
-    select o.id, o.numero, o.tipo_id, o.solicitado_por_seccion, o.created_at,
+    select o.id, o.numero, o.tipo_id, o.solicitado_por_seccion, o.created_at, o.cantidad,
            t.nombre as tipo_nombre, t.workflow_stages
     from public.prefabricado_ordenes o
     join public.prefabricado_tipos t on t.id = o.tipo_id
@@ -91,12 +91,16 @@ router.get('/prefabricados', async (_req, res) => {
 
 // POST /prefabricados — crea un pedido de fabricación para un tipo, disparado por una sección
 router.post('/prefabricados', async (req, res) => {
-  const { tipo_id, seccion } = req.body || {};
+  const { tipo_id, seccion, cantidad } = req.body || {};
   const tipoId = Number(tipo_id);
   const seccionStr = String(seccion || '').trim();
+  const nCantidad = Number(cantidad);
 
   if (!Number.isInteger(tipoId) || !seccionStr) {
     return res.status(400).json({ error: 'tipo_id y seccion son requeridos' });
+  }
+  if (!Number.isInteger(nCantidad) || nCantidad <= 0) {
+    return res.status(400).json({ error: 'cantidad debe ser un entero positivo' });
   }
 
   const client = await pool.connect();
@@ -124,11 +128,11 @@ router.post('/prefabricados', async (req, res) => {
 
     const ins = await client.query(
       `
-      insert into public.prefabricado_ordenes(tipo_id, solicitado_por_seccion)
-      values ($1, $2)
+      insert into public.prefabricado_ordenes(tipo_id, solicitado_por_seccion, cantidad)
+      values ($1, $2, $3)
       returning id;
       `,
-      [tipoId, seccionStr]
+      [tipoId, seccionStr, nCantidad]
     );
     const id = ins.rows[0].id;
 

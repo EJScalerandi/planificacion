@@ -1109,6 +1109,11 @@ export default function StageColumn({
                       Cant.: <b>{p?.cantidad ?? '-'}</b>{p?.descripcion ? <> · {p.descripcion}</> : null}
                     </div>
                   ) : null}
+                  {kind === 'prefabricado' ? (
+                    <div style={{ fontSize: 12, opacity: 0.85, marginTop: 2 }}>
+                      Cant.: <b>{p?.cantidad ?? '-'}</b>
+                    </div>
+                  ) : null}
                   <div style={{ fontSize: 12, opacity: 0.75, marginTop: 2 }}>Estado: {p?.[effKey] || ''}</div>
                   <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
                     <button
