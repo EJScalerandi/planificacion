@@ -4,7 +4,6 @@ const { getCategoryMap, setCategoryMap } = require('../../priceCategoriesDb');
 const { apiKeyAuth } = require('../../middleware/apiKeyAuth');
 
 const router = express.Router();
-router.use(apiKeyAuth);
 
 // Metadata del campo de tags (nombre + modelo relacionado) no cambia, es seguro cachearla en memoria.
 let tagFieldCache = null;
@@ -88,7 +87,7 @@ function requireOdoo(req, res) {
   return odoo;
 }
 
-router.get('/price-categories/tags', async (req, res, next) => {
+router.get('/price-categories/tags', apiKeyAuth, async (req, res, next) => {
   try {
     const odoo = requireOdoo(req, res);
     if (!odoo) return;
@@ -99,7 +98,7 @@ router.get('/price-categories/tags', async (req, res, next) => {
   }
 });
 
-router.get('/price-categories/template-tags', async (req, res, next) => {
+router.get('/price-categories/template-tags', apiKeyAuth, async (req, res, next) => {
   try {
     const odoo = requireOdoo(req, res);
     if (!odoo) return;
@@ -110,7 +109,7 @@ router.get('/price-categories/template-tags', async (req, res, next) => {
   }
 });
 
-router.get('/price-categories/map', async (req, res, next) => {
+router.get('/price-categories/map', apiKeyAuth, async (req, res, next) => {
   try {
     const map = await getCategoryMap();
     res.json({ ok: true, map });
@@ -119,7 +118,7 @@ router.get('/price-categories/map', async (req, res, next) => {
   }
 });
 
-router.put('/price-categories/map', async (req, res, next) => {
+router.put('/price-categories/map', apiKeyAuth, async (req, res, next) => {
   try {
     const map = await setCategoryMap((req.body && req.body.map) || {});
     res.json({ ok: true, map });
