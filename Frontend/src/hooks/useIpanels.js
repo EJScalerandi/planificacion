@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 
 // Misma env que en usePortones
-const BASE_URL = import.meta.env.VITE_API_BASE || import.meta.env.VITE_API_URL || 'https://planificacion-6sk9.onrender.com';
+const BASE_URL = import.meta.env.VITE_API_BASE || import.meta.env.VITE_API_URL || 'https://planificacion-uprm.onrender.com';
 
 // Etapas validas del backend para iPanel
 export const IPANEL_STAGES = ['diseno', 'guillotina', 'plegado', 'pintura', 'inyeccion', 'despacho'];

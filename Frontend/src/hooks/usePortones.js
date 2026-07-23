@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 
-const BASE_URL = import.meta.env.VITE_API_BASE || 'https://planificacion-6sk9.onrender.com';
+const BASE_URL = import.meta.env.VITE_API_BASE || 'https://planificacion-uprm.onrender.com';
 
 // Etapas válidas del backend para Portones (referencia útil para UI/autocomplete)
 export const PORTONES_STAGES = [

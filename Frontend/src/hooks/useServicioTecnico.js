@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 
-const BASE_URL = import.meta.env.VITE_API_BASE || import.meta.env.VITE_API_URL || 'https://planificacion-6sk9.onrender.com';
+const BASE_URL = import.meta.env.VITE_API_BASE || import.meta.env.VITE_API_URL || 'https://planificacion-uprm.onrender.com';
 
 export default function useServicioTecnico(opts = {}) {
   const { pollMs = 0 } = opts;
