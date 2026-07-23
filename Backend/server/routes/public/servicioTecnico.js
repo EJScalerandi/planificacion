@@ -39,7 +39,7 @@ function shapeOrders(orders, estadoRows, tiemposRows) {
 async function loadOrders(db, whereSql = '', params = []) {
   const { rows: orders } = await db.query(
     `
-    select id, nv, cantidad, descripcion, workflow_stages, created_by, created_at
+    select id, nv, cantidad, descripcion, workflow_stages, created_by, created_at, tipo, numero
     from public.st_ordenes
     ${whereSql}
     order by id asc;

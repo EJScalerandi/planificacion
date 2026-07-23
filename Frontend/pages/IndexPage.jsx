@@ -104,7 +104,7 @@ export default function IndexPage({ routes = [] }) {
     if (canUsers) out.push({ path: '/b', label: 'Admin · Usuarios / Permisos (Dashboard)' });
     if (isQcAdmin || isWfAdmin) out.push({ path: '/admin/excel-info', label: 'Admin · Información Excel' });
     if (isPrefabAdmin) out.push({ path: '/admin/prefabricados', label: 'Admin · Prefabricados' });
-    if (isStAdmin) out.push({ path: '/admin/servicio-tecnico', label: 'Admin · Servicio Técnico' });
+    if (isStAdmin) out.push({ path: '/admin/servicio-tecnico', label: 'Admin · Servicio Técnico / Ord. Externas' });
     return out;
   }, [isPreprodOnly, isQcAdmin, isWfAdmin, canUsers, isPrefabAdmin, isStAdmin]);
 

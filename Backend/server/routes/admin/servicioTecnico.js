@@ -34,7 +34,7 @@ router.get('/servicio-tecnico/ordenes', async (_req, res) => {
   try {
     const { rows: orders } = await pool.query(
       `
-      select id, nv, cantidad, descripcion, workflow_stages, created_by, created_at
+      select id, nv, cantidad, descripcion, workflow_stages, created_by, created_at, tipo, numero
       from public.st_ordenes
       order by created_at desc;
       `
@@ -61,13 +61,20 @@ router.get('/servicio-tecnico/ordenes', async (_req, res) => {
 
 // POST /admin/servicio-tecnico/ordenes
 router.post('/servicio-tecnico/ordenes', async (req, res) => {
-  const { nv, cantidad, descripcion, workflow_stages } = req.body || {};
-  const nNv = Number(nv);
+  const { nv, cantidad, descripcion, workflow_stages, tipo } = req.body || {};
+  const tipoStr = String(tipo || '').trim().toUpperCase();
   const nCantidad = Number(cantidad);
   const descripcionStr = String(descripcion || '').trim();
   const stages = toStringArray(workflow_stages);
 
-  if (!Number.isInteger(nNv)) return res.status(400).json({ error: 'nv debe ser un entero' });
+  if (!['ST', 'OE'].includes(tipoStr)) return res.status(400).json({ error: 'tipo debe ser ST u OE' });
+
+  let nNv = null;
+  if (tipoStr === 'ST') {
+    nNv = Number(nv);
+    if (!Number.isInteger(nNv)) return res.status(400).json({ error: 'nv debe ser un entero para Servicio Técnico' });
+  }
+
   if (!Number.isInteger(nCantidad) || nCantidad <= 0) return res.status(400).json({ error: 'cantidad debe ser un entero positivo' });
   if (!descripcionStr) return res.status(400).json({ error: 'descripcion es requerida' });
   if (!stages.length) return res.status(400).json({ error: 'workflow_stages debe tener al menos una etapa' });
@@ -78,11 +85,11 @@ router.post('/servicio-tecnico/ordenes', async (req, res) => {
 
     const ins = await client.query(
       `
-      insert into public.st_ordenes(nv, cantidad, descripcion, workflow_stages, created_by)
-      values ($1, $2, $3, $4::text[], $5)
+      insert into public.st_ordenes(nv, cantidad, descripcion, workflow_stages, created_by, tipo, numero)
+      values ($1, $2, $3, $4::text[], $5, $6, case when $6 = 'OE' then nextval('public.oe_seq') else null end)
       returning id;
       `,
-      [nNv, nCantidad, descripcionStr, stages, req.admin?.username || null]
+      [nNv, nCantidad, descripcionStr, stages, req.admin?.username || null, tipoStr]
     );
     const id = ins.rows[0].id;
 
@@ -94,7 +101,7 @@ router.post('/servicio-tecnico/ordenes', async (req, res) => {
     await client.query('commit');
 
     const { rows } = await pool.query(
-      `select id, nv, cantidad, descripcion, workflow_stages, created_by, created_at from public.st_ordenes where id = $1;`,
+      `select id, nv, cantidad, descripcion, workflow_stages, created_by, created_at, tipo, numero from public.st_ordenes where id = $1;`,
       [id]
     );
     return res.status(201).json(rows[0]);

@@ -8,6 +8,7 @@ const LINES = [
   { key: 'ipanel', label: 'iPanel' },
   { key: 'prefabricados', label: 'Prefabricados' },
   { key: 'servicio_tecnico', label: 'Servicio Técnico' },
+  { key: 'orden_externa', label: 'Orden Externa' },
 ];
 
 const KINDS = [
@@ -52,6 +53,7 @@ const STAGES_BY_LINE = {
   ],
   prefabricados: PORTON_STAGES,
   servicio_tecnico: PORTON_STAGES,
+  orden_externa: PORTON_STAGES,
 };
 
 const STAGE_LABELS = Object.fromEntries(

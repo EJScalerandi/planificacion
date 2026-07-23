@@ -46,7 +46,7 @@ function isTruthySi(v) {
 }
 
 function getQcItemId(item, line) {
-  if (line === 'prefabricados') {
+  if (line === 'prefabricados' || line === 'orden_externa') {
     const num = Number(item?.numero);
     return Number.isInteger(num) ? num : null;
   }
@@ -68,7 +68,7 @@ function getQcItemId(item, line) {
 // portones), aunque visualmente compartan la columna de la sección.
 function getItemQcLine(item) {
   if (item?.__kind === 'prefabricado') return 'prefabricados';
-  if (item?.__kind === 'servicio_tecnico') return 'servicio_tecnico';
+  if (item?.__kind === 'servicio_tecnico') return item?.tipo === 'OE' ? 'orden_externa' : 'servicio_tecnico';
   return null;
 }
 
@@ -613,10 +613,11 @@ function ObservacionesModal({ open, onClose, title, item, line }) {
 
   if (!open || !item) return null;
   const pref = item?.__kind === 'prefabricado' && item?.numero != null ? `Pref ${item.numero}` : '';
+  const oe = item?.__kind === 'servicio_tecnico' && item?.tipo === 'OE' && item?.numero != null ? `OE ${item.numero}` : '';
   const nv = item?.nv != null ? (item?.__kind === 'servicio_tecnico' ? `ST ${item.nv}` : `NV ${item.nv}`) : '';
   const nlista = item?.nlista != null ? `Portón ${item.nlista}` : '';
   const partida = item?.partida != null ? `Partida ${item.partida}` : '';
-  const head = [title, pref, nv, nlista, partida].filter(Boolean).join(' · ');
+  const head = [title, pref, oe, nv, nlista, partida].filter(Boolean).join(' · ');
   const rows = (observations || []).map((o) => ({
     sector: o?.stage_key || o?.sector || o?.stage || '-',
     fecha: o?.created_at || o?.timestamp || null,
@@ -742,7 +743,7 @@ function PortonHistoryModal({ open, onClose, title, effKey, items = [] }) {
           <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div style={{ fontWeight: 900, fontSize: 16 }}>
               {result?.__kind === 'servicio_tecnico'
-                ? `ST ${result?.nv ?? '-'}`
+                ? getOrderLabel(result, 'servicio_tecnico')
                 : `Portón ${result?.nlista ?? result?.NLista ?? '-'} · NV ${result?.nv ?? result?.NV ?? '-'} · Partida ${result?.partida ?? result?.PARTIDA ?? '-'}`}
             </div>
             <div style={{ fontSize: 14 }}><b>Sector:</b> {title}</div>
@@ -771,7 +772,9 @@ function getNvLabel(p) {
 // Prefabricados: número propio (secuencia global). Servicio Técnico: reusa el NV del portón.
 function getOrderLabel(p, kind) {
   if (kind === 'prefabricado') return `Pref ${p?.numero ?? '-'}`;
-  if (kind === 'servicio_tecnico') return `ST ${p?.nv ?? '-'}`;
+  if (kind === 'servicio_tecnico') {
+    return p?.tipo === 'OE' ? `OE ${p?.numero ?? '-'}` : `ST ${p?.nv ?? '-'}`;
+  }
   return getNvLabel(p);
 }
 
@@ -907,6 +910,7 @@ export default function StageColumn({
   qcSummaryMap = {},
   qcSummaryMapPrefab = {},
   qcSummaryMapSt = {},
+  qcSummaryMapOe = {},
   onQcSaved,
   prefabTipos = [],
   onCreatePrefabOrden,
@@ -944,8 +948,10 @@ export default function StageColumn({
   }, [mode, prefabTipos, stageKey]);
 
   function qcMapForItem(p) {
-    if (p?.__kind === 'prefabricado') return qcSummaryMapPrefab;
-    if (p?.__kind === 'servicio_tecnico') return qcSummaryMapSt;
+    const itemLine = getItemQcLine(p);
+    if (itemLine === 'prefabricados') return qcSummaryMapPrefab;
+    if (itemLine === 'orden_externa') return qcSummaryMapOe;
+    if (itemLine === 'servicio_tecnico') return qcSummaryMapSt;
     return qcSummaryMap;
   }
 
@@ -1030,7 +1036,7 @@ export default function StageColumn({
       const label = p?.__kind === 'prefabricado'
         ? `Pref ${p?.numero ?? '-'}${p?.tipo_nombre ? ` · ${p.tipo_nombre}` : ''}`
         : p?.__kind === 'servicio_tecnico'
-          ? `ST ${p?.nv ?? '-'}`
+          ? getOrderLabel(p, 'servicio_tecnico')
           : `Portón ${p?.nlista ?? '-'} · NV ${p?.nv ?? '-'}`;
       return {
         _key: String(p?.id ?? p?.nv ?? `${Math.random()}`),
@@ -1039,7 +1045,7 @@ export default function StageColumn({
         qcLatest,
       };
     });
-  }, [mode, keyTrim, allItems, qcSummaryMap, qcSummaryMapPrefab, qcSummaryMapSt]);
+  }, [mode, keyTrim, allItems, qcSummaryMap, qcSummaryMapPrefab, qcSummaryMapSt, qcSummaryMapOe]);
 
   return (
     <div style={{ border: `2px solid ${bordo}`, borderRadius: 12, overflow: 'hidden', background: 'var(--surface)', display: 'flex', flexDirection: 'column', minHeight: 320 }}>

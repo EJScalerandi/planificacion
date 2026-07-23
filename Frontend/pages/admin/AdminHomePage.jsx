@@ -97,13 +97,13 @@ export default function AdminHomePage() {
           }}
         >
           <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 8 }}>
-            Servicio Técnico
+            Servicio Técnico y Órdenes Externas
           </div>
           <div style={{ opacity: 0.75, marginBottom: 12 }}>
-            Crear órdenes de servicio técnico por NV, con workflow a medida.
+            Crear órdenes ST (por NV) u OE (correlativas, sin NV), con workflow a medida.
           </div>
           <Link className="btn btn--brand" to="/admin/servicio-tecnico">
-            Ir a Servicio Técnico
+            Ir a Servicio Técnico / Ord. Externas
           </Link>
         </div>
       </div>

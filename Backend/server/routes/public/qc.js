@@ -128,8 +128,17 @@ async function getPrefabOrdenByNumero(db, numero) {
 // (mismo criterio que ya usa getPortonIdByNv para NVs duplicados).
 async function getStOrdenByNv(db, nv) {
   const { rows } = await db.query(
-    `select id, workflow_stages from public.st_ordenes where nv = $1 order by created_at desc, id desc limit 1;`,
+    `select id, workflow_stages from public.st_ordenes where nv = $1 and tipo = 'ST' order by created_at desc, id desc limit 1;`,
     [nv]
+  );
+  return rows[0] || null;
+}
+
+// Orden Externa: item_id del QC es el "numero" (secuencia propia oe_seq, sin NV).
+async function getOrdenExternaByNumero(db, numero) {
+  const { rows } = await db.query(
+    `select id, workflow_stages from public.st_ordenes where numero = $1 and tipo = 'OE' limit 1;`,
+    [numero]
   );
   return rows[0] || null;
 }
@@ -141,7 +150,7 @@ function hashPin(pin) {
 }
 
 function isValidLine(line) {
-  return ['portones', 'ipanel', 'prefabricados', 'servicio_tecnico'].includes(line);
+  return ['portones', 'ipanel', 'prefabricados', 'servicio_tecnico', 'orden_externa'].includes(line);
 }
 function isValidQcStatus(s) {
   return ['APROBADO', 'OBSERVADO', 'RECHAZADO'].includes(s);
@@ -473,6 +482,34 @@ router.post('/qc/authorize', async (req, res) => {
         if (!orden) {
           await client.query('rollback');
           return res.status(404).json({ error: 'Orden de servicio técnico no encontrada para ese NV' });
+        }
+
+        const estQ = await client.query(
+          `select estado from public.st_orden_etapas_estado where orden_id = $1 and etapa = $2;`,
+          [orden.id, statusCol]
+        );
+        if (low(estQ.rows[0]?.estado) !== low(STATUS.FINALIZADO)) {
+          await client.query('rollback');
+          return res.status(409).json({ error: `La etapa ${statusCol} debe estar FINALIZADO antes de completar QC` });
+        }
+
+        const stages = Array.isArray(orden.workflow_stages) ? orden.workflow_stages : [];
+        const nextStage = stages[stages.indexOf(statusCol) + 1];
+        if (nextStage) {
+          await client.query(
+            `
+            insert into public.st_orden_etapas_estado(orden_id, etapa, estado)
+            values ($1, $2, $3)
+            on conflict (orden_id, etapa) do nothing;
+            `,
+            [orden.id, nextStage, STATUS.PENDIENTE]
+          );
+        }
+      } else if (lineStr === 'orden_externa') {
+        const orden = await getOrdenExternaByNumero(client, nItemId);
+        if (!orden) {
+          await client.query('rollback');
+          return res.status(404).json({ error: 'Orden externa no encontrada para ese número' });
         }
 
         const estQ = await client.query(

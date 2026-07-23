@@ -134,6 +134,7 @@ function Board({ stages }) {
   const [qcSumIpanel, setQcSumIpanel] = useState({});
   const [qcSumPrefab, setQcSumPrefab] = useState({});
   const [qcSumSt, setQcSumSt] = useState({});
+  const [qcSumOe, setQcSumOe] = useState({});
 
   useEffect(() => {
     let cancelled = false;
@@ -201,7 +202,7 @@ function Board({ stages }) {
     if (filter == null || filter === '') return stOrdenes;
     const n = Number(filter);
     if (Number.isNaN(n)) return stOrdenes;
-    return stOrdenes.filter((s) => s.nv === n);
+    return stOrdenes.filter((s) => s.nv === n || s.numero === n);
   }, [stOrdenes, filter]);
 
   // Set completo (sin filtro de búsqueda) para "Hist. sección"/"Hist. portón":
@@ -350,13 +351,20 @@ function Board({ stages }) {
         .filter((n) => Number.isInteger(n));
 
       const stIds = (Array.isArray(stOrdenes) ? stOrdenes : [])
+        .filter((p) => p?.tipo !== 'OE')
         .map((p) => Number(p?.nv))
+        .filter((n) => Number.isInteger(n));
+
+      const oeIds = (Array.isArray(stOrdenes) ? stOrdenes : [])
+        .filter((p) => p?.tipo === 'OE')
+        .map((p) => Number(p?.numero))
         .filter((n) => Number.isInteger(n));
 
       if (!pIds.length) setQcSumPortones({});
       if (!iIds.length) setQcSumIpanel({});
       if (!prefIds.length) setQcSumPrefab({});
       if (!stIds.length) setQcSumSt({});
+      if (!oeIds.length) setQcSumOe({});
 
       async function loadLine(line, ids) {
         const out = {};
@@ -369,17 +377,19 @@ function Board({ stages }) {
         return out;
       }
 
-      const [pMap, iMap, prefMap, stMap] = await Promise.all([
+      const [pMap, iMap, prefMap, stMap, oeMap] = await Promise.all([
         pIds.length ? loadLine('portones', pIds) : Promise.resolve({}),
         iIds.length ? loadLine('ipanel', iIds) : Promise.resolve({}),
         prefIds.length ? loadLine('prefabricados', prefIds) : Promise.resolve({}),
         stIds.length ? loadLine('servicio_tecnico', stIds) : Promise.resolve({}),
+        oeIds.length ? loadLine('orden_externa', oeIds) : Promise.resolve({}),
       ]);
 
       setQcSumPortones(pMap);
       setQcSumIpanel(iMap);
       setQcSumPrefab(prefMap);
       setQcSumSt(stMap);
+      setQcSumOe(oeMap);
     } catch (e) {
       console.warn('No se pudo cargar qcSummary:', e?.message || e);
     }
@@ -476,6 +486,7 @@ function Board({ stages }) {
               qcSummaryMap={qcSumPortones}
               qcSummaryMapPrefab={qcSumPrefab}
               qcSummaryMapSt={qcSumSt}
+              qcSummaryMapOe={qcSumOe}
               onQcSaved={refreshQcSummary}
               prefabTipos={prefabTipos}
               onCreatePrefabOrden={handleCreatePrefabOrden}
