@@ -77,6 +77,8 @@ export default function IndexPage({ routes = [] }) {
   const isWfAdmin = has('workflow:admin');
   const isPreprodAdmin = has('preproduccion:admin') || has('preproduccion:full');
   const canUsers = has('users:admin');
+  const isPrefabAdmin = has('prefabricados:admin');
+  const isStAdmin = has('servicio_tecnico:admin');
 
   const isPreprodOnly = isPreprodAdmin && !isQcAdmin && !isWfAdmin && !canUsers;
 
@@ -101,8 +103,10 @@ export default function IndexPage({ routes = [] }) {
     if (isWfAdmin) out.push({ path: '/admin/workflow', label: 'Admin · Workflow (Designer)' });
     if (canUsers) out.push({ path: '/b', label: 'Admin · Usuarios / Permisos (Dashboard)' });
     if (isQcAdmin || isWfAdmin) out.push({ path: '/admin/excel-info', label: 'Admin · Información Excel' });
+    if (isPrefabAdmin) out.push({ path: '/admin/prefabricados', label: 'Admin · Prefabricados' });
+    if (isStAdmin) out.push({ path: '/admin/servicio-tecnico', label: 'Admin · Servicio Técnico' });
     return out;
-  }, [isPreprodOnly, isQcAdmin, isWfAdmin, canUsers]);
+  }, [isPreprodOnly, isQcAdmin, isWfAdmin, canUsers, isPrefabAdmin, isStAdmin]);
 
   const opsRoutes = useMemo(() => {
     if (isPreprodOnly) return [];

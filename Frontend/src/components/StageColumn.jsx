@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { qcAuthorize, qcGetMotives, qcHistory, fetchNvLines } from '../api';
 import NuevoPedidoPrefabricadoModal from './modals/NuevoPedidoPrefabricadoModal';
 
-const bordo = '#1d4ed8';
+const bordo = '#008241ff';
+const cardBorder = '#1d4ed8';
 
 function low(v) {
   return String(v ?? '').toLowerCase();
@@ -1052,7 +1053,7 @@ export default function StageColumn({
               return (
                 <div
                   key={`${mode}-${p?.id}`}
-                  style={{ border: '1px solid var(--border)', borderRadius: 12, padding: '10px 12px', background: 'var(--surface)' }}
+                  style={{ border: `2px solid ${cardBorder}`, borderRadius: 12, padding: '10px 12px', background: 'var(--surface)' }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <span style={{ fontWeight: 900 }}>{getOrderLabel(p, mode)}</span>
