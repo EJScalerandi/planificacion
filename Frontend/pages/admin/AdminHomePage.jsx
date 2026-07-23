@@ -68,6 +68,44 @@ export default function AdminHomePage() {
             Ir a Workflow
           </Link>
         </div>
+
+        <div
+          style={{
+            border: '1px solid var(--border)',
+            borderRadius: 12,
+            padding: 14,
+            background: 'var(--surface)',
+          }}
+        >
+          <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 8 }}>
+            Prefabricados
+          </div>
+          <div style={{ opacity: 0.75, marginBottom: 12 }}>
+            ABM de tipos de prefabricado: nombre, sección solicitante y workflow.
+          </div>
+          <Link className="btn btn--brand" to="/admin/prefabricados">
+            Ir a Prefabricados
+          </Link>
+        </div>
+
+        <div
+          style={{
+            border: '1px solid var(--border)',
+            borderRadius: 12,
+            padding: 14,
+            background: 'var(--surface)',
+          }}
+        >
+          <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 8 }}>
+            Servicio Técnico
+          </div>
+          <div style={{ opacity: 0.75, marginBottom: 12 }}>
+            Crear órdenes de servicio técnico por NV, con workflow a medida.
+          </div>
+          <Link className="btn btn--brand" to="/admin/servicio-tecnico">
+            Ir a Servicio Técnico
+          </Link>
+        </div>
       </div>
 
       <div style={{ marginTop: 14, fontSize: 12, opacity: 0.7 }}>

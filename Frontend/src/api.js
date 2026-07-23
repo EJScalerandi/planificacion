@@ -249,6 +249,25 @@ export function fetchScopes() {
   return api.get('/admin/scopes');
 }
 
+/* ========= Prefabricados ========= */
+export const fetchPrefabricadoTipos = () => api.get('/prefabricados/tipos');
+export const fetchPrefabricados = () => api.get('/prefabricados');
+export const createPrefabricadoOrden = (payload) => api.post('/prefabricados', payload);
+export const startPrefabricadoStage = (id, stage) => api.post(`/prefabricados/${id}/stage`, { stage, action: 'start' });
+export const stopPrefabricadoStage = (id, stage) => api.post(`/prefabricados/${id}/stage`, { stage, action: 'stop' });
+
+export const adminListPrefabricadoTipos = () => api.get('/admin/prefabricados/tipos');
+export const adminCreatePrefabricadoTipo = (payload) => api.post('/admin/prefabricados/tipos', payload);
+export const adminUpdatePrefabricadoTipo = (id, payload) => api.put(`/admin/prefabricados/tipos/${id}`, payload);
+
+/* ========= Servicio Técnico ========= */
+export const fetchServicioTecnico = () => api.get('/servicio-tecnico');
+export const startStStage = (id, stage) => api.post(`/servicio-tecnico/${id}/stage`, { stage, action: 'start' });
+export const stopStStage = (id, stage) => api.post(`/servicio-tecnico/${id}/stage`, { stage, action: 'stop' });
+
+export const adminListStOrdenes = () => api.get('/admin/servicio-tecnico/ordenes');
+export const adminCreateStOrden = (payload) => api.post('/admin/servicio-tecnico/ordenes', payload);
+
 /* ========= Refabricación ========= */
 export const fetchRefabricacionPendientes = () => api.get('/refabricacion/pendientes');
 
