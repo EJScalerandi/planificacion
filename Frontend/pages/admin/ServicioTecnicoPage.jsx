@@ -12,6 +12,15 @@ import { sectionLabel } from '../../src/constants/sections';
 
 const emptyForm = { nv: '', cantidad: 1, descripcion: '', workflow_stages: [] };
 
+function stageBadgeStyle(estado) {
+  const st = String(estado || '').trim().toLowerCase();
+  if (st === 'finalizado') return { background: '#16a34a', color: '#fff', border: '1px solid #15803d' };
+  if (st === 'en proceso') return { background: '#f59e0b', color: '#fff', border: '1px solid #b45309' };
+  if (st === 'pendiente') return { background: '#ef4444', color: '#fff', border: '1px solid #b91c1c' };
+  // Todavía no llegó a esta etapa.
+  return { background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0' };
+}
+
 export default function ServicioTecnicoPage() {
   const nav = useNavigate();
 
@@ -147,11 +156,19 @@ export default function ServicioTecnicoPage() {
               <div key={o.id} style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 12, background: 'var(--surface)' }}>
                 <div style={{ fontWeight: 900 }}>ST {o.nv} · Cant. {o.cantidad}</div>
                 <div style={{ fontSize: 13, opacity: 0.85, marginTop: 2 }}>{o.descripcion}</div>
-                <div style={{ fontSize: 12, opacity: 0.8, marginTop: 4 }}>
-                  Workflow: {(o.workflow_stages || []).map((k) => {
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+                  {(o.workflow_stages || []).map((k, idx) => {
                     const estado = o.etapas_estado?.[k];
-                    return `${sectionLabel(k)}${estado ? ` (${estado})` : ''}`;
-                  }).join(' → ')}
+                    return (
+                      <span
+                        key={`${k}-${idx}`}
+                        title={estado || 'Todavía no llegó a esta etapa'}
+                        style={{ fontSize: 11, fontWeight: 800, padding: '3px 8px', borderRadius: 999, ...stageBadgeStyle(estado) }}
+                      >
+                        {sectionLabel(k)}
+                      </span>
+                    );
+                  })}
                 </div>
               </div>
             ))}
