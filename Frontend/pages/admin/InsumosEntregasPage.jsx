@@ -36,8 +36,10 @@ export default function InsumosEntregasPage() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
-  const [savingId, setSavingId] = useState(null);
-  const [expandedIds, setExpandedIds] = useState(() => new Set());
+  const [entregando, setEntregando] = useState(false);
+  // drafts[item.id] = { qty: string, sinStock: boolean } - se arma de nuevo cada
+  // vez que llegan items del server, se edita libre en pantalla, y recien se
+  // manda todo junto al apretar el boton "Entregar" de abajo de todo.
   const [drafts, setDrafts] = useState({});
 
   useEffect(() => {
@@ -70,6 +72,28 @@ export default function InsumosEntregasPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seccion, fecha, modoRango, desde, hasta]);
 
+  // Arma el draft de cada item nuevo que aparece (por default asume entrega
+  // completa = lo pedido, salvo que ya haya quedado algo cargado de antes).
+  // A los items que YA tenian un draft no los pisa - si no, cambiar el filtro
+  // de sección a mitad de editar borraba ediciones sin guardar de otros items.
+  useEffect(() => {
+    setDrafts((prev) => {
+      const next = { ...prev };
+      for (const it of items) {
+        if (next[it.id] !== undefined) continue;
+        const yaEntregado = it.cantidad_entregada != null ? Number(it.cantidad_entregada) : Number(it.cantidad_pedida || 0);
+        next[it.id] = {
+          qty: it.no_disponible ? formatQty(it.cantidad_entregada ?? 0) : formatQty(yaEntregado),
+          sinStock: !!it.no_disponible,
+        };
+      }
+      for (const id of Object.keys(next)) {
+        if (!items.some((it) => String(it.id) === id)) delete next[id];
+      }
+      return next;
+    });
+  }, [items]);
+
   const seccionLabel = useMemo(() => {
     const map = new Map(secciones.map((s) => [s.slug, s.label]));
     return (slug) => map.get(slug) || slug;
@@ -98,45 +122,47 @@ export default function InsumosEntregasPage() {
     return [...byProducto.values()].sort((a, b) => a.producto_nombre.localeCompare(b.producto_nombre));
   }, [items]);
 
-  async function guardarItem(item, patch) {
+  function setDraftQty(itemId, value) {
+    setDrafts((prev) => ({ ...prev, [itemId]: { ...prev[itemId], qty: value } }));
+  }
+
+  function toggleSinStock(item, checked) {
+    setDrafts((prev) => ({
+      ...prev,
+      [item.id]: {
+        sinStock: checked,
+        qty: checked ? '0' : formatQty(item.cantidad_pedida),
+      },
+    }));
+  }
+
+  async function entregarTodo() {
+    const pendientesInvalidos = items.some((it) => {
+      const raw = drafts[it.id]?.qty;
+      return raw === '' || raw === undefined || !Number.isFinite(Number(raw)) || Number(raw) < 0;
+    });
+    if (pendientesInvalidos) {
+      setErr('Hay cantidades a entregar inválidas o vacías.');
+      return;
+    }
     try {
-      setSavingId(item.id);
+      setEntregando(true);
       setErr('');
-      await adminUpdateInsumosPedidoItem(item.pedido_id, item.id, patch);
+      await Promise.all(
+        items.map((it) => {
+          const draft = drafts[it.id] || {};
+          return adminUpdateInsumosPedidoItem(it.pedido_id, it.id, {
+            cantidad_entregada: Number(draft.qty),
+            no_disponible: !!draft.sinStock,
+          });
+        })
+      );
       await reload();
     } catch (e) {
-      setErr(e?.response?.data?.error || e.message || 'Error guardando el cambio');
+      setErr(e?.response?.data?.error || e.message || 'Error guardando las entregas');
     } finally {
-      setSavingId(null);
+      setEntregando(false);
     }
-  }
-
-  function toggleNoDisponible(item, checked) {
-    if (checked) {
-      setExpandedIds((prev) => new Set(prev).add(item.id));
-      setDrafts((prev) => (
-        prev[item.id] !== undefined ? prev : { ...prev, [item.id]: item.cantidad_entregada != null ? formatQty(item.cantidad_entregada) : '' }
-      ));
-      return;
-    }
-    setExpandedIds((prev) => {
-      const next = new Set(prev);
-      next.delete(item.id);
-      return next;
-    });
-    // Si ya estaba guardado como no disponible, destildar revierte de una - no hay
-    // ambiguedad de valores como en "Entregar".
-    if (item.no_disponible) guardarItem(item, { no_disponible: false });
-  }
-
-  async function confirmarEntrega(item) {
-    const raw = drafts[item.id];
-    const qty = raw === '' || raw === undefined ? NaN : Number(raw);
-    if (!Number.isFinite(qty) || qty < 0) {
-      setErr('Ingresá la cantidad que vas a entregar (puede ser 0 si no entregás nada).');
-      return;
-    }
-    await guardarItem(item, { no_disponible: true, cantidad_entregada: qty });
   }
 
   const logout = () => {
@@ -239,80 +265,61 @@ export default function InsumosEntregasPage() {
             {items.length === 0 ? (
               <div style={{ opacity: 0.75 }}>No hay items para este filtro.</div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {items.map((item) => {
-                  const expanded = item.no_disponible || expandedIds.has(item.id);
-                  const faltante = item.no_disponible
-                    ? Math.max(0, Number(item.cantidad_pedida || 0) - Number(item.cantidad_entregada || 0))
-                    : 0;
-                  return (
-                    <div
-                      key={item.id}
-                      style={{
-                        padding: '8px 10px',
-                        border: `1px solid ${item.no_disponible ? '#fecaca' : 'var(--border)'}`,
-                        background: item.no_disponible ? '#fef2f2' : 'var(--surface)',
-                        borderRadius: 10,
-                      }}
-                    >
-                      <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr auto', alignItems: 'center', gap: 10 }}>
-                        <div>
-                          <span style={{ fontSize: 11, fontWeight: 900, padding: '3px 8px', borderRadius: 999, background: 'var(--brand)', color: '#fff' }}>
-                            {seccionLabel(item.seccion)}
-                          </span>
-                        </div>
+              <>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {items.map((item) => {
+                    const draft = drafts[item.id] || { qty: '', sinStock: false };
+                    return (
+                      <div
+                        key={item.id}
+                        style={{
+                          display: 'grid', gridTemplateColumns: '120px 1fr auto auto auto', alignItems: 'center', gap: 12,
+                          padding: '8px 10px',
+                          border: `1px solid ${draft.sinStock ? '#fecaca' : 'var(--border)'}`,
+                          background: draft.sinStock ? '#fef2f2' : 'var(--surface)',
+                          borderRadius: 10,
+                        }}
+                      >
+                        <span style={{ fontSize: 11, fontWeight: 900, padding: '3px 8px', borderRadius: 999, background: 'var(--brand)', color: '#fff', justifySelf: 'start' }}>
+                          {seccionLabel(item.seccion)}
+                        </span>
                         <div>
                           <div style={{ fontWeight: 800 }}>{item.producto_nombre}</div>
-                          {item.producto_codigo ? <div style={{ fontSize: 12, opacity: 0.7 }}>{item.producto_codigo}</div> : null}
                           {item.is_carryover ? <div style={{ fontSize: 12, color: '#b91c1c', fontWeight: 700 }}>Arrastrado de un pedido anterior</div> : null}
                         </div>
+                        <div style={{ fontSize: 13, textAlign: 'right' }}>
+                          <div style={{ opacity: 0.7, fontSize: 11 }}>Pedido</div>
+                          <div style={{ fontWeight: 800 }}>{formatQty(item.cantidad_pedida)} {item.unidad || ''}</div>
+                        </div>
+                        <input
+                          className="btn"
+                          type="number" min={0} step="any"
+                          value={draft.qty}
+                          disabled={draft.sinStock || entregando}
+                          onChange={(e) => setDraftQty(item.id, e.target.value)}
+                          style={{ width: 90, textAlign: 'right' }}
+                          title="Cantidad a entregar"
+                        />
                         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700 }}>
                           <input
                             type="checkbox"
-                            checked={expanded}
-                            disabled={savingId === item.id}
-                            onChange={(e) => toggleNoDisponible(item, e.target.checked)}
+                            checked={draft.sinStock}
+                            disabled={entregando}
+                            onChange={(e) => toggleSinStock(item, e.target.checked)}
                           />
-                          No disponible
+                          Sin stock
                         </label>
                       </div>
+                    );
+                  })}
+                </div>
 
-                      {expanded ? (
-                        <div style={{ display: 'flex', gap: 12, alignItems: 'end', flexWrap: 'wrap', marginTop: 10, paddingTop: 10, borderTop: '1px dashed #fca5a5' }}>
-                          <div style={{ fontSize: 12 }}>
-                            <div style={{ fontWeight: 700 }}>Pedido</div>
-                            <div style={{ fontWeight: 800 }}>{formatQty(item.cantidad_pedida)} {item.unidad || ''}</div>
-                          </div>
-                          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
-                            <span style={{ fontWeight: 700 }}>Cantidad a entregar</span>
-                            <input
-                              className="btn"
-                              type="number" min={0} step="any"
-                              value={drafts[item.id] ?? ''}
-                              disabled={savingId === item.id}
-                              onChange={(e) => setDrafts((prev) => ({ ...prev, [item.id]: e.target.value }))}
-                              style={{ width: 100, textAlign: 'right' }}
-                            />
-                          </label>
-                          <button
-                            className="btn btn--brand"
-                            type="button"
-                            disabled={savingId === item.id}
-                            onClick={() => confirmarEntrega(item)}
-                          >
-                            {savingId === item.id ? 'Guardando…' : 'Entregar'}
-                          </button>
-                          {item.no_disponible && item.cantidad_entregada != null ? (
-                            <div style={{ fontSize: 12, color: '#b91c1c', fontWeight: 700 }}>
-                              Entregado {formatQty(item.cantidad_entregada)} {item.unidad || ''} — quedan {formatQty(faltante)} {item.unidad || ''} pendientes, se cargan mañana en el pedido de {seccionLabel(item.seccion)}.
-                            </div>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </div>
-                  );
-                })}
-              </div>
+                <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
+                  <button className="btn btn--brand" type="button" onClick={entregarTodo} disabled={entregando}>
+                    {entregando ? 'Entregando…' : 'Entregar'}
+                  </button>
+                </div>
+              </>
             )}
           </div>
         </>

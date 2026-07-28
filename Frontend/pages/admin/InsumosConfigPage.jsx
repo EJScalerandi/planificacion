@@ -26,6 +26,7 @@ export default function InsumosConfigPage() {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
   const [ok, setOk] = useState('');
+  const [openCategId, setOpenCategId] = useState(null);
 
   const reload = async ({ refresh = false } = {}) => {
     setErr('');
@@ -66,6 +67,10 @@ export default function InsumosConfigPage() {
       const next = current.includes(slug) ? current.filter((s) => s !== slug) : [...current, slug];
       return { ...a, [categId]: next };
     });
+  }
+
+  function seccionLabelFor(slug) {
+    return secciones.find((s) => s.slug === slug)?.label || slug;
   }
 
   const onSave = async () => {
@@ -136,27 +141,55 @@ export default function InsumosConfigPage() {
                   <div style={{ fontSize: 12, opacity: 0.7 }}>{c.complete_name}</div>
                 ) : null}
               </div>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                {secciones.map((s) => (
-                  <label
-                    key={s.slug}
-                    className="btn"
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer',
-                      background: seleccionadas.includes(s.slug) ? 'var(--brand)' : undefined,
-                      color: seleccionadas.includes(s.slug) ? '#fff' : undefined,
-                      fontWeight: seleccionadas.includes(s.slug) ? 900 : 500,
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={seleccionadas.includes(s.slug)}
-                      onChange={() => toggleSeccion(c.id, s.slug)}
-                      style={{ margin: 0 }}
+              <div style={{ position: 'relative' }}>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => setOpenCategId((cur) => (cur === c.id ? null : c.id))}
+                  style={{
+                    minWidth: 220, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+                    fontWeight: seleccionadas.length ? 900 : 500,
+                    background: seleccionadas.length ? 'var(--brand)' : undefined,
+                    color: seleccionadas.length ? '#fff' : undefined,
+                  }}
+                >
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {seleccionadas.length === 0 ? '— Sin asignar —' : seleccionadas.map(seccionLabelFor).join(', ')}
+                  </span>
+                  <span style={{ fontSize: 10, opacity: 0.8 }}>{openCategId === c.id ? '▲' : '▼'}</span>
+                </button>
+
+                {openCategId === c.id ? (
+                  <>
+                    <div
+                      onClick={() => setOpenCategId(null)}
+                      style={{ position: 'fixed', inset: 0, zIndex: 20 }}
                     />
-                    {s.label}
-                  </label>
-                ))}
+                    <div
+                      style={{
+                        position: 'absolute', top: '100%', right: 0, marginTop: 4, zIndex: 21,
+                        background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10,
+                        boxShadow: '0 10px 30px rgba(0,0,0,0.2)', padding: 8, minWidth: 220,
+                        maxHeight: 260, overflowY: 'auto',
+                        display: 'flex', flexDirection: 'column', gap: 2,
+                      }}
+                    >
+                      {secciones.map((s) => (
+                        <label
+                          key={s.slug}
+                          style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '5px 6px', borderRadius: 6 }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={seleccionadas.includes(s.slug)}
+                            onChange={() => toggleSeccion(c.id, s.slug)}
+                          />
+                          {s.label}
+                        </label>
+                      ))}
+                    </div>
+                  </>
+                ) : null}
               </div>
             </div>
           );
