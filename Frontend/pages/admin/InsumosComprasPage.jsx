@@ -93,6 +93,7 @@ export default function InsumosComprasPage() {
       <div className="header-row" style={{ alignItems: 'center' }}>
         <h2 className="h1">Compras · Pedidos de Insumos</h2>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Link className="btn btn--brand" to="/admin/insumos/entregas">Gestionar entregas</Link>
           <Link className="btn" to="/admin/insumos/config">Config. categorías↔sección</Link>
           <Link className="btn" to="/admin">Volver</Link>
           <Link className="btn" to="/">Inicio</Link>

@@ -112,6 +112,56 @@ router.get('/insumos/pedidos', async (req, res) => {
   }
 });
 
+// GET /admin/insumos/items?fecha=&desde=&hasta=&seccion=
+// Vista "entregas": todos los items de todas las secciones juntos para una
+// fecha o rango, para que la persona que reparte prepare y entregue de una.
+// Solo pedidos ya confirmados (CONFIRMADO/CERRADO) - los ABIERTO todavia se
+// estan armando en el piso y no hay nada para preparar todavia.
+router.get('/insumos/items', async (req, res) => {
+  const { seccion, fecha, desde, hasta } = req.query || {};
+  const where = [`p.status in ('CONFIRMADO', 'CERRADO')`];
+  const params = [];
+
+  if (seccion) {
+    if (!isValidInsumosSeccion(seccion)) return res.status(400).json({ error: 'seccion invalida' });
+    params.push(String(seccion));
+    where.push(`p.seccion = $${params.length}`);
+  }
+  if (fecha) {
+    params.push(String(fecha));
+    where.push(`p.fecha = $${params.length}`);
+  } else {
+    if (desde) {
+      params.push(String(desde));
+      where.push(`p.fecha >= $${params.length}`);
+    }
+    if (hasta) {
+      params.push(String(hasta));
+      where.push(`p.fecha <= $${params.length}`);
+    }
+  }
+
+  try {
+    const { rows } = await pool.query(
+      `
+      select i.*,
+             p.seccion, p.fecha, p.status as pedido_status, p.confirmed_at,
+             u.name as confirmed_by_name
+        from public.insumos_pedido_items i
+        join public.insumos_pedidos p on p.id = i.pedido_id
+        left join public.qc_users u on u.id = p.confirmed_by_user_id
+        where ${where.join(' and ')}
+        order by i.producto_nombre asc, p.seccion asc
+      `,
+      params
+    );
+    return res.json(rows);
+  } catch (err) {
+    console.error('admin list insumos items error:', err);
+    return res.status(500).json({ error: 'Error listando items', detail: err.message });
+  }
+});
+
 // GET /admin/insumos/pedidos/:id
 router.get('/insumos/pedidos/:id', async (req, res) => {
   const pedidoId = Number(req.params.id);

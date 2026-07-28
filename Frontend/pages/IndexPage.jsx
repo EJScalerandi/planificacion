@@ -107,6 +107,7 @@ export default function IndexPage({ routes = [] }) {
     if (isPrefabAdmin) out.push({ path: '/admin/prefabricados', label: 'Admin · Prefabricados' });
     if (isStAdmin) out.push({ path: '/admin/servicio-tecnico', label: 'Admin · Servicio Técnico / Ord. Externas' });
     if (isComprasAdmin) out.push({ path: '/admin/insumos', label: 'Admin · Compras (Pedidos de Insumos)' });
+    if (isComprasAdmin) out.push({ path: '/admin/insumos/entregas', label: 'Admin · Compras · Entregas de Insumos' });
     if (isComprasAdmin) out.push({ path: '/admin/insumos/config', label: 'Admin · Compras · Config Categorías↔Sección' });
     return out;
   }, [isPreprodOnly, isQcAdmin, isWfAdmin, canUsers, isPrefabAdmin, isStAdmin, isComprasAdmin]);

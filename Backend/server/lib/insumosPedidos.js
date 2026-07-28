@@ -114,15 +114,20 @@ async function loadPedidoConItems(client, pedidoId) {
   return { ...pedido, items };
 }
 
-// Cierra CUALQUIER pedido con fecha <= hoy que siga ABIERTO (-> CERRADO_VACIO,
-// se descartan los items sin confirmar) o CONFIRMADO (-> CERRADO, se conservan).
-// No es "solo el de hoy" a proposito: cubre fines de semana/feriados/caidas del
-// server sin dejar pedidos viejos colgados en un estado abierto.
-async function closeStaleOpenPedidos(client, hoyStr) {
+// Cierra pedidos vencidos: ABIERTO -> CERRADO_VACIO (se descartan los items sin
+// confirmar) o CONFIRMADO -> CERRADO (se conservan). Los dias ESTRICTAMENTE
+// anteriores a hoy siempre se cierran (cubre fines de semana/feriados/caidas
+// del server sin dejar pedidos viejos colgados). El dia de HOY solo se cierra
+// si closeToday=true (ya paso el corte de las 20:00) - si no, un restart del
+// server a mitad del dia cerraria en falso pedidos que la seccion todavia
+// esta cargando/recien confirmo.
+async function closeStaleOpenPedidos(client, hoyStr, { closeToday = false } = {}) {
+  const dateCond = closeToday ? `fecha <= $1` : `fecha < $1`;
+
   const confirmados = await client.query(
     `update public.insumos_pedidos
         set status = 'CERRADO', closed_at = now()
-      where fecha <= $1 and status = 'CONFIRMADO'
+      where ${dateCond} and status = 'CONFIRMADO'
       returning id`,
     [hoyStr]
   );
@@ -130,7 +135,7 @@ async function closeStaleOpenPedidos(client, hoyStr) {
   const abiertos = await client.query(
     `update public.insumos_pedidos
         set status = 'CERRADO_VACIO', closed_at = now()
-      where fecha <= $1 and status = 'ABIERTO'
+      where ${dateCond} and status = 'ABIERTO'
       returning id`,
     [hoyStr]
   );

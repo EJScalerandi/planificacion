@@ -289,6 +289,7 @@ export const adminFetchInsumosCategorias = (refresh) => api.get('/admin/insumos/
 export const adminFetchInsumosCategoriaMap = () => api.get('/admin/insumos/categoria-map');
 export const adminSaveInsumosCategoriaMap = (entries) => api.put('/admin/insumos/categoria-map', { entries });
 export const adminListInsumosPedidos = (params) => api.get('/admin/insumos/pedidos', { params });
+export const adminListInsumosItems = (params) => api.get('/admin/insumos/items', { params });
 export const adminGetInsumosPedido = (id) => api.get(`/admin/insumos/pedidos/${id}`);
 export const adminUpdateInsumosPedidoItem = (pedidoId, itemId, patch) => api.put(`/admin/insumos/pedidos/${pedidoId}/items/${itemId}`, patch);
 export const adminAddInsumosPedidoItem = (pedidoId, payload) => api.post(`/admin/insumos/pedidos/${pedidoId}/items`, payload);
