@@ -176,6 +176,14 @@ export default function InsumosPedidoModal({ open, onClose, seccion }) {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {items.map((item) => {
                     const pendiente = item.is_carryover || item.no_disponible;
+                    // Para un item recien arrastrado (is_carryover), cantidad_pedida YA es el
+                    // remanente (cantidad_entregada todavia es null). Para uno marcado
+                    // no_disponible el mismo dia (entrega parcial desde Entregas, sin llegar a
+                    // arrastrarse todavia), hay que restar lo ya entregado para no mostrar el
+                    // pedido original completo como si nada se hubiera entregado.
+                    const cantidadMostrada = pendiente
+                      ? Math.max(0, Number(item.cantidad_pedida || 0) - Number(item.cantidad_entregada || 0))
+                      : Number(item.cantidad_pedida || 0);
                     return (
                       <div
                         key={item.id}
@@ -190,7 +198,9 @@ export default function InsumosPedidoModal({ open, onClose, seccion }) {
                           <div style={{ fontWeight: 800, color: pendiente ? '#b91c1c' : '#0f172a' }}>{item.producto_nombre}</div>
                           {pendiente ? (
                             <div style={{ fontSize: 12, color: '#b91c1c', fontWeight: 700 }}>
-                              Pendiente de entrega anterior — no se entregó la última vez
+                              {item.is_carryover
+                                ? 'Pendiente de entrega anterior — no se entregó la última vez'
+                                : `Entrega parcial — todavía faltan ${formatQty(cantidadMostrada)} ${item.unidad || ''}`}
                             </div>
                           ) : null}
                           {item.producto_codigo ? <div style={{ fontSize: 12, opacity: 0.7 }}>{item.producto_codigo}</div> : null}
@@ -201,12 +211,12 @@ export default function InsumosPedidoModal({ open, onClose, seccion }) {
                             type="number"
                             min={0}
                             step="any"
-                            defaultValue={formatQty(item.cantidad_pedida)}
+                            defaultValue={formatQty(cantidadMostrada)}
                             onBlur={(e) => handleCambiarCantidad(item, e.target.value)}
                             style={{ width: 90, textAlign: 'right' }}
                           />
                         ) : (
-                          <div style={{ fontWeight: 800 }}>{formatQty(item.cantidad_pedida)}</div>
+                          <div style={{ fontWeight: 800 }}>{formatQty(cantidadMostrada)}</div>
                         )}
                         <div style={{ opacity: 0.7, minWidth: 60 }}>{item.unidad || ''}</div>
                         {isAbierto ? (
