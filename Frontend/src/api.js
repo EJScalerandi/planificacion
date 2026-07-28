@@ -277,4 +277,20 @@ export const crearRefabricacion = (payload) => api.post('/refabricacion', payloa
 // nv: NV entero del portón; pin: PIN del usuario QC global
 export const aprobarRevision = (nv, pin) => api.post(`/portones/${nv}/revision-ok`, { pin });
 
+/* ========= Insumos (pedidos diarios por sección + dashboard Compras) ========= */
+export const fetchInsumosSecciones = () => api.get('/insumos/secciones');
+export const fetchInsumosProductos = (seccion) => api.get('/insumos/productos', { params: { seccion } });
+export const fetchInsumosPedidoHoy = (seccion) => api.get('/insumos/pedidos/hoy', { params: { seccion } });
+export const upsertInsumosPedidoItem = (pedidoId, payload) => api.post(`/insumos/pedidos/${pedidoId}/items`, payload);
+export const deleteInsumosPedidoItem = (pedidoId, itemId) => api.delete(`/insumos/pedidos/${pedidoId}/items/${itemId}`);
+export const confirmInsumosPedido = (pedidoId, pin) => api.post(`/insumos/pedidos/${pedidoId}/confirm`, { pin });
+
+export const adminFetchInsumosCategorias = (refresh) => api.get('/admin/insumos/categorias', { params: refresh ? { refresh: 1 } : {} });
+export const adminFetchInsumosCategoriaMap = () => api.get('/admin/insumos/categoria-map');
+export const adminSaveInsumosCategoriaMap = (entries) => api.put('/admin/insumos/categoria-map', { entries });
+export const adminListInsumosPedidos = (params) => api.get('/admin/insumos/pedidos', { params });
+export const adminGetInsumosPedido = (id) => api.get(`/admin/insumos/pedidos/${id}`);
+export const adminUpdateInsumosPedidoItem = (pedidoId, itemId, patch) => api.put(`/admin/insumos/pedidos/${pedidoId}/items/${itemId}`, patch);
+export const adminAddInsumosPedidoItem = (pedidoId, payload) => api.post(`/admin/insumos/pedidos/${pedidoId}/items`, payload);
+
 export default api;

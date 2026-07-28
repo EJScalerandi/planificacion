@@ -79,6 +79,7 @@ export default function IndexPage({ routes = [] }) {
   const canUsers = has('users:admin');
   const isPrefabAdmin = has('prefabricados:admin');
   const isStAdmin = has('servicio_tecnico:admin');
+  const isComprasAdmin = has('compras:admin');
 
   const isPreprodOnly = isPreprodAdmin && !isQcAdmin && !isWfAdmin && !canUsers;
 
@@ -105,8 +106,10 @@ export default function IndexPage({ routes = [] }) {
     if (isQcAdmin || isWfAdmin) out.push({ path: '/admin/excel-info', label: 'Admin · Información Excel' });
     if (isPrefabAdmin) out.push({ path: '/admin/prefabricados', label: 'Admin · Prefabricados' });
     if (isStAdmin) out.push({ path: '/admin/servicio-tecnico', label: 'Admin · Servicio Técnico / Ord. Externas' });
+    if (isComprasAdmin) out.push({ path: '/admin/insumos', label: 'Admin · Compras (Pedidos de Insumos)' });
+    if (isComprasAdmin) out.push({ path: '/admin/insumos/config', label: 'Admin · Compras · Config Categorías↔Sección' });
     return out;
-  }, [isPreprodOnly, isQcAdmin, isWfAdmin, canUsers, isPrefabAdmin, isStAdmin]);
+  }, [isPreprodOnly, isQcAdmin, isWfAdmin, canUsers, isPrefabAdmin, isStAdmin, isComprasAdmin]);
 
   const opsRoutes = useMemo(() => {
     if (isPreprodOnly) return [];

@@ -10,6 +10,7 @@ const adminQcRoutes = require('./routes/admin/qc');
 const adminWorkflowRoutes = require('./routes/admin/workflow');
 const adminPrefabricadosRoutes = require('./routes/admin/prefabricados');
 const adminServicioTecnicoRoutes = require('./routes/admin/servicioTecnico');
+const adminInsumosRoutes = require('./routes/admin/insumos');
 
 const plantaRoutes = require('./routes/public/planta');
 const despacharRoutes = require('./routes/public/despachar');
@@ -24,6 +25,7 @@ const refabricacionRoutes = require('./routes/public/refabricacion');
 const priceCategoriesRoutes = require('./routes/public/priceCategories');
 const prefabricadosRoutes = require('./routes/public/prefabricados');
 const servicioTecnicoRoutes = require('./routes/public/servicioTecnico');
+const insumosRoutes = require('./routes/public/insumos');
 const iaRoutes = require('./routes/external/ia');
 
 const { errorHandler } = require('./middleware/errorHandler');
@@ -71,6 +73,13 @@ app.use('/', healthRoutes);
 
 app.use('/admin', adminAuthRoutes);
 app.use('/admin', adminUsersRoutes);
+// Montado antes que qc/workflow/prefabricados/servicio-tecnico: esos routers usan
+// router.use(adminAuth, requireScope(SU_SCOPE)) SIN path especifico, asi que
+// interceptan cualquier /admin/* que llegue a ellos primero (incluso rutas que no
+// son suyas) y cortan la cadena antes de que Express pruebe el siguiente router.
+// Montando insumos antes evitamos que un usuario con SOLO compras:admin choque
+// contra el scope de otra feature.
+app.use('/admin', adminInsumosRoutes);
 app.use('/admin', adminQcRoutes);
 app.use('/admin', adminWorkflowRoutes);
 app.use('/admin', adminPrefabricadosRoutes);
@@ -97,6 +106,7 @@ app.use('/', refabricacionRoutes);
 app.use('/', priceCategoriesRoutes);
 app.use('/', prefabricadosRoutes);
 app.use('/', servicioTecnicoRoutes);
+app.use('/', insumosRoutes);
 app.use('/', iaRoutes);
 
 app.use(errorHandler);

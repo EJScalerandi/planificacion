@@ -11,6 +11,7 @@ import {
   startStStage, stopStStage,
 } from './api';
 import StageColumn from './components/StageColumn';
+import InsumosCartButton from './components/InsumosCartButton';
 
 import StatusGatePage from '../src/components/StatusGatePage';
 import CreateGatePage from '../pages/CreateGatePage';
@@ -28,6 +29,8 @@ import AdminQcPage from '../pages/admin/AdminQcPage';
 import AdminExcelInfoPage from '../pages/admin/AdminExcelInfoPage';
 import PrefabricadosConfigPage from '../pages/admin/PrefabricadosConfigPage';
 import ServicioTecnicoPage from '../pages/admin/ServicioTecnicoPage';
+import InsumosComprasPage from '../pages/admin/InsumosComprasPage';
+import InsumosConfigPage from '../pages/admin/InsumosConfigPage';
 
 import PreproduccionValoresTable from '../src/components/PreproduccionValoresTable';
 import IpanelPreproduccionValoresTable from '../src/components/IpanelPreproduccionValoresTable';
@@ -116,7 +119,7 @@ function FullBleed({ children }) {
   return <div className="route-fullbleed">{children}</div>;
 }
 
-function Board({ stages }) {
+function Board({ stages, seccion }) {
   const { data: portones, loading, err, replaceItem, refresh, refreshing } = usePortones({ pollMs: 300000 });
   const { data: ipanels, refresh: refreshIpanel } = useIpanel({ pollMs: 300000, onlyProduction: true });
   const { data: prefabricados, refresh: refreshPrefab, replaceItem: replacePrefab } = usePrefabricados({ pollMs: 300000 });
@@ -406,13 +409,16 @@ function Board({ stages }) {
     <div className="container">
       <div className="header-row">
         <h2 className="h1" style={{ borderColor: color }}>DE GRANDIS PORTONES</h2>
-        <button
-          className="btn btn--brand"
-          onClick={() => { refresh(); refreshIpanel(); refreshQcSummary(); refreshPrefab(); refreshSt(); }}
-          disabled={refreshing}
-        >
-          {refreshing ? 'Actualizando…' : 'Refrescar'}
-        </button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {seccion ? <InsumosCartButton seccion={seccion} /> : null}
+          <button
+            className="btn btn--brand"
+            onClick={() => { refresh(); refreshIpanel(); refreshQcSummary(); refreshPrefab(); refreshSt(); }}
+            disabled={refreshing}
+          >
+            {refreshing ? 'Actualizando…' : 'Refrescar'}
+          </button>
+        </div>
       </div>
 
       <form
@@ -615,6 +621,8 @@ export default function App() {
           <Route path="/admin/excel-info" element={<AdminExcelInfoPage />} />
           <Route path="/admin/prefabricados" element={<PrefabricadosConfigPage />} />
           <Route path="/admin/servicio-tecnico" element={<ServicioTecnicoPage />} />
+          <Route path="/admin/insumos" element={<InsumosComprasPage />} />
+          <Route path="/admin/insumos/config" element={<InsumosConfigPage />} />
           <Route path="/usuarios" element={<UserAdminDashboard />} />
 
           <Route
@@ -639,7 +647,11 @@ export default function App() {
         </Route>
 
         {ROUTES.map((r) => (
-          <Route key={r.path} path={r.path} element={<Board stages={r.stages} />} />
+          <Route
+            key={r.path}
+            path={r.path}
+            element={<Board stages={r.stages} seccion={r.path === '/board' ? null : r.path.slice(1)} />}
+          />
         ))}
 
         <Route path="/estado-porton" element={<PublicNvStatusPage />} />

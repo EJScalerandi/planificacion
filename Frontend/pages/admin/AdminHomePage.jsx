@@ -106,6 +106,25 @@ export default function AdminHomePage() {
             Ir a Servicio Técnico / Ord. Externas
           </Link>
         </div>
+
+        <div
+          style={{
+            border: '1px solid var(--border)',
+            borderRadius: 12,
+            padding: 14,
+            background: 'var(--surface)',
+          }}
+        >
+          <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 8 }}>
+            Compras · Pedidos de Insumos
+          </div>
+          <div style={{ opacity: 0.75, marginBottom: 12 }}>
+            Ver/editar pedidos diarios de insumos por sección, histórico, y mapeo de categorías Odoo↔sección.
+          </div>
+          <Link className="btn btn--brand" to="/admin/insumos">
+            Ir a Compras
+          </Link>
+        </div>
       </div>
 
       <div style={{ marginTop: 14, fontSize: 12, opacity: 0.7 }}>

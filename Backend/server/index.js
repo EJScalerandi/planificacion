@@ -6,6 +6,7 @@ require('dotenv').config({
 
 const { app } = require('./app');
 const { pool } = require('./db');
+const { startInsumosScheduler, runDailyClose } = require('./lib/insumosScheduler');
 
 const PORT = process.env.PORT || 4000;
 
@@ -93,10 +94,18 @@ process.on('SIGTERM', async () => {
 });
 
 runMigrations()
-  .then(() => {
+  .then(async () => {
     app.listen(PORT, () => {
       console.log(`Backend escuchando en http://localhost:${PORT}`);
     });
+    startInsumosScheduler();
+    // Catch-up: si el proceso se reinició después de las 20:00 AR de un día hábil,
+    // cierra ya lo que quedó abierto en vez de esperar al cron del día siguiente.
+    try {
+      await runDailyClose();
+    } catch (err) {
+      console.error('[insumos] catch-up al arrancar falló:', err.message);
+    }
   })
   .catch((err) => {
     console.error('[migration] ERROR — el servidor no arrancó:', err.message);

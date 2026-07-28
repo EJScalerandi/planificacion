@@ -18,6 +18,7 @@ const CANONICAL_SCOPES = [
   'preproduccion:comercial_view',
   'prefabricados:admin',
   'servicio_tecnico:admin',
+  'compras:admin',
 ];
 
 function normalizeScopes(scopes) {
