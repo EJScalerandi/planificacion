@@ -35,13 +35,24 @@ const IPANEL_TO_PORTON_STAGE_CANDIDATES = {
   despacho: ['despacho'],
 };
 
+// Prefabricados/Servicio Técnico/Orden Externa circulan por las mismas
+// secciones físicas que portones (comparten stage_key), así que un scope de
+// QC ya otorgado para portones en una sección alcanza también para estas
+// líneas en esa misma sección, sin tener que duplicar el alta.
+const SHARED_SECTION_LINES = new Set(['servicio_tecnico', 'orden_externa', 'prefabricados']);
+
 function stageCandidatesForScope(line, stageKey) {
-  if (line !== 'ipanel') return [{ line, stage_key: stageKey }];
-  const out = [{ line: 'ipanel', stage_key: stageKey }];
-  for (const st of IPANEL_TO_PORTON_STAGE_CANDIDATES[stageKey] || [stageKey]) {
-    out.push({ line: 'portones', stage_key: st });
+  if (line === 'ipanel') {
+    const out = [{ line: 'ipanel', stage_key: stageKey }];
+    for (const st of IPANEL_TO_PORTON_STAGE_CANDIDATES[stageKey] || [stageKey]) {
+      out.push({ line: 'portones', stage_key: st });
+    }
+    return out;
   }
-  return out;
+  if (SHARED_SECTION_LINES.has(line)) {
+    return [{ line, stage_key: stageKey }, { line: 'portones', stage_key: stageKey }];
+  }
+  return [{ line, stage_key: stageKey }];
 }
 
 async function getPortonIdByNv(db, nv) {
