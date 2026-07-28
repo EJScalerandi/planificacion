@@ -7,6 +7,7 @@ import {
   adminFetchInsumosCategorias,
   adminFetchInsumosCategoriaMap,
   adminSaveInsumosCategoriaMap,
+  adminFetchInsumosCategoriaProductos,
   fetchInsumosSecciones,
 } from '../../src/api';
 
@@ -27,6 +28,10 @@ export default function InsumosConfigPage() {
   const [err, setErr] = useState('');
   const [ok, setOk] = useState('');
   const [openCategId, setOpenCategId] = useState(null);
+  const [expandedCategId, setExpandedCategId] = useState(null);
+  // productosPorCategoria[categId] = string[] | null (null = todavia no se pidio)
+  const [productosPorCategoria, setProductosPorCategoria] = useState({});
+  const [loadingProductosId, setLoadingProductosId] = useState(null);
 
   const reload = async ({ refresh = false } = {}) => {
     setErr('');
@@ -71,6 +76,25 @@ export default function InsumosConfigPage() {
 
   function seccionLabelFor(slug) {
     return secciones.find((s) => s.slug === slug)?.label || slug;
+  }
+
+  async function toggleExpandCategoria(categId) {
+    if (expandedCategId === categId) {
+      setExpandedCategId(null);
+      return;
+    }
+    setExpandedCategId(categId);
+    if (productosPorCategoria[categId] !== undefined) return;
+    setLoadingProductosId(categId);
+    try {
+      const { data } = await adminFetchInsumosCategoriaProductos(categId);
+      setProductosPorCategoria((prev) => ({ ...prev, [categId]: data || [] }));
+    } catch (e) {
+      setErr(e?.response?.data?.error || e.message);
+      setProductosPorCategoria((prev) => ({ ...prev, [categId]: [] }));
+    } finally {
+      setLoadingProductosId(null);
+    }
   }
 
   const onSave = async () => {
@@ -127,21 +151,34 @@ export default function InsumosConfigPage() {
       <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
         {categorias.map((c) => {
           const seleccionadas = asignaciones[c.id] || [];
+          const expandida = expandedCategId === c.id;
+          const productos = productosPorCategoria[c.id];
+          const cargandoProductos = loadingProductosId === c.id;
           return (
             <div
               key={c.id}
               style={{
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap',
                 border: '1px solid var(--border)', borderRadius: 12, padding: 10, background: 'var(--surface)',
               }}
             >
-              <div>
-                <div style={{ fontWeight: 800 }}>{c.name}</div>
-                {c.complete_name && c.complete_name !== c.name ? (
-                  <div style={{ fontSize: 12, opacity: 0.7 }}>{c.complete_name}</div>
-                ) : null}
-              </div>
-              <div style={{ position: 'relative' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <div
+                  onClick={() => toggleExpandCategoria(c.id)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleExpandCategoria(c.id); } }}
+                  style={{ cursor: 'pointer' }}
+                  title="Ver insumos de esta categoría"
+                >
+                  <div style={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: 10, opacity: 0.6 }}>{expandida ? '▼' : '▶'}</span>
+                    {c.name}
+                  </div>
+                  {c.complete_name && c.complete_name !== c.name ? (
+                    <div style={{ fontSize: 12, opacity: 0.7 }}>{c.complete_name}</div>
+                  ) : null}
+                </div>
+                <div style={{ position: 'relative' }}>
                 <button
                   type="button"
                   className="btn"
@@ -191,6 +228,27 @@ export default function InsumosConfigPage() {
                   </>
                 ) : null}
               </div>
+              </div>
+
+              {expandida ? (
+                <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, opacity: 0.75, marginBottom: 6 }}>Insumos de esta categoría</div>
+                  {cargandoProductos ? (
+                    <div style={{ fontSize: 13, opacity: 0.75 }}>Cargando…</div>
+                  ) : !productos || productos.length === 0 ? (
+                    <div style={{ fontSize: 13, opacity: 0.75 }}>Esta categoría no tiene insumos cargados en Odoo.</div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {productos.map((p) => (
+                        <div key={p.producto_odoo_id} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, padding: '3px 0' }}>
+                          <span>{p.producto_nombre}{p.producto_codigo ? ` (${p.producto_codigo})` : ''}</span>
+                          {p.unidad ? <span style={{ opacity: 0.6 }}>{p.unidad}</span> : null}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : null}
             </div>
           );
         })}

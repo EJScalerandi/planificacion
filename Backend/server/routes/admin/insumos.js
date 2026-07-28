@@ -3,7 +3,7 @@
 const express = require('express');
 const { adminAuth } = require('../../middleware/adminAuth');
 const { pool } = require('../../db');
-const { fetchOdooCategories, invalidateInsumosOdooCache } = require('../../lib/insumosOdoo');
+const { fetchOdooCategories, fetchOdooProductsByCategoryIds, invalidateInsumosOdooCache } = require('../../lib/insumosOdoo');
 const { getCategoriaSeccionMap, setCategoriaSeccionMap } = require('../../insumosCategoriaSeccionDb');
 const { isValidInsumosSeccion } = require('../../lib/insumosSecciones');
 const { loadPedidoConItems } = require('../../lib/insumosPedidos');
@@ -38,6 +38,28 @@ router.get('/insumos/categorias', async (req, res) => {
   } catch (err) {
     console.error('admin get insumos categorias error:', err);
     return res.status(500).json({ error: 'Error leyendo categorias de Odoo', detail: err.message });
+  }
+});
+
+// GET /admin/insumos/categorias/:categId/productos — preview de que insumos
+// trae una categoria de Odoo (para la pantalla de config, antes/despues de
+// asignarla a una seccion).
+router.get('/insumos/categorias/:categId/productos', async (req, res) => {
+  const categId = Number(req.params.categId);
+  if (!Number.isInteger(categId) || categId <= 0) return res.status(400).json({ error: 'categ_id invalido' });
+  try {
+    const rows = await fetchOdooProductsByCategoryIds([categId]);
+    return res.json(
+      rows.map((p) => ({
+        producto_odoo_id: p.id,
+        producto_nombre: p.name,
+        producto_codigo: p.default_code || null,
+        unidad: Array.isArray(p.uom_id) ? p.uom_id[1] : null,
+      }))
+    );
+  } catch (err) {
+    console.error('admin get productos de categoria error:', err);
+    return res.status(500).json({ error: 'Error leyendo productos de la categoria', detail: err.message });
   }
 });
 

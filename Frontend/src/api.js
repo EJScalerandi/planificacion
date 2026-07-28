@@ -286,6 +286,7 @@ export const deleteInsumosPedidoItem = (pedidoId, itemId) => api.delete(`/insumo
 export const confirmInsumosPedido = (pedidoId, pin) => api.post(`/insumos/pedidos/${pedidoId}/confirm`, { pin });
 
 export const adminFetchInsumosCategorias = (refresh) => api.get('/admin/insumos/categorias', { params: refresh ? { refresh: 1 } : {} });
+export const adminFetchInsumosCategoriaProductos = (categId) => api.get(`/admin/insumos/categorias/${categId}/productos`);
 export const adminFetchInsumosCategoriaMap = () => api.get('/admin/insumos/categoria-map');
 export const adminSaveInsumosCategoriaMap = (entries) => api.put('/admin/insumos/categoria-map', { entries });
 export const adminListInsumosPedidos = (params) => api.get('/admin/insumos/pedidos', { params });
