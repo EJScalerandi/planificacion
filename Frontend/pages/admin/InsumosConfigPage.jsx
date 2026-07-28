@@ -20,7 +20,7 @@ export default function InsumosConfigPage() {
 
   const [secciones, setSecciones] = useState([]);
   const [categorias, setCategorias] = useState([]);
-  const [asignaciones, setAsignaciones] = useState({}); // categ_id -> seccion ('' = sin asignar)
+  const [asignaciones, setAsignaciones] = useState({}); // categ_id -> string[] de secciones ([] = sin asignar)
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -41,7 +41,10 @@ export default function InsumosConfigPage() {
       setSecciones(seccionesRes.data || []);
       setCategorias(categoriasRes.data || []);
       const map = {};
-      for (const row of mapRes.data || []) map[row.categ_id] = row.seccion;
+      for (const row of mapRes.data || []) {
+        if (!map[row.categ_id]) map[row.categ_id] = [];
+        map[row.categ_id].push(row.seccion);
+      }
       setAsignaciones(map);
     } catch (e) {
       setErr(e?.response?.data?.error || e.message);
@@ -55,16 +58,24 @@ export default function InsumosConfigPage() {
     reload();
   }, []);
 
-  const asignadasCount = Object.values(asignaciones).filter(Boolean).length;
+  const asignadasCount = Object.values(asignaciones).filter((arr) => arr && arr.length > 0).length;
+
+  function toggleSeccion(categId, slug) {
+    setAsignaciones((a) => {
+      const current = a[categId] || [];
+      const next = current.includes(slug) ? current.filter((s) => s !== slug) : [...current, slug];
+      return { ...a, [categId]: next };
+    });
+  }
 
   const onSave = async () => {
     setErr('');
     setOk('');
     try {
       setSaving(true);
-      const entries = categorias
-        .filter((c) => asignaciones[c.id])
-        .map((c) => ({ categ_id: c.id, categ_nombre: c.name, seccion: asignaciones[c.id] }));
+      const entries = categorias.flatMap((c) =>
+        (asignaciones[c.id] || []).map((seccion) => ({ categ_id: c.id, categ_nombre: c.name, seccion }))
+      );
       await adminSaveInsumosCategoriaMap(entries);
       setOk('Mapeo guardado correctamente.');
     } catch (e) {
@@ -109,37 +120,47 @@ export default function InsumosConfigPage() {
       </div>
 
       <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {categorias.map((c) => (
-          <div
-            key={c.id}
-            style={{
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-              border: '1px solid var(--border)', borderRadius: 12, padding: 10, background: 'var(--surface)',
-            }}
-          >
-            <div>
-              <div style={{ fontWeight: 800 }}>{c.name}</div>
-              {c.complete_name && c.complete_name !== c.name ? (
-                <div style={{ fontSize: 12, opacity: 0.7 }}>{c.complete_name}</div>
-              ) : null}
-            </div>
-            <select
-              className="btn"
-              value={asignaciones[c.id] || ''}
-              onChange={(e) => setAsignaciones((a) => ({ ...a, [c.id]: e.target.value }))}
+        {categorias.map((c) => {
+          const seleccionadas = asignaciones[c.id] || [];
+          return (
+            <div
+              key={c.id}
               style={{
-                fontWeight: asignaciones[c.id] ? 900 : 500,
-                background: asignaciones[c.id] ? 'var(--brand)' : undefined,
-                color: asignaciones[c.id] ? '#fff' : undefined,
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+                border: '1px solid var(--border)', borderRadius: 12, padding: 10, background: 'var(--surface)',
               }}
             >
-              <option value="">— Sin asignar —</option>
-              {secciones.map((s) => (
-                <option key={s.slug} value={s.slug}>{s.label}</option>
-              ))}
-            </select>
-          </div>
-        ))}
+              <div>
+                <div style={{ fontWeight: 800 }}>{c.name}</div>
+                {c.complete_name && c.complete_name !== c.name ? (
+                  <div style={{ fontSize: 12, opacity: 0.7 }}>{c.complete_name}</div>
+                ) : null}
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                {secciones.map((s) => (
+                  <label
+                    key={s.slug}
+                    className="btn"
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer',
+                      background: seleccionadas.includes(s.slug) ? 'var(--brand)' : undefined,
+                      color: seleccionadas.includes(s.slug) ? '#fff' : undefined,
+                      fontWeight: seleccionadas.includes(s.slug) ? 900 : 500,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={seleccionadas.includes(s.slug)}
+                      onChange={() => toggleSeccion(c.id, s.slug)}
+                      style={{ margin: 0 }}
+                    />
+                    {s.label}
+                  </label>
+                ))}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>

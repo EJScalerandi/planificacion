@@ -9,13 +9,23 @@ async function getCategoriaSeccionMap() {
 }
 
 async function setCategoriaSeccionMap(entries = []) {
+  // Una misma categ_id puede repetirse con distinta seccion (una categoria de
+  // Odoo puede alimentar mas de una seccion) - se dedupea solo por el par
+  // (categ_id, seccion) para no chocar con la PK compuesta.
+  const seen = new Set();
   const clean = (Array.isArray(entries) ? entries : [])
     .map((e) => ({
       categ_id: Number(e?.categ_id),
       categ_nombre: e?.categ_nombre ? String(e.categ_nombre).trim() : null,
       seccion: String(e?.seccion || '').trim(),
     }))
-    .filter((e) => Number.isFinite(e.categ_id) && e.categ_id > 0 && isValidInsumosSeccion(e.seccion));
+    .filter((e) => Number.isFinite(e.categ_id) && e.categ_id > 0 && isValidInsumosSeccion(e.seccion))
+    .filter((e) => {
+      const key = `${e.categ_id}:${e.seccion}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 
   const client = await pool.connect();
   try {
