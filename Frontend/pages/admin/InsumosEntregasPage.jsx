@@ -37,9 +37,10 @@ export default function InsumosEntregasPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [entregando, setEntregando] = useState(false);
-  // drafts[item.id] = { qty: string, sinStock: boolean } - se arma de nuevo cada
-  // vez que llegan items del server, se edita libre en pantalla, y recien se
-  // manda todo junto al apretar el boton "Entregar" de abajo de todo.
+  // drafts[producto_odoo_id] = { qty: string, sinStock: boolean } - global, sin
+  // distinguir seccion (para eso esta el filtro de arriba). Se arma de nuevo
+  // solo para productos nuevos que aparecen, sin pisar lo que ya se esta
+  // editando en pantalla.
   const [drafts, setDrafts] = useState({});
 
   useEffect(() => {
@@ -72,91 +73,88 @@ export default function InsumosEntregasPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seccion, fecha, modoRango, desde, hasta]);
 
-  // Arma el draft de cada item nuevo que aparece (por default asume entrega
-  // completa = lo pedido, salvo que ya haya quedado algo cargado de antes).
-  // A los items que YA tenian un draft no los pisa - si no, cambiar el filtro
-  // de sección a mitad de editar borraba ediciones sin guardar de otros items.
-  useEffect(() => {
-    setDrafts((prev) => {
-      const next = { ...prev };
-      for (const it of items) {
-        if (next[it.id] !== undefined) continue;
-        const yaEntregado = it.cantidad_entregada != null ? Number(it.cantidad_entregada) : Number(it.cantidad_pedida || 0);
-        next[it.id] = {
-          qty: it.no_disponible ? formatQty(it.cantidad_entregada ?? 0) : formatQty(yaEntregado),
-          sinStock: !!it.no_disponible,
-        };
-      }
-      for (const id of Object.keys(next)) {
-        if (!items.some((it) => String(it.id) === id)) delete next[id];
-      }
-      return next;
-    });
-  }, [items]);
-
-  const seccionLabel = useMemo(() => {
-    const map = new Map(secciones.map((s) => [s.slug, s.label]));
-    return (slug) => map.get(slug) || slug;
-  }, [secciones]);
-
+  // Un item por producto (sumando todas las secciones que aparezcan con el
+  // filtro actual). Guarda tambien los items originales de ese producto para
+  // poder repartir la entrega entre ellos al guardar.
   const resumen = useMemo(() => {
     const byProducto = new Map();
     for (const it of items) {
       const key = it.producto_odoo_id;
       if (!byProducto.has(key)) {
         byProducto.set(key, {
+          producto_odoo_id: key,
           producto_nombre: it.producto_nombre,
           unidad: it.unidad,
           totalPedido: 0,
-          totalEntregado: 0,
-          secciones: new Set(),
-          pendientes: 0,
+          items: [],
         });
       }
       const acc = byProducto.get(key);
       acc.totalPedido += Number(it.cantidad_pedida || 0);
-      acc.totalEntregado += Number(it.cantidad_entregada || 0);
-      acc.secciones.add(it.seccion);
-      if (it.no_disponible) acc.pendientes += 1;
+      acc.items.push(it);
     }
     return [...byProducto.values()].sort((a, b) => a.producto_nombre.localeCompare(b.producto_nombre));
   }, [items]);
 
-  function setDraftQty(itemId, value) {
-    setDrafts((prev) => ({ ...prev, [itemId]: { ...prev[itemId], qty: value } }));
+  // Arma el draft de cada producto nuevo que aparece (por default asume
+  // preparar el total pedido). A los que YA tenian un draft no los pisa - si
+  // no, cambiar el filtro a mitad de editar borraba ediciones sin guardar.
+  useEffect(() => {
+    setDrafts((prev) => {
+      const next = { ...prev };
+      for (const r of resumen) {
+        if (next[r.producto_odoo_id] !== undefined) continue;
+        next[r.producto_odoo_id] = { qty: formatQty(r.totalPedido), sinStock: false };
+      }
+      for (const id of Object.keys(next)) {
+        if (!resumen.some((r) => String(r.producto_odoo_id) === id)) delete next[id];
+      }
+      return next;
+    });
+  }, [resumen]);
+
+  function setDraftQty(productoId, value) {
+    setDrafts((prev) => ({ ...prev, [productoId]: { ...prev[productoId], qty: value } }));
   }
 
-  function toggleSinStock(item, checked) {
+  function toggleSinStock(row, checked) {
     setDrafts((prev) => ({
       ...prev,
-      [item.id]: {
-        sinStock: checked,
-        qty: checked ? '0' : formatQty(item.cantidad_pedida),
-      },
+      [row.producto_odoo_id]: { sinStock: checked, qty: checked ? '0' : formatQty(row.totalPedido) },
     }));
   }
 
   async function entregarTodo() {
-    const pendientesInvalidos = items.some((it) => {
-      const raw = drafts[it.id]?.qty;
+    const invalido = resumen.some((r) => {
+      const raw = drafts[r.producto_odoo_id]?.qty;
       return raw === '' || raw === undefined || !Number.isFinite(Number(raw)) || Number(raw) < 0;
     });
-    if (pendientesInvalidos) {
-      setErr('Hay cantidades a entregar inválidas o vacías.');
+    if (invalido) {
+      setErr('Hay cantidades a preparar inválidas o vacías.');
       return;
     }
     try {
       setEntregando(true);
       setErr('');
-      await Promise.all(
-        items.map((it) => {
-          const draft = drafts[it.id] || {};
-          return adminUpdateInsumosPedidoItem(it.pedido_id, it.id, {
-            cantidad_entregada: Number(draft.qty),
-            no_disponible: !!draft.sinStock,
-          });
-        })
-      );
+      const calls = [];
+      for (const r of resumen) {
+        const draft = drafts[r.producto_odoo_id] || { qty: formatQty(r.totalPedido), sinStock: false };
+        const totalAEntregar = Math.min(Number(draft.qty), r.totalPedido);
+        // Proporcion sobre el total pedido de este producto (entre todas las
+        // secciones que entren en el filtro actual) - si hay una sola sección
+        // (por el filtro de arriba, o porque solo una la pidió), da exacto.
+        const ratio = r.totalPedido > 0 ? totalAEntregar / r.totalPedido : 0;
+        for (const it of r.items) {
+          const entregadoItem = Math.round(Number(it.cantidad_pedida || 0) * ratio * 100) / 100;
+          calls.push(
+            adminUpdateInsumosPedidoItem(it.pedido_id, it.id, {
+              cantidad_entregada: entregadoItem,
+              no_disponible: draft.sinStock || ratio < 1,
+            })
+          );
+        }
+      }
+      await Promise.all(calls);
       await reload();
     } catch (e) {
       setErr(e?.response?.data?.error || e.message || 'Error guardando las entregas');
@@ -171,7 +169,7 @@ export default function InsumosEntregasPage() {
   };
 
   return (
-    <div className="container" style={{ maxWidth: 1100 }}>
+    <div className="container" style={{ maxWidth: 900 }}>
       <div className="header-row" style={{ alignItems: 'center' }}>
         <h2 className="h1">Compras · Entregas de Insumos</h2>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -184,7 +182,7 @@ export default function InsumosEntregasPage() {
       {err && <div style={{ color: 'crimson', fontWeight: 800, marginTop: 10 }}>{err}</div>}
 
       <div style={{ marginTop: 12, fontSize: 13, opacity: 0.85 }}>
-        Vista para preparar y repartir: junta los insumos de todas las secciones ya confirmados en un solo lugar. Marcá "No disponible" o ajustá lo entregado a medida que repartís.
+        Resumen global para preparar el pedido (todas las secciones ya confirmadas juntas). Si querés ver/entregar una sección puntual, usá el filtro de sección.
       </div>
 
       <div style={{ marginTop: 16, display: 'flex', gap: 10, alignItems: 'end', flexWrap: 'wrap', border: '1px solid var(--border)', borderRadius: 12, padding: 14, background: 'var(--surface)' }}>
@@ -227,101 +225,63 @@ export default function InsumosEntregasPage() {
       {loading ? <div style={{ marginTop: 16 }}>Cargando…</div> : (
         <>
           <div style={{ marginTop: 20 }}>
-            <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 10 }}>Resumen a preparar</div>
+            <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 10 }}>Resumen global</div>
             {resumen.length === 0 ? (
               <div style={{ opacity: 0.75 }}>No hay insumos confirmados para este filtro.</div>
             ) : (
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ textAlign: 'left', borderBottom: '2px solid var(--border)' }}>
-                      <th style={{ padding: '6px 8px' }}>Producto</th>
-                      <th style={{ padding: '6px 8px' }}>Total pedido</th>
-                      <th style={{ padding: '6px 8px' }}>Total entregado</th>
-                      <th style={{ padding: '6px 8px' }}>Secciones</th>
-                      <th style={{ padding: '6px 8px' }}>No disponible en</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {resumen.map((r) => (
-                      <tr key={r.producto_nombre} style={{ borderBottom: '1px solid var(--border)' }}>
-                        <td style={{ padding: '6px 8px', fontWeight: 800 }}>{r.producto_nombre}</td>
-                        <td style={{ padding: '6px 8px' }}>{formatQty(r.totalPedido)} {r.unidad || ''}</td>
-                        <td style={{ padding: '6px 8px' }}>{formatQty(r.totalEntregado)} {r.unidad || ''}</td>
-                        <td style={{ padding: '6px 8px' }}>{r.secciones.size}</td>
-                        <td style={{ padding: '6px 8px', color: r.pendientes > 0 ? '#b91c1c' : undefined, fontWeight: r.pendientes > 0 ? 800 : 400 }}>
-                          {r.pendientes > 0 ? `${r.pendientes} sección(es)` : '—'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          <div style={{ marginTop: 24 }}>
-            <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 10 }}>Detalle por sección</div>
-            {items.length === 0 ? (
-              <div style={{ opacity: 0.75 }}>No hay items para este filtro.</div>
-            ) : (
-              <>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {items.map((item) => {
-                    const draft = drafts[item.id] || { qty: '', sinStock: false };
-                    return (
-                      <div
-                        key={item.id}
-                        style={{
-                          display: 'grid', gridTemplateColumns: '120px 1fr auto auto auto', alignItems: 'center', gap: 12,
-                          padding: '8px 10px',
-                          border: `1px solid ${draft.sinStock ? '#fecaca' : 'var(--border)'}`,
-                          background: draft.sinStock ? '#fef2f2' : 'var(--surface)',
-                          borderRadius: 10,
-                        }}
-                      >
-                        <span style={{ fontSize: 11, fontWeight: 900, padding: '3px 8px', borderRadius: 999, background: 'var(--brand)', color: '#fff', justifySelf: 'start' }}>
-                          {seccionLabel(item.seccion)}
-                        </span>
-                        <div>
-                          <div style={{ fontWeight: 800 }}>{item.producto_nombre}</div>
-                          {item.is_carryover ? <div style={{ fontSize: 12, color: '#b91c1c', fontWeight: 700 }}>Arrastrado de un pedido anterior</div> : null}
-                        </div>
-                        <div style={{ fontSize: 13, textAlign: 'right' }}>
-                          <div style={{ opacity: 0.7, fontSize: 11 }}>Pedido</div>
-                          <div style={{ fontWeight: 800 }}>{formatQty(item.cantidad_pedida)} {item.unidad || ''}</div>
-                        </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {resumen.map((r) => {
+                  const draft = drafts[r.producto_odoo_id] || { qty: '', sinStock: false };
+                  return (
+                    <div
+                      key={r.producto_odoo_id}
+                      style={{
+                        display: 'grid', gridTemplateColumns: '1fr auto auto auto', alignItems: 'center', gap: 12,
+                        padding: '8px 10px',
+                        border: `1px solid ${draft.sinStock ? '#fecaca' : 'var(--border)'}`,
+                        background: draft.sinStock ? '#fef2f2' : 'var(--surface)',
+                        borderRadius: 10,
+                      }}
+                    >
+                      <div style={{ fontWeight: 800 }}>{r.producto_nombre}</div>
+                      <div style={{ fontSize: 13, textAlign: 'right' }}>
+                        <div style={{ opacity: 0.7, fontSize: 11 }}>Cant. pedida</div>
+                        <div style={{ fontWeight: 800 }}>{formatQty(r.totalPedido)} {r.unidad || ''}</div>
+                      </div>
+                      <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11 }}>
+                        <span style={{ opacity: 0.7 }}>Cant. a preparar</span>
                         <input
                           className="btn"
                           type="number" min={0} step="any"
                           value={draft.qty}
                           disabled={draft.sinStock || entregando}
-                          onChange={(e) => setDraftQty(item.id, e.target.value)}
+                          onChange={(e) => setDraftQty(r.producto_odoo_id, e.target.value)}
                           style={{ width: 90, textAlign: 'right' }}
-                          title="Cantidad a entregar"
                         />
-                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700 }}>
-                          <input
-                            type="checkbox"
-                            checked={draft.sinStock}
-                            disabled={entregando}
-                            onChange={(e) => toggleSinStock(item, e.target.checked)}
-                          />
-                          Sin stock
-                        </label>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
-                  <button className="btn btn--brand" type="button" onClick={entregarTodo} disabled={entregando}>
-                    {entregando ? 'Entregando…' : 'Entregar'}
-                  </button>
-                </div>
-              </>
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700 }}>
+                        <input
+                          type="checkbox"
+                          checked={draft.sinStock}
+                          disabled={entregando}
+                          onChange={(e) => toggleSinStock(r, e.target.checked)}
+                        />
+                        Sin stock
+                      </label>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
+
+          {resumen.length > 0 ? (
+            <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
+              <button className="btn btn--brand" type="button" onClick={entregarTodo} disabled={entregando}>
+                {entregando ? 'Entregando…' : 'Entregar'}
+              </button>
+            </div>
+          ) : null}
         </>
       )}
     </div>
