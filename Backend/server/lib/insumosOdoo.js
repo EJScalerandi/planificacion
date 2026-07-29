@@ -1,7 +1,16 @@
 // Resolucion en vivo de categorias/productos de Odoo para pedidos de insumos,
 // con cache en memoria + TTL (mismo criterio que odooClient.js cachea el uid):
 // el catalogo de Odoo es fuente de verdad, no se espeja en Postgres.
+//
+// La "categoria" no es el categ_id interno de Odoo (Many2one, un producto
+// solo entra en una) sino un campo custom creado con Studio:
+// x_clasificacion_de_pro (modelo nuevo) + x_studio_clasificacin_sectorizada
+// (Many2many en product.template) - permite que un mismo producto tenga
+// varias clasificaciones y por lo tanto aparezca en varias secciones.
 const { getOdooClient } = require('./odooClient');
+
+const CLASIFICACION_MODEL = 'x_clasificacion_de_pro';
+const CLASIFICACION_FIELD = 'x_studio_clasificacin_sectorizada';
 
 const CATEGORIES_TTL_MS = 10 * 60 * 1000;
 const PRODUCTS_TTL_MS = 5 * 60 * 1000;
@@ -21,11 +30,16 @@ async function fetchOdooCategories({ force = false } = {}) {
     return categoriesCache.data;
   }
   const odoo = requireOdoo();
-  const rows = await odoo.executeKw('product.category', 'search_read', [[]], {
-    fields: ['id', 'name', 'complete_name'],
+  const rows = await odoo.executeKw(CLASIFICACION_MODEL, 'search_read', [[]], {
+    fields: ['id', 'x_name', 'display_name'],
   });
-  categoriesCache = { at: now, data: rows };
-  return rows;
+  const data = rows.map((r) => ({
+    id: r.id,
+    name: r.x_name || r.display_name,
+    complete_name: r.display_name,
+  }));
+  categoriesCache = { at: now, data };
+  return data;
 }
 
 function productsCacheKey(categIds) {
@@ -47,8 +61,8 @@ async function fetchOdooProductsByCategoryIds(categIds, { force = false } = {}) 
   const rows = await odoo.executeKw(
     'product.template',
     'search_read',
-    [[['categ_id', 'in', ids], ['purchase_ok', '=', true]]],
-    { fields: ['id', 'name', 'default_code', 'uom_id', 'categ_id'] }
+    [[[CLASIFICACION_FIELD, 'in', ids], ['purchase_ok', '=', true]]],
+    { fields: ['id', 'name', 'default_code', 'uom_id', CLASIFICACION_FIELD] }
   );
   productsCacheByKey.set(key, { at: now, data: rows });
   return rows;

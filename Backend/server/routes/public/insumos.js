@@ -47,7 +47,7 @@ router.get('/insumos/productos', async (req, res) => {
         producto_nombre: p.name,
         producto_codigo: p.default_code || null,
         unidad: Array.isArray(p.uom_id) ? p.uom_id[1] : null,
-        categoria_odoo_id: Array.isArray(p.categ_id) ? p.categ_id[0] : null,
+        categoria_odoo_id: Array.isArray(p.x_studio_clasificacin_sectorizada) ? p.x_studio_clasificacin_sectorizada[0] ?? null : null,
       }))
     );
   } catch (err) {
