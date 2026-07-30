@@ -127,6 +127,7 @@ async function getPortonShapeById(db, id) {
       on t.porton_id = p.id
     left join public.preproduccion_valores pv
       on pv.nv = p.nv
+     and pv.nv_tipo = (case when p.tipo = 'puerta' then 'PNV' else 'NV' end)
     where p.id = $1
     group by p.id, pv.data
     limit 1;
@@ -239,6 +240,7 @@ router.get('/portones', async (_req, res) => {
         on t.porton_id = p.id
       left join public.preproduccion_valores pv
         on pv.nv = p.nv
+       and pv.nv_tipo = (case when p.tipo = 'puerta' then 'PNV' else 'NV' end)
       left join lateral (
         select
           q.end_customer->>'name' as cliente_nombre,

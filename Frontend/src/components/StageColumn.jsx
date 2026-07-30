@@ -765,6 +765,7 @@ function isAnexo(p) {
 
 function getNvLabel(p) {
   const nv = p?.nv ?? p?.NV ?? '-';
+  if (String(p?.tipo || '').trim().toLowerCase() === 'puerta') return `PNV ${nv}`;
   const tipo = String(p?.nv_tipo || 'NV').trim().toUpperCase();
   return isAnexo(p) ? `ANEXO NV ${nv} (${tipo})` : `NV ${nv}`;
 }
