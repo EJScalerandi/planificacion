@@ -22,7 +22,9 @@ function stageBadgeStyle(estado) {
 }
 
 function orderLabel(o) {
-  return o?.tipo === 'OE' ? `OE ${o?.numero ?? '-'}` : `ST ${o?.nv ?? '-'}`;
+  if (o?.tipo === 'OE') return `OE ${o?.numero ?? '-'}`;
+  if (o?.tipo === 'REFAB') return `REFAB ${o?.nv ?? '-'}`;
+  return `ST ${o?.nv ?? '-'}`;
 }
 
 export default function ServicioTecnicoPage() {
@@ -59,7 +61,7 @@ export default function ServicioTecnicoPage() {
     const baseOk = Number.isInteger(nCant) && nCant > 0
       && form.descripcion.trim() && form.workflow_stages.length > 0;
     if (!baseOk) return false;
-    if (form.tipo === 'ST') return Number.isInteger(Number(form.nv));
+    if (form.tipo === 'ST' || form.tipo === 'REFAB') return Number.isInteger(Number(form.nv));
     return true;
   }, [form]);
 
@@ -69,7 +71,7 @@ export default function ServicioTecnicoPage() {
       setSaving(true);
       await adminCreateStOrden({
         tipo: form.tipo,
-        nv: form.tipo === 'ST' ? Number(form.nv) : undefined,
+        nv: (form.tipo === 'ST' || form.tipo === 'REFAB') ? Number(form.nv) : undefined,
         cantidad: Number(form.cantidad),
         descripcion: form.descripcion.trim(),
         workflow_stages: form.workflow_stages,
@@ -93,7 +95,7 @@ export default function ServicioTecnicoPage() {
   return (
     <div className="container" style={{ maxWidth: 1000 }}>
       <div className="header-row" style={{ alignItems: 'center' }}>
-        <h2 className="h1">Servicio Técnico y Órdenes Externas</h2>
+        <h2 className="h1">Servicio Técnico, Órdenes Externas y Refabricado</h2>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <Link className="btn" to="/admin">Volver</Link>
           <Link className="btn" to="/">Inicio</Link>
@@ -112,6 +114,7 @@ export default function ServicioTecnicoPage() {
             {[
               { key: 'ST', label: 'Servicio Técnico (ST)' },
               { key: 'OE', label: 'Orden Externa (OE)' },
+              { key: 'REFAB', label: 'Refabricado' },
             ].map((t) => (
               <button
                 key={t.key}
@@ -130,8 +133,8 @@ export default function ServicioTecnicoPage() {
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: form.tipo === 'ST' ? '1fr 1fr' : '1fr', gap: 12, marginBottom: 12 }}>
-          {form.tipo === 'ST' ? (
+        <div style={{ display: 'grid', gridTemplateColumns: (form.tipo === 'ST' || form.tipo === 'REFAB') ? '1fr 1fr' : '1fr', gap: 12, marginBottom: 12 }}>
+          {(form.tipo === 'ST' || form.tipo === 'REFAB') ? (
             <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <span style={{ fontWeight: 800 }}>NV del portón</span>
               <input

@@ -27,7 +27,10 @@ function toStringArray(v) {
   return v.map((s) => String(s || '').trim()).filter(Boolean);
 }
 
-router.use(adminAuth, requireScope('servicio_tecnico:admin'));
+// Con path ('/servicio-tecnico', ...): ver nota equivalente en admin/insumos.js —
+// sin path, este gate bloqueaba con 403 pedidos de otros módulos admin según
+// el orden de montaje en app.js.
+router.use('/servicio-tecnico', adminAuth, requireScope('servicio_tecnico:admin'));
 
 // GET /admin/servicio-tecnico/ordenes
 router.get('/servicio-tecnico/ordenes', async (_req, res) => {
@@ -67,12 +70,12 @@ router.post('/servicio-tecnico/ordenes', async (req, res) => {
   const descripcionStr = String(descripcion || '').trim();
   const stages = toStringArray(workflow_stages);
 
-  if (!['ST', 'OE'].includes(tipoStr)) return res.status(400).json({ error: 'tipo debe ser ST u OE' });
+  if (!['ST', 'OE', 'REFAB'].includes(tipoStr)) return res.status(400).json({ error: 'tipo debe ser ST, OE o REFAB' });
 
   let nNv = null;
-  if (tipoStr === 'ST') {
+  if (tipoStr === 'ST' || tipoStr === 'REFAB') {
     nNv = Number(nv);
-    if (!Number.isInteger(nNv)) return res.status(400).json({ error: 'nv debe ser un entero para Servicio Técnico' });
+    if (!Number.isInteger(nNv)) return res.status(400).json({ error: 'nv debe ser un entero para Servicio Técnico/Refabricado' });
   }
 
   if (!Number.isInteger(nCantidad) || nCantidad <= 0) return res.status(400).json({ error: 'cantidad debe ser un entero positivo' });

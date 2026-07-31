@@ -26,7 +26,10 @@ function toStringArray(v) {
   return v.map((s) => String(s || '').trim()).filter(Boolean);
 }
 
-router.use(adminAuth, requireScope('prefabricados:admin'));
+// Con path ('/prefabricados', ...): ver nota equivalente en admin/insumos.js —
+// sin path, este gate bloqueaba con 403 pedidos de otros módulos admin según
+// el orden de montaje en app.js.
+router.use('/prefabricados', adminAuth, requireScope('prefabricados:admin'));
 
 // GET /admin/prefabricados/tipos — todos (incluye deshabilitados), para la pantalla de config
 router.get('/prefabricados/tipos', async (_req, res) => {

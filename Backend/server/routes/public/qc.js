@@ -39,7 +39,7 @@ const IPANEL_TO_PORTON_STAGE_CANDIDATES = {
 // secciones físicas que portones (comparten stage_key), así que un scope de
 // QC ya otorgado para portones en una sección alcanza también para estas
 // líneas en esa misma sección, sin tener que duplicar el alta.
-const SHARED_SECTION_LINES = new Set(['servicio_tecnico', 'orden_externa', 'prefabricados']);
+const SHARED_SECTION_LINES = new Set(['servicio_tecnico', 'orden_externa', 'prefabricados', 'refabricado']);
 
 function stageCandidatesForScope(line, stageKey) {
   if (line === 'ipanel') {
@@ -145,6 +145,16 @@ async function getStOrdenByNv(db, nv) {
   return rows[0] || null;
 }
 
+// Refabricado: mismo criterio que ST (item_id = nv), pero tipo distinto -
+// necesita su propio lookup para no confundirse con una orden ST del mismo NV.
+async function getRefabricadoOrdenByNv(db, nv) {
+  const { rows } = await db.query(
+    `select id, workflow_stages from public.st_ordenes where nv = $1 and tipo = 'REFAB' order by created_at desc, id desc limit 1;`,
+    [nv]
+  );
+  return rows[0] || null;
+}
+
 // Orden Externa: item_id del QC es el "numero" (secuencia propia oe_seq, sin NV).
 async function getOrdenExternaByNumero(db, numero) {
   const { rows } = await db.query(
@@ -161,7 +171,7 @@ function hashPin(pin) {
 }
 
 function isValidLine(line) {
-  return ['portones', 'ipanel', 'prefabricados', 'servicio_tecnico', 'orden_externa'].includes(line);
+  return ['portones', 'ipanel', 'prefabricados', 'servicio_tecnico', 'orden_externa', 'refabricado'].includes(line);
 }
 function isValidQcStatus(s) {
   return ['APROBADO', 'OBSERVADO', 'RECHAZADO'].includes(s);
@@ -521,6 +531,34 @@ router.post('/qc/authorize', async (req, res) => {
         if (!orden) {
           await client.query('rollback');
           return res.status(404).json({ error: 'Orden externa no encontrada para ese número' });
+        }
+
+        const estQ = await client.query(
+          `select estado from public.st_orden_etapas_estado where orden_id = $1 and etapa = $2;`,
+          [orden.id, statusCol]
+        );
+        if (low(estQ.rows[0]?.estado) !== low(STATUS.FINALIZADO)) {
+          await client.query('rollback');
+          return res.status(409).json({ error: `La etapa ${statusCol} debe estar FINALIZADO antes de completar QC` });
+        }
+
+        const stages = Array.isArray(orden.workflow_stages) ? orden.workflow_stages : [];
+        const nextStage = stages[stages.indexOf(statusCol) + 1];
+        if (nextStage) {
+          await client.query(
+            `
+            insert into public.st_orden_etapas_estado(orden_id, etapa, estado)
+            values ($1, $2, $3)
+            on conflict (orden_id, etapa) do nothing;
+            `,
+            [orden.id, nextStage, STATUS.PENDIENTE]
+          );
+        }
+      } else if (lineStr === 'refabricado') {
+        const orden = await getRefabricadoOrdenByNv(client, nItemId);
+        if (!orden) {
+          await client.query('rollback');
+          return res.status(404).json({ error: 'Orden de refabricado no encontrada para ese NV' });
         }
 
         const estQ = await client.query(

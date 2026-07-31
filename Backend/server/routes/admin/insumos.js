@@ -26,7 +26,12 @@ function requireScope(scope) {
   };
 }
 
-router.use(adminAuth, requireScope('compras:admin'));
+// Con path ('/insumos', ...) en vez de global: un router.use() sin path corre
+// para CUALQUIER request que llegue a este router sin importar si matchea una
+// ruta propia, y por el orden de montaje en app.js eso bloqueaba con 403 a
+// pedidos de otros módulos admin (prefabricados, servicio-tecnico, etc.) para
+// cualquier token que no tuviera también 'compras:admin'.
+router.use('/insumos', adminAuth, requireScope('compras:admin'));
 
 // GET /admin/insumos/categorias?refresh=1
 router.get('/insumos/categorias', async (req, res) => {

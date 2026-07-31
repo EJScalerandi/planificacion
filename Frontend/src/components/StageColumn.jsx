@@ -68,7 +68,11 @@ function getQcItemId(item, line) {
 // portones), aunque visualmente compartan la columna de la sección.
 function getItemQcLine(item) {
   if (item?.__kind === 'prefabricado') return 'prefabricados';
-  if (item?.__kind === 'servicio_tecnico') return item?.tipo === 'OE' ? 'orden_externa' : 'servicio_tecnico';
+  if (item?.__kind === 'servicio_tecnico') {
+    if (item?.tipo === 'OE') return 'orden_externa';
+    if (item?.tipo === 'REFAB') return 'refabricado';
+    return 'servicio_tecnico';
+  }
   return null;
 }
 
@@ -774,7 +778,9 @@ function getNvLabel(p) {
 function getOrderLabel(p, kind) {
   if (kind === 'prefabricado') return `Pref ${p?.numero ?? '-'}`;
   if (kind === 'servicio_tecnico') {
-    return p?.tipo === 'OE' ? `OE ${p?.numero ?? '-'}` : `ST ${p?.nv ?? '-'}`;
+    if (p?.tipo === 'OE') return `OE ${p?.numero ?? '-'}`;
+    if (p?.tipo === 'REFAB') return `REFAB ${p?.nv ?? '-'}`;
+    return `ST ${p?.nv ?? '-'}`;
   }
   return getNvLabel(p);
 }
@@ -912,6 +918,7 @@ export default function StageColumn({
   qcSummaryMapPrefab = {},
   qcSummaryMapSt = {},
   qcSummaryMapOe = {},
+  qcSummaryMapRefab = {},
   onQcSaved,
   prefabTipos = [],
   onCreatePrefabOrden,
@@ -952,6 +959,7 @@ export default function StageColumn({
     const itemLine = getItemQcLine(p);
     if (itemLine === 'prefabricados') return qcSummaryMapPrefab;
     if (itemLine === 'orden_externa') return qcSummaryMapOe;
+    if (itemLine === 'refabricado') return qcSummaryMapRefab;
     if (itemLine === 'servicio_tecnico') return qcSummaryMapSt;
     return qcSummaryMap;
   }
@@ -1046,7 +1054,7 @@ export default function StageColumn({
         qcLatest,
       };
     });
-  }, [mode, keyTrim, allItems, qcSummaryMap, qcSummaryMapPrefab, qcSummaryMapSt, qcSummaryMapOe]);
+  }, [mode, keyTrim, allItems, qcSummaryMap, qcSummaryMapPrefab, qcSummaryMapSt, qcSummaryMapOe, qcSummaryMapRefab]);
 
   return (
     <div style={{ border: `2px solid ${bordo}`, borderRadius: 12, overflow: 'hidden', background: 'var(--surface)', display: 'flex', flexDirection: 'column', minHeight: 320 }}>
