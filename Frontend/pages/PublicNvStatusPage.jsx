@@ -26,6 +26,14 @@ function normalizeStatus(value) {
   return s || 'Sin registrar';
 }
 
+function formatFinDate(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '-';
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return '-';
+  return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
 function firstDefined(obj, keys = [], fallback = '-') {
   for (const key of keys) {
     const value = obj?.[key];
@@ -91,6 +99,7 @@ export default function PublicNvStatusPage() {
     return STAGES.map((stage) => ({
       ...stage,
       status: normalizeStatus(target?.[stage.key]),
+      finDate: formatFinDate(target?.[`${stage.key}_fin`]),
     }));
   }, [target]);
 
@@ -233,6 +242,7 @@ export default function PublicNvStatusPage() {
                 <tr style={{ background: '#ffffff' }}>
                   <th style={thStyle}>Sector</th>
                   <th style={thStyle}>Estado</th>
+                  <th style={thStyle}>Fecha de finalización</th>
                 </tr>
               </thead>
               <tbody>
@@ -242,6 +252,7 @@ export default function PublicNvStatusPage() {
                     <td style={tdStyle}>
                       <b>{row.status}</b>
                     </td>
+                    <td style={tdStyle}>{row.finDate}</td>
                   </tr>
                 ))}
               </tbody>
