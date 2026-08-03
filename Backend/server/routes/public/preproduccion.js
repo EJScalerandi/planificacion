@@ -56,6 +56,7 @@ router.get('/preproduccion-valores', async (_req, res) => {
           end as nv_num,
           end_customer->>'phone'    as phone,
           end_customer->>'maps_url' as maps_url,
+          end_customer->>'city'     as localidad,
           to_char(measurement_scheduled_for, 'YYYY-MM-DD') as fecha_medicion,
           measurement_scheduled_for
         from public.presupuestador_quotes
@@ -63,7 +64,7 @@ router.get('/preproduccion-valores', async (_req, res) => {
       ),
       pq_best as (
         select distinct on (nv_num)
-          nv_num, phone, maps_url, fecha_medicion
+          nv_num, phone, maps_url, localidad, fecha_medicion
         from pq_raw
         where nv_num is not null
         order by nv_num, measurement_scheduled_for desc nulls last
@@ -76,6 +77,7 @@ router.get('/preproduccion-valores', async (_req, res) => {
           || jsonb_strip_nulls(jsonb_build_object(
                'pq_phone',          pqb.phone,
                'pq_maps_url',       pqb.maps_url,
+               'pq_localidad',      pqb.localidad,
                'pq_fecha_medicion', pqb.fecha_medicion
              )) as data,
         pv.updated_at

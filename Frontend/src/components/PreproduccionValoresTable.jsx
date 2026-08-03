@@ -1601,6 +1601,7 @@ export default function PreproduccionValoresTable() {
     if (col.type === 'contacto') {
       const phone = String(data.pq_phone ?? data.cliente_telefono ?? '').trim().replace(/\D/g, '');
       const mapsUrl = String(data.pq_maps_url ?? data.cliente_maps_url ?? '').trim();
+      const localidad = String(data.pq_localidad ?? data.cliente_localidad ?? '').trim();
       if (!phone && !mapsUrl) return null;
       return (
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -1634,6 +1635,9 @@ export default function PreproduccionValoresTable() {
                 <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
               </svg>
             </a>
+          ) : null}
+          {mapsUrl && localidad ? (
+            <span style={{ fontSize: 12, color: '#374151' }}>{localidad}</span>
           ) : null}
         </div>
       );
