@@ -14,12 +14,40 @@ function hashPin(pin) {
   return crypto.createHmac('sha256', QC_PIN_SALT).update(String(pin)).digest('hex');
 }
 
+// Mapea cada "seccion" de insumos (por ruta/tablet, guion medio) a la o las
+// stage_key de workflow de portones (guion bajo) que agrupa esa misma ruta
+// (ver App.jsx ROUTES). Así, un scope de portones ya otorgado para esa
+// sección física (ej. "pintura" para pasar un portón) también alcanza para
+// confirmar pedidos de insumos ahí, sin tener que duplicar el alta.
+const INSUMOS_TO_PORTON_STAGE_CANDIDATES = {
+  diseno: ['diseno'],
+  laser: ['laser'],
+  corte: ['guillotina', 'corte_revest'],
+  plegado: ['plegadora', 'plegado_revest'],
+  prefabricados: ['armado_piernas', 'armado_marco_piernas', 'armado_hojas'],
+  'armado-primario': ['armado_primario'],
+  pintura: ['pintura', 'pintura_revestimiento'],
+  inyeccion: ['inyeccion'],
+  revestimiento: ['revestimiento'],
+  'armado-final': ['armado_final'],
+  despacho: ['despacho'],
+};
+
 async function userHasInsumosScope(client, userId, seccion) {
   const { rows } = await client.query(
     `select 1 from public.qc_user_scope where user_id = $1 and line = 'insumos' and stage_key = $2 and enabled = true limit 1`,
     [userId, seccion]
   );
-  return rows.length > 0;
+  if (rows.length > 0) return true;
+
+  const portonStages = INSUMOS_TO_PORTON_STAGE_CANDIDATES[seccion] || [];
+  if (!portonStages.length) return false;
+
+  const { rows: portonRows } = await client.query(
+    `select 1 from public.qc_user_scope where user_id = $1 and line = 'portones' and stage_key = any($2::text[]) and enabled = true limit 1`,
+    [userId, portonStages]
+  );
+  return portonRows.length > 0;
 }
 
 // GET /insumos/secciones
