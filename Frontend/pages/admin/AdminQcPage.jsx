@@ -9,6 +9,7 @@ const LINES = [
   { key: 'prefabricados', label: 'Prefabricados' },
   { key: 'servicio_tecnico', label: 'Servicio Técnico' },
   { key: 'orden_externa', label: 'Orden Externa' },
+  { key: 'insumos', label: 'Insumos (pedidos del día)' },
 ];
 
 const KINDS = [
@@ -54,6 +55,21 @@ const STAGES_BY_LINE = {
   prefabricados: PORTON_STAGES,
   servicio_tecnico: PORTON_STAGES,
   orden_externa: PORTON_STAGES,
+  // Insumos usa "secciones" por ruta/tablet (guion medio), no stage_key de
+  // workflow (guion bajo) — universo distinto, ver lib/insumosSecciones.js.
+  insumos: [
+    { key: 'diseno', label: 'Diseño' },
+    { key: 'laser', label: 'Laser' },
+    { key: 'corte', label: 'Corte' },
+    { key: 'plegado', label: 'Plegado' },
+    { key: 'prefabricados', label: 'Prefabricados / Armado' },
+    { key: 'armado-primario', label: 'Armado Primario' },
+    { key: 'pintura', label: 'Pintura' },
+    { key: 'inyeccion', label: 'Inyección' },
+    { key: 'revestimiento', label: 'Revestimiento' },
+    { key: 'armado-final', label: 'Armado Final' },
+    { key: 'despacho', label: 'Despacho' },
+  ],
 };
 
 const STAGE_LABELS = Object.fromEntries(
