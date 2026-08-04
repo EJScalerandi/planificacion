@@ -47,6 +47,21 @@ const MIGRATIONS = [
     `,
   },
   {
+    // GET /portones (server/routes/public/portones.js) hace un LEFT JOIN
+    // LATERAL contra presupuestador_quotes para resolver el nombre del
+    // cliente. Sin estos índices, cada uno de los ~430 portones escaneaba
+    // casi toda la tabla de quotes: la consulta pasó de ~1.2s a ~35-50ms.
+    name: 'idx_presupuestador_quotes_sale_order_name',
+    sql: `
+      CREATE INDEX IF NOT EXISTS idx_pq_final_sale_order_name_original
+        ON public.presupuestador_quotes (final_sale_order_name, id)
+        WHERE quote_kind = 'original';
+      CREATE INDEX IF NOT EXISTS idx_pq_odoo_sale_order_name_original
+        ON public.presupuestador_quotes (odoo_sale_order_name, id)
+        WHERE quote_kind = 'original';
+    `,
+  },
+  {
     name: 'fix_parent_id_to_uuid',
     sql: `
       DO $$

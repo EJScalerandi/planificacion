@@ -379,9 +379,9 @@ function Board({ stages, seccion }) {
 
       async function loadLine(line, ids) {
         const out = {};
-        const parts = chunk(ids, 200);
-        for (const part of parts) {
-          const resp = await qcSummary({ line, item_ids: part });
+        const parts = chunk(ids, 1000);
+        const responses = await Promise.all(parts.map((part) => qcSummary({ line, item_ids: part })));
+        for (const resp of responses) {
           const items = resp?.items || {};
           for (const k of Object.keys(items)) out[k] = items[k];
         }

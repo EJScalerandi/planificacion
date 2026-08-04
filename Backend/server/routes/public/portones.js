@@ -151,6 +151,9 @@ async function getPortonShapeById(db, id) {
 // GET /portones
 router.get('/portones', async (_req, res) => {
   try {
+    // e/t se pre-agregan por porton_id ANTES de llegar a portones: unirlos
+    // directo (como antes) multiplica filas (cross join estado x tiempos por
+    // portón), y con cientos de portones eso volvía la consulta muy lenta.
     const { rows } = await pool.query(
       `
       select
@@ -167,77 +170,118 @@ router.get('/portones', async (_req, res) => {
         max(sq.fecha_aprobacion_cliente) as fecha_aprobacion_cliente,
 
         -- ====== ESTADOS ======
-        max(case when e.etapa = 'diseno'::public.porton_etapa then e.estado end) as diseno,
-        max(case when e.etapa = 'laser'::public.porton_etapa then e.estado end) as laser,
-        max(case when e.etapa = 'guillotina'::public.porton_etapa then e.estado end) as guillotina,
-        max(case when e.etapa = 'plegadora'::public.porton_etapa then e.estado end) as plegadora,
-        max(case when e.etapa = 'armado_piernas'::public.porton_etapa then e.estado end) as armado_piernas,
-        max(case when e.etapa = 'armado_primario'::public.porton_etapa then e.estado end) as armado_primario,
-        max(case when e.etapa = 'inyeccion'::public.porton_etapa then e.estado end) as inyeccion,
-        max(case when e.etapa = 'corte_revest'::public.porton_etapa then e.estado end) as corte_revest,
-        max(case when e.etapa = 'plegado_revest'::public.porton_etapa then e.estado end) as plegado_revest,
-        max(case when e.etapa = 'revestimiento'::public.porton_etapa then e.estado end) as revestimiento,
-        max(case when e.etapa = 'pintura'::public.porton_etapa then e.estado end) as pintura,
-        max(case when e.etapa = 'pintura_revestimiento'::public.porton_etapa then e.estado end) as pintura_revestimiento,
-        max(case when e.etapa = 'armado_hojas'::public.porton_etapa then e.estado end) as armado_hojas,
-        max(case when e.etapa = 'armado_marco_piernas'::public.porton_etapa then e.estado end) as armado_marco_piernas,
-        max(case when e.etapa = 'armado_final'::public.porton_etapa then e.estado end) as armado_final,
-        max(case when e.etapa = 'despacho'::public.porton_etapa then e.estado end) as despacho,
+        max(e.diseno) as diseno,
+        max(e.laser) as laser,
+        max(e.guillotina) as guillotina,
+        max(e.plegadora) as plegadora,
+        max(e.armado_piernas) as armado_piernas,
+        max(e.armado_primario) as armado_primario,
+        max(e.inyeccion) as inyeccion,
+        max(e.corte_revest) as corte_revest,
+        max(e.plegado_revest) as plegado_revest,
+        max(e.revestimiento) as revestimiento,
+        max(e.pintura) as pintura,
+        max(e.pintura_revestimiento) as pintura_revestimiento,
+        max(e.armado_hojas) as armado_hojas,
+        max(e.armado_marco_piernas) as armado_marco_piernas,
+        max(e.armado_final) as armado_final,
+        max(e.despacho) as despacho,
 
         -- ====== TIEMPOS ======
-        max(case when t.etapa = 'diseno'::public.porton_etapa then t.inicio end) as diseno_inicio,
-        max(case when t.etapa = 'diseno'::public.porton_etapa then t.fin end) as diseno_fin,
-
-        max(case when t.etapa = 'laser'::public.porton_etapa then t.inicio end) as laser_inicio,
-        max(case when t.etapa = 'laser'::public.porton_etapa then t.fin end) as laser_fin,
-
-        max(case when t.etapa = 'guillotina'::public.porton_etapa then t.inicio end) as guillotina_inicio,
-        max(case when t.etapa = 'guillotina'::public.porton_etapa then t.fin end) as guillotina_fin,
-
-        max(case when t.etapa = 'plegadora'::public.porton_etapa then t.inicio end) as plegadora_inicio,
-        max(case when t.etapa = 'plegadora'::public.porton_etapa then t.fin end) as plegadora_fin,
-
-        max(case when t.etapa = 'armado_piernas'::public.porton_etapa then t.inicio end) as armado_piernas_inicio,
-        max(case when t.etapa = 'armado_piernas'::public.porton_etapa then t.fin end) as armado_piernas_fin,
-
-        max(case when t.etapa = 'armado_primario'::public.porton_etapa then t.inicio end) as armado_primario_inicio,
-        max(case when t.etapa = 'armado_primario'::public.porton_etapa then t.fin end) as armado_primario_fin,
-
-        max(case when t.etapa = 'inyeccion'::public.porton_etapa then t.inicio end) as inyeccion_inicio,
-        max(case when t.etapa = 'inyeccion'::public.porton_etapa then t.fin end) as inyeccion_fin,
-
-        max(case when t.etapa = 'corte_revest'::public.porton_etapa then t.inicio end) as corte_revest_inicio,
-        max(case when t.etapa = 'corte_revest'::public.porton_etapa then t.fin end) as corte_revest_fin,
-
-        max(case when t.etapa = 'plegado_revest'::public.porton_etapa then t.inicio end) as plegado_revest_inicio,
-        max(case when t.etapa = 'plegado_revest'::public.porton_etapa then t.fin end) as plegado_revest_fin,
-
-        max(case when t.etapa = 'revestimiento'::public.porton_etapa then t.inicio end) as revestimiento_inicio,
-        max(case when t.etapa = 'revestimiento'::public.porton_etapa then t.fin end) as revestimiento_fin,
-
-        max(case when t.etapa = 'pintura'::public.porton_etapa then t.inicio end) as pintura_inicio,
-        max(case when t.etapa = 'pintura'::public.porton_etapa then t.fin end) as pintura_fin,
-
-        max(case when t.etapa = 'pintura_revestimiento'::public.porton_etapa then t.inicio end) as pintura_revestimiento_inicio,
-        max(case when t.etapa = 'pintura_revestimiento'::public.porton_etapa then t.fin end) as pintura_revestimiento_fin,
-
-        max(case when t.etapa = 'armado_hojas'::public.porton_etapa then t.inicio end) as armado_hojas_inicio,
-        max(case when t.etapa = 'armado_hojas'::public.porton_etapa then t.fin end) as armado_hojas_fin,
-
-        max(case when t.etapa = 'armado_marco_piernas'::public.porton_etapa then t.inicio end) as armado_marco_piernas_inicio,
-        max(case when t.etapa = 'armado_marco_piernas'::public.porton_etapa then t.fin end) as armado_marco_piernas_fin,
-
-        max(case when t.etapa = 'armado_final'::public.porton_etapa then t.inicio end) as armado_final_inicio,
-        max(case when t.etapa = 'armado_final'::public.porton_etapa then t.fin end) as armado_final_fin,
-
-        max(case when t.etapa = 'despacho'::public.porton_etapa then t.inicio end) as despacho_inicio,
-        max(case when t.etapa = 'despacho'::public.porton_etapa then t.fin end) as despacho_fin
+        max(t.diseno_inicio) as diseno_inicio,
+        max(t.diseno_fin) as diseno_fin,
+        max(t.laser_inicio) as laser_inicio,
+        max(t.laser_fin) as laser_fin,
+        max(t.guillotina_inicio) as guillotina_inicio,
+        max(t.guillotina_fin) as guillotina_fin,
+        max(t.plegadora_inicio) as plegadora_inicio,
+        max(t.plegadora_fin) as plegadora_fin,
+        max(t.armado_piernas_inicio) as armado_piernas_inicio,
+        max(t.armado_piernas_fin) as armado_piernas_fin,
+        max(t.armado_primario_inicio) as armado_primario_inicio,
+        max(t.armado_primario_fin) as armado_primario_fin,
+        max(t.inyeccion_inicio) as inyeccion_inicio,
+        max(t.inyeccion_fin) as inyeccion_fin,
+        max(t.corte_revest_inicio) as corte_revest_inicio,
+        max(t.corte_revest_fin) as corte_revest_fin,
+        max(t.plegado_revest_inicio) as plegado_revest_inicio,
+        max(t.plegado_revest_fin) as plegado_revest_fin,
+        max(t.revestimiento_inicio) as revestimiento_inicio,
+        max(t.revestimiento_fin) as revestimiento_fin,
+        max(t.pintura_inicio) as pintura_inicio,
+        max(t.pintura_fin) as pintura_fin,
+        max(t.pintura_revestimiento_inicio) as pintura_revestimiento_inicio,
+        max(t.pintura_revestimiento_fin) as pintura_revestimiento_fin,
+        max(t.armado_hojas_inicio) as armado_hojas_inicio,
+        max(t.armado_hojas_fin) as armado_hojas_fin,
+        max(t.armado_marco_piernas_inicio) as armado_marco_piernas_inicio,
+        max(t.armado_marco_piernas_fin) as armado_marco_piernas_fin,
+        max(t.armado_final_inicio) as armado_final_inicio,
+        max(t.armado_final_fin) as armado_final_fin,
+        max(t.despacho_inicio) as despacho_inicio,
+        max(t.despacho_fin) as despacho_fin
 
       from public.portones p
-      left join public.porton_etapas_estado e
-        on e.porton_id = p.id
-      left join public.porton_etapas_tiempos t
-        on t.porton_id = p.id
+      left join (
+        select
+          porton_id,
+          max(case when etapa = 'diseno'::public.porton_etapa then estado end) as diseno,
+          max(case when etapa = 'laser'::public.porton_etapa then estado end) as laser,
+          max(case when etapa = 'guillotina'::public.porton_etapa then estado end) as guillotina,
+          max(case when etapa = 'plegadora'::public.porton_etapa then estado end) as plegadora,
+          max(case when etapa = 'armado_piernas'::public.porton_etapa then estado end) as armado_piernas,
+          max(case when etapa = 'armado_primario'::public.porton_etapa then estado end) as armado_primario,
+          max(case when etapa = 'inyeccion'::public.porton_etapa then estado end) as inyeccion,
+          max(case when etapa = 'corte_revest'::public.porton_etapa then estado end) as corte_revest,
+          max(case when etapa = 'plegado_revest'::public.porton_etapa then estado end) as plegado_revest,
+          max(case when etapa = 'revestimiento'::public.porton_etapa then estado end) as revestimiento,
+          max(case when etapa = 'pintura'::public.porton_etapa then estado end) as pintura,
+          max(case when etapa = 'pintura_revestimiento'::public.porton_etapa then estado end) as pintura_revestimiento,
+          max(case when etapa = 'armado_hojas'::public.porton_etapa then estado end) as armado_hojas,
+          max(case when etapa = 'armado_marco_piernas'::public.porton_etapa then estado end) as armado_marco_piernas,
+          max(case when etapa = 'armado_final'::public.porton_etapa then estado end) as armado_final,
+          max(case when etapa = 'despacho'::public.porton_etapa then estado end) as despacho
+        from public.porton_etapas_estado
+        group by porton_id
+      ) e on e.porton_id = p.id
+      left join (
+        select
+          porton_id,
+          max(case when etapa = 'diseno'::public.porton_etapa then inicio end) as diseno_inicio,
+          max(case when etapa = 'diseno'::public.porton_etapa then fin end) as diseno_fin,
+          max(case when etapa = 'laser'::public.porton_etapa then inicio end) as laser_inicio,
+          max(case when etapa = 'laser'::public.porton_etapa then fin end) as laser_fin,
+          max(case when etapa = 'guillotina'::public.porton_etapa then inicio end) as guillotina_inicio,
+          max(case when etapa = 'guillotina'::public.porton_etapa then fin end) as guillotina_fin,
+          max(case when etapa = 'plegadora'::public.porton_etapa then inicio end) as plegadora_inicio,
+          max(case when etapa = 'plegadora'::public.porton_etapa then fin end) as plegadora_fin,
+          max(case when etapa = 'armado_piernas'::public.porton_etapa then inicio end) as armado_piernas_inicio,
+          max(case when etapa = 'armado_piernas'::public.porton_etapa then fin end) as armado_piernas_fin,
+          max(case when etapa = 'armado_primario'::public.porton_etapa then inicio end) as armado_primario_inicio,
+          max(case when etapa = 'armado_primario'::public.porton_etapa then fin end) as armado_primario_fin,
+          max(case when etapa = 'inyeccion'::public.porton_etapa then inicio end) as inyeccion_inicio,
+          max(case when etapa = 'inyeccion'::public.porton_etapa then fin end) as inyeccion_fin,
+          max(case when etapa = 'corte_revest'::public.porton_etapa then inicio end) as corte_revest_inicio,
+          max(case when etapa = 'corte_revest'::public.porton_etapa then fin end) as corte_revest_fin,
+          max(case when etapa = 'plegado_revest'::public.porton_etapa then inicio end) as plegado_revest_inicio,
+          max(case when etapa = 'plegado_revest'::public.porton_etapa then fin end) as plegado_revest_fin,
+          max(case when etapa = 'revestimiento'::public.porton_etapa then inicio end) as revestimiento_inicio,
+          max(case when etapa = 'revestimiento'::public.porton_etapa then fin end) as revestimiento_fin,
+          max(case when etapa = 'pintura'::public.porton_etapa then inicio end) as pintura_inicio,
+          max(case when etapa = 'pintura'::public.porton_etapa then fin end) as pintura_fin,
+          max(case when etapa = 'pintura_revestimiento'::public.porton_etapa then inicio end) as pintura_revestimiento_inicio,
+          max(case when etapa = 'pintura_revestimiento'::public.porton_etapa then fin end) as pintura_revestimiento_fin,
+          max(case when etapa = 'armado_hojas'::public.porton_etapa then inicio end) as armado_hojas_inicio,
+          max(case when etapa = 'armado_hojas'::public.porton_etapa then fin end) as armado_hojas_fin,
+          max(case when etapa = 'armado_marco_piernas'::public.porton_etapa then inicio end) as armado_marco_piernas_inicio,
+          max(case when etapa = 'armado_marco_piernas'::public.porton_etapa then fin end) as armado_marco_piernas_fin,
+          max(case when etapa = 'armado_final'::public.porton_etapa then inicio end) as armado_final_inicio,
+          max(case when etapa = 'armado_final'::public.porton_etapa then fin end) as armado_final_fin,
+          max(case when etapa = 'despacho'::public.porton_etapa then inicio end) as despacho_inicio,
+          max(case when etapa = 'despacho'::public.porton_etapa then fin end) as despacho_fin
+        from public.porton_etapas_tiempos
+        group by porton_id
+      ) t on t.porton_id = p.id
       left join public.preproduccion_valores pv
         on pv.nv = p.nv
        and pv.nv_tipo = (case when p.tipo = 'puerta' then 'PNV' else 'NV' end)
