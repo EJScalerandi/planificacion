@@ -122,9 +122,14 @@ function FullBleed({ children }) {
 
 function Board({ stages, seccion }) {
   const { data: portones, loading, err, replaceItem, refresh, refreshing } = usePortones({ pollMs: 300000 });
-  const { data: ipanels, refresh: refreshIpanel } = useIpanel({ pollMs: 300000, onlyProduction: true });
-  const { data: prefabricados, refresh: refreshPrefab, replaceItem: replacePrefab } = usePrefabricados({ pollMs: 300000 });
-  const { data: stOrdenes, refresh: refreshSt, replaceItem: replaceSt } = useServicioTecnico({ pollMs: 300000 });
+  const { data: ipanels, loading: loadingIpanel, refresh: refreshIpanel } = useIpanel({ pollMs: 300000, onlyProduction: true });
+  const { data: prefabricados, loading: loadingPrefab, refresh: refreshPrefab, replaceItem: replacePrefab } = usePrefabricados({ pollMs: 300000 });
+  const { data: stOrdenes, loading: loadingSt, refresh: refreshSt, replaceItem: replaceSt } = useServicioTecnico({ pollMs: 300000 });
+  // Base data (las 4 fuentes) recien se considera lista cuando terminaron
+  // TODAS las cargas iniciales; se usa para no correr qcSummary de arriba
+  // hasta ese momento y para no renderizar la grilla mientras alguna sigue
+  // en vuelo (ver comentario grande antes del "if (loading ...)" mas abajo).
+  const baseDataLoaded = !loading && !loadingIpanel && !loadingPrefab && !loadingSt;
   const [prefabTipos, setPrefabTipos] = useState([]);
 
   const [busyId, setBusyId] = useState(null);
@@ -140,6 +145,9 @@ function Board({ stages, seccion }) {
   const [qcSumSt, setQcSumSt] = useState({});
   const [qcSumOe, setQcSumOe] = useState({});
   const [qcSumRefab, setQcSumRefab] = useState({});
+  const [qcSummaryReady, setQcSummaryReady] = useState(false);
+
+  const [wfReady, setWfReady] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -166,6 +174,8 @@ function Board({ stages, seccion }) {
           setWfPortones(null);
           setWfIpanel(null);
         }
+      } finally {
+        if (!cancelled) setWfReady(true);
       }
     })();
 
@@ -405,14 +415,29 @@ function Board({ stages, seccion }) {
       setQcSumRefab(refabMap);
     } catch (e) {
       console.warn('No se pudo cargar qcSummary:', e?.message || e);
+    } finally {
+      setQcSummaryReady(true);
     }
   }, [portones, ipanels, prefabricados, stOrdenes]);
 
   useEffect(() => {
+    // Antes de que terminen las 4 cargas base, portones/ipanels/etc. todavía
+    // son el array inicial ([]), así que un run acá saldría con ids vacíos y
+    // marcaría qcSummaryReady=true de arriba, sin haber traído nunca el
+    // resumen real — reabriendo la misma carrera que wfReady soluciona para
+    // los requisitos de workflow.
+    if (!baseDataLoaded) return;
     refreshQcSummary();
-  }, [refreshQcSummary]);
+  }, [refreshQcSummary, baseDataLoaded]);
 
-  if (loading) return <div className="container">Cargando…</div>;
+  // Esperamos también wfReady/qcSummaryReady (no solo baseDataLoaded):
+  // canAppearInStage() trata reqIndex==null como "sin restricción" (fail-open
+  // a propósito, para no bloquear al operador si /workflow/config falla), y
+  // shouldHideFinalizado() no oculta nada mientras qcSummaryMap está vacío.
+  // Si se renderiza antes de que esas dos cargas terminen, se ve primero de
+  // más (pendientes que no cumplen requisito, finalizados ya aprobados) y
+  // después se corrige solo — el "aparecen muchos y después quedan menos".
+  if (!baseDataLoaded || !wfReady || !qcSummaryReady) return <div className="container">Cargando…</div>;
   if (err) return <div className="container" style={{ color: 'crimson' }}>Error: {err}</div>;
 
   return (
