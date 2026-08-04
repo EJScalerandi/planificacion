@@ -150,67 +150,59 @@ function Modal({ open, title, onClose, children, footer }) {
   );
 }
 
+// El backend ya propaga un scope cargado en "portones" hacia iPanel,
+// Prefabricados, Servicio Técnico, Orden Externa, Refabricado y hacia el
+// confirmar de pedidos de Insumos de esa misma etapa (ver
+// stageCandidatesForScope / INSUMOS_TO_PORTON_STAGE_CANDIDATES en
+// server/routes/public/qc.js e insumos.js). Por eso alcanza con tildar la
+// etapa una sola vez acá: no hace falta repetirla por línea.
 function ScopeEditor({ value, onChange, disabled }) {
   const scopes = Array.isArray(value) ? value : [];
 
-  // Representación: Map line -> Set(stage_key)
-  const map = useMemo(() => {
-    const m = new Map();
-    for (const ln of Object.keys(STAGES_BY_LINE)) m.set(ln, new Set());
+  const checkedStages = useMemo(() => {
+    const set = new Set();
     for (const s of scopes) {
-      const line = String(s?.line || '').trim();
       const stageKey = String(s?.stage_key || '').trim();
       const enabled = s?.enabled !== false;
-      if (!line || !stageKey || !enabled) continue;
-      if (!m.has(line)) m.set(line, new Set());
-      m.get(line).add(stageKey);
+      if (stageKey && enabled) set.add(stageKey);
     }
-    return m;
+    return set;
   }, [JSON.stringify(scopes)]);
 
-  const setChecked = (line, stageKey, checked) => {
-    const nextMap = new Map(map);
-    const set = new Set(nextMap.get(line) || []);
-    if (checked) set.add(stageKey);
-    else set.delete(stageKey);
-    nextMap.set(line, set);
-
-    const next = [];
-    for (const [ln, stSet] of nextMap.entries()) {
-      for (const sk of Array.from(stSet)) {
-        next.push({ line: ln, stage_key: sk, enabled: true });
-      }
-    }
-    onChange(next);
+  const setChecked = (stageKey, checked) => {
+    const next = new Set(checkedStages);
+    if (checked) next.add(stageKey);
+    else next.delete(stageKey);
+    onChange(Array.from(next).map((sk) => ({ line: 'portones', stage_key: sk, enabled: true })));
   };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, opacity: disabled ? 0.6 : 1 }}>
-      {LINES.map((ln) => (
-        <div key={ln.key} style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 12 }}>
-          <div style={{ fontWeight: 900, marginBottom: 8 }}>{ln.label}</div>
+      <div style={{ fontSize: 12, opacity: 0.75 }}>
+        Marcá la etapa del sector donde puede autorizar. Se aplica sola a iPanel, Prefabricados,
+        Servicio Técnico, Orden Externa, Refabricado y a confirmar pedidos de Insumos de esa misma
+        etapa — no hace falta repetirla por línea.
+      </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 8 }}>
-            {getStageOptions(ln.key).map((stage) => {
-              const checked = (map.get(ln.key) || new Set()).has(stage.key);
-              return (
-                <label key={`${ln.key}-${stage.key}`} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <input
-                    type="checkbox"
-                    disabled={disabled}
-                    checked={checked}
-                    onChange={(e) => setChecked(ln.key, stage.key, e.target.checked)}
-                  />
-                  <span>
-                    <b>{stage.label}</b>{' '}
-                    <span style={{ opacity: 0.65 }}>({stage.key})</span>
-                  </span>
-                </label>
-              );
-            })}
-          </div>
-        </div>
-      ))}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 8 }}>
+        {PORTON_STAGES.map((stage) => {
+          const checked = checkedStages.has(stage.key);
+          return (
+            <label key={stage.key} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input
+                type="checkbox"
+                disabled={disabled}
+                checked={checked}
+                onChange={(e) => setChecked(stage.key, e.target.checked)}
+              />
+              <span>
+                <b>{stage.label}</b> <span style={{ opacity: 0.65 }}>({stage.key})</span>
+              </span>
+            </label>
+          );
+        })}
+      </div>
+
       <div style={{ fontSize: 12, opacity: 0.7 }}>
         Si el usuario es GLOBAL, los scopes no son necesarios, pero podés dejarlos igual.
       </div>
