@@ -700,7 +700,7 @@ function HistoryModal({ open, onClose, title, effKey, rows = [] }) {
   );
 }
 
-function PortonHistoryModal({ open, onClose, title, effKey, items = [] }) {
+function PortonHistoryModal({ open, onClose, title, effKey, items = [], mode = 'porton' }) {
   const [nv, setNv] = useState('');
   const [result, setResult] = useState(null);
   const [searchDone, setSearchDone] = useState(false);
@@ -732,7 +732,7 @@ function PortonHistoryModal({ open, onClose, title, effKey, items = [] }) {
 
   if (!open) return null;
   return (
-    <ShellModal open={open} onClose={onClose} title={<span>Historial portón · {title} <span style={{ opacity: 0.7, fontWeight: 700 }}>({cleanEffKey})</span></span>}>
+    <ShellModal open={open} onClose={onClose} title={<span>Historial {mode === 'ipanel' ? 'iPanel' : 'portón'} · {title} <span style={{ opacity: 0.7, fontWeight: 700 }}>({cleanEffKey})</span></span>}>
       <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 14 }}>
         <form onSubmit={handleSearch} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'end' }}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 220 }}>
@@ -748,7 +748,9 @@ function PortonHistoryModal({ open, onClose, title, effKey, items = [] }) {
             <div style={{ fontWeight: 900, fontSize: 16 }}>
               {result?.__kind === 'servicio_tecnico'
                 ? getOrderLabel(result, 'servicio_tecnico')
-                : `Portón ${result?.nlista ?? result?.NLista ?? '-'} · NV ${result?.nv ?? result?.NV ?? '-'} · Partida ${result?.partida ?? result?.PARTIDA ?? '-'}`}
+                : mode === 'ipanel'
+                  ? `iPanel · NV ${result?.nv ?? result?.NV ?? '-'}`
+                  : `Portón ${result?.nlista ?? result?.NLista ?? '-'} · NV ${result?.nv ?? result?.NV ?? '-'} · Partida ${result?.partida ?? result?.PARTIDA ?? '-'}`}
             </div>
             <div style={{ fontSize: 14 }}><b>Sector:</b> {title}</div>
             <div style={{ fontSize: 14 }}><b>Estado:</b> {displayValue(result?.[cleanEffKey], 'Sin datos')}</div>
@@ -1013,7 +1015,6 @@ export default function StageColumn({
   };
 
   const historyLast10 = useMemo(() => {
-    if (mode === 'ipanel') return [];
     const key = String(keyTrim || '').trim();
     const finKey = `${key}_fin`;
     const src = Array.isArray(allItems) ? allItems : [];
@@ -1046,7 +1047,9 @@ export default function StageColumn({
         ? `Pref ${p?.numero ?? '-'}${p?.tipo_nombre ? ` · ${p.tipo_nombre}` : ''}`
         : p?.__kind === 'servicio_tecnico'
           ? getOrderLabel(p, 'servicio_tecnico')
-          : `Portón ${p?.nlista ?? '-'} · NV ${p?.nv ?? '-'}`;
+          : mode === 'ipanel'
+            ? `iPanel NV ${p?.nv ?? '-'}`
+            : `Portón ${p?.nlista ?? '-'} · NV ${p?.nv ?? '-'}`;
       return {
         _key: String(p?.id ?? p?.nv ?? `${Math.random()}`),
         label,
@@ -1060,17 +1063,15 @@ export default function StageColumn({
     <div style={{ border: `2px solid ${bordo}`, borderRadius: 12, overflow: 'hidden', background: 'var(--surface)', display: 'flex', flexDirection: 'column', minHeight: 320 }}>
       <div style={{ background: bordo, color: '#fff', fontWeight: 800, padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <div>{title}</div>
-        {mode !== 'ipanel' ? (
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            <button type="button" className="btn" onClick={() => setHistOpen(true)} title="Ver historial sección (últimos 10)" style={{ background: 'rgba(255,255,255,0.18)', color: '#fff', borderColor: 'rgba(255,255,255,0.35)', fontWeight: 900, padding: '6px 10px' }}>Hist. sección</button>
-            {mode === 'porton' ? (
-              <button type="button" className="btn" onClick={() => setPortonHistOpen(true)} title="Ver historial de un portón por NV" style={{ background: 'rgba(255,255,255,0.18)', color: '#fff', borderColor: 'rgba(255,255,255,0.35)', fontWeight: 900, padding: '6px 10px' }}>Hist. portón</button>
-            ) : null}
-            {mode === 'porton' && eligiblePrefabTipos.length > 0 ? (
-              <button type="button" className="btn" onClick={() => setNuevoPedidoOpen(true)} title="Crear pedido de fabricación de prefabricado" style={{ background: 'rgba(255,255,255,0.18)', color: '#fff', borderColor: 'rgba(255,255,255,0.35)', fontWeight: 900, padding: '6px 10px' }}>+ Nuevo pedido</button>
-            ) : null}
-          </div>
-        ) : null}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <button type="button" className="btn" onClick={() => setHistOpen(true)} title="Ver historial sección (últimos 10)" style={{ background: 'rgba(255,255,255,0.18)', color: '#fff', borderColor: 'rgba(255,255,255,0.35)', fontWeight: 900, padding: '6px 10px' }}>Hist. sección</button>
+          <button type="button" className="btn" onClick={() => setPortonHistOpen(true)} title={mode === 'ipanel' ? 'Ver historial de un iPanel por NV' : 'Ver historial de un portón por NV'} style={{ background: 'rgba(255,255,255,0.18)', color: '#fff', borderColor: 'rgba(255,255,255,0.35)', fontWeight: 900, padding: '6px 10px' }}>
+            {mode === 'ipanel' ? 'Hist. iPanel' : 'Hist. portón'}
+          </button>
+          {mode === 'porton' && eligiblePrefabTipos.length > 0 ? (
+            <button type="button" className="btn" onClick={() => setNuevoPedidoOpen(true)} title="Crear pedido de fabricación de prefabricado" style={{ background: 'rgba(255,255,255,0.18)', color: '#fff', borderColor: 'rgba(255,255,255,0.35)', fontWeight: 900, padding: '6px 10px' }}>+ Nuevo pedido</button>
+          ) : null}
+        </div>
       </div>
 
       <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -1320,7 +1321,7 @@ export default function StageColumn({
       </div>
 
       <HistoryModal open={histOpen} onClose={() => setHistOpen(false)} title={title} effKey={String(effKey || '').trim()} rows={historyLast10} />
-      <PortonHistoryModal open={portonHistOpen} onClose={() => setPortonHistOpen(false)} title={title} effKey={String(effKey || '').trim()} items={allItems} />
+      <PortonHistoryModal open={portonHistOpen} onClose={() => setPortonHistOpen(false)} title={title} effKey={String(effKey || '').trim()} items={allItems} mode={mode} />
       <DatosModal open={datosOpen} onClose={() => { setDatosOpen(false); setDatosTarget(null); }} item={datosTarget} title={title} />
       <AnexoDetailModal open={anexoOpen} onClose={() => { setAnexoOpen(false); setAnexoTarget(null); }} item={anexoTarget} />
       <PreObsModal open={preObsOpen} onClose={() => { setPreObsOpen(false); setPreObsTarget(null); }} item={preObsTarget} />
