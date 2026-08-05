@@ -8,8 +8,10 @@ import {
   adminFetchInsumosCategoriaMap,
   adminSaveInsumosCategoriaMap,
   adminFetchInsumosCategoriaProductos,
+  adminSetInsumoProductoNombre,
   fetchInsumosSecciones,
 } from '../../src/api';
+import InsumosHistorialModal from '../../src/components/modals/InsumosHistorialModal';
 
 export default function InsumosConfigPage() {
   const nav = useNavigate();
@@ -32,6 +34,12 @@ export default function InsumosConfigPage() {
   // productosPorCategoria[categId] = string[] | null (null = todavia no se pidio)
   const [productosPorCategoria, setProductosPorCategoria] = useState({});
   const [loadingProductosId, setLoadingProductosId] = useState(null);
+  const [historialOpen, setHistorialOpen] = useState(false);
+
+  // Edición inline del nombre a mostrar de un insumo puntual.
+  const [renamingId, setRenamingId] = useState(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [renameSaving, setRenameSaving] = useState(false);
 
   const reload = async ({ refresh = false } = {}) => {
     setErr('');
@@ -97,6 +105,42 @@ export default function InsumosConfigPage() {
     }
   }
 
+  function startRename(producto) {
+    setRenamingId(producto.producto_odoo_id);
+    setRenameValue(producto.producto_nombre || '');
+  }
+
+  function cancelRename() {
+    setRenamingId(null);
+    setRenameValue('');
+  }
+
+  async function saveRename(categId, producto) {
+    const nombre = renameValue.trim();
+    setErr('');
+    setRenameSaving(true);
+    try {
+      await adminSetInsumoProductoNombre(producto.producto_odoo_id, nombre);
+      // Si queda vacío, volvemos a mostrar el nombre real de Odoo.
+      const nombreFinal = nombre || producto.producto_nombre_odoo || producto.producto_nombre;
+      setProductosPorCategoria((prev) => {
+        const lista = prev[categId] || [];
+        return {
+          ...prev,
+          [categId]: lista.map((p) =>
+            p.producto_odoo_id === producto.producto_odoo_id ? { ...p, producto_nombre: nombreFinal } : p
+          ),
+        };
+      });
+      setRenamingId(null);
+      setRenameValue('');
+    } catch (e) {
+      setErr(e?.response?.data?.error || e.message);
+    } finally {
+      setRenameSaving(false);
+    }
+  }
+
   const onSave = async () => {
     setErr('');
     setOk('');
@@ -126,6 +170,7 @@ export default function InsumosConfigPage() {
       <div className="header-row" style={{ alignItems: 'center' }}>
         <h2 className="h1">Compras · Config. categorías Odoo ↔ sección</h2>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button className="btn" type="button" onClick={() => setHistorialOpen(true)}>Ver historial</button>
           <Link className="btn" to="/admin/insumos">Volver a pedidos</Link>
           <Link className="btn" to="/">Inicio</Link>
           <button className="btn" onClick={logout}>Salir</button>
@@ -239,12 +284,53 @@ export default function InsumosConfigPage() {
                     <div style={{ fontSize: 13, opacity: 0.75 }}>Esta categoría no tiene insumos cargados en Odoo.</div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      {productos.map((p) => (
-                        <div key={p.producto_odoo_id} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, padding: '3px 0' }}>
-                          <span>{p.producto_nombre}{p.producto_codigo ? ` (${p.producto_codigo})` : ''}</span>
-                          {p.unidad ? <span style={{ opacity: 0.6 }}>{p.unidad}</span> : null}
-                        </div>
-                      ))}
+                      {productos.map((p) => {
+                        const editando = renamingId === p.producto_odoo_id;
+                        const personalizado = p.producto_nombre_odoo && p.producto_nombre !== p.producto_nombre_odoo;
+                        if (editando) {
+                          return (
+                            <div key={p.producto_odoo_id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '4px 0' }}>
+                              <input
+                                className="btn"
+                                autoFocus
+                                value={renameValue}
+                                onChange={(e) => setRenameValue(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') saveRename(c.id, p);
+                                  if (e.key === 'Escape') cancelRename();
+                                }}
+                                placeholder={p.producto_nombre_odoo}
+                                style={{ flex: 1 }}
+                              />
+                              <button className="btn btn--brand" type="button" disabled={renameSaving} onClick={() => saveRename(c.id, p)}>
+                                {renameSaving ? 'Guardando…' : 'Guardar'}
+                              </button>
+                              <button className="btn" type="button" disabled={renameSaving} onClick={cancelRename}>Cancelar</button>
+                            </div>
+                          );
+                        }
+                        return (
+                          <div
+                            key={p.producto_odoo_id}
+                            onClick={() => startRename(p)}
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); startRename(p); } }}
+                            title="Click para cambiar el nombre con el que se ve en el planificador"
+                            style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, padding: '3px 4px', cursor: 'pointer', borderRadius: 6 }}
+                          >
+                            <span>
+                              {p.producto_nombre}{p.producto_codigo ? ` (${p.producto_codigo})` : ''}
+                              {personalizado ? (
+                                <span style={{ marginLeft: 6, fontSize: 11, opacity: 0.6 }} title={`Nombre en Odoo: ${p.producto_nombre_odoo}`}>
+                                  ✎ personalizado
+                                </span>
+                              ) : null}
+                            </span>
+                            {p.unidad ? <span style={{ opacity: 0.6 }}>{p.unidad}</span> : null}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -259,6 +345,8 @@ export default function InsumosConfigPage() {
           {saving ? 'Guardando…' : 'Guardar mapeo'}
         </button>
       </div>
+
+      <InsumosHistorialModal open={historialOpen} onClose={() => setHistorialOpen(false)} />
     </div>
   );
 }

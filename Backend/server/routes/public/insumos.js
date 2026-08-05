@@ -5,6 +5,7 @@ const { pool } = require('../../db');
 const { INSUMOS_SECCIONES, isValidInsumosSeccion } = require('../../lib/insumosSecciones');
 const { fetchOdooProductsByCategoryIds } = require('../../lib/insumosOdoo');
 const { getOrCreatePedidoDelDia, loadPedidoConItems, argentinaTodayStr } = require('../../lib/insumosPedidos');
+const { getProductoNombreOverrides } = require('../../insumosProductoNombreDb');
 
 const router = express.Router();
 
@@ -69,10 +70,11 @@ router.get('/insumos/productos', async (req, res) => {
     if (!categIds.length) return res.json([]);
 
     const productos = await fetchOdooProductsByCategoryIds(categIds);
+    const overrides = await getProductoNombreOverrides(productos.map((p) => p.id));
     return res.json(
       productos.map((p) => ({
         producto_odoo_id: p.id,
-        producto_nombre: p.name,
+        producto_nombre: overrides.get(p.id) || p.name,
         producto_codigo: p.default_code || null,
         unidad: Array.isArray(p.uom_id) ? p.uom_id[1] : null,
         categoria_odoo_id: Array.isArray(p.x_studio_clasificacin_sectorizada) ? p.x_studio_clasificacin_sectorizada[0] ?? null : null,

@@ -5,6 +5,7 @@ const { adminAuth } = require('../../middleware/adminAuth');
 const { pool } = require('../../db');
 const { fetchOdooCategories, fetchOdooProductsByCategoryIds, invalidateInsumosOdooCache } = require('../../lib/insumosOdoo');
 const { getCategoriaSeccionMap, setCategoriaSeccionMap } = require('../../insumosCategoriaSeccionDb');
+const { getProductoNombreOverrides, setProductoNombreOverride } = require('../../insumosProductoNombreDb');
 const { isValidInsumosSeccion } = require('../../lib/insumosSecciones');
 const { loadPedidoConItems } = require('../../lib/insumosPedidos');
 
@@ -54,10 +55,12 @@ router.get('/insumos/categorias/:categId/productos', async (req, res) => {
   if (!Number.isInteger(categId) || categId <= 0) return res.status(400).json({ error: 'categ_id invalido' });
   try {
     const rows = await fetchOdooProductsByCategoryIds([categId]);
+    const overrides = await getProductoNombreOverrides(rows.map((p) => p.id));
     return res.json(
       rows.map((p) => ({
         producto_odoo_id: p.id,
-        producto_nombre: p.name,
+        producto_nombre: overrides.get(p.id) || p.name,
+        producto_nombre_odoo: p.name,
         producto_codigo: p.default_code || null,
         unidad: Array.isArray(p.uom_id) ? p.uom_id[1] : null,
       }))
@@ -65,6 +68,20 @@ router.get('/insumos/categorias/:categId/productos', async (req, res) => {
   } catch (err) {
     console.error('admin get productos de categoria error:', err);
     return res.status(500).json({ error: 'Error leyendo productos de la categoria', detail: err.message });
+  }
+});
+
+// PUT /admin/insumos/productos/:productoId/nombre — body { nombre_display }
+// nombre_display vacío/null borra el override (vuelve a mostrar el nombre de Odoo).
+router.put('/insumos/productos/:productoId/nombre', async (req, res) => {
+  const productoId = Number(req.params.productoId);
+  if (!Number.isInteger(productoId) || productoId <= 0) return res.status(400).json({ error: 'producto_odoo_id invalido' });
+  try {
+    const row = await setProductoNombreOverride(productoId, req.body?.nombre_display);
+    return res.json({ ok: true, ...row });
+  } catch (err) {
+    console.error('admin set insumos producto nombre error:', err);
+    return res.status(500).json({ error: 'Error guardando el nombre', detail: err.message });
   }
 });
 
@@ -178,7 +195,7 @@ router.get('/insumos/items', async (req, res) => {
         join public.insumos_pedidos p on p.id = i.pedido_id
         left join public.qc_users u on u.id = p.confirmed_by_user_id
         where ${where.join(' and ')}
-        order by i.producto_nombre asc, p.seccion asc
+        order by p.fecha desc, p.seccion asc, i.producto_nombre asc
       `,
       params
     );
