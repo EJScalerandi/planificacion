@@ -165,7 +165,7 @@ export default function AdminExcelInfoPage() {
   }
 
   return (
-    <div className="container" style={{ maxWidth: 1100 }}>
+    <div className="container" style={{ maxWidth: activeTab === 'semanal' ? 1700 : 1100 }}>
       <div className="header-row" style={{ alignItems: 'center' }}>
         <h2 className="h1">Información Excel</h2>
       </div>
