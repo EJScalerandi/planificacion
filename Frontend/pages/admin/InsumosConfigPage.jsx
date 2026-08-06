@@ -9,6 +9,8 @@ import {
   adminSaveInsumosCategoriaMap,
   adminFetchInsumosCategoriaProductos,
   adminSetInsumoProductoNombre,
+  adminFetchInsumosSeccionesCierre,
+  adminSaveInsumosSeccionesCierre,
   fetchInsumosSecciones,
 } from '../../src/api';
 import InsumosHistorialModal from '../../src/components/modals/InsumosHistorialModal';
@@ -36,6 +38,10 @@ export default function InsumosConfigPage() {
   const [loadingProductosId, setLoadingProductosId] = useState(null);
   const [historialOpen, setHistorialOpen] = useState(false);
 
+  // Horario de cierre (auto-cierre) por sección: seccion -> 'HH:MM'.
+  const [horasCierre, setHorasCierre] = useState({});
+  const [savingHoras, setSavingHoras] = useState(false);
+
   // Edición inline del nombre a mostrar de un insumo puntual.
   const [renamingId, setRenamingId] = useState(null);
   const [renameValue, setRenameValue] = useState('');
@@ -47,10 +53,11 @@ export default function InsumosConfigPage() {
     setLoading(true);
     if (refresh) setRefreshing(true);
     try {
-      const [seccionesRes, categoriasRes, mapRes] = await Promise.all([
+      const [seccionesRes, categoriasRes, mapRes, cierreRes] = await Promise.all([
         fetchInsumosSecciones(),
         adminFetchInsumosCategorias(refresh),
         adminFetchInsumosCategoriaMap(),
+        adminFetchInsumosSeccionesCierre(),
       ]);
       setSecciones(seccionesRes.data || []);
       setCategorias(categoriasRes.data || []);
@@ -60,6 +67,9 @@ export default function InsumosConfigPage() {
         map[row.categ_id].push(row.seccion);
       }
       setAsignaciones(map);
+      const horas = {};
+      for (const row of cierreRes.data || []) horas[row.seccion] = row.hora_cierre;
+      setHorasCierre(horas);
     } catch (e) {
       setErr(e?.response?.data?.error || e.message);
     } finally {
@@ -141,6 +151,28 @@ export default function InsumosConfigPage() {
     }
   }
 
+  function setHoraCierreSeccion(slug, value) {
+    setHorasCierre((prev) => ({ ...prev, [slug]: value }));
+  }
+
+  async function saveHorasCierre() {
+    setErr('');
+    setOk('');
+    setSavingHoras(true);
+    try {
+      const entries = secciones.map((s) => ({ seccion: s.slug, hora_cierre: horasCierre[s.slug] || '20:00' }));
+      const { data } = await adminSaveInsumosSeccionesCierre(entries);
+      const horas = {};
+      for (const row of data || []) horas[row.seccion] = row.hora_cierre;
+      setHorasCierre(horas);
+      setOk('Horarios de cierre guardados correctamente.');
+    } catch (e) {
+      setErr(e?.response?.data?.error || e.message);
+    } finally {
+      setSavingHoras(false);
+    }
+  }
+
   const onSave = async () => {
     setErr('');
     setOk('');
@@ -180,7 +212,33 @@ export default function InsumosConfigPage() {
       {err && <div style={{ color: 'crimson', fontWeight: 800, marginTop: 10 }}>{err}</div>}
       {ok && <div style={{ color: '#15803d', fontWeight: 800, marginTop: 10 }}>{ok}</div>}
 
-      <div style={{ marginTop: 12, fontSize: 13, opacity: 0.85 }}>
+      <div style={{ marginTop: 16, border: '1px solid var(--border)', borderRadius: 12, padding: 12, background: 'var(--surface)' }}>
+        <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 6 }}>Horario de cierre de pedidos por sección</div>
+        <div style={{ fontSize: 13, opacity: 0.85, marginBottom: 12 }}>
+          A esta hora se cierra automáticamente el pedido del día de cada sección (si no lo confirmaron, se descarta; si ya lo confirmaron, queda listo para repartir). Antes era un horario fijo de las 20:00 para todas — ahora cada sección tiene el suyo.
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
+          {secciones.map((s) => (
+            <label key={s.slug} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+              <span>{s.label}</span>
+              <input
+                className="btn"
+                type="time"
+                value={horasCierre[s.slug] || '20:00'}
+                onChange={(e) => setHoraCierreSeccion(s.slug, e.target.value)}
+                style={{ width: 110 }}
+              />
+            </label>
+          ))}
+        </div>
+        <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end' }}>
+          <button className="btn btn--brand" type="button" onClick={saveHorasCierre} disabled={savingHoras}>
+            {savingHoras ? 'Guardando…' : 'Guardar horarios de cierre'}
+          </button>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 16, fontSize: 13, opacity: 0.85 }}>
         Elegí a qué sección (tablet) le corresponde cada categoría de producto de Odoo. Los insumos de esa categoría van a aparecer para pedir en esa sección. Podés asignar varias categorías a la misma sección; {asignadasCount} de {categorias.length} categorías tienen sección asignada.
       </div>
 

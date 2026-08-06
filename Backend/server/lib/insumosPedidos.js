@@ -116,28 +116,33 @@ async function loadPedidoConItems(client, pedidoId) {
 
 // Cierra pedidos vencidos: ABIERTO -> CERRADO_VACIO (se descartan los items sin
 // confirmar) o CONFIRMADO -> CERRADO (se conservan). Los dias ESTRICTAMENTE
-// anteriores a hoy siempre se cierran (cubre fines de semana/feriados/caidas
-// del server sin dejar pedidos viejos colgados). El dia de HOY solo se cierra
-// si closeToday=true (ya paso el corte de las 20:00) - si no, un restart del
-// server a mitad del dia cerraria en falso pedidos que la seccion todavia
-// esta cargando/recien confirmo.
-async function closeStaleOpenPedidos(client, hoyStr, { closeToday = false } = {}) {
-  const dateCond = closeToday ? `fecha <= $1` : `fecha < $1`;
+// anteriores a hoy siempre se cierran para TODAS las secciones (cubre fines
+// de semana/feriados/caidas del server sin dejar pedidos viejos colgados).
+// El dia de HOY solo se cierra para las secciones en seccionesVencidasHoy
+// (ya paso SU horario de cierre configurado, ver insumosSeccionCierreDb.js) -
+// las demas quedan abiertas hasta que llegue el suyo. Antes esto era un
+// closeToday booleano global (un solo horario de corte para todas); ahora
+// cada seccion tiene el suyo, por eso el llamador (insumosScheduler.js)
+// resuelve la lista de secciones vencidas antes de llamar a esta funcion.
+async function closeStaleOpenPedidos(client, hoyStr, { seccionesVencidasHoy = [] } = {}) {
+  const hasVencidasHoy = Array.isArray(seccionesVencidasHoy) && seccionesVencidasHoy.length > 0;
+  const condHoy = hasVencidasHoy ? `(fecha = $1 and seccion = any($2::text[]))` : 'false';
+  const params = hasVencidasHoy ? [hoyStr, seccionesVencidasHoy] : [hoyStr];
 
   const confirmados = await client.query(
     `update public.insumos_pedidos
         set status = 'CERRADO', closed_at = now()
-      where ${dateCond} and status = 'CONFIRMADO'
+      where status = 'CONFIRMADO' and (fecha < $1 or ${condHoy})
       returning id`,
-    [hoyStr]
+    params
   );
 
   const abiertos = await client.query(
     `update public.insumos_pedidos
         set status = 'CERRADO_VACIO', closed_at = now()
-      where ${dateCond} and status = 'ABIERTO'
+      where status = 'ABIERTO' and (fecha < $1 or ${condHoy})
       returning id`,
-    [hoyStr]
+    params
   );
   const abiertoIds = abiertos.rows.map((r) => r.id);
   if (abiertoIds.length) {

@@ -114,8 +114,9 @@ runMigrations()
       console.log(`Backend escuchando en http://localhost:${PORT}`);
     });
     startInsumosScheduler();
-    // Catch-up: si el proceso se reinició después de las 20:00 AR de un día hábil,
-    // cierra ya lo que quedó abierto en vez de esperar al cron del día siguiente.
+    // Catch-up: si el proceso se reinició después del horario de cierre de
+    // alguna sección (configurable, ver insumosSeccionCierreDb.js), cierra ya
+    // lo que quedó abierto en vez de esperar al próximo tick del cron.
     try {
       await runDailyClose();
     } catch (err) {

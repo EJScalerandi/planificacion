@@ -296,5 +296,7 @@ export const adminUpdateInsumosPedidoItem = (pedidoId, itemId, patch) => api.put
 export const adminAddInsumosPedidoItem = (pedidoId, payload) => api.post(`/admin/insumos/pedidos/${pedidoId}/items`, payload);
 export const adminSetInsumoProductoNombre = (productoId, nombreDisplay) =>
   api.put(`/admin/insumos/productos/${productoId}/nombre`, { nombre_display: nombreDisplay });
+export const adminFetchInsumosSeccionesCierre = () => api.get('/admin/insumos/secciones-cierre');
+export const adminSaveInsumosSeccionesCierre = (entries) => api.put('/admin/insumos/secciones-cierre', { entries });
 
 export default api;

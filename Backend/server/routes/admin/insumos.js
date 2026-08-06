@@ -6,7 +6,8 @@ const { pool } = require('../../db');
 const { fetchOdooCategories, fetchOdooProductsByCategoryIds, invalidateInsumosOdooCache } = require('../../lib/insumosOdoo');
 const { getCategoriaSeccionMap, setCategoriaSeccionMap } = require('../../insumosCategoriaSeccionDb');
 const { getProductoNombreOverrides, setProductoNombreOverride } = require('../../insumosProductoNombreDb');
-const { isValidInsumosSeccion } = require('../../lib/insumosSecciones');
+const { getHorasCierre, setHorasCierre } = require('../../insumosSeccionCierreDb');
+const { INSUMOS_SECCIONES, isValidInsumosSeccion } = require('../../lib/insumosSecciones');
 const { loadPedidoConItems } = require('../../lib/insumosPedidos');
 
 const router = express.Router();
@@ -105,6 +106,31 @@ router.put('/insumos/categoria-map', async (req, res) => {
   } catch (err) {
     console.error('admin set insumos categoria-map error:', err);
     return res.status(500).json({ error: 'Error guardando el mapeo de categorias', detail: err.message });
+  }
+});
+
+// GET /admin/insumos/secciones-cierre — horario de auto-cierre por sección
+router.get('/insumos/secciones-cierre', async (_req, res) => {
+  try {
+    const horas = await getHorasCierre();
+    const rows = INSUMOS_SECCIONES.map((s) => ({ seccion: s.slug, label: s.label, hora_cierre: horas.get(s.slug) }));
+    return res.json(rows);
+  } catch (err) {
+    console.error('admin get insumos secciones-cierre error:', err);
+    return res.status(500).json({ error: 'Error leyendo horarios de cierre', detail: err.message });
+  }
+});
+
+// PUT /admin/insumos/secciones-cierre — body { entries: [{seccion, hora_cierre}, ...] }
+router.put('/insumos/secciones-cierre', async (req, res) => {
+  try {
+    const entries = (req.body || {}).entries;
+    const horas = await setHorasCierre(entries);
+    const rows = INSUMOS_SECCIONES.map((s) => ({ seccion: s.slug, label: s.label, hora_cierre: horas.get(s.slug) }));
+    return res.json(rows);
+  } catch (err) {
+    console.error('admin set insumos secciones-cierre error:', err);
+    return res.status(500).json({ error: 'Error guardando horarios de cierre', detail: err.message });
   }
 });
 
