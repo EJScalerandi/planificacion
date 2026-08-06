@@ -116,12 +116,28 @@ function trimOrEmpty(v) {
   return v == null ? '' : String(v).trim();
 }
 
-const STATUS_STAGES = [
+// Semana de despacho: las etapas finales, de cara al armado/pintura/envío.
+const STATUS_STAGES_DESPACHO = [
   { key: 'armado_primario', label: 'Arm. Prim.' },
   { key: 'revestimiento', label: 'Revest.' },
   { key: 'pintura', label: 'Pintura' },
   { key: 'inyeccion', label: 'Inyec.' },
   { key: 'armado_final', label: 'Arm. Final' },
+];
+
+// Semana de producción: las etapas tempranas (corte/plegado/prefabricado),
+// que es lo que a Producción le interesa seguir semana a semana.
+const STATUS_STAGES_PRODUCCION = [
+  { key: 'diseno', label: 'Diseño' },
+  { key: 'laser', label: 'Laser' },
+  { key: 'guillotina', label: 'Corte Piernas' },
+  { key: 'corte_revest', label: 'Corte Revest.' },
+  { key: 'plegadora', label: 'Plegado Piernas' },
+  { key: 'plegado_revest', label: 'Plegado Revest.' },
+  { key: 'armado_piernas', label: 'Prefabricado' },
+  { key: 'armado_marco_piernas', label: 'Arm. Marco Piernas' },
+  { key: 'armado_hojas', label: 'Arm. Hojas' },
+  { key: 'armado_primario', label: 'Arm. Primario' },
 ];
 
 function statusStyle(estadoRaw) {
@@ -139,6 +155,7 @@ export default function InformeSemanalPortones({ portones, loading, err, refresh
 
   const { start, end } = useMemo(() => isoWeekStartEndFromLabel(weekLabel), [weekLabel]);
   const weekNum = weekNumberFromLabel(weekLabel);
+  const statusStages = modo === 'despacho' ? STATUS_STAGES_DESPACHO : STATUS_STAGES_PRODUCCION;
 
   const filas = useMemo(() => {
     if (!Array.isArray(portones) || !start || !end) return [];
@@ -153,12 +170,12 @@ export default function InformeSemanalPortones({ portones, loading, err, refresh
         color: trimOrEmpty(p.Color_Sistema),
         revestimiento: trimOrEmpty(p.sistema),
         medidas: medidasAnchoAlto(p),
-        estados: Object.fromEntries(STATUS_STAGES.map((s) => [s.key, p[s.key] ?? null])),
+        estados: Object.fromEntries(statusStages.map((s) => [s.key, p[s.key] ?? null])),
       });
     }
     out.sort((a, b) => (Number(a.nv) || 0) - (Number(b.nv) || 0));
     return out;
-  }, [portones, modo, start, end]);
+  }, [portones, modo, start, end, statusStages]);
 
   async function handleExport() {
     if (!filas.length) return;
@@ -169,18 +186,18 @@ export default function InformeSemanalPortones({ portones, loading, err, refresh
 
       const header = [
         'NV', 'Nombre Cliente', 'Distribuidor', 'Color', 'Revestimiento', 'Medidas (Ancho x Alto mm)',
-        ...STATUS_STAGES.map((s) => s.label),
+        ...statusStages.map((s) => s.label),
       ];
       const dataRows = filas.map((f) => [
         f.nv, f.cliente, f.distribuidor, f.color, f.revestimiento, f.medidas,
-        ...STATUS_STAGES.map((s) => statusStyle(f.estados[s.key]).label),
+        ...statusStages.map((s) => statusStyle(f.estados[s.key]).label),
       ]);
 
       const wb = XLSX.utils.book_new();
       const ws = XLSX.utils.aoa_to_sheet([header, ...dataRows]);
       ws['!cols'] = [
         { wch: 8 }, { wch: 26 }, { wch: 20 }, { wch: 14 }, { wch: 22 }, { wch: 20 },
-        ...STATUS_STAGES.map(() => ({ wch: 12 })),
+        ...statusStages.map(() => ({ wch: 12 })),
       ];
       const modoLabel = modo === 'despacho' ? 'Despacho' : 'Producción';
       XLSX.utils.book_append_sheet(wb, ws, `Semana ${weekNum || ''}`.trim());
@@ -250,7 +267,7 @@ export default function InformeSemanalPortones({ portones, loading, err, refresh
                 <th style={{ textAlign: 'left', padding: 8, borderBottom: '1px solid var(--border)' }}>Color</th>
                 <th style={{ textAlign: 'left', padding: 8, borderBottom: '1px solid var(--border)' }}>Revestimiento</th>
                 <th style={{ textAlign: 'left', padding: 8, borderBottom: '1px solid var(--border)' }}>Medidas</th>
-                {STATUS_STAGES.map((s) => (
+                {statusStages.map((s) => (
                   <th key={s.key} style={{ textAlign: 'center', padding: 8, borderBottom: '1px solid var(--border)' }}>{s.label}</th>
                 ))}
               </tr>
@@ -264,7 +281,7 @@ export default function InformeSemanalPortones({ portones, loading, err, refresh
                   <td style={{ padding: 8, borderBottom: '1px solid #eee' }}>{f.color}</td>
                   <td style={{ padding: 8, borderBottom: '1px solid #eee' }}>{f.revestimiento}</td>
                   <td style={{ padding: 8, borderBottom: '1px solid #eee' }}>{f.medidas}</td>
-                  {STATUS_STAGES.map((s) => {
+                  {statusStages.map((s) => {
                     const st = statusStyle(f.estados[s.key]);
                     return (
                       <td key={s.key} style={{ padding: 4, borderBottom: '1px solid #eee', textAlign: 'center' }}>
