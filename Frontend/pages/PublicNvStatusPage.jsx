@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import usePortones from '../src/hooks/usePortones';
+import { qcHistory } from '../src/api';
 
 const STAGES = [
   { key: 'diseno', label: 'Diseño' },
@@ -95,13 +96,45 @@ export default function PublicNvStatusPage() {
     return (Array.isArray(data) ? data : []).find((item) => Number(item?.nv) === parsedNv) || null;
   }, [data, parsedNv]);
 
+  // Quién firmó el QC (el PIN) del traspaso de cada sección - un portón puede
+  // tener varios eventos de QC por etapa (observado, rechazado, reaprobado);
+  // nos quedamos con el más reciente por etapa (la API ya lo trae ordenado
+  // por fecha desc, así que el primero que aparece por stage_key es el último).
+  const [qcEvents, setQcEvents] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    if (!Number.isInteger(parsedNv)) {
+      setQcEvents([]);
+      return undefined;
+    }
+    qcHistory({ line: 'portones', item_id: parsedNv })
+      .then((data) => { if (!cancelled) setQcEvents(Array.isArray(data) ? data : []); })
+      .catch(() => { if (!cancelled) setQcEvents([]); });
+    return () => { cancelled = true; };
+  }, [parsedNv]);
+
+  const qcLatestByStage = useMemo(() => {
+    const map = new Map();
+    for (const e of qcEvents) {
+      const key = String(e?.stage_key || '').trim();
+      if (key && !map.has(key)) map.set(key, e);
+    }
+    return map;
+  }, [qcEvents]);
+
   const rows = useMemo(() => {
-    return STAGES.map((stage) => ({
-      ...stage,
-      status: normalizeStatus(target?.[stage.key]),
-      finDate: formatFinDate(target?.[`${stage.key}_fin`]),
-    }));
-  }, [target]);
+    return STAGES.map((stage) => {
+      const qc = qcLatestByStage.get(stage.key);
+      const qcStatus = String(qc?.qc_status || '').trim().toUpperCase();
+      return {
+        ...stage,
+        status: normalizeStatus(target?.[stage.key]),
+        finDate: formatFinDate(target?.[`${stage.key}_fin`]),
+        firmadoPor: qc?.user_name || '',
+        qcStatus,
+      };
+    });
+  }, [target, qcLatestByStage]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -243,6 +276,7 @@ export default function PublicNvStatusPage() {
                   <th style={thStyle}>Sector</th>
                   <th style={thStyle}>Estado</th>
                   <th style={thStyle}>Fecha de finalización</th>
+                  <th style={thStyle}>Firmado por (QC)</th>
                 </tr>
               </thead>
               <tbody>
@@ -253,6 +287,20 @@ export default function PublicNvStatusPage() {
                       <b>{row.status}</b>
                     </td>
                     <td style={tdStyle}>{row.finDate}</td>
+                    <td style={tdStyle}>
+                      {row.firmadoPor ? (
+                        <>
+                          {row.firmadoPor}
+                          {row.qcStatus && row.qcStatus !== 'APROBADO' ? (
+                            <span style={{ marginLeft: 6, fontSize: 12, fontWeight: 700, color: row.qcStatus === 'RECHAZADO' ? '#b91c1c' : '#92400e' }}>
+                              ({row.qcStatus})
+                            </span>
+                          ) : null}
+                        </>
+                      ) : (
+                        <span style={{ opacity: 0.6 }}>—</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
