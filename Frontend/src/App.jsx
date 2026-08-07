@@ -611,6 +611,29 @@ const ROUTES = [
       { key: 'armado_hojas', label: 'Armado de hoja', mode: 'porton' },
     ],
   },
+  // Las 3 secciones de arriba, separadas cada una en su propia ruta (a pedido:
+  // no romper /prefabricados, que sigue existiendo tal cual). "seccion" se fija
+  // a mano en 'prefabricados' (en vez de derivarla del path, como el resto de
+  // las rutas) para que las 3 compartan el mismo botón/carrito de pedidos de
+  // insumos - son secciones físicas distintas pero un solo pedido de insumos.
+  {
+    path: '/armado-piernas',
+    label: 'Producción · Armado de Piernas',
+    stages: ONE('armado_piernas', 'Armado de Piernas'),
+    seccion: 'prefabricados',
+  },
+  {
+    path: '/armado-marco-piernas',
+    label: 'Producción · Armado de Marco Piernas',
+    stages: ONE('armado_marco_piernas', 'Armado de Marco Piernas'),
+    seccion: 'prefabricados',
+  },
+  {
+    path: '/armado-hojas',
+    label: 'Producción · Armado de Hojas',
+    stages: ONE('armado_hojas', 'Armado de Hojas'),
+    seccion: 'prefabricados',
+  },
   { path: '/armado-primario', label: 'Producción · Armado Primario', stages: ONE('armado_primario', 'Armado Primario') },
   {
     path: '/pintura',
@@ -687,7 +710,7 @@ export default function App() {
           <Route
             key={r.path}
             path={r.path}
-            element={<Board stages={r.stages} seccion={r.path === '/board' ? null : r.path.slice(1)} />}
+            element={<Board stages={r.stages} seccion={r.path === '/board' ? null : (r.seccion ?? r.path.slice(1))} />}
           />
         ))}
 
