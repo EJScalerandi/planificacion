@@ -195,6 +195,19 @@ function getSalidaWeekLabel(item) {
   return info?.week != null ? `Semana N° ${info.week}` : 'Semana N° —';
 }
 
+// ST y Refabricado no tienen fecha propia de producción/despacho (son
+// ordenes ligadas a un NV, no portones): para mostrarles la semana hay que
+// resolver el portón real con ese mismo NV y usar SU fecha. Prefabricados y
+// Orden Externa no tienen NV asociado (numero propio), así que no aplica.
+function resolveWeekSourceItem(p, portonByNv) {
+  if (p?.__kind === 'servicio_tecnico' && p?.tipo !== 'OE') {
+    const nvNum = Number(p?.nv);
+    const matched = Number.isInteger(nvNum) ? portonByNv?.get(nvNum) : null;
+    if (matched) return matched;
+  }
+  return p;
+}
+
 function getPuertaPos(row) {
   return toText(
     row?.PUERTA_Posicion ??
@@ -581,7 +594,7 @@ function QcModal({ open, onClose, item, line, stageKey, title, onSaved, forceCom
   );
 }
 
-function ObservacionesModal({ open, onClose, title, item, line }) {
+function ObservacionesModal({ open, onClose, title, item, line, despacho = false, portonByNv }) {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
   const [observations, setObservations] = useState([]);
@@ -620,8 +633,9 @@ function ObservacionesModal({ open, onClose, title, item, line }) {
   const oe = item?.__kind === 'servicio_tecnico' && item?.tipo === 'OE' && item?.numero != null ? `OE ${item.numero}` : '';
   const nv = item?.nv != null ? (item?.__kind === 'servicio_tecnico' ? `ST ${item.nv}` : `NV ${item.nv}`) : '';
   const nlista = item?.nlista != null ? `Portón ${item.nlista}` : '';
-  const partida = item?.partida != null ? `Partida ${item.partida}` : '';
-  const head = [title, pref, oe, nv, nlista, partida].filter(Boolean).join(' · ');
+  const weekSource = resolveWeekSourceItem(item, portonByNv);
+  const semana = despacho ? `Despacho: ${getSalidaWeekLabel(weekSource)}` : `Producción: ${getProdWeekLabel(weekSource)}`;
+  const head = [title, pref, oe, nv, nlista, semana].filter(Boolean).join(' · ');
   const rows = (observations || []).map((o) => ({
     sector: o?.stage_key || o?.sector || o?.stage || '-',
     fecha: o?.created_at || o?.timestamp || null,
@@ -660,8 +674,9 @@ function AdminAccionesModal({ open, onClose, title, item }) {
   if (!open || !item) return null;
   const nv = item?.nv != null ? `NV ${item.nv}` : '';
   const nlista = item?.nlista != null ? `Portón ${item.nlista}` : '';
-  const partida = item?.partida != null ? `Partida ${item.partida}` : '';
-  const head = [title, nv, nlista, partida].filter(Boolean).join(' · ');
+  // Este modal solo se abre para portones en la columna de Despacho.
+  const semana = `Despacho: ${getSalidaWeekLabel(item)}`;
+  const head = [title, nv, nlista, semana].filter(Boolean).join(' · ');
   const detalle = getAdminAccionesDetalle(item);
 
   return (
@@ -688,6 +703,7 @@ function HistoryModal({ open, onClose, title, effKey, rows = [] }) {
               <div key={r._key} style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 12, background: '#ffffff', display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, alignItems: 'center' }}>
                 <div style={{ fontSize: 13 }}>
                   <div style={{ fontWeight: 900 }}>{r.label}</div>
+                  {r.semana ? <div style={{ opacity: 0.8, marginTop: 2 }}>{r.semana}</div> : null}
                   <div style={{ opacity: 0.8, marginTop: 2 }}>Fin etapa: <b>{r.fin ? fmt(r.fin) : '-'}</b></div>
                 </div>
                 <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.9 }}>{r.qcLatest ? `QC: ${r.qcLatest}` : ''}</div>
@@ -705,6 +721,7 @@ function PortonHistoryModal({ open, onClose, title, effKey, items = [], mode = '
   const [result, setResult] = useState(null);
   const [searchDone, setSearchDone] = useState(false);
   const cleanEffKey = String(effKey || '').trim();
+  const isDespachoCtx = mode === 'porton' && cleanEffKey === 'despacho';
   const startKey = `${cleanEffKey}_inicio`;
   const finKey = `${cleanEffKey}_fin`;
   const normalizedNv = String(nv || '').trim();
@@ -750,7 +767,7 @@ function PortonHistoryModal({ open, onClose, title, effKey, items = [], mode = '
                 ? getOrderLabel(result, 'servicio_tecnico')
                 : mode === 'ipanel'
                   ? `iPanel · NV ${result?.nv ?? result?.NV ?? '-'}`
-                  : `Portón ${result?.nlista ?? result?.NLista ?? '-'} · NV ${result?.nv ?? result?.NV ?? '-'} · Partida ${result?.partida ?? result?.PARTIDA ?? '-'}`}
+                  : `Portón ${result?.nlista ?? result?.NLista ?? '-'} · NV ${result?.nv ?? result?.NV ?? '-'} · ${isDespachoCtx ? `Despacho: ${getSalidaWeekLabel(result)}` : `Producción: ${getProdWeekLabel(result)}`}`}
             </div>
             <div style={{ fontSize: 14 }}><b>Sector:</b> {title}</div>
             <div style={{ fontSize: 14 }}><b>Estado:</b> {displayValue(result?.[cleanEffKey], 'Sin datos')}</div>
@@ -957,6 +974,19 @@ export default function StageColumn({
     );
   }, [mode, prefabTipos, stageKey]);
 
+  // NV -> portón "puro" (sin __kind), para resolverle la semana a ST/Refab
+  // (ver resolveWeekSourceItem). allItems trae el listado completo, no solo
+  // lo que entra en esta columna.
+  const portonByNv = useMemo(() => {
+    const map = new Map();
+    for (const it of (Array.isArray(allItems) ? allItems : [])) {
+      if (it?.__kind) continue;
+      const nvNum = Number(it?.nv ?? it?.NV);
+      if (Number.isInteger(nvNum)) map.set(nvNum, it);
+    }
+    return map;
+  }, [allItems]);
+
   function qcMapForItem(p) {
     const itemLine = getItemQcLine(p);
     if (itemLine === 'prefabricados') return qcSummaryMapPrefab;
@@ -1043,6 +1073,7 @@ export default function StageColumn({
     });
     return done.slice(0, 10).map((p) => {
       const qcLatest = up(qcInfoFor(p)?.latest_by_stage?.[key] || '');
+      const isOe = p?.__kind === 'servicio_tecnico' && p?.tipo === 'OE';
       const label = p?.__kind === 'prefabricado'
         ? `Pref ${p?.numero ?? '-'}${p?.tipo_nombre ? ` · ${p.tipo_nombre}` : ''}`
         : p?.__kind === 'servicio_tecnico'
@@ -1050,14 +1081,22 @@ export default function StageColumn({
           : mode === 'ipanel'
             ? `iPanel NV ${p?.nv ?? '-'}`
             : `Portón ${p?.nlista ?? '-'} · NV ${p?.nv ?? '-'}`;
+      // Prefabricados y Orden Externa no tienen NV propio -> sin semana.
+      const semana = mode === 'ipanel' || p?.__kind === 'prefabricado' || isOe
+        ? ''
+        : (() => {
+            const src = resolveWeekSourceItem(p, portonByNv);
+            return isDespachoColumn ? `Despacho: ${getSalidaWeekLabel(src)}` : `Producción: ${getProdWeekLabel(src)}`;
+          })();
       return {
         _key: String(p?.id ?? p?.nv ?? `${Math.random()}`),
         label,
+        semana,
         fin: p?.[finKey] ?? null,
         qcLatest,
       };
     });
-  }, [mode, keyTrim, allItems, qcSummaryMap, qcSummaryMapPrefab, qcSummaryMapSt, qcSummaryMapOe, qcSummaryMapRefab]);
+  }, [mode, keyTrim, allItems, qcSummaryMap, qcSummaryMapPrefab, qcSummaryMapSt, qcSummaryMapOe, qcSummaryMapRefab, portonByNv, isDespachoColumn]);
 
   return (
     <div style={{ border: `2px solid ${bordo}`, borderRadius: 12, overflow: 'hidden', background: 'var(--surface)', display: 'flex', flexDirection: 'column', minHeight: 320 }}>
@@ -1117,6 +1156,16 @@ export default function StageColumn({
                   {kind === 'servicio_tecnico' ? (
                     <div style={{ fontSize: 12, opacity: 0.85, marginTop: 2 }}>
                       Cant.: <b>{p?.cantidad ?? '-'}</b>{p?.descripcion ? <> · {p.descripcion}</> : null}
+                    </div>
+                  ) : null}
+                  {kind === 'servicio_tecnico' && p?.tipo !== 'OE' ? (
+                    <div style={{ fontSize: 12, opacity: 0.85, marginTop: 2 }}>
+                      {(() => {
+                        const src = resolveWeekSourceItem(p, portonByNv);
+                        return isDespachoColumn
+                          ? <>Despacho: <b>{getSalidaWeekLabel(src)}</b></>
+                          : <>Producción: <b>{getProdWeekLabel(src)}</b></>;
+                      })()}
                     </div>
                   ) : null}
                   {kind === 'prefabricado' ? (
@@ -1327,7 +1376,7 @@ export default function StageColumn({
       <PreObsModal open={preObsOpen} onClose={() => { setPreObsOpen(false); setPreObsTarget(null); }} item={preObsTarget} />
       <QcModal open={qcOpen} onClose={() => { setQcOpen(false); setQcTarget(null); setQcForceComplete(false); }} item={qcTarget} line={getItemQcLine(qcTarget) || line} stageKey={effKey} title={title} onSaved={() => onQcSaved?.()} forceComplete={qcForceComplete} />
       <AdminAccionesModal open={adminAccionesOpen} onClose={() => { setAdminAccionesOpen(false); setAdminAccionesTarget(null); }} title={title} item={adminAccionesTarget} />
-      <ObservacionesModal open={obsOpen} onClose={() => { setObsOpen(false); setObsTarget(null); }} title={title} item={obsTarget} line={getItemQcLine(obsTarget) || line} />
+      <ObservacionesModal open={obsOpen} onClose={() => { setObsOpen(false); setObsTarget(null); }} title={title} item={obsTarget} line={getItemQcLine(obsTarget) || line} despacho={isDespachoColumn} portonByNv={portonByNv} />
       <DetalleRefabricacionModal open={detalleRefabOpen} onClose={() => { setDetalleRefabOpen(false); setDetalleRefabTarget(null); }} item={detalleRefabTarget} />
       {mode === 'porton' ? (
         <NuevoPedidoPrefabricadoModal
