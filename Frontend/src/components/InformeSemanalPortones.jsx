@@ -148,14 +148,24 @@ function statusStyle(estadoRaw) {
   return { bg: 'transparent', fg: '#cbd5e1', border: '#e2e8f0', label: '—' };
 }
 
+// Etapa "compuerta" que, una vez Finalizada, saca por defecto al portón del
+// reporte (ya pasó el punto que le interesa seguir a Producción/Despacho).
+const GATE_STAGE_BY_MODO = {
+  produccion: 'armado_primario',
+  despacho: 'armado_final',
+};
+
 export default function InformeSemanalPortones({ portones, loading, err, refresh, refreshing }) {
   const [modo, setModo] = useState('produccion'); // 'produccion' | 'despacho'
   const [weekLabel, setWeekLabel] = useState(() => isoWeekLabelFromDate(new Date().toISOString()));
   const [exporting, setExporting] = useState(false);
+  const [mostrarFinalizados, setMostrarFinalizados] = useState(false);
 
   const { start, end } = useMemo(() => isoWeekStartEndFromLabel(weekLabel), [weekLabel]);
   const weekNum = weekNumberFromLabel(weekLabel);
   const statusStages = modo === 'despacho' ? STATUS_STAGES_DESPACHO : STATUS_STAGES_PRODUCCION;
+  const gateStageKey = GATE_STAGE_BY_MODO[modo];
+  const gateStageLabel = statusStages.find((s) => s.key === gateStageKey)?.label || gateStageKey;
 
   const filas = useMemo(() => {
     if (!Array.isArray(portones) || !start || !end) return [];
@@ -163,6 +173,12 @@ export default function InformeSemanalPortones({ portones, loading, err, refresh
     for (const p of portones) {
       const date10 = modo === 'despacho' ? getSalidaDate10(p) : getProdDate10(p);
       if (!date10 || date10 < start || date10 >= end) continue;
+
+      if (!mostrarFinalizados) {
+        const gateEstado = String(p[gateStageKey] ?? '').trim().toLowerCase();
+        if (gateEstado === 'finalizado') continue;
+      }
+
       out.push({
         nv: p.nv ?? p.NV ?? '',
         cliente: trimOrEmpty(p.nombre_cliente),
@@ -175,7 +191,7 @@ export default function InformeSemanalPortones({ portones, loading, err, refresh
     }
     out.sort((a, b) => (Number(a.nv) || 0) - (Number(b.nv) || 0));
     return out;
-  }, [portones, modo, start, end, statusStages]);
+  }, [portones, modo, start, end, statusStages, gateStageKey, mostrarFinalizados]);
 
   async function handleExport() {
     if (!filas.length) return;
@@ -232,6 +248,15 @@ export default function InformeSemanalPortones({ portones, loading, err, refresh
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <span style={{ fontWeight: 800, fontSize: 13 }}>Semana</span>
           <input className="btn" type="week" value={weekLabel} onChange={(e) => setWeekLabel(e.target.value)} />
+        </label>
+
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+          <input
+            type="checkbox"
+            checked={mostrarFinalizados}
+            onChange={(e) => setMostrarFinalizados(e.target.checked)}
+          />
+          Mostrar también los que ya tienen <b>{gateStageLabel}</b> Finalizado
         </label>
 
         <button type="button" className="btn" onClick={refresh} disabled={refreshing}>
