@@ -13,7 +13,7 @@ function hashPin(pin) {
 }
 
 const PORTON_ETAPAS = new Set([
-  'diseno', 'laser', 'guillotina', 'plegadora',
+  'diseno', 'diseno_piernas', 'diseno_revestimiento', 'laser', 'guillotina', 'plegadora',
   'armado_marco_piernas', 'armado_piernas', 'armado_primario', 'armado_hojas',
   'inyeccion', 'revestimiento', 'pintura', 'pintura_revestimiento',
   'armado_final', 'despacho', 'corte_revest', 'plegado_revest',

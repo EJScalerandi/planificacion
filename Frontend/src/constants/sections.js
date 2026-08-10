@@ -7,7 +7,9 @@
 // físicas (ej. un prefabricado que termina en "Prefabricados" usa
 // armado_piernas, la misma columna que ya existe para esa sección).
 export const SECTION_LABELS = {
-  diseno: 'Diseño',
+  diseno: 'Diseño Tubos',
+  diseno_piernas: 'Diseño Piernas',
+  diseno_revestimiento: 'Diseño Revestimiento',
   laser: 'Laser',
   guillotina: 'Corte piernas',
   corte_revest: 'Corte revestimiento',

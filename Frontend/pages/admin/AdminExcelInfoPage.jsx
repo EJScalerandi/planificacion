@@ -8,7 +8,9 @@ const fmtDateTime = (dt) => (dt ? new Date(dt).toLocaleString('es-AR', { dateSty
 const dateOnly = (v) => (v ? String(v).slice(0, 10) : '');
 
 const PORTON_STAGES = [
-  { key: 'diseno', label: 'Diseño' },
+  { key: 'diseno', label: 'Diseño Tubos' },
+  { key: 'diseno_piernas', label: 'Diseño Piernas' },
+  { key: 'diseno_revestimiento', label: 'Diseño Revestimiento' },
   { key: 'laser', label: 'Laser' },
   { key: 'guillotina', label: 'Corte (Piernas)' },
   { key: 'corte_revest', label: 'Corte (Revestimiento)' },

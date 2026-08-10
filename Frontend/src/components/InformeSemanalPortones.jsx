@@ -128,7 +128,7 @@ const STATUS_STAGES_DESPACHO = [
 // Semana de producción: las etapas tempranas (corte/plegado/prefabricado),
 // que es lo que a Producción le interesa seguir semana a semana.
 const STATUS_STAGES_PRODUCCION = [
-  { key: 'diseno', label: 'Diseño' },
+  { key: 'diseno', label: 'Diseño Tubos' },
   { key: 'laser', label: 'Laser' },
   { key: 'guillotina', label: 'Corte Piernas' },
   { key: 'corte_revest', label: 'Corte Revest.' },

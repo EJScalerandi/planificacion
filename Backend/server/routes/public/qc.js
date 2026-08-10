@@ -7,6 +7,8 @@ const router = express.Router();
 
 const PORTON_ETAPAS = new Set([
   'diseno',
+  'diseno_piernas',
+  'diseno_revestimiento',
   'laser',
   'guillotina',
   'plegadora',

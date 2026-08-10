@@ -4,7 +4,9 @@ import usePortones from '../src/hooks/usePortones';
 import { qcHistory } from '../src/api';
 
 const STAGES = [
-  { key: 'diseno', label: 'Diseño' },
+  { key: 'diseno', label: 'Diseño Tubos' },
+  { key: 'diseno_piernas', label: 'Diseño Piernas' },
+  { key: 'diseno_revestimiento', label: 'Diseño Revestimiento' },
   { key: 'laser', label: 'Laser' },
   { key: 'guillotina', label: 'Corte piernas' },
   { key: 'corte_revest', label: 'Corte revestimiento' },

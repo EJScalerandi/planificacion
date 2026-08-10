@@ -3,7 +3,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchRefabricacionPendientes, crearRefabricacion, aprobarRevision } from '../src/api';
 
 const ETAPAS = [
-  { key: 'diseno',               label: 'Diseño' },
+  { key: 'diseno',               label: 'Diseño Tubos' },
+  { key: 'diseno_piernas',       label: 'Diseño Piernas' },
+  { key: 'diseno_revestimiento', label: 'Diseño Revestimiento' },
   { key: 'laser',                label: 'Laser' },
   { key: 'guillotina',           label: 'Corte piernas' },
   { key: 'corte_revest',         label: 'Corte revestimiento' },

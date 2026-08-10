@@ -24,7 +24,9 @@ const KINDS = [
 // que portones (ver Frontend/src/constants/sections.js), así que reusan la
 // misma lista de etapas para configurar motivos/scopes de QC.
 const PORTON_STAGES = [
-  { key: 'diseno', label: 'Diseño' },
+  { key: 'diseno', label: 'Diseño Tubos' },
+  { key: 'diseno_piernas', label: 'Diseño Piernas' },
+  { key: 'diseno_revestimiento', label: 'Diseño Revestimiento' },
   { key: 'laser', label: 'Láser' },
   { key: 'guillotina', label: 'Guillotina / Corte piernas' },
   { key: 'corte_revest', label: 'Corte revestimiento' },

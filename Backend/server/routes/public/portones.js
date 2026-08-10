@@ -17,7 +17,7 @@ function mergePreprodData(row) {
 
 // Portones (normalizado): set defensivo para no aceptar cualquier texto
 const PORTON_ETAPAS = new Set([
-  'diseno', 'laser', 'guillotina', 'plegadora',
+  'diseno', 'diseno_piernas', 'diseno_revestimiento', 'laser', 'guillotina', 'plegadora',
   'armado_marco_piernas', 'armado_piernas', 'armado_primario', 'armado_hojas',
   'inyeccion', 'revestimiento', 'pintura', 'pintura_revestimiento', 'armado_final', 'despacho',
   'corte_revest', 'plegado_revest',
@@ -25,7 +25,7 @@ const PORTON_ETAPAS = new Set([
 
 // OJO: acá el orden solo lo usamos para “shape” y compatibilidad en frontend
 const PORTON_STAGE_KEYS_ORDER = [
-  'diseno', 'laser', 'guillotina', 'plegadora',
+  'diseno', 'diseno_piernas', 'diseno_revestimiento', 'laser', 'guillotina', 'plegadora',
   'armado_piernas', 'armado_primario', 'inyeccion', 'corte_revest', 'plegado_revest',
   'revestimiento', 'pintura', 'pintura_revestimiento', 'armado_hojas', 'armado_marco_piernas', 'armado_final', 'despacho'
 ];
@@ -55,6 +55,8 @@ async function getPortonShapeById(db, id) {
 
       -- ====== ESTADOS (SIEMPRE desde porton_etapas_estado) ======
       max(case when e.etapa = 'diseno'::public.porton_etapa then e.estado end) as diseno,
+      max(case when e.etapa = 'diseno_piernas'::public.porton_etapa then e.estado end) as diseno_piernas,
+      max(case when e.etapa = 'diseno_revestimiento'::public.porton_etapa then e.estado end) as diseno_revestimiento,
       max(case when e.etapa = 'laser'::public.porton_etapa then e.estado end) as laser,
       max(case when e.etapa = 'guillotina'::public.porton_etapa then e.estado end) as guillotina,
       max(case when e.etapa = 'plegadora'::public.porton_etapa then e.estado end) as plegadora,
@@ -74,6 +76,12 @@ async function getPortonShapeById(db, id) {
       -- ====== TIEMPOS (SIEMPRE desde porton_etapas_tiempos) ======
       max(case when t.etapa = 'diseno'::public.porton_etapa then t.inicio end) as diseno_inicio,
       max(case when t.etapa = 'diseno'::public.porton_etapa then t.fin end) as diseno_fin,
+
+      max(case when t.etapa = 'diseno_piernas'::public.porton_etapa then t.inicio end) as diseno_piernas_inicio,
+      max(case when t.etapa = 'diseno_piernas'::public.porton_etapa then t.fin end) as diseno_piernas_fin,
+
+      max(case when t.etapa = 'diseno_revestimiento'::public.porton_etapa then t.inicio end) as diseno_revestimiento_inicio,
+      max(case when t.etapa = 'diseno_revestimiento'::public.porton_etapa then t.fin end) as diseno_revestimiento_fin,
 
       max(case when t.etapa = 'laser'::public.porton_etapa then t.inicio end) as laser_inicio,
       max(case when t.etapa = 'laser'::public.porton_etapa then t.fin end) as laser_fin,
@@ -171,6 +179,8 @@ router.get('/portones', async (_req, res) => {
 
         -- ====== ESTADOS ======
         max(e.diseno) as diseno,
+        max(e.diseno_piernas) as diseno_piernas,
+        max(e.diseno_revestimiento) as diseno_revestimiento,
         max(e.laser) as laser,
         max(e.guillotina) as guillotina,
         max(e.plegadora) as plegadora,
@@ -190,6 +200,10 @@ router.get('/portones', async (_req, res) => {
         -- ====== TIEMPOS ======
         max(t.diseno_inicio) as diseno_inicio,
         max(t.diseno_fin) as diseno_fin,
+        max(t.diseno_piernas_inicio) as diseno_piernas_inicio,
+        max(t.diseno_piernas_fin) as diseno_piernas_fin,
+        max(t.diseno_revestimiento_inicio) as diseno_revestimiento_inicio,
+        max(t.diseno_revestimiento_fin) as diseno_revestimiento_fin,
         max(t.laser_inicio) as laser_inicio,
         max(t.laser_fin) as laser_fin,
         max(t.guillotina_inicio) as guillotina_inicio,
@@ -226,6 +240,8 @@ router.get('/portones', async (_req, res) => {
         select
           porton_id,
           max(case when etapa = 'diseno'::public.porton_etapa then estado end) as diseno,
+          max(case when etapa = 'diseno_piernas'::public.porton_etapa then estado end) as diseno_piernas,
+          max(case when etapa = 'diseno_revestimiento'::public.porton_etapa then estado end) as diseno_revestimiento,
           max(case when etapa = 'laser'::public.porton_etapa then estado end) as laser,
           max(case when etapa = 'guillotina'::public.porton_etapa then estado end) as guillotina,
           max(case when etapa = 'plegadora'::public.porton_etapa then estado end) as plegadora,
@@ -249,6 +265,10 @@ router.get('/portones', async (_req, res) => {
           porton_id,
           max(case when etapa = 'diseno'::public.porton_etapa then inicio end) as diseno_inicio,
           max(case when etapa = 'diseno'::public.porton_etapa then fin end) as diseno_fin,
+          max(case when etapa = 'diseno_piernas'::public.porton_etapa then inicio end) as diseno_piernas_inicio,
+          max(case when etapa = 'diseno_piernas'::public.porton_etapa then fin end) as diseno_piernas_fin,
+          max(case when etapa = 'diseno_revestimiento'::public.porton_etapa then inicio end) as diseno_revestimiento_inicio,
+          max(case when etapa = 'diseno_revestimiento'::public.porton_etapa then fin end) as diseno_revestimiento_fin,
           max(case when etapa = 'laser'::public.porton_etapa then inicio end) as laser_inicio,
           max(case when etapa = 'laser'::public.porton_etapa then fin end) as laser_fin,
           max(case when etapa = 'guillotina'::public.porton_etapa then inicio end) as guillotina_inicio,

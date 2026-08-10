@@ -12,7 +12,9 @@ import {
 import { isAuthed, login, logout } from '../src/auth/createGateAuth';
 
 const STAGES = [
-  { key: 'diseno',               label: 'Diseño' },
+  { key: 'diseno',               label: 'Diseño Tubos' },
+  { key: 'diseno_piernas',       label: 'Diseño Piernas' },
+  { key: 'diseno_revestimiento', label: 'Diseño Revestimiento' },
   { key: 'laser',                label: 'Laser' },
 
   // Corte

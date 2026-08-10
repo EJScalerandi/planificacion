@@ -551,7 +551,9 @@ const ROUTES = [
     path: '/board',
     label: 'Producción · Tablero completo',
     stages: [
-      { key: 'diseno', label: 'Diseño (Portones)', mode: 'porton' },
+      { key: 'diseno', label: 'Diseño Tubos (Portones)', mode: 'porton' },
+      { key: 'diseno_piernas', label: 'Diseño Piernas', mode: 'porton' },
+      { key: 'diseno_revestimiento', label: 'Diseño Revestimiento', mode: 'porton' },
       { key: 'diseno', label: 'Diseño (iPanel)', mode: 'ipanel' },
       { key: 'laser', label: 'Laser', mode: 'porton' },
       { key: 'guillotina', label: 'Corte piernas', mode: 'porton' },
@@ -579,7 +581,9 @@ const ROUTES = [
     path: '/diseno',
     label: 'Producción · Diseño',
     stages: [
-      { key: 'diseno', label: 'Diseño (Portones)', mode: 'porton' },
+      { key: 'diseno', label: 'Diseño Tubos (Portones)', mode: 'porton' },
+      { key: 'diseno_piernas', label: 'Diseño Piernas', mode: 'porton' },
+      { key: 'diseno_revestimiento', label: 'Diseño Revestimiento', mode: 'porton' },
       { key: 'diseno', label: 'Diseño (iPanel)', mode: 'ipanel' },
     ],
   },
