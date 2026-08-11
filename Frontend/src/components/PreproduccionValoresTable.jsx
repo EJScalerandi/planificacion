@@ -12,6 +12,7 @@ import {
 
 import LogisticaAuthModal from './modals/LogisticaAuthModal';
 import AdminAuthModal from './modals/AdminAuthModal';
+import LogisticaConsultasPanel from './LogisticaConsultasPanel';
 
 // ✅ NUEVO: Presets por distribuidor (RazSoc) + reglas por Sistemas
 import PreproduccionLogisticaPresets, {
@@ -818,6 +819,9 @@ export default function PreproduccionValoresTable() {
   // ✅ panel presets logística + reglas sistema->fecha salida (solo full)
   const [showLogisticaPresets, setShowLogisticaPresets] = useState(false);
   const [showSistemaRules, setShowSistemaRules] = useState(false);
+
+  // Consultas de Logística a Técnica/Comercial (ver LogisticaConsultasPanel.jsx)
+  const [showConsultas, setShowConsultas] = useState(false);
 
   const [logisticaPresets, setLogisticaPresets] = useState(() => loadLogisticaPresets());
   const [sistemaRules, setSistemaRules] = useState(() => loadSistemaFechaSalidaRules());
@@ -1932,6 +1936,10 @@ export default function PreproduccionValoresTable() {
             Estado Portones
           </a>
 
+          <button onClick={() => setShowConsultas(true)} className="btn">
+            Consultas (Técnica / Comercial)
+          </button>
+
           {accessMode === 'full' ? (
             <>
               <button onClick={() => setShowLogisticaPresets(true)} disabled={loading} className="btn">
@@ -2270,6 +2278,8 @@ export default function PreproduccionValoresTable() {
           <PreproduccionSistemaFechaSalidaRules open={showSistemaRules} onClose={closeSistemaRules} />
         </>
       ) : null}
+
+      {showConsultas ? <LogisticaConsultasPanel onClose={() => setShowConsultas(false)} /> : null}
 
       {/* Modales */}
       {accessMode === 'full' || accessMode === 'admin' ? (

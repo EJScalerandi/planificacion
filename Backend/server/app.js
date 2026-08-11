@@ -11,6 +11,7 @@ const adminWorkflowRoutes = require('./routes/admin/workflow');
 const adminPrefabricadosRoutes = require('./routes/admin/prefabricados');
 const adminServicioTecnicoRoutes = require('./routes/admin/servicioTecnico');
 const adminInsumosRoutes = require('./routes/admin/insumos');
+const adminLogisticaConsultasRoutes = require('./routes/admin/logisticaConsultas');
 
 const plantaRoutes = require('./routes/public/planta');
 const despacharRoutes = require('./routes/public/despachar');
@@ -65,7 +66,9 @@ app.use(cors({
 }));
 app.options('*', cors());
 
-app.use(express.json());
+// 25mb: los adjuntos de las Consultas a Técnica/Comercial (mismo tope que usa
+// el Presupuestador) viajan como data URL en el body JSON.
+app.use(express.json({ limit: '25mb' }));
 app.use(morgan('dev'));
 
 // Routes
@@ -80,6 +83,7 @@ app.use('/admin', adminUsersRoutes);
 // Montando insumos antes evitamos que un usuario con SOLO compras:admin choque
 // contra el scope de otra feature.
 app.use('/admin', adminInsumosRoutes);
+app.use('/admin', adminLogisticaConsultasRoutes);
 app.use('/admin', adminQcRoutes);
 app.use('/admin', adminWorkflowRoutes);
 app.use('/admin', adminPrefabricadosRoutes);

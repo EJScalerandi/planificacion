@@ -299,4 +299,17 @@ export const adminSetInsumoProductoNombre = (productoId, nombreDisplay) =>
 export const adminFetchInsumosSeccionesCierre = () => api.get('/admin/insumos/secciones-cierre');
 export const adminSaveInsumosSeccionesCierre = (entries) => api.put('/admin/insumos/secciones-cierre', { entries });
 
+/* ========= Consultas de Logística (a Técnica / Comercial, vía /a) =========
+   "kind" es 'technical' o 'commercial'. Escriben directo sobre las mismas
+   tablas que usa el Presupuestador para sus tickets de vendedor/distribuidor
+   (misma base de datos), a nombre de la cuenta compartida "Logística". */
+export const fetchLogisticaConsultas = (kind, status = 'open') =>
+  api.get(`/admin/logistica-consultas/${kind}`, { params: { status } });
+export const fetchLogisticaConsultaDetail = (kind, id) => api.get(`/admin/logistica-consultas/${kind}/${id}`);
+export const createLogisticaConsulta = (kind, payload) => api.post(`/admin/logistica-consultas/${kind}`, payload);
+export const addLogisticaConsultaMessage = (kind, id, payload) =>
+  api.post(`/admin/logistica-consultas/${kind}/${id}/messages`, payload);
+export const markLogisticaConsultaRead = (kind, id) => api.post(`/admin/logistica-consultas/${kind}/${id}/read`, {});
+export const fetchLogisticaConsultasUnreadSummary = (kind) => api.get(`/admin/logistica-consultas/${kind}/unread-summary`);
+
 export default api;
