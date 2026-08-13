@@ -765,7 +765,13 @@ export default function PreproduccionValoresTable() {
   // ====== Estado basado en PORTONES (solo full) ======
   const [portonesNvSet, setPortonesNvSet] = useState(() => new Set());
   const [portonesNvToId, setPortonesNvToId] = useState(() => new Map());
+  const [portonesNvToDespacho, setPortonesNvToDespacho] = useState(() => new Map());
   const [portonesIndexState, setPortonesIndexState] = useState('idle'); // idle|loading|ok|error
+
+  // Switch "ocultar ya despachados": por defecto oculta los portones con la
+  // etapa Despacho Finalizado (ya salieron), tal como el análogo del reporte
+  // semanal en Información Excel.
+  const [mostrarDespachados, setMostrarDespachados] = useState(false);
 
   // Filtros:
   const [filters, setFilters] = useState(() => {
@@ -896,20 +902,31 @@ export default function PreproduccionValoresTable() {
 
       const set = new Set();
       const map = new Map();
+      // Un NV puede tener varios portones (varias partidas/hojas). Solo lo
+      // consideramos "ya despachado" si TODOS los portones de ese NV tienen
+      // la etapa Despacho en Finalizado - si queda alguno pendiente, el NV
+      // sigue siendo relevante y no se oculta.
+      const despachoAllFinalizedByNv = new Map();
       for (const it of list) {
         const nv = parseInt(String(it?.nv ?? it?.NV ?? it?.nlista ?? it?.NLista ?? '').trim(), 10);
         if (Number.isFinite(nv)) {
           set.add(nv);
           const id = it?.id ?? it?.ID ?? null;
           if (id != null) map.set(nv, id);
+          const despacho = String(it?.despacho ?? it?.Despacho ?? '').trim().toLowerCase();
+          const finalizado = despacho === 'finalizado';
+          const prev = despachoAllFinalizedByNv.has(nv) ? despachoAllFinalizedByNv.get(nv) : true;
+          despachoAllFinalizedByNv.set(nv, prev && finalizado);
         }
       }
       setPortonesNvSet(set);
       setPortonesNvToId(map);
+      setPortonesNvToDespacho(despachoAllFinalizedByNv);
       setPortonesIndexState('ok');
     } catch {
       setPortonesNvSet(new Set());
       setPortonesNvToId(new Map());
+      setPortonesNvToDespacho(new Map());
       setPortonesIndexState('error');
     }
   }, []);
@@ -930,7 +947,9 @@ export default function PreproduccionValoresTable() {
       setLoading(false);
     }
 
-    if (accessMode === 'full') {
+    // El índice de portones (para "Enviado" y para el switch de despacho) se
+    // usa en cualquier modo con acceso a la página, no solo full.
+    if (accessMode !== 'none') {
       await refreshPortonesNvIndex();
     }
   }, [refreshPortonesNvIndex, accessMode]);
@@ -1080,14 +1099,24 @@ export default function PreproduccionValoresTable() {
     });
   }, [rows, blockedNvSet]);
 
+  // ====== Ocultar ya despachados (switch, ver mostrarDespachados) ======
+  const rowsAfterDespachoFilter = useMemo(() => {
+    if (mostrarDespachados) return rowsAfterNvExclusion;
+    return (rowsAfterNvExclusion || []).filter((row) => {
+      const nv = getNvIntFromRow(row);
+      if (nv == null) return true;
+      return portonesNvToDespacho.get(nv) !== true;
+    });
+  }, [rowsAfterNvExclusion, mostrarDespachados, portonesNvToDespacho]);
+
   // ====== Corte ADMIN por fecha salida (<= viernes semana siguiente) ======
   const rowsAfterAccessWindow = useMemo(() => {
-    if (accessMode !== 'admin') return rowsAfterNvExclusion;
+    if (accessMode !== 'admin') return rowsAfterDespachoFilter;
 
     const cutoff = nextWeekFridayCutoffISO10();
     const colFechaSalida = ALL_COLS.find((c) => c.id === 'fecha_salida');
 
-    return (rowsAfterNvExclusion || []).filter((row) => {
+    return (rowsAfterDespachoFilter || []).filter((row) => {
       const raw = colFechaSalida
         ? getCellValue(row, colFechaSalida)
         : row?.data?.fecha_salida_imput ?? row?.data?.Fecha_Salida_Imput;
@@ -1095,7 +1124,7 @@ export default function PreproduccionValoresTable() {
       if (!isISODate10(date10)) return false;
       return date10 <= cutoff;
     });
-  }, [rowsAfterNvExclusion, accessMode, ALL_COLS]);
+  }, [rowsAfterDespachoFilter, accessMode, ALL_COLS]);
 
   // ✅ lista de distribuidores (RazSoc)
   const distributorsList = useMemo(() => {
@@ -1939,6 +1968,15 @@ export default function PreproduccionValoresTable() {
           <button onClick={() => setShowConsultas(true)} className="btn">
             Consultas (Técnica / Comercial)
           </button>
+
+          <label className="btn" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input
+              type="checkbox"
+              checked={mostrarDespachados}
+              onChange={(e) => setMostrarDespachados(e.target.checked)}
+            />
+            Mostrar ya despachados
+          </label>
 
           {accessMode === 'full' ? (
             <>

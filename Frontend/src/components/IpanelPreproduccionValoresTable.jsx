@@ -150,6 +150,7 @@ export default function IpanelPreproduccionValoresTable() {
   const [err, setErr] = useState('');
   const [q, setQ] = useState('');
   const [onlyPending, setOnlyPending] = useState(false);
+  const [mostrarDespachados, setMostrarDespachados] = useState(false);
   const [drafts, setDrafts] = useState({});
   const [savingId, setSavingId] = useState(null);
   const [sendingId, setSendingId] = useState(null);
@@ -167,7 +168,11 @@ export default function IpanelPreproduccionValoresTable() {
       setLoading(true);
       setErr('');
       const { data } = await api.get('/preproduccion-valores-ipanels', {
-        params: { q: q.trim() || undefined, onlyPending: onlyPending ? 1 : undefined },
+        params: {
+          q: q.trim() || undefined,
+          onlyPending: onlyPending ? 1 : undefined,
+          mostrarDespachados: mostrarDespachados ? 1 : undefined,
+        },
         headers: { 'Cache-Control': 'no-cache' },
       });
       setRows(Array.isArray(data) ? data : []);
@@ -176,7 +181,7 @@ export default function IpanelPreproduccionValoresTable() {
     } finally {
       setLoading(false);
     }
-  }, [q, onlyPending]);
+  }, [q, onlyPending, mostrarDespachados]);
 
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -347,8 +352,12 @@ export default function IpanelPreproduccionValoresTable() {
             <input type="checkbox" checked={onlyPending} onChange={(e) => setOnlyPending(e.target.checked)} />
             Solo pendientes
           </label>
+          <label className="btn" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <input type="checkbox" checked={mostrarDespachados} onChange={(e) => setMostrarDespachados(e.target.checked)} />
+            Mostrar ya despachados
+          </label>
           <button className="btn btn--brand" type="submit" disabled={loading}>{loading ? 'Cargando...' : 'Buscar'}</button>
-          <button className="btn" type="button" onClick={() => { setQ(''); setOnlyPending(false); setTimeout(load, 0); }}>Limpiar</button>
+          <button className="btn" type="button" onClick={() => { setQ(''); setOnlyPending(false); setMostrarDespachados(false); setTimeout(load, 0); }}>Limpiar</button>
         </form>
       </div>
 

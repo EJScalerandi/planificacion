@@ -265,6 +265,7 @@ router.get('/preproduccion-valores-ipanels', async (req, res) => {
   try {
     const q = toStr(req.query.q);
     const onlyPending = ['1', 'true', 'si', 'yes'].includes(toStr(req.query.onlyPending).toLowerCase());
+    const mostrarDespachados = ['1', 'true', 'si', 'yes'].includes(toStr(req.query.mostrarDespachados).toLowerCase());
     const params = [];
     const where = [];
 
@@ -284,6 +285,10 @@ router.get('/preproduccion-valores-ipanels', async (req, res) => {
     }
 
     if (onlyPending) where.push('(coalesce(p.produccion_enviada, false) = false and ip.id is null)');
+    // Por defecto ocultamos los que ya tienen la etapa Despacho Finalizada en
+    // el ipanel de producción (ya salieron) - switch "mostrarDespachados" para
+    // verlos igual.
+    if (!mostrarDespachados) where.push(`lower(coalesce(ip.despacho, '')) is distinct from 'finalizado'`);
     const whereSql = where.length ? `where ${where.join(' and ')}` : '';
 
     const { rows } = await pool.query(
@@ -294,7 +299,7 @@ router.get('/preproduccion-valores-ipanels', async (req, res) => {
         (coalesce(p.produccion_enviada, false) or ip.id is not null) as produccion_enviada_resolved
       from public.preproduccion_valores_ipanels p
       left join lateral (
-        select id
+        select id, despacho
         from public.ipanel i
         where i.partida = p.partida
         order by id asc
