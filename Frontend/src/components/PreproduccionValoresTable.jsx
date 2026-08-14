@@ -1,5 +1,6 @@
 ﻿// src/components/PreproduccionValoresTable.jsx
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import {
   fetchPreproduccionValores,
   updatePreproduccionValor,
@@ -7,7 +8,6 @@ import {
   fetchPortones,
   setFechaProd,
   setSistemaPorton,
-  getAdminToken,
 } from '../api';
 
 import LogisticaAuthModal from './modals/LogisticaAuthModal';
@@ -25,6 +25,16 @@ import PreproduccionSistemaFechaSalidaRules, {
   loadSistemaFechaSalidaRules,
   resolveRecommendedFechaSalidaISO10,
 } from './PreproduccionSistemaFechaSalidaRules';
+
+// Semana ISO (AAAA-Www): compartida con la pantalla de Logística de Viajes,
+// para que las dos calculen "semana" exactamente igual (ver src/utils/isoWeek.js).
+import {
+  isoWeekLabelFromDate,
+  weekNumberFromLabel,
+  weekTitleFromSelection,
+} from '../utils/isoWeek';
+
+import { getCurrentScopes, hasAny } from '../utils/adminScopes';
 
 // =====================
 // NV bloqueados (no deben aparecer) - desde TXT público
@@ -66,45 +76,8 @@ function toStr(v) {
   }
 }
 
-// ===== JWT/Scopes =====
-function parseJwt(token) {
-  try {
-    const part = String(token || '').split('.')[1];
-    if (!part) return null;
-    const base64 = part.replace(/-/g, '+').replace(/_/g, '/');
-    const json = decodeURIComponent(
-      atob(base64)
-        .split('')
-        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
-        .join('')
-    );
-    return JSON.parse(json);
-  } catch {
-    return null;
-  }
-}
-
-function normalizeScopes(scopesRaw) {
-  if (Array.isArray(scopesRaw)) return scopesRaw.map((s) => String(s || '').trim()).filter(Boolean);
-  if (typeof scopesRaw === 'string') {
-    return scopesRaw
-      .split(/[\s,]+/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-  }
-  return [];
-}
-
-function getCurrentScopes() {
-  const token = getAdminToken();
-  const payload = parseJwt(token) || {};
-  return normalizeScopes(payload.scopes ?? payload.scope ?? payload.permissions ?? []);
-}
-
-function hasAny(scopes, needed) {
-  const set = new Set((scopes || []).map((s) => String(s || '').trim()));
-  return (needed || []).some((n) => set.has(n));
-}
+// JWT/Scopes: ahora en ../utils/adminScopes (import de arriba), compartido
+// con la pantalla de Logística de Viajes.
 
 function pad2(n) {
   return String(n).padStart(2, '0');
@@ -195,61 +168,15 @@ function ciIncludes(haystack, needle) {
   return String(haystack || '').toLowerCase().includes(String(needle || '').toLowerCase());
 }
 
-function isoWeekLabelFromDate(dateLike) {
-  const date10 = toISODate10(dateLike);
-  if (!isISODate10(date10)) return '';
-  const d = new Date(`${date10}T00:00:00Z`);
-  const day = (d.getUTCDay() + 6) % 7;
-  d.setUTCDate(d.getUTCDate() - day + 3);
-  const firstThu = new Date(Date.UTC(d.getUTCFullYear(), 0, 4));
-  const firstDay = (firstThu.getUTCDay() + 6) % 7;
-  firstThu.setUTCDate(firstThu.getUTCDate() - firstDay + 3);
-  const week = 1 + Math.round((d - firstThu) / (7 * 24 * 3600 * 1000));
-  const year = d.getUTCFullYear();
-  const ww = String(week).padStart(2, '0');
-  return `${year}-W${ww}`;
-}
+// isoWeekLabelFromDate / weekNumberFromLabel / isoWeekStartEndFromLabel /
+// weekTitleFromSelection ahora viven en ../utils/isoWeek (import de arriba),
+// compartidas con la pantalla de Logística de Viajes.
 
 function weekLabelFromRow(row, mode) {
   const d = row?.data || {};
   if (mode === 'produccion') return isoWeekLabelFromDate(d.inicio_prod_imput ?? d.Inicio_Prod_Imput ?? '');
   if (mode === 'despacho') return isoWeekLabelFromDate(d.fecha_salida_imput ?? d.Fecha_Salida_Imput ?? '');
   return '';
-}
-
-function weekNumberFromLabel(weekLabel) {
-  const m = String(weekLabel || '').match(/^\d{4}-W(\d{2})$/);
-  if (!m) return '';
-  return String(Number(m[1]));
-}
-
-function isoWeekStartEndFromLabel(weekLabel) {
-  const m = String(weekLabel || '').match(/^(\d{4})-W(\d{2})$/);
-  if (!m) return { start: '', end: '' };
-  const year = Number(m[1]);
-  const week = Number(m[2]);
-
-  const jan4 = new Date(Date.UTC(year, 0, 4));
-  const jan4Day = (jan4.getUTCDay() + 6) % 7;
-  const week1Mon = new Date(jan4);
-  week1Mon.setUTCDate(jan4.getUTCDate() - jan4Day);
-
-  const startDt = new Date(week1Mon);
-  startDt.setUTCDate(week1Mon.getUTCDate() + (week - 1) * 7);
-  const endDt = new Date(startDt);
-  endDt.setUTCDate(startDt.getUTCDate() + 7);
-
-  const start = `${startDt.getUTCFullYear()}-${pad2(startDt.getUTCMonth() + 1)}-${pad2(startDt.getUTCDate())}`;
-  const end = `${endDt.getUTCFullYear()}-${pad2(endDt.getUTCMonth() + 1)}-${pad2(endDt.getUTCDate())}`;
-  return { start, end };
-}
-
-function weekTitleFromSelection(weekLabel) {
-  const m = String(weekLabel || '').match(/^\d{4}-W(\d{2})$/);
-  const n = m ? String(Number(m[1])) : '';
-  const { start, end } = isoWeekStartEndFromLabel(weekLabel);
-  if (!n || !start || !end) return '';
-  return `Semana ${n} ${formatDMY(start)} al ${formatDMY(end)}`;
 }
 
 function toMmHeuristic(n) {
@@ -1974,6 +1901,10 @@ export default function PreproduccionValoresTable() {
           <button onClick={() => setShowConsultas(true)} className="btn">
             Consultas (Técnica / Comercial)
           </button>
+
+          <Link to="/admin/logistica-viajes" className="btn" style={{ textDecoration: 'none' }}>
+            Viajes de Logística
+          </Link>
 
           <label className="btn" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <input

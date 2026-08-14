@@ -312,4 +312,109 @@ export const addLogisticaConsultaMessage = (kind, id, payload) =>
 export const markLogisticaConsultaRead = (kind, id) => api.post(`/admin/logistica-consultas/${kind}/${id}/read`, {});
 export const fetchLogisticaConsultasUnreadSummary = (kind) => api.get(`/admin/logistica-consultas/${kind}/unread-summary`);
 
+/* ========= Logística de Viajes (despacho + instalación por semana, desde /a) =========
+   Arma "viajes" (fecha + zona + cuadrilla + vehículo) por semana ISO y reparte en
+   ellos los portones con despacho/instalación de esa semana. Ver
+   Backend/server/routes/admin/logisticaViajes.js. */
+export async function fetchLogisticaViajesConfig() {
+  const { data } = await api.get('/admin/logistica/config');
+  return data;
+}
+
+export async function createLogisticaZona(payload) {
+  const { data } = await api.post('/admin/logistica/zonas', payload);
+  return data;
+}
+export async function updateLogisticaZona(id, patch) {
+  const { data } = await api.patch(`/admin/logistica/zonas/${id}`, patch);
+  return data;
+}
+export async function deleteLogisticaZona(id) {
+  const { data } = await api.delete(`/admin/logistica/zonas/${id}`);
+  return data;
+}
+
+export async function createLogisticaVehiculo(payload) {
+  const { data } = await api.post('/admin/logistica/vehiculos', payload);
+  return data;
+}
+export async function updateLogisticaVehiculo(id, patch) {
+  const { data } = await api.patch(`/admin/logistica/vehiculos/${id}`, patch);
+  return data;
+}
+export async function deleteLogisticaVehiculo(id) {
+  const { data } = await api.delete(`/admin/logistica/vehiculos/${id}`);
+  return data;
+}
+
+export async function createLogisticaCuadrilla(payload) {
+  const { data } = await api.post('/admin/logistica/cuadrillas', payload);
+  return data;
+}
+export async function updateLogisticaCuadrilla(id, patch) {
+  const { data } = await api.patch(`/admin/logistica/cuadrillas/${id}`, patch);
+  return data;
+}
+export async function deleteLogisticaCuadrilla(id) {
+  const { data } = await api.delete(`/admin/logistica/cuadrillas/${id}`);
+  return data;
+}
+export async function setLogisticaCuadrillaMiembros(id, qcUserIds) {
+  const { data } = await api.put(`/admin/logistica/cuadrillas/${id}/miembros`, { qc_user_ids: qcUserIds });
+  return data;
+}
+
+export async function createLogisticaReglaCapacidad(payload) {
+  const { data } = await api.post('/admin/logistica/reglas-capacidad', payload);
+  return data;
+}
+export async function updateLogisticaReglaCapacidad(id, patch) {
+  const { data } = await api.patch(`/admin/logistica/reglas-capacidad/${id}`, patch);
+  return data;
+}
+export async function deleteLogisticaReglaCapacidad(id) {
+  const { data } = await api.delete(`/admin/logistica/reglas-capacidad/${id}`);
+  return data;
+}
+
+export async function fetchLogisticaSemanas() {
+  const { data } = await api.get('/admin/logistica/semanas');
+  return data;
+}
+export async function fetchLogisticaSemanaDetalle(semana) {
+  const { data } = await api.get(`/admin/logistica/semanas/${encodeURIComponent(semana)}`);
+  return data;
+}
+export async function crearLogisticaViaje(semana, payload) {
+  const { data } = await api.post(`/admin/logistica/semanas/${encodeURIComponent(semana)}/viajes`, payload);
+  return data;
+}
+export async function patchLogisticaViaje(id, patch) {
+  const { data } = await api.patch(`/admin/logistica/viajes/${id}`, patch);
+  return data;
+}
+export async function borrarLogisticaViaje(id) {
+  const { data } = await api.delete(`/admin/logistica/viajes/${id}`);
+  return data;
+}
+export async function asignarLogisticaPorton(viajeId, portonId, tipo) {
+  const { data } = await api.post(`/admin/logistica/viajes/${viajeId}/portones`, { porton_id: portonId, tipo });
+  return data;
+}
+export async function desasignarLogisticaPorton(viajeId, portonId, tipo) {
+  const { data } = await api.delete(
+    `/admin/logistica/viajes/${viajeId}/portones/${encodeURIComponent(portonId)}`,
+    { params: { tipo } }
+  );
+  return data;
+}
+export async function cerrarLogisticaSemana(semana) {
+  const { data } = await api.post(`/admin/logistica/semanas/${encodeURIComponent(semana)}/cerrar`, {});
+  return data;
+}
+export async function reabrirLogisticaSemana(semana) {
+  const { data } = await api.post(`/admin/logistica/semanas/${encodeURIComponent(semana)}/reabrir`, {});
+  return data;
+}
+
 export default api;

@@ -12,6 +12,7 @@ const adminPrefabricadosRoutes = require('./routes/admin/prefabricados');
 const adminServicioTecnicoRoutes = require('./routes/admin/servicioTecnico');
 const adminInsumosRoutes = require('./routes/admin/insumos');
 const adminLogisticaConsultasRoutes = require('./routes/admin/logisticaConsultas');
+const adminLogisticaViajesRoutes = require('./routes/admin/logisticaViajes');
 
 const plantaRoutes = require('./routes/public/planta');
 const despacharRoutes = require('./routes/public/despachar');
@@ -84,6 +85,7 @@ app.use('/admin', adminUsersRoutes);
 // contra el scope de otra feature.
 app.use('/admin', adminInsumosRoutes);
 app.use('/admin', adminLogisticaConsultasRoutes);
+app.use('/admin', adminLogisticaViajesRoutes);
 app.use('/admin', adminQcRoutes);
 app.use('/admin', adminWorkflowRoutes);
 app.use('/admin', adminPrefabricadosRoutes);

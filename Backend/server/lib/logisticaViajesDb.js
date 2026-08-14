@@ -1,0 +1,636 @@
+// lib/logisticaViajesDb.js
+//
+// Logística de Viajes: arma "viajes" (fecha + zona + cuadrilla + vehículo) por
+// semana ISO y reparte en ellos los portones (unidades físicas de
+// public.portones) que tienen despacho y/o instalación esa semana, según
+// fecha_salida_imput / fecha_llegada_imput cargados en /a
+// (public.preproduccion_valores.data, 1 fila por NV).
+//
+// Granularidad: "portón" acá = fila de public.portones (unidad física). Fecha
+// y medidas (Alto/Ancho) se resuelven por join a preproduccion_valores vía
+// portones.nv, porque no existen a nivel unidad — para los NV con más de una
+// unidad física, todas heredan la misma fecha/medida del NV (documentado en
+// el plan; es un caso raro).
+//
+// Todas las funciones que mutan devuelven el detalle fresco de la semana
+// (getSemanaDetalle), mismo patrón que logisticaConsultasDb: simple y evita
+// que el frontend tenga que reconciliar respuestas parciales a mano mientras
+// varios usuarios arman viajes al mismo tiempo.
+const { pool } = require('../db');
+const { computePeso } = require('./logisticaCapacidad');
+
+async function withTx(fn) {
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+    const out = await fn(client);
+    await client.query('commit');
+    return out;
+  } catch (err) {
+    try { await client.query('rollback'); } catch {}
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+// ===========================================================================
+// Config: zonas / vehículos / cuadrillas / reglas de capacidad
+// ===========================================================================
+
+async function listZonas() {
+  const { rows } = await pool.query(
+    `select id, nombre, activo, created_at, updated_at from public.logistica_zonas order by nombre asc;`
+  );
+  return rows;
+}
+
+async function createZona({ nombre, activo }) {
+  const nm = String(nombre || '').trim();
+  if (!nm) throw new Error('Falta nombre');
+  const { rows } = await pool.query(
+    `insert into public.logistica_zonas (nombre, activo) values ($1, $2)
+     returning id, nombre, activo, created_at, updated_at;`,
+    [nm, activo !== false]
+  );
+  return rows[0];
+}
+
+async function updateZona(id, { nombre, activo }) {
+  const sets = [];
+  const params = [Number(id)];
+  if (nombre !== undefined) { params.push(String(nombre || '').trim()); sets.push(`nombre = $${params.length}`); }
+  if (activo !== undefined) { params.push(!!activo); sets.push(`activo = $${params.length}`); }
+  if (!sets.length) throw new Error('Nada para actualizar');
+  sets.push('updated_at = now()');
+  const { rows, rowCount } = await pool.query(
+    `update public.logistica_zonas set ${sets.join(', ')} where id = $1
+     returning id, nombre, activo, created_at, updated_at;`,
+    params
+  );
+  if (!rowCount) throw new Error('Zona no encontrada');
+  return rows[0];
+}
+
+async function deleteZona(id) {
+  await pool.query(`delete from public.logistica_zonas where id = $1;`, [Number(id)]);
+}
+
+async function listVehiculos() {
+  const { rows } = await pool.query(
+    `select id, nombre, capacidad_portones, activo, created_at, updated_at
+     from public.logistica_vehiculos order by nombre asc;`
+  );
+  return rows;
+}
+
+async function createVehiculo({ nombre, capacidad_portones, activo }) {
+  const nm = String(nombre || '').trim();
+  if (!nm) throw new Error('Falta nombre');
+  const cap = Number(capacidad_portones);
+  if (!Number.isFinite(cap) || cap < 0) throw new Error('capacidad_portones inválida');
+  const { rows } = await pool.query(
+    `insert into public.logistica_vehiculos (nombre, capacidad_portones, activo) values ($1, $2, $3)
+     returning id, nombre, capacidad_portones, activo, created_at, updated_at;`,
+    [nm, cap, activo !== false]
+  );
+  return rows[0];
+}
+
+async function updateVehiculo(id, { nombre, capacidad_portones, activo }) {
+  const sets = [];
+  const params = [Number(id)];
+  if (nombre !== undefined) { params.push(String(nombre || '').trim()); sets.push(`nombre = $${params.length}`); }
+  if (capacidad_portones !== undefined) {
+    const cap = Number(capacidad_portones);
+    if (!Number.isFinite(cap) || cap < 0) throw new Error('capacidad_portones inválida');
+    params.push(cap);
+    sets.push(`capacidad_portones = $${params.length}`);
+  }
+  if (activo !== undefined) { params.push(!!activo); sets.push(`activo = $${params.length}`); }
+  if (!sets.length) throw new Error('Nada para actualizar');
+  sets.push('updated_at = now()');
+  const { rows, rowCount } = await pool.query(
+    `update public.logistica_vehiculos set ${sets.join(', ')} where id = $1
+     returning id, nombre, capacidad_portones, activo, created_at, updated_at;`,
+    params
+  );
+  if (!rowCount) throw new Error('Vehículo no encontrado');
+  return rows[0];
+}
+
+async function deleteVehiculo(id) {
+  await pool.query(`delete from public.logistica_vehiculos where id = $1;`, [Number(id)]);
+}
+
+async function listCuadrillas() {
+  const [cQ, mQ] = await Promise.all([
+    pool.query(`select id, nombre, activo, created_at, updated_at from public.logistica_cuadrillas order by nombre asc;`),
+    pool.query(
+      `select cm.cuadrilla_id, cm.qc_user_id, u.name as qc_user_name
+       from public.logistica_cuadrilla_miembros cm
+       join public.qc_users u on u.id = cm.qc_user_id
+       order by u.name asc;`
+    ),
+  ]);
+  const miembrosByCuadrilla = new Map();
+  for (const m of mQ.rows) {
+    if (!miembrosByCuadrilla.has(m.cuadrilla_id)) miembrosByCuadrilla.set(m.cuadrilla_id, []);
+    miembrosByCuadrilla.get(m.cuadrilla_id).push({ qc_user_id: m.qc_user_id, name: m.qc_user_name });
+  }
+  return cQ.rows.map((c) => ({ ...c, miembros: miembrosByCuadrilla.get(c.id) || [] }));
+}
+
+async function createCuadrilla({ nombre, activo }) {
+  const nm = String(nombre || '').trim();
+  if (!nm) throw new Error('Falta nombre');
+  const { rows } = await pool.query(
+    `insert into public.logistica_cuadrillas (nombre, activo) values ($1, $2)
+     returning id, nombre, activo, created_at, updated_at;`,
+    [nm, activo !== false]
+  );
+  return { ...rows[0], miembros: [] };
+}
+
+async function updateCuadrilla(id, { nombre, activo }) {
+  const sets = [];
+  const params = [Number(id)];
+  if (nombre !== undefined) { params.push(String(nombre || '').trim()); sets.push(`nombre = $${params.length}`); }
+  if (activo !== undefined) { params.push(!!activo); sets.push(`activo = $${params.length}`); }
+  if (!sets.length) throw new Error('Nada para actualizar');
+  sets.push('updated_at = now()');
+  const { rows, rowCount } = await pool.query(
+    `update public.logistica_cuadrillas set ${sets.join(', ')} where id = $1
+     returning id, nombre, activo, created_at, updated_at;`,
+    params
+  );
+  if (!rowCount) throw new Error('Cuadrilla no encontrada');
+  return rows[0];
+}
+
+async function deleteCuadrilla(id) {
+  await pool.query(`delete from public.logistica_cuadrillas where id = $1;`, [Number(id)]);
+}
+
+async function setCuadrillaMiembros(id, qcUserIds) {
+  const cuadrillaId = Number(id);
+  const ids = Array.from(new Set((Array.isArray(qcUserIds) ? qcUserIds : []).map((v) => Number(v)).filter(Number.isFinite)));
+  await withTx(async (client) => {
+    const exists = await client.query(`select id from public.logistica_cuadrillas where id = $1;`, [cuadrillaId]);
+    if (!exists.rowCount) throw new Error('Cuadrilla no encontrada');
+    await client.query(`delete from public.logistica_cuadrilla_miembros where cuadrilla_id = $1;`, [cuadrillaId]);
+    for (const uid of ids) {
+      await client.query(
+        `insert into public.logistica_cuadrilla_miembros (cuadrilla_id, qc_user_id) values ($1, $2)
+         on conflict do nothing;`,
+        [cuadrillaId, uid]
+      );
+    }
+  });
+  const all = await listCuadrillas();
+  return all.find((c) => c.id === cuadrillaId) || null;
+}
+
+async function listReglasCapacidad() {
+  const { rows } = await pool.query(
+    `select id, nombre, campo, operador, valor_mm, peso, prioridad, activo, created_at, updated_at
+     from public.logistica_reglas_capacidad order by prioridad asc, id asc;`
+  );
+  return rows;
+}
+
+async function createReglaCapacidad({ nombre, campo, operador, valor_mm, peso, prioridad, activo }) {
+  const valorMm = Number(valor_mm);
+  if (!Number.isFinite(valorMm)) throw new Error('valor_mm inválido');
+  const pesoNum = peso === undefined ? 2 : Number(peso);
+  if (!Number.isFinite(pesoNum)) throw new Error('peso inválido');
+  const { rows } = await pool.query(
+    `insert into public.logistica_reglas_capacidad (nombre, campo, operador, valor_mm, peso, prioridad, activo)
+     values ($1, coalesce($2,'max_mm'), coalesce($3,'>'), $4, $5, coalesce($6,0), $7)
+     returning id, nombre, campo, operador, valor_mm, peso, prioridad, activo, created_at, updated_at;`,
+    [String(nombre || '').trim() || null, campo || null, operador || null, valorMm, pesoNum, prioridad ?? null, activo !== false]
+  );
+  return rows[0];
+}
+
+async function updateReglaCapacidad(id, patch) {
+  const fields = ['nombre', 'campo', 'operador', 'valor_mm', 'peso', 'prioridad', 'activo'];
+  const sets = [];
+  const params = [Number(id)];
+  for (const f of fields) {
+    if (patch[f] === undefined) continue;
+    params.push(f === 'activo' ? !!patch[f] : patch[f]);
+    sets.push(`${f} = $${params.length}`);
+  }
+  if (!sets.length) throw new Error('Nada para actualizar');
+  sets.push('updated_at = now()');
+  const { rows, rowCount } = await pool.query(
+    `update public.logistica_reglas_capacidad set ${sets.join(', ')} where id = $1
+     returning id, nombre, campo, operador, valor_mm, peso, prioridad, activo, created_at, updated_at;`,
+    params
+  );
+  if (!rowCount) throw new Error('Regla no encontrada');
+  return rows[0];
+}
+
+async function deleteReglaCapacidad(id) {
+  await pool.query(`delete from public.logistica_reglas_capacidad where id = $1;`, [Number(id)]);
+}
+
+async function getConfig() {
+  const [zonas, vehiculos, cuadrillas, reglas, qcUsersQ] = await Promise.all([
+    listZonas(),
+    listVehiculos(),
+    listCuadrillas(),
+    listReglasCapacidad(),
+    pool.query(`select id, name, is_active from public.qc_users where is_active is true order by name asc;`),
+  ]);
+  return { zonas, vehiculos, cuadrillas, reglas, qc_users: qcUsersQ.rows };
+}
+
+// ===========================================================================
+// Portones por semana (despacho / instalación) y viajes
+// ===========================================================================
+
+// Campos de contacto/dirección: mismos sourceKeys que usa el PDF de /a
+// (getPdfFieldDefs en PreproduccionValoresTable.jsx) para nombre/distribuidor/dirección.
+// Usada igual en las dos mitades del UNION ALL de abajo (despacho/instalación),
+// siempre contra el alias "p" de la CTE "base" (que trae pv.data como p.pv_data).
+const ITEMS_SELECT_COLS = `
+  p.id as porton_id,
+  p.nv,
+  p.nlista,
+  p.partida,
+  p.sistema,
+  p.tipo as porton_tipo,
+  p.pv_data->>'Alto' as alto,
+  p.pv_data->>'Ancho' as ancho,
+  coalesce(p.pv_data->>'Nombre', '') as nombre,
+  coalesce(p.pv_data->>'RazSoc', '') as distribuidor,
+  coalesce(p.pv_data->>'Direccion', p.pv_data->>'Dirección', p.pv_data->>'direccion', '') as direccion
+`;
+
+async function fetchItemsForSemana(semana) {
+  const { rows } = await pool.query(
+    `
+    with base as (
+      select p.*, pv.data as pv_data
+      from public.portones p
+      left join public.preproduccion_valores pv on pv.nv = p.nv and pv.nv_tipo = 'NV'
+      where p.parent_id is null
+    )
+    select ${ITEMS_SELECT_COLS},
+      'despacho' as tipo,
+      vp.viaje_id, vp.peso as peso_asignado, vp.orden
+    from base p
+    left join public.logistica_viaje_portones vp on vp.porton_id = p.id and vp.tipo = 'despacho'
+    where nullif(p.pv_data->>'fecha_salida_imput','') is not null
+      and to_char(nullif(p.pv_data->>'fecha_salida_imput','')::date, 'IYYY-"W"IW') = $1
+      and p.despacho is distinct from 'Finalizado'
+
+    union all
+
+    select ${ITEMS_SELECT_COLS},
+      'instalacion' as tipo,
+      vp.viaje_id, vp.peso as peso_asignado, vp.orden
+    from base p
+    left join public.logistica_viaje_portones vp on vp.porton_id = p.id and vp.tipo = 'instalacion'
+    where nullif(p.pv_data->>'fecha_llegada_imput','') is not null
+      and to_char(nullif(p.pv_data->>'fecha_llegada_imput','')::date, 'IYYY-"W"IW') = $1
+    `,
+    [semana]
+  );
+  return rows;
+}
+
+async function getSemanaCounts(semana) {
+  const items = await fetchItemsForSemana(semana);
+  const out = { despacho_total: 0, despacho_asignados: 0, instalacion_total: 0, instalacion_asignados: 0 };
+  for (const it of items) {
+    if (it.tipo === 'despacho') {
+      out.despacho_total += 1;
+      if (it.viaje_id != null) out.despacho_asignados += 1;
+    } else {
+      out.instalacion_total += 1;
+      if (it.viaje_id != null) out.instalacion_asignados += 1;
+    }
+  }
+  return out;
+}
+
+async function getSemanas() {
+  const [rowsQ, viajesQ, semanasQ] = await Promise.all([
+    pool.query(
+      `
+      with base as (
+        select p.*, pv.data as pv_data
+        from public.portones p
+        left join public.preproduccion_valores pv on pv.nv = p.nv and pv.nv_tipo = 'NV'
+        where p.parent_id is null
+      )
+      select
+        to_char(nullif(pv_data->>'fecha_salida_imput','')::date, 'IYYY-"W"IW') as semana,
+        'despacho' as tipo,
+        id as porton_id,
+        despacho as despacho_estado
+      from base
+      where nullif(pv_data->>'fecha_salida_imput','') is not null
+        and despacho is distinct from 'Finalizado'
+
+      union all
+
+      select
+        to_char(nullif(pv_data->>'fecha_llegada_imput','')::date, 'IYYY-"W"IW') as semana,
+        'instalacion' as tipo,
+        id as porton_id,
+        despacho as despacho_estado
+      from base
+      where nullif(pv_data->>'fecha_llegada_imput','') is not null
+      `
+    ),
+    pool.query(`select semana, count(*)::int as viajes_count from public.logistica_viajes group by semana;`),
+    pool.query(`select semana, cerrada from public.logistica_semanas;`),
+  ]);
+
+  const asignadosQ = await pool.query(`select porton_id, tipo from public.logistica_viaje_portones;`);
+  const asignadosSet = new Set(asignadosQ.rows.map((r) => `${r.porton_id}::${r.tipo}`));
+
+  const bySemana = new Map();
+  for (const r of rowsQ.rows) {
+    if (!r.semana) continue;
+    if (!bySemana.has(r.semana)) {
+      bySemana.set(r.semana, {
+        semana: r.semana,
+        despacho_total: 0,
+        despacho_asignados: 0,
+        instalacion_total: 0,
+        instalacion_asignados: 0,
+        viajes_count: 0,
+        cerrada: false,
+      });
+    }
+    const acc = bySemana.get(r.semana);
+    const asignado = asignadosSet.has(`${r.porton_id}::${r.tipo}`);
+    if (r.tipo === 'despacho') {
+      acc.despacho_total += 1;
+      if (asignado) acc.despacho_asignados += 1;
+    } else {
+      acc.instalacion_total += 1;
+      if (asignado) acc.instalacion_asignados += 1;
+    }
+  }
+  for (const v of viajesQ.rows) {
+    if (!bySemana.has(v.semana)) continue;
+    bySemana.get(v.semana).viajes_count = v.viajes_count;
+  }
+  for (const s of semanasQ.rows) {
+    if (!bySemana.has(s.semana)) continue;
+    bySemana.get(s.semana).cerrada = !!s.cerrada;
+  }
+
+  return Array.from(bySemana.values()).sort((a, b) => a.semana.localeCompare(b.semana));
+}
+
+async function getViajesForSemana(semana) {
+  const { rows } = await pool.query(
+    `
+    select
+      vi.id, vi.semana, vi.fecha, vi.nombre, vi.orden,
+      vi.zona_id, z.nombre as zona_nombre,
+      vi.cuadrilla_id, c.nombre as cuadrilla_nombre,
+      vi.vehiculo_id, veh.nombre as vehiculo_nombre, coalesce(veh.capacidad_portones, 0) as vehiculo_capacidad,
+      vi.created_at, vi.updated_at
+    from public.logistica_viajes vi
+    left join public.logistica_zonas z on z.id = vi.zona_id
+    left join public.logistica_cuadrillas c on c.id = vi.cuadrilla_id
+    left join public.logistica_vehiculos veh on veh.id = vi.vehiculo_id
+    where vi.semana = $1
+    order by vi.orden asc, vi.id asc;
+    `,
+    [semana]
+  );
+  return rows;
+}
+
+async function isSemanaCerrada(semana) {
+  const { rows } = await pool.query(`select cerrada from public.logistica_semanas where semana = $1;`, [semana]);
+  return !!rows?.[0]?.cerrada;
+}
+
+async function assertSemanaAbierta(semana) {
+  if (await isSemanaCerrada(semana)) {
+    throw new Error('La semana está cerrada. Reabrila para modificar viajes.');
+  }
+}
+
+async function getSemanaDetalle(semana) {
+  const reglas = await listReglasCapacidad();
+  const [items, viajes, cerrada] = await Promise.all([
+    fetchItemsForSemana(semana),
+    getViajesForSemana(semana),
+    isSemanaCerrada(semana),
+  ]);
+
+  const itemsOut = items.map((it) => {
+    const { peso } = computePeso({ alto: it.alto, ancho: it.ancho }, reglas);
+    return {
+      porton_id: it.porton_id,
+      nv: it.nv,
+      nlista: it.nlista,
+      partida: it.partida,
+      sistema: it.sistema,
+      porton_tipo: it.porton_tipo,
+      alto: it.alto,
+      ancho: it.ancho,
+      nombre: it.nombre,
+      distribuidor: it.distribuidor,
+      direccion: it.direccion,
+      tipo: it.tipo,
+      viaje_id: it.viaje_id,
+      orden: it.orden,
+      peso,
+    };
+  });
+
+  const viajesOut = viajes.map((v) => {
+    const pesoUsado = itemsOut
+      .filter((it) => it.tipo === 'despacho' && it.viaje_id === v.id)
+      .reduce((acc, it) => acc + Number(it.peso || 0), 0);
+    return { ...v, peso_despacho_usado: pesoUsado };
+  });
+
+  const counts = itemsOut.reduce(
+    (acc, it) => {
+      if (it.tipo === 'despacho') {
+        acc.despacho_total += 1;
+        if (it.viaje_id != null) acc.despacho_asignados += 1;
+      } else {
+        acc.instalacion_total += 1;
+        if (it.viaje_id != null) acc.instalacion_asignados += 1;
+      }
+      return acc;
+    },
+    { despacho_total: 0, despacho_asignados: 0, instalacion_total: 0, instalacion_asignados: 0 }
+  );
+
+  return { semana, cerrada, counts, items: itemsOut, viajes: viajesOut };
+}
+
+async function crearViaje(semana, { fecha, zona_id, cuadrilla_id, vehiculo_id, nombre, orden }) {
+  await assertSemanaAbierta(semana);
+  const fechaStr = String(fecha || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaStr)) throw new Error('fecha inválida');
+
+  const chk = await pool.query(`select to_char($1::date, 'IYYY-"W"IW') as semana;`, [fechaStr]);
+  if (chk.rows?.[0]?.semana !== semana) {
+    throw new Error(`La fecha ${fechaStr} no cae dentro de la semana ${semana}`);
+  }
+
+  await pool.query(
+    `insert into public.logistica_viajes (semana, fecha, zona_id, cuadrilla_id, vehiculo_id, nombre, orden)
+     values ($1, $2, $3, $4, $5, $6, coalesce($7, 0));`,
+    [semana, fechaStr, zona_id || null, cuadrilla_id || null, vehiculo_id || null, nombre || null, orden ?? null]
+  );
+
+  return getSemanaDetalle(semana);
+}
+
+async function getViajeSemana(viajeId) {
+  const { rows } = await pool.query(`select semana from public.logistica_viajes where id = $1;`, [Number(viajeId)]);
+  if (!rows.length) throw new Error('Viaje no encontrado');
+  return rows[0].semana;
+}
+
+async function patchViaje(id, { fecha, zona_id, cuadrilla_id, vehiculo_id, nombre, orden }) {
+  const viajeId = Number(id);
+  const semana = await getViajeSemana(viajeId);
+  await assertSemanaAbierta(semana);
+
+  const sets = [];
+  const params = [viajeId];
+
+  if (fecha !== undefined) {
+    const fechaStr = String(fecha || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaStr)) throw new Error('fecha inválida');
+    const chk = await pool.query(`select to_char($1::date, 'IYYY-"W"IW') as semana;`, [fechaStr]);
+    if (chk.rows?.[0]?.semana !== semana) throw new Error(`La fecha ${fechaStr} no cae dentro de la semana ${semana}`);
+    params.push(fechaStr);
+    sets.push(`fecha = $${params.length}`);
+  }
+  if (zona_id !== undefined) { params.push(zona_id || null); sets.push(`zona_id = $${params.length}`); }
+  if (cuadrilla_id !== undefined) { params.push(cuadrilla_id || null); sets.push(`cuadrilla_id = $${params.length}`); }
+  if (vehiculo_id !== undefined) { params.push(vehiculo_id || null); sets.push(`vehiculo_id = $${params.length}`); }
+  if (nombre !== undefined) { params.push(nombre || null); sets.push(`nombre = $${params.length}`); }
+  if (orden !== undefined) { params.push(orden); sets.push(`orden = $${params.length}`); }
+
+  if (sets.length) {
+    sets.push('updated_at = now()');
+    await pool.query(`update public.logistica_viajes set ${sets.join(', ')} where id = $1;`, params);
+  }
+
+  return getSemanaDetalle(semana);
+}
+
+async function borrarViaje(id) {
+  const viajeId = Number(id);
+  const semana = await getViajeSemana(viajeId);
+  await assertSemanaAbierta(semana);
+  // on delete cascade en logistica_viaje_portones: los portones vuelven al pool.
+  await pool.query(`delete from public.logistica_viajes where id = $1;`, [viajeId]);
+  return getSemanaDetalle(semana);
+}
+
+async function asignarPorton(viajeId, { porton_id, tipo }) {
+  const vId = Number(viajeId);
+  const tipoNorm = String(tipo || '').trim();
+  if (!['despacho', 'instalacion'].includes(tipoNorm)) throw new Error('tipo debe ser despacho o instalacion');
+  if (!porton_id) throw new Error('Falta porton_id');
+
+  const viajeQ = await pool.query(
+    `select vi.id, vi.semana, vi.vehiculo_id, coalesce(veh.capacidad_portones, 0) as capacidad
+     from public.logistica_viajes vi
+     left join public.logistica_vehiculos veh on veh.id = vi.vehiculo_id
+     where vi.id = $1;`,
+    [vId]
+  );
+  if (!viajeQ.rowCount) throw new Error('Viaje no encontrado');
+  const viaje = viajeQ.rows[0];
+  await assertSemanaAbierta(viaje.semana);
+
+  const detalle = await getSemanaDetalle(viaje.semana);
+  const item = detalle.items.find((it) => it.porton_id === porton_id && it.tipo === tipoNorm);
+  if (!item) throw new Error('Ese portón no tiene ' + (tipoNorm === 'despacho' ? 'despacho' : 'instalación') + ' en esta semana');
+
+  if (tipoNorm === 'despacho') {
+    if (!viaje.vehiculo_id) throw new Error('Asigná un vehículo al viaje antes de sumar portones de despacho');
+    const usadoSinEste = detalle.viajes.find((v) => v.id === vId)?.peso_despacho_usado || 0;
+    const usadoActualDeEste = item.viaje_id === vId ? item.peso : 0;
+    const proyectado = usadoSinEste - usadoActualDeEste + item.peso;
+    if (proyectado > Number(viaje.capacidad)) {
+      throw new Error(`No entra: el viaje ya usa ${usadoSinEste - usadoActualDeEste} de ${viaje.capacidad} y este portón pesa ${item.peso}`);
+    }
+  }
+
+  await pool.query(
+    `insert into public.logistica_viaje_portones (viaje_id, porton_id, tipo, peso)
+     values ($1, $2, $3, $4)
+     on conflict (porton_id, tipo) do update set viaje_id = excluded.viaje_id, peso = excluded.peso;`,
+    [vId, porton_id, tipoNorm, item.peso]
+  );
+
+  return getSemanaDetalle(viaje.semana);
+}
+
+async function desasignarPorton(viajeId, portonId, tipo) {
+  const vId = Number(viajeId);
+  const tipoNorm = String(tipo || '').trim();
+  if (!['despacho', 'instalacion'].includes(tipoNorm)) throw new Error('tipo debe ser despacho o instalacion');
+
+  const semana = await getViajeSemana(vId);
+  await assertSemanaAbierta(semana);
+
+  await pool.query(
+    `delete from public.logistica_viaje_portones where viaje_id = $1 and porton_id = $2 and tipo = $3;`,
+    [vId, portonId, tipoNorm]
+  );
+
+  return getSemanaDetalle(semana);
+}
+
+async function cerrarSemana(semana, cerradaBy) {
+  const counts = await getSemanaCounts(semana);
+  const falta = (counts.despacho_total - counts.despacho_asignados) + (counts.instalacion_total - counts.instalacion_asignados);
+  if (falta > 0) {
+    throw new Error(`Todavía faltan ${falta} portón(es) por asignar a un viaje`);
+  }
+  await pool.query(
+    `insert into public.logistica_semanas (semana, cerrada, cerrada_at, cerrada_by)
+     values ($1, true, now(), $2)
+     on conflict (semana) do update set cerrada = true, cerrada_at = now(), cerrada_by = excluded.cerrada_by, updated_at = now();`,
+    [semana, cerradaBy || null]
+  );
+  return getSemanaDetalle(semana);
+}
+
+async function reabrirSemana(semana) {
+  await pool.query(
+    `insert into public.logistica_semanas (semana, cerrada)
+     values ($1, false)
+     on conflict (semana) do update set cerrada = false, cerrada_at = null, updated_at = now();`,
+    [semana]
+  );
+  return getSemanaDetalle(semana);
+}
+
+module.exports = {
+  listZonas, createZona, updateZona, deleteZona,
+  listVehiculos, createVehiculo, updateVehiculo, deleteVehiculo,
+  listCuadrillas, createCuadrilla, updateCuadrilla, deleteCuadrilla, setCuadrillaMiembros,
+  listReglasCapacidad, createReglaCapacidad, updateReglaCapacidad, deleteReglaCapacidad,
+  getConfig,
+  getSemanas,
+  getSemanaDetalle,
+  crearViaje, patchViaje, borrarViaje,
+  asignarPorton, desasignarPorton,
+  cerrarSemana, reabrirSemana,
+};

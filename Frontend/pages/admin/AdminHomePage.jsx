@@ -125,6 +125,26 @@ export default function AdminHomePage() {
             Ir a Compras
           </Link>
         </div>
+
+        <div
+          style={{
+            border: '1px solid var(--border)',
+            borderRadius: 12,
+            padding: 14,
+            background: 'var(--surface)',
+          }}
+        >
+          <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 8 }}>
+            Logística de Viajes
+          </div>
+          <div style={{ opacity: 0.75, marginBottom: 12 }}>
+            Armado de viajes (fecha, zona, cuadrilla, vehículo) por semana y reparto de portones de
+            despacho/instalación.
+          </div>
+          <Link className="btn btn--brand" to="/admin/logistica-viajes">
+            Ir a Logística de Viajes
+          </Link>
+        </div>
       </div>
 
       <div style={{ marginTop: 14, fontSize: 12, opacity: 0.7 }}>
