@@ -1851,6 +1851,12 @@ export default function PreproduccionValoresTable() {
                 setRows((prev) =>
                   prev.map((r) => (r.id === id ? { ...r, data: { ...(r.data || {}), [col.patchKey]: next } } : r))
                 );
+                // Persistir ya en el change (no solo en blur): un <input type="date">
+                // no siempre dispara blur al cambiarlo o al borrarlo con el botón "x"
+                // del selector nativo (pasa en Chrome), así que confiar solo en onBlur
+                // dejaba el cambio sin guardar y la fila volvía a la fecha vieja al
+                // refrescar la tabla.
+                onPatch(id, { [col.patchKey]: normalizeDate10(next) || null });
               }}
               onBlur={() => {
                 if (isInicioProd) {
