@@ -323,7 +323,7 @@ function getPdfFieldDefs() {
     { id: 'inicio_prod', label: 'Inicio Prod', type: 'date', patchKey: 'inicio_prod_imput' },
     { id: 'fecha_probable', label: 'Fecha Probable', type: 'day', patchKey: 'fecha_probable_imput' },
     { id: 'fecha_salida', label: 'Fecha Salida', type: 'date', patchKey: 'fecha_salida_imput' },
-    { id: 'fecha_llegada', label: 'Fecha Llegada', type: 'date', patchKey: 'fecha_llegada_imput' },
+    { id: 'fecha_llegada', label: 'Fecha Llegada/Instalación', type: 'date', patchKey: 'fecha_llegada_imput' },
 
     { id: 'partida', label: 'Partida', type: 'text', sourceKeys: ['PARTIDA', 'Partida', 'partida'] },
     { id: 'nv', label: 'NV', type: 'text', sourceKeys: ['NV', 'nv'] },
@@ -538,7 +538,7 @@ const BASE_COLS = [
   { id: 'fecha_salida', label: 'Fecha Salida', type: 'date', patchKey: 'fecha_salida_imput' },
   { id: 'semana_produccion', label: 'Semana Producción', type: 'week_produccion' },
   { id: 'semana_despacho', label: 'Semana Despacho', type: 'week_despacho' },
-  { id: 'fecha_llegada', label: 'Fecha Llegada', type: 'date', patchKey: 'fecha_llegada_imput' },
+  { id: 'fecha_llegada', label: 'Fecha Llegada/Instalación', type: 'date', patchKey: 'fecha_llegada_imput' },
 
   { id: 'partida', label: 'Partida', sourceKeys: ['PARTIDA', 'Partida', 'partida'] },
   { id: 'nv', label: 'NV', sourceKeys: ['NV', 'nv'] },
