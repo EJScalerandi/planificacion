@@ -1,0 +1,151 @@
+// lib/logisticaIaRecomendacion.js
+//
+// Fase 1 del motor de logística IA: dado un conjunto de NV seleccionados,
+// arma el contexto (lib/logisticaIaContexto.js: ubicación, zona, reglas de
+// envío ya evaluadas, distancias entre puntos) y le pide a Claude una
+// recomendación de ruta/semana en JSON estructurado (output_config.format),
+// usando el prompt y los parámetros operativos editables desde el
+// planificador (lib/logisticaIaConfig.js).
+//
+// Diseño deliberado: los tiempos de viaje/instalación y el cumplimiento de
+// reglas de envío se calculan en código (determinístico, confiable) y se le
+// dan a la IA como datos ya resueltos - no se le pide que calcule fechas ni
+// distancias, solo que razone sobre ellas para proponer orden/semana. Esto
+// es un copiloto de decisión: el usuario revisa y confirma, nunca se aplica
+// solo.
+const Anthropic = require('@anthropic-ai/sdk');
+const { pool } = require('../db');
+const { getIaConfig } = require('./logisticaIaConfig');
+const { construirContexto } = require('./logisticaIaContexto');
+const db = require('./logisticaViajesDb');
+
+const RESPONSE_SCHEMA = {
+  type: 'object',
+  properties: {
+    semana_sugerida: { type: 'string', description: 'Semana ISO formato AAAA-Www, ej "2026-W35"' },
+    resumen: { type: 'string', description: 'Resumen breve (1-2 frases) de la recomendación' },
+    orden_paradas: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          nv: { type: 'integer' },
+          orden: { type: 'integer' },
+          motivo: { type: 'string' },
+        },
+        required: ['nv', 'orden', 'motivo'],
+        additionalProperties: false,
+      },
+    },
+    tiempo_total_estimado_horas: { type: 'number' },
+    vehiculo_sugerido: { type: ['string', 'null'] },
+    alertas: {
+      type: 'array',
+      items: { type: 'string' },
+      description: 'Ej: portones que no cumplen su regla de envío todavía, portones sin ubicación resuelta, etc.',
+    },
+    razonamiento: { type: 'string' },
+  },
+  required: ['semana_sugerida', 'resumen', 'orden_paradas', 'tiempo_total_estimado_horas', 'vehiculo_sugerido', 'alertas', 'razonamiento'],
+  additionalProperties: false,
+};
+
+async function fechaYSemanaActual() {
+  const { rows } = await pool.query(`select to_char(now(),'YYYY-MM-DD') as hoy, to_char(now(),'IYYY-"W"IW') as semana_actual;`);
+  return rows[0];
+}
+
+function armarPromptUsuario({ portones, distancias_km, vehiculos, cuadrillas, config, hoy, semanaActual }) {
+  const lineasPortones = portones.map((p) => {
+    const ubicacion = p.lat != null ? `(${p.lat}, ${p.lng})` : 'SIN UBICACIÓN';
+    const zona = p.zona || 'sin zona clasificada';
+    const cumple = p.regla_envio_aplicada
+      ? (p.cumple_regla_envio
+          ? `cumple regla "${p.regla_envio_aplicada}" (habilitado desde ${p.fecha_habilitada_despacho})`
+          : `NO cumple regla "${p.regla_envio_aplicada}" todavía (habilitado recién el ${p.fecha_habilitada_despacho})`)
+      : 'sin regla de envío aplicable';
+    return `- NV ${p.nv} | ${p.nombre_cliente || 'sin nombre'} | ${p.direccion || 'sin dirección'} | ubicación ${ubicacion} | zona: ${zona} | sistema: ${p.sistema || '—'} | ${cumple}`;
+  }).join('\n');
+
+  const lineasDistancias = distancias_km.map((d) => `- NV ${d.de} <-> NV ${d.a}: ${d.km} km (~${(d.km / config.velocidad_kmh).toFixed(1)}h a ${config.velocidad_kmh}km/h)`).join('\n') || '(sin pares con ubicación suficiente para calcular distancias)';
+
+  const lineasVehiculos = (vehiculos || []).filter((v) => v.activo).map((v) => `- ${v.nombre} (capacidad: ${v.capacidad_portones} portones de despacho)`).join('\n') || '(sin vehículos configurados)';
+  const lineasCuadrillas = (cuadrillas || []).filter((c) => c.activo).map((c) => `- ${c.nombre}`).join('\n') || '(sin cuadrillas configuradas)';
+
+  return `Fecha de hoy: ${hoy}. Semana ISO actual: ${semanaActual}.
+
+Parámetros operativos: velocidad de viaje asumida ${config.velocidad_kmh} km/h, ${config.horas_por_instalacion}h por instalación.
+
+Portones seleccionados por el usuario para este viaje:
+${lineasPortones}
+
+Distancias entre pares de portones (línea recta, no ruta real por camino):
+${lineasDistancias}
+
+Vehículos disponibles:
+${lineasVehiculos}
+
+Cuadrillas disponibles:
+${lineasCuadrillas}
+
+Recomendá el viaje según las instrucciones del sistema. Respondé solo con el JSON pedido.`;
+}
+
+/**
+ * @param {number[]} nvs - NV seleccionados por el usuario
+ * @returns {Promise<{ recomendacion:object, contexto:object }>}
+ */
+async function recomendarViaje(nvs) {
+  if (!Array.isArray(nvs) || !nvs.length) throw new Error('Falta la lista de NV seleccionados');
+  if (!process.env.ANTHROPIC_API_KEY) {
+    const err = new Error('Falta configurar ANTHROPIC_API_KEY en el servidor');
+    err.status = 503;
+    throw err;
+  }
+
+  const [config, contexto, vehiculos, cuadrillas, fechas] = await Promise.all([
+    getIaConfig(),
+    construirContexto(nvs),
+    db.listVehiculos(),
+    db.listCuadrillas(),
+    fechaYSemanaActual(),
+  ]);
+
+  const promptUsuario = armarPromptUsuario({
+    ...contexto,
+    vehiculos,
+    cuadrillas,
+    config,
+    hoy: fechas.hoy,
+    semanaActual: fechas.semana_actual,
+  });
+
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const response = await client.messages.create({
+    model: config.modelo || 'claude-sonnet-5',
+    max_tokens: 4096,
+    system: config.prompt_sistema,
+    messages: [{ role: 'user', content: promptUsuario }],
+    output_config: { format: { type: 'json_schema', schema: RESPONSE_SCHEMA } },
+  });
+
+  if (response.stop_reason === 'refusal') {
+    const err = new Error('La IA no pudo generar una recomendación para esta solicitud');
+    err.status = 422;
+    throw err;
+  }
+
+  const textBlock = response.content.find((b) => b.type === 'text');
+  let recomendacion;
+  try {
+    recomendacion = JSON.parse(textBlock.text);
+  } catch {
+    const err = new Error('La IA devolvió una respuesta que no se pudo interpretar');
+    err.status = 502;
+    throw err;
+  }
+
+  return { recomendacion, contexto, usage: response.usage, modelo: response.model };
+}
+
+module.exports = { recomendarViaje };

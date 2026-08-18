@@ -24,6 +24,7 @@ import LogisticaVehiculosModal from './modals/LogisticaVehiculosModal';
 import LogisticaCuadrillasModal from './modals/LogisticaCuadrillasModal';
 import LogisticaReglasCapacidadModal from './modals/LogisticaReglasCapacidadModal';
 import LogisticaReglasEnvioModal from './modals/LogisticaReglasEnvioModal';
+import LogisticaIaConfigModal from './modals/LogisticaIaConfigModal';
 import PortonesMapaModal from './modals/PortonesMapaModal';
 
 // NV únicos (despacho e instalación del mismo NV son el mismo domicilio).
@@ -263,6 +264,7 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
   const [showCuadrillas, setShowCuadrillas] = useState(false);
   const [showReglas, setShowReglas] = useState(false);
   const [showReglasEnvio, setShowReglasEnvio] = useState(false);
+  const [showIaConfig, setShowIaConfig] = useState(false);
   const [mapa, setMapa] = useState(null); // { nvs, titulo } | null
 
   const load = useCallback(async () => {
@@ -425,6 +427,7 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
                 <button className="btn" onClick={() => setShowCuadrillas(true)}>Cuadrillas</button>
                 <button className="btn" onClick={() => setShowReglas(true)}>Reglas de capacidad</button>
                 <button className="btn" onClick={() => setShowReglasEnvio(true)}>Reglas de envío</button>
+                <button className="btn" onClick={() => setShowIaConfig(true)}>🤖 Config IA</button>
               </>
             ) : null}
             <button className="btn" onClick={onClose}>Cerrar ventana</button>
@@ -533,6 +536,7 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
       <LogisticaCuadrillasModal open={showCuadrillas} config={config} onClose={() => setShowCuadrillas(false)} onChanged={reloadConfig} />
       <LogisticaReglasCapacidadModal open={showReglas} config={config} onClose={() => setShowReglas(false)} onChanged={() => { reloadConfig(); reloadDetalle(); }} />
       <LogisticaReglasEnvioModal open={showReglasEnvio} config={config} onClose={() => setShowReglasEnvio(false)} onChanged={reloadConfig} />
+      <LogisticaIaConfigModal open={showIaConfig} onClose={() => setShowIaConfig(false)} />
       <PortonesMapaModal open={!!mapa} nvs={mapa?.nvs} titulo={mapa?.titulo} onClose={() => setMapa(null)} />
     </div>
   );

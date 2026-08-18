@@ -399,6 +399,19 @@ export async function deleteLogisticaReglaEnvio(id) {
   return data;
 }
 
+export async function fetchLogisticaIaConfig() {
+  const { data } = await api.get('/admin/logistica/ia/config');
+  return data;
+}
+export async function updateLogisticaIaConfig(patch) {
+  const { data } = await api.patch('/admin/logistica/ia/config', patch);
+  return data;
+}
+export async function recomendarLogisticaViajeIa(nvs) {
+  const { data } = await api.post('/admin/logistica/ia/recomendar-viaje', { nvs });
+  return data;
+}
+
 export async function fetchLogisticaSemanas() {
   const { data } = await api.get('/admin/logistica/semanas');
   return data;

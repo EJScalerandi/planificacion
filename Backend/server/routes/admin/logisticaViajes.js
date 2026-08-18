@@ -8,6 +8,8 @@ const express = require('express');
 const { adminAuth } = require('../../middleware/adminAuth');
 const db = require('../../lib/logisticaViajesDb');
 const { resolveCoordsForNvs } = require('../../lib/logisticaMapa');
+const { getIaConfig, updateIaConfig } = require('../../lib/logisticaIaConfig');
+const { recomendarViaje } = require('../../lib/logisticaIaRecomendacion');
 
 const router = express.Router();
 
@@ -115,6 +117,20 @@ router.patch('/logistica/reglas-capacidad/:id', requireFullAccess, asyncRoute(as
 router.delete('/logistica/reglas-capacidad/:id', requireFullAccess, asyncRoute(async (req, res) => {
   await db.deleteReglaCapacidad(req.params.id);
   res.json({ ok: true });
+}));
+
+// ===== Motor de logística IA (Fase 1): config editable + recomendación =====
+router.get('/logistica/ia/config', asyncRoute(async (_req, res) => {
+  res.json({ ok: true, config: await getIaConfig() });
+}));
+router.patch('/logistica/ia/config', requireFullAccess, asyncRoute(async (req, res) => {
+  res.json({ ok: true, config: await updateIaConfig(req.body || {}) });
+}));
+router.post('/logistica/ia/recomendar-viaje', requireFullAccess, asyncRoute(async (req, res) => {
+  const nvs = Array.isArray(req.body?.nvs)
+    ? req.body.nvs.map((n) => Number(n)).filter(Number.isInteger).slice(0, 30)
+    : [];
+  res.json({ ok: true, ...(await recomendarViaje(nvs)) });
 }));
 
 // ===== Zonificación geográfica (referencias por zona, para clasificar portones por ubicación) =====
