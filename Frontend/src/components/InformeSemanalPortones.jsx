@@ -200,19 +200,20 @@ export default function InformeSemanalPortones({ portones, loading, err, refresh
       const xlsxMod = await import('xlsx');
       const XLSX = xlsxMod.default || xlsxMod;
 
+      const semanaLabel = modo === 'despacho' ? 'Semana Despacho' : 'Semana Producción';
       const header = [
-        'NV', 'Nombre Cliente', 'Distribuidor', 'Color', 'Revestimiento', 'Medidas (Ancho x Alto mm)',
+        'NV', semanaLabel, 'Nombre Cliente', 'Distribuidor', 'Color', 'Revestimiento', 'Medidas (Ancho x Alto mm)',
         ...statusStages.map((s) => s.label),
       ];
       const dataRows = filas.map((f) => [
-        f.nv, f.cliente, f.distribuidor, f.color, f.revestimiento, f.medidas,
+        f.nv, weekNum, f.cliente, f.distribuidor, f.color, f.revestimiento, f.medidas,
         ...statusStages.map((s) => statusStyle(f.estados[s.key]).label),
       ]);
 
       const wb = XLSX.utils.book_new();
       const ws = XLSX.utils.aoa_to_sheet([header, ...dataRows]);
       ws['!cols'] = [
-        { wch: 8 }, { wch: 26 }, { wch: 20 }, { wch: 14 }, { wch: 22 }, { wch: 20 },
+        { wch: 8 }, { wch: 14 }, { wch: 26 }, { wch: 20 }, { wch: 14 }, { wch: 22 }, { wch: 20 },
         ...statusStages.map(() => ({ wch: 12 })),
       ];
       const modoLabel = modo === 'despacho' ? 'Despacho' : 'Producción';
@@ -287,6 +288,9 @@ export default function InformeSemanalPortones({ portones, loading, err, refresh
             <thead>
               <tr>
                 <th style={{ textAlign: 'left', padding: 8, borderBottom: '1px solid var(--border)' }}>NV</th>
+                <th style={{ textAlign: 'left', padding: 8, borderBottom: '1px solid var(--border)' }}>
+                  {modo === 'despacho' ? 'Semana Despacho' : 'Semana Producción'}
+                </th>
                 <th style={{ textAlign: 'left', padding: 8, borderBottom: '1px solid var(--border)' }}>Nombre Cliente</th>
                 <th style={{ textAlign: 'left', padding: 8, borderBottom: '1px solid var(--border)' }}>Distribuidor</th>
                 <th style={{ textAlign: 'left', padding: 8, borderBottom: '1px solid var(--border)' }}>Color</th>
@@ -301,6 +305,7 @@ export default function InformeSemanalPortones({ portones, loading, err, refresh
               {filas.map((f) => (
                 <tr key={f.nv}>
                   <td style={{ padding: 8, borderBottom: '1px solid #eee', fontWeight: 800 }}>{f.nv}</td>
+                  <td style={{ padding: 8, borderBottom: '1px solid #eee' }}>{weekNum}</td>
                   <td style={{ padding: 8, borderBottom: '1px solid #eee' }}>{f.cliente}</td>
                   <td style={{ padding: 8, borderBottom: '1px solid #eee' }}>{f.distribuidor}</td>
                   <td style={{ padding: 8, borderBottom: '1px solid #eee' }}>{f.color}</td>
