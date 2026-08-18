@@ -24,6 +24,8 @@ import {
   asignarLogisticaPorton,
 } from '../../api';
 import { isoWeekStartEndFromLabel, isoWeekLabelFromDate, weekNumberFromLabel, todayISO10 } from '../../utils/isoWeek';
+import LogisticaZonasModal from './LogisticaZonasModal';
+import LogisticaIaConfigModal from './LogisticaIaConfigModal';
 
 const ARGENTINA_CENTER = [-38.4, -63.6];
 const ARGENTINA_ZOOM = 4;
@@ -74,10 +76,17 @@ export default function LogisticaIaMapaModal({ open, onClose, onCreated }) {
   const [creando, setCreando] = useState(false);
   const [resultado, setResultado] = useState(null); // { asignados, excluidos } | null
 
+  const [showZonas, setShowZonas] = useState(false);
+  const [showIaConfig, setShowIaConfig] = useState(false);
+
   const mapElRef = useRef(null);
   const mapRef = useRef(null);
   const markersLayerRef = useRef(null);
   const markersByNvRef = useRef(new Map());
+
+  const reloadConfig = () => {
+    fetchLogisticaViajesConfig().then((c) => setConfig(c?.config || null)).catch(() => {});
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -274,6 +283,8 @@ export default function LogisticaIaMapaModal({ open, onClose, onCreated }) {
             <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 999, background: COLOR_AMBOS, marginRight: 3 }} />ambos</span>
             <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 999, background: COLOR_SELECCIONADO, marginRight: 3 }} />seleccionado</span>
           </div>
+          <button className="btn" onClick={() => setShowZonas(true)}>Zonas</button>
+          <button className="btn" onClick={() => setShowIaConfig(true)}>🤖 Config IA</button>
           <button className="btn" onClick={onClose}>Cerrar</button>
         </div>
 
@@ -401,6 +412,9 @@ export default function LogisticaIaMapaModal({ open, onClose, onCreated }) {
           </div>
         </div>
       </div>
+
+      <LogisticaZonasModal open={showZonas} config={config} onClose={() => setShowZonas(false)} onChanged={reloadConfig} />
+      <LogisticaIaConfigModal open={showIaConfig} onClose={() => setShowIaConfig(false)} />
     </div>
   );
 }
