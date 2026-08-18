@@ -86,6 +86,7 @@ export default function PortonesMapaModal({ open, onClose, nvs, titulo }) {
         <div style="font-weight:700;margin-bottom:4px;color:#333;">NV ${escapeHtml(p.nv)}</div>
         <div style="margin-bottom:4px;color:#333;">${escapeHtml(p.nombre || '—')}</div>
         <div style="font-size:12px;color:#666;margin-bottom:6px;">${escapeHtml(p.direccion || 'Sin dirección')}</div>
+        ${p.zona ? `<div style="font-size:11px;font-weight:700;color:#0a6a33;margin-bottom:4px;">📍 ${escapeHtml(p.zona.zona_nombre)}</div>` : ''}
       `;
       const link = document.createElement('a');
       link.href = `https://www.google.com/maps?q=${p.lat},${p.lng}`;

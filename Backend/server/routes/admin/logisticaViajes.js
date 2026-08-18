@@ -117,6 +117,27 @@ router.delete('/logistica/reglas-capacidad/:id', requireFullAccess, asyncRoute(a
   res.json({ ok: true });
 }));
 
+// ===== Zonificación geográfica (referencias por zona, para clasificar portones por ubicación) =====
+router.post('/logistica/zona-referencias', requireFullAccess, asyncRoute(async (req, res) => {
+  res.json({ ok: true, referencia: await db.createZonaReferencia(req.body || {}) });
+}));
+router.delete('/logistica/zona-referencias/:id', requireFullAccess, asyncRoute(async (req, res) => {
+  await db.deleteZonaReferencia(req.params.id);
+  res.json({ ok: true });
+}));
+
+// ===== Reglas de envío (días mínimos antes de poder despachar) =====
+router.post('/logistica/reglas-envio', requireFullAccess, asyncRoute(async (req, res) => {
+  res.json({ ok: true, regla: await db.createReglaEnvio(req.body || {}) });
+}));
+router.patch('/logistica/reglas-envio/:id', requireFullAccess, asyncRoute(async (req, res) => {
+  res.json({ ok: true, regla: await db.updateReglaEnvio(req.params.id, req.body || {}) });
+}));
+router.delete('/logistica/reglas-envio/:id', requireFullAccess, asyncRoute(async (req, res) => {
+  await db.deleteReglaEnvio(req.params.id);
+  res.json({ ok: true });
+}));
+
 // ===== Semanas / viajes / asignaciones =====
 router.get('/logistica/semanas', asyncRoute(async (_req, res) => {
   res.json({ ok: true, semanas: await db.getSemanas() });

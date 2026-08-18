@@ -377,6 +377,28 @@ export async function deleteLogisticaReglaCapacidad(id) {
   return data;
 }
 
+export async function createLogisticaZonaReferencia(payload) {
+  const { data } = await api.post('/admin/logistica/zona-referencias', payload);
+  return data;
+}
+export async function deleteLogisticaZonaReferencia(id) {
+  const { data } = await api.delete(`/admin/logistica/zona-referencias/${id}`);
+  return data;
+}
+
+export async function createLogisticaReglaEnvio(payload) {
+  const { data } = await api.post('/admin/logistica/reglas-envio', payload);
+  return data;
+}
+export async function updateLogisticaReglaEnvio(id, patch) {
+  const { data } = await api.patch(`/admin/logistica/reglas-envio/${id}`, patch);
+  return data;
+}
+export async function deleteLogisticaReglaEnvio(id) {
+  const { data } = await api.delete(`/admin/logistica/reglas-envio/${id}`);
+  return data;
+}
+
 export async function fetchLogisticaSemanas() {
   const { data } = await api.get('/admin/logistica/semanas');
   return data;

@@ -18,6 +18,7 @@
 // varios usuarios arman viajes al mismo tiempo.
 const { pool } = require('../db');
 const { computePeso } = require('./logisticaCapacidad');
+const { geocodeAddress } = require('./geocoding');
 
 async function withTx(fn) {
   const client = await pool.connect();
@@ -237,15 +238,110 @@ async function deleteReglaCapacidad(id) {
   await pool.query(`delete from public.logistica_reglas_capacidad where id = $1;`, [Number(id)]);
 }
 
+// ===========================================================================
+// Zonificación geográfica: referencias (localidades) por zona
+// ===========================================================================
+
+async function listZonaReferencias() {
+  const { rows } = await pool.query(
+    `select r.id, r.zona_id, r.nombre, r.lat, r.lng, r.created_at, z.nombre as zona_nombre
+       from public.logistica_zona_referencias r
+       join public.logistica_zonas z on z.id = r.zona_id
+      order by z.nombre asc, r.nombre asc;`
+  );
+  return rows;
+}
+
+// Geocodifica el nombre de la localidad (vía Nominatim, ver lib/geocoding.js)
+// y la guarda como referencia de la zona. Si no se puede geocodificar, avisa
+// claro en vez de guardar una referencia sin coordenadas.
+async function createZonaReferencia({ zona_id, nombre }) {
+  const zonaId = Number(zona_id);
+  const nm = String(nombre || '').trim();
+  if (!Number.isInteger(zonaId)) throw new Error('Falta zona_id');
+  if (!nm) throw new Error('Falta el nombre de la localidad');
+
+  const coords = await geocodeAddress(nm, '').catch(() => null);
+  if (!coords) {
+    const err = new Error(`No se pudo ubicar "${nm}" en el mapa. Probá con más detalle (ej. "Rosario, Santa Fe").`);
+    err.status = 422;
+    throw err;
+  }
+
+  const { rows } = await pool.query(
+    `insert into public.logistica_zona_referencias (zona_id, nombre, lat, lng)
+     values ($1, $2, $3, $4)
+     returning id, zona_id, nombre, lat, lng, created_at;`,
+    [zonaId, nm, coords.lat, coords.lng]
+  );
+  return rows[0];
+}
+
+async function deleteZonaReferencia(id) {
+  await pool.query(`delete from public.logistica_zona_referencias where id = $1;`, [Number(id)]);
+}
+
+// ===========================================================================
+// Reglas de envío: días mínimos antes de poder despachar un portón
+// ===========================================================================
+
+async function listReglasEnvio() {
+  const { rows } = await pool.query(
+    `select id, nombre, descripcion, dias_minimos, fecha_referencia_campo, campo, operador, valor, prioridad, activo, created_at, updated_at
+     from public.logistica_reglas_envio order by prioridad asc, id asc;`
+  );
+  return rows;
+}
+
+async function createReglaEnvio({ nombre, descripcion, dias_minimos, fecha_referencia_campo, campo, operador, valor, prioridad, activo }) {
+  const nm = String(nombre || '').trim();
+  if (!nm) throw new Error('Falta nombre');
+  const dias = Number(dias_minimos);
+  if (!Number.isFinite(dias) || dias < 0) throw new Error('dias_minimos inválido');
+  const { rows } = await pool.query(
+    `insert into public.logistica_reglas_envio (nombre, descripcion, dias_minimos, fecha_referencia_campo, campo, operador, valor, prioridad, activo)
+     values ($1, $2, $3, coalesce($4,'fecha_nv'), $5, $6, $7, coalesce($8,0), $9)
+     returning id, nombre, descripcion, dias_minimos, fecha_referencia_campo, campo, operador, valor, prioridad, activo, created_at, updated_at;`,
+    [nm, descripcion || null, dias, fecha_referencia_campo || null, campo || null, operador || null, valor || null, prioridad ?? null, activo !== false]
+  );
+  return rows[0];
+}
+
+async function updateReglaEnvio(id, patch) {
+  const fields = ['nombre', 'descripcion', 'dias_minimos', 'fecha_referencia_campo', 'campo', 'operador', 'valor', 'prioridad', 'activo'];
+  const sets = [];
+  const params = [Number(id)];
+  for (const f of fields) {
+    if (patch[f] === undefined) continue;
+    params.push(f === 'activo' ? !!patch[f] : patch[f]);
+    sets.push(`${f} = $${params.length}`);
+  }
+  if (!sets.length) throw new Error('Nada para actualizar');
+  sets.push('updated_at = now()');
+  const { rows, rowCount } = await pool.query(
+    `update public.logistica_reglas_envio set ${sets.join(', ')} where id = $1
+     returning id, nombre, descripcion, dias_minimos, fecha_referencia_campo, campo, operador, valor, prioridad, activo, created_at, updated_at;`,
+    params
+  );
+  if (!rowCount) throw new Error('Regla no encontrada');
+  return rows[0];
+}
+
+async function deleteReglaEnvio(id) {
+  await pool.query(`delete from public.logistica_reglas_envio where id = $1;`, [Number(id)]);
+}
+
 async function getConfig() {
-  const [zonas, vehiculos, cuadrillas, reglas, qcUsersQ] = await Promise.all([
+  const [zonas, vehiculos, cuadrillas, reglas, zonaReferencias, reglasEnvio, qcUsersQ] = await Promise.all([
     listZonas(),
     listVehiculos(),
     listCuadrillas(),
     listReglasCapacidad(),
+    listZonaReferencias(),
+    listReglasEnvio(),
     pool.query(`select id, name, is_active from public.qc_users where is_active is true order by name asc;`),
   ]);
-  return { zonas, vehiculos, cuadrillas, reglas, qc_users: qcUsersQ.rows };
+  return { zonas, vehiculos, cuadrillas, reglas, zona_referencias: zonaReferencias, reglas_envio: reglasEnvio, qc_users: qcUsersQ.rows };
 }
 
 // ===========================================================================
@@ -627,6 +723,8 @@ module.exports = {
   listVehiculos, createVehiculo, updateVehiculo, deleteVehiculo,
   listCuadrillas, createCuadrilla, updateCuadrilla, deleteCuadrilla, setCuadrillaMiembros,
   listReglasCapacidad, createReglaCapacidad, updateReglaCapacidad, deleteReglaCapacidad,
+  listZonaReferencias, createZonaReferencia, deleteZonaReferencia,
+  listReglasEnvio, createReglaEnvio, updateReglaEnvio, deleteReglaEnvio,
   getConfig,
   getSemanas,
   getSemanaDetalle,

@@ -115,4 +115,4 @@ async function resolveQuoteCoords(endCustomer) {
   return null;
 }
 
-module.exports = { extractCoordsFromMapsUrl, resolveQuoteCoords };
+module.exports = { extractCoordsFromMapsUrl, resolveQuoteCoords, geocodeAddress };

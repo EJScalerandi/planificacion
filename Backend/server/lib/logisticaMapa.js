@@ -11,6 +11,7 @@
 // tiene maps_url, simplemente queda sin ubicación.
 const { pool } = require('../db');
 const { resolveQuoteCoords } = require('./geocoding');
+const { clasificarZonas } = require('./logisticaZonificacion');
 
 // Igual patrón prefijo-agnóstico que ya usan routes/public/portones.js y
 // routes/external/ia.js: el prefijo de letras no siempre es "NV" (también
@@ -91,7 +92,13 @@ async function resolveCoordsForNvs(nvList) {
   // Los NV pedidos que no matchearon ninguna quote (o no tenían maps_url ni
   // dirección para geocodificar) igual se devuelven, sin ubicación, para que
   // el frontend pueda contar "X de Y con ubicación".
-  return nvs.map((nv) => byNv.get(nv) || { nv, lat: null, lng: null, source: null, nombre: null, direccion: null, maps_url: null });
+  const puntos = nvs.map((nv) => byNv.get(nv) || { nv, lat: null, lng: null, source: null, nombre: null, direccion: null, maps_url: null });
+
+  // Zonificación determinística (Fase 0 del motor de logística IA): un solo
+  // query de referencias para todo el lote. Si todavía no hay zonas/
+  // referencias cargadas, clasificarZona devuelve null y no rompe nada.
+  const zonas = await clasificarZonas(puntos.map((p) => ({ lat: p.lat, lng: p.lng }))).catch(() => puntos.map(() => null));
+  return puntos.map((p, i) => ({ ...p, zona: zonas[i] }));
 }
 
 module.exports = { resolveCoordsForNvs };
