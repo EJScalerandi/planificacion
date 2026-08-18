@@ -411,6 +411,10 @@ export async function recomendarLogisticaViajeIa(nvs) {
   const { data } = await api.post('/admin/logistica/ia/recomendar-viaje', { nvs });
   return data;
 }
+export async function fetchLogisticaPortonesSinViaje() {
+  const { data } = await api.get('/admin/logistica/portones-sin-viaje');
+  return data;
+}
 
 export async function fetchLogisticaSemanas() {
   const { data } = await api.get('/admin/logistica/semanas');

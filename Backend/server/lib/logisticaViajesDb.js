@@ -399,6 +399,52 @@ async function fetchItemsForSemana(semana) {
   return rows;
 }
 
+// NV con despacho y/o instalación pendiente (fecha cargada, sin viaje
+// asignado todavía) de CUALQUIER semana - para el mapa de selección de
+// "Generar viaje con IA" en Planificación de Fechas (a diferencia de
+// fetchItemsForSemana, que está acotado a una sola semana). Un pin por NV:
+// si tiene despacho y/o instalación pendiente, y de qué semana es cada uno
+// (pueden ser semanas distintas).
+async function listPortonesSinViaje() {
+  const { rows } = await pool.query(
+    `
+    with base as (
+      select p.*, pv.data as pv_data
+      from public.portones p
+      left join public.preproduccion_valores pv on pv.nv = p.nv and pv.nv_tipo = 'NV'
+      where p.parent_id is null
+    )
+    select distinct p.nv, 'despacho' as tipo,
+      to_char(nullif(p.pv_data->>'fecha_salida_imput','')::date, 'IYYY-"W"IW') as semana
+    from base p
+    left join public.logistica_viaje_portones vp on vp.porton_id = p.id and vp.tipo = 'despacho'
+    where nullif(p.pv_data->>'fecha_salida_imput','') is not null
+      and p.despacho is distinct from 'Finalizado'
+      and vp.viaje_id is null
+
+    union all
+
+    select distinct p.nv, 'instalacion' as tipo,
+      to_char(nullif(p.pv_data->>'fecha_llegada_imput','')::date, 'IYYY-"W"IW') as semana
+    from base p
+    left join public.logistica_viaje_portones vp on vp.porton_id = p.id and vp.tipo = 'instalacion'
+    where nullif(p.pv_data->>'fecha_llegada_imput','') is not null
+      and vp.viaje_id is null;
+    `
+  );
+
+  const byNv = new Map();
+  for (const r of rows) {
+    if (!byNv.has(r.nv)) {
+      byNv.set(r.nv, { nv: r.nv, despacho_pendiente: false, instalacion_pendiente: false, semana_despacho: null, semana_instalacion: null });
+    }
+    const e = byNv.get(r.nv);
+    if (r.tipo === 'despacho') { e.despacho_pendiente = true; e.semana_despacho = r.semana; }
+    else { e.instalacion_pendiente = true; e.semana_instalacion = r.semana; }
+  }
+  return Array.from(byNv.values());
+}
+
 async function getSemanaCounts(semana) {
   const items = await fetchItemsForSemana(semana);
   const out = { despacho_total: 0, despacho_asignados: 0, instalacion_total: 0, instalacion_asignados: 0 };
@@ -726,6 +772,7 @@ module.exports = {
   listZonaReferencias, createZonaReferencia, deleteZonaReferencia,
   listReglasEnvio, createReglaEnvio, updateReglaEnvio, deleteReglaEnvio,
   getConfig,
+  listPortonesSinViaje,
   getSemanas,
   getSemanaDetalle,
   crearViaje, patchViaje, borrarViaje,

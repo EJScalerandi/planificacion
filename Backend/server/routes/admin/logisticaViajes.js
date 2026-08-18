@@ -126,6 +126,17 @@ router.get('/logistica/ia/config', asyncRoute(async (_req, res) => {
 router.patch('/logistica/ia/config', requireFullAccess, asyncRoute(async (req, res) => {
   res.json({ ok: true, config: await updateIaConfig(req.body || {}) });
 }));
+// Portones con despacho/instalación pendiente (cualquier semana) y sin viaje
+// asignado todavía, con ubicación+zona resuelta - para el mapa de selección
+// de "Generar viaje con IA" en Planificación de Fechas.
+router.get('/logistica/portones-sin-viaje', asyncRoute(async (_req, res) => {
+  const pendientes = await db.listPortonesSinViaje();
+  const puntos = await resolveCoordsForNvs(pendientes.map((p) => p.nv));
+  const coordsByNv = new Map(puntos.map((p) => [p.nv, p]));
+  const items = pendientes.map((p) => ({ ...p, ...coordsByNv.get(p.nv) }));
+  res.json({ ok: true, items });
+}));
+
 router.post('/logistica/ia/recomendar-viaje', requireFullAccess, asyncRoute(async (req, res) => {
   const nvs = Array.isArray(req.body?.nvs)
     ? req.body.nvs.map((n) => Number(n)).filter(Number.isInteger).slice(0, 30)

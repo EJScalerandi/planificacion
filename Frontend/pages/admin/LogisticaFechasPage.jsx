@@ -22,6 +22,7 @@ import {
 } from '../../src/utils/isoWeek';
 import { BLOCKED_NV_URL, parseBlockedNvText, getAny, getNvCanonicalFromRow, getSistemaFromRow } from '../../src/utils/preproduccionRow';
 import PortonesMapaModal from '../../src/components/modals/PortonesMapaModal';
+import LogisticaIaMapaModal from '../../src/components/modals/LogisticaIaMapaModal';
 
 // NV únicos de un conjunto de filas (despacho e instalación del mismo NV son
 // el mismo domicilio).
@@ -169,6 +170,7 @@ export default function LogisticaFechasPage() {
   const [saving, setSaving] = useState(() => new Set());
   const [search, setSearch] = useState('');
   const [mapa, setMapa] = useState(null); // { nvs, titulo } | null
+  const [showIaMapa, setShowIaMapa] = useState(false);
 
   const [blockedNvSet, setBlockedNvSet] = useState(() => new Set());
   const [despachoFinalizadoByNv, setDespachoFinalizadoByNv] = useState(() => new Map());
@@ -352,6 +354,9 @@ export default function LogisticaFechasPage() {
           </span>
           <Link className="btn" to="/a">/a</Link>
           <Link className="btn" to="/admin/logistica-viajes">Viajes de Logística</Link>
+          {canEdit ? (
+            <button className="btn btn--brand" onClick={() => setShowIaMapa(true)}>🤖 Generar viaje con IA</button>
+          ) : null}
           <button className="btn" onClick={load} disabled={loading}>Recargar</button>
           <button className="btn" onClick={logout}>Salir</button>
         </div>
@@ -458,6 +463,7 @@ export default function LogisticaFechasPage() {
       )}
 
       <PortonesMapaModal open={!!mapa} nvs={mapa?.nvs} titulo={mapa?.titulo} onClose={() => setMapa(null)} />
+      <LogisticaIaMapaModal open={showIaMapa} onClose={() => setShowIaMapa(false)} onCreated={load} />
     </div>
   );
 }
