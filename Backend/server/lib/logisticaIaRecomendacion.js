@@ -123,7 +123,11 @@ async function recomendarViaje(nvs) {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const response = await client.messages.create({
     model: config.modelo || 'claude-sonnet-5',
-    max_tokens: 4096,
+    // Ojo: en Sonnet 5 (y Opus 5) el thinking adaptativo corre por default
+    // aunque no se lo pida, y consume del MISMO presupuesto que max_tokens
+    // junto con la respuesta - con poco margen, el razonamiento se come todo
+    // el budget y corta antes de llegar al JSON. Dejamos harto margen.
+    max_tokens: 16000,
     system: config.prompt_sistema,
     messages: [{ role: 'user', content: promptUsuario }],
     output_config: { format: { type: 'json_schema', schema: RESPONSE_SCHEMA } },
@@ -134,12 +138,18 @@ async function recomendarViaje(nvs) {
     err.status = 422;
     throw err;
   }
+  if (response.stop_reason === 'max_tokens') {
+    const err = new Error('La respuesta de la IA se cortó por límite de tokens. Probá con menos portones seleccionados.');
+    err.status = 502;
+    throw err;
+  }
 
   const textBlock = response.content.find((b) => b.type === 'text');
   let recomendacion;
   try {
-    recomendacion = JSON.parse(textBlock.text);
+    recomendacion = JSON.parse(textBlock?.text || '');
   } catch {
+    console.error('IA recomendarViaje: respuesta no parseable. stop_reason=', response.stop_reason, 'content=', JSON.stringify(response.content));
     const err = new Error('La IA devolvió una respuesta que no se pudo interpretar');
     err.status = 502;
     throw err;
