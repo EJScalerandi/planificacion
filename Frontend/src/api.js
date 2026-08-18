@@ -417,4 +417,11 @@ export async function reabrirLogisticaSemana(semana) {
   return data;
 }
 
+// Puntos de mapa (lat/lng resueltos de end_customer.maps_url) para una
+// lista de NV — "Ver mapa" por semana/viaje.
+export async function fetchLogisticaMapa(nvs) {
+  const { data } = await api.get('/admin/logistica/mapa', { params: { nvs: (nvs || []).join(',') } });
+  return data;
+}
+
 export default api;

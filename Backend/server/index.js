@@ -84,6 +84,21 @@ const MIGRATIONS = [
       END $$;
     `,
   },
+  {
+    // Cache de coordenadas resueltas a partir de end_customer.maps_url (Mapa
+    // de portones por semana/viaje en Logística de Viajes y Planificación de
+    // Fechas). presupuestador_quotes es tabla del Presupuestador, pero Planta
+    // ya lee/escribe directo ahí (preproduccion.js, logisticaConsultasDb.js) -
+    // mismo patrón. Ver server/lib/geocoding.js y server/lib/logisticaMapa.js.
+    name: 'presupuestador_quotes_geo_cols',
+    sql: `
+      ALTER TABLE public.presupuestador_quotes
+        ADD COLUMN IF NOT EXISTS geo_lat DOUBLE PRECISION,
+        ADD COLUMN IF NOT EXISTS geo_lng DOUBLE PRECISION,
+        ADD COLUMN IF NOT EXISTS geo_source TEXT,
+        ADD COLUMN IF NOT EXISTS geo_updated_at TIMESTAMPTZ;
+    `,
+  },
 ];
 
 async function runMigrations() {

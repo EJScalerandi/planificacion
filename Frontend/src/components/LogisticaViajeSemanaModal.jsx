@@ -23,6 +23,12 @@ import LogisticaZonasModal from './modals/LogisticaZonasModal';
 import LogisticaVehiculosModal from './modals/LogisticaVehiculosModal';
 import LogisticaCuadrillasModal from './modals/LogisticaCuadrillasModal';
 import LogisticaReglasCapacidadModal from './modals/LogisticaReglasCapacidadModal';
+import PortonesMapaModal from './modals/PortonesMapaModal';
+
+// NV únicos (despacho e instalación del mismo NV son el mismo domicilio).
+function uniqueNvs(items) {
+  return Array.from(new Set((items || []).map((it) => Number(it.nv)).filter(Number.isInteger)));
+}
 
 const DND_MIME = 'application/x-logistica-porton';
 
@@ -159,7 +165,7 @@ function NuevoViajeForm({ semana, config, onCreate, onCancel, busy, initial, sub
   );
 }
 
-function ViajeColumn({ viaje, items, canEdit, cerrada, onDropItem, onEditar, onBorrar, onDragStartChip, onDragEndChip }) {
+function ViajeColumn({ viaje, items, canEdit, cerrada, onDropItem, onEditar, onBorrar, onDragStartChip, onDragEndChip, onVerMapa }) {
   const [over, setOver] = useState(false);
   const capacidad = Number(viaje.vehiculo_capacidad || 0);
   const usado = Number(viaje.peso_despacho_usado || 0);
@@ -185,6 +191,15 @@ function ViajeColumn({ viaje, items, canEdit, cerrada, onDropItem, onEditar, onB
         <div>
           <div style={{ fontWeight: 900, fontSize: 13 }}>{viaje.nombre?.trim() || `Viaje #${viaje.id}`}</div>
           <div style={{ fontSize: 11, opacity: 0.75 }}>{String(viaje.fecha).slice(0, 10).split('-').reverse().join('/')}</div>
+          <button
+            type="button"
+            className="btn"
+            style={{ padding: '1px 6px', fontSize: 10, marginTop: 4 }}
+            disabled={items.length === 0}
+            onClick={() => onVerMapa(viaje, items)}
+          >
+            🗺️ Mapa
+          </button>
         </div>
         {canEdit && !cerrada ? (
           <div style={{ display: 'flex', gap: 4 }}>
@@ -246,6 +261,7 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
   const [showVehiculos, setShowVehiculos] = useState(false);
   const [showCuadrillas, setShowCuadrillas] = useState(false);
   const [showReglas, setShowReglas] = useState(false);
+  const [mapa, setMapa] = useState(null); // { nvs, titulo } | null
 
   const load = useCallback(async () => {
     if (!semana) return;
@@ -393,6 +409,13 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
             {semana ? weekTitleFromSelection(semana) : ''} {cerrada ? <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 999, background: 'var(--brand)', color: '#fff' }}>Cerrada</span> : null}
           </div>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button
+              className="btn"
+              disabled={!detalle || uniqueNvs(detalle.items).length === 0}
+              onClick={() => setMapa({ nvs: uniqueNvs(detalle.items), titulo: `Mapa · ${weekTitleFromSelection(semana)}` })}
+            >
+              🗺️ Ver mapa de la semana
+            </button>
             {canEdit ? (
               <>
                 <button className="btn" onClick={() => setShowZonas(true)}>Zonas</button>
@@ -475,6 +498,7 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
                     onBorrar={borrarViaje}
                     onDragStartChip={onDragStartChip}
                     onDragEndChip={onDragEndChip}
+                    onVerMapa={(viaje, items) => setMapa({ nvs: uniqueNvs(items), titulo: `Mapa · ${viaje.nombre?.trim() || `Viaje #${viaje.id}`}` })}
                   />
                 ))}
                 {(detalle?.viajes || []).length === 0 ? (
@@ -505,6 +529,7 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
       <LogisticaVehiculosModal open={showVehiculos} config={config} onClose={() => setShowVehiculos(false)} onChanged={reloadConfig} />
       <LogisticaCuadrillasModal open={showCuadrillas} config={config} onClose={() => setShowCuadrillas(false)} onChanged={reloadConfig} />
       <LogisticaReglasCapacidadModal open={showReglas} config={config} onClose={() => setShowReglas(false)} onChanged={() => { reloadConfig(); reloadDetalle(); }} />
+      <PortonesMapaModal open={!!mapa} nvs={mapa?.nvs} titulo={mapa?.titulo} onClose={() => setMapa(null)} />
     </div>
   );
 }

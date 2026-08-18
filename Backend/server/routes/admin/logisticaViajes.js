@@ -7,6 +7,7 @@
 const express = require('express');
 const { adminAuth } = require('../../middleware/adminAuth');
 const db = require('../../lib/logisticaViajesDb');
+const { resolveCoordsForNvs } = require('../../lib/logisticaMapa');
 
 const router = express.Router();
 
@@ -56,6 +57,17 @@ function asyncRoute(fn) {
 // ===== Config =====
 router.get('/logistica/config', asyncRoute(async (_req, res) => {
   res.json({ ok: true, config: await db.getConfig() });
+}));
+
+// ===== Mapa (puntos de portones por NV, para "Ver mapa" por semana/viaje) =====
+// Solo lectura: alcanza con cualquiera de los 3 scopes de Preproducción.
+router.get('/logistica/mapa', asyncRoute(async (req, res) => {
+  const nvs = String(req.query?.nvs || '')
+    .split(',')
+    .map((s) => Number(s.trim()))
+    .filter(Number.isInteger)
+    .slice(0, 200); // cap defensivo
+  res.json({ ok: true, puntos: await resolveCoordsForNvs(nvs) });
 }));
 
 router.post('/logistica/zonas', requireFullAccess, asyncRoute(async (req, res) => {

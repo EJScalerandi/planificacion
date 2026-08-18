@@ -5,10 +5,11 @@
 // LogisticaViajeSemanaModal para armar los viajes y repartirlos.
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { getAdminToken, clearAdminToken, fetchLogisticaSemanas } from '../../src/api';
+import { getAdminToken, clearAdminToken, fetchLogisticaSemanas, fetchLogisticaSemanaDetalle } from '../../src/api';
 import { getPreproduccionAccessMode } from '../../src/utils/adminScopes';
 import { weekTitleFromSelection, weekNumberFromLabel } from '../../src/utils/isoWeek';
 import LogisticaViajeSemanaModal from '../../src/components/LogisticaViajeSemanaModal';
+import PortonesMapaModal from '../../src/components/modals/PortonesMapaModal';
 
 function StatPill({ label, total, asignados }) {
   const completo = total > 0 && asignados >= total;
@@ -46,6 +47,22 @@ export default function LogisticaViajesPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [semanaAbierta, setSemanaAbierta] = useState(null);
+  const [mapa, setMapa] = useState(null); // { nvs, titulo } | null
+  const [mapaLoadingSemana, setMapaLoadingSemana] = useState(null);
+
+  const verMapaDeSemana = async (semana) => {
+    setMapaLoadingSemana(semana);
+    try {
+      const data = await fetchLogisticaSemanaDetalle(semana);
+      const items = data?.detalle?.items || [];
+      const nvs = Array.from(new Set(items.map((it) => Number(it.nv)).filter(Number.isInteger)));
+      setMapa({ nvs, titulo: `Mapa · ${weekTitleFromSelection(semana)}` });
+    } catch (e) {
+      setErr(e?.response?.data?.error || e.message);
+    } finally {
+      setMapaLoadingSemana(null);
+    }
+  };
 
   const reload = useCallback(async () => {
     setErr('');
@@ -116,10 +133,12 @@ export default function LogisticaViajesPage() {
           }}
         >
           {semanas.map((s) => (
-            <button
+            <div
               key={s.semana}
-              type="button"
+              role="button"
+              tabIndex={0}
               onClick={() => setSemanaAbierta(s.semana)}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSemanaAbierta(s.semana); }}
               style={{
                 textAlign: 'left',
                 cursor: 'pointer',
@@ -150,10 +169,21 @@ export default function LogisticaViajesPage() {
               <StatPill label="Despacho" total={s.despacho_total} asignados={s.despacho_asignados} />
               <StatPill label="Instalación" total={s.instalacion_total} asignados={s.instalacion_asignados} />
 
-              <div style={{ fontSize: 12, opacity: 0.75 }}>
-                {s.viajes_count} viaje{s.viajes_count === 1 ? '' : 's'} creado{s.viajes_count === 1 ? '' : 's'}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ fontSize: 12, opacity: 0.75 }}>
+                  {s.viajes_count} viaje{s.viajes_count === 1 ? '' : 's'} creado{s.viajes_count === 1 ? '' : 's'}
+                </div>
+                <button
+                  type="button"
+                  className="btn"
+                  style={{ marginLeft: 'auto', padding: '2px 8px', fontSize: 11 }}
+                  disabled={mapaLoadingSemana === s.semana}
+                  onClick={(e) => { e.stopPropagation(); verMapaDeSemana(s.semana); }}
+                >
+                  {mapaLoadingSemana === s.semana ? '…' : '🗺️ Mapa'}
+                </button>
               </div>
-            </button>
+            </div>
           ))}
         </div>
       )}
@@ -165,6 +195,8 @@ export default function LogisticaViajesPage() {
         onClose={() => setSemanaAbierta(null)}
         onChanged={reload}
       />
+
+      <PortonesMapaModal open={!!mapa} nvs={mapa?.nvs} titulo={mapa?.titulo} onClose={() => setMapa(null)} />
     </div>
   );
 }

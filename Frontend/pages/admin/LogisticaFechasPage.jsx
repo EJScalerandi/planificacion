@@ -21,6 +21,13 @@ import {
   todayISO10,
 } from '../../src/utils/isoWeek';
 import { BLOCKED_NV_URL, parseBlockedNvText, getAny, getNvCanonicalFromRow, getSistemaFromRow } from '../../src/utils/preproduccionRow';
+import PortonesMapaModal from '../../src/components/modals/PortonesMapaModal';
+
+// NV únicos de un conjunto de filas (despacho e instalación del mismo NV son
+// el mismo domicilio).
+function uniqueNvs(rows) {
+  return Array.from(new Set((rows || []).map((r) => Number(getNvCanonicalFromRow(r))).filter(Number.isInteger)));
+}
 
 const DND_MIME = 'application/x-logistica-fecha-row';
 
@@ -96,7 +103,7 @@ function RowChip({ row, mode, draggable, onDragStart, onDragEnd, busy, highlight
   );
 }
 
-function WeekColumn({ weekLabel, rows, mode, canEdit, saving, onDropRow, onDragStartChip, onDragEndChip, isCurrent, colRef, searchNeedle }) {
+function WeekColumn({ weekLabel, rows, mode, canEdit, saving, onDropRow, onDragStartChip, onDragEndChip, isCurrent, colRef, searchNeedle, onVerMapa }) {
   const [over, setOver] = useState(false);
   return (
     <div
@@ -117,6 +124,15 @@ function WeekColumn({ weekLabel, rows, mode, canEdit, saving, onDropRow, onDragS
         </div>
         <div style={{ fontSize: 10, opacity: 0.7 }}>{weekTitleFromSelection(weekLabel).replace(/^Semana \d+ /, '')}</div>
         <div style={{ fontSize: 10, opacity: 0.7, marginTop: 2 }}>{rows.length} portón{rows.length === 1 ? '' : 'es'}</div>
+        <button
+          type="button"
+          className="btn"
+          style={{ padding: '1px 6px', fontSize: 10, marginTop: 4 }}
+          disabled={rows.length === 0}
+          onClick={() => onVerMapa(weekLabel, rows)}
+        >
+          🗺️ Mapa
+        </button>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minHeight: 40, flex: '1 1 auto', overflowY: 'auto' }}>
         {rows.map((row) => (
@@ -152,6 +168,7 @@ export default function LogisticaFechasPage() {
   const [err, setErr] = useState('');
   const [saving, setSaving] = useState(() => new Set());
   const [search, setSearch] = useState('');
+  const [mapa, setMapa] = useState(null); // { nvs, titulo } | null
 
   const [blockedNvSet, setBlockedNvSet] = useState(() => new Set());
   const [despachoFinalizadoByNv, setDespachoFinalizadoByNv] = useState(() => new Map());
@@ -432,12 +449,15 @@ export default function LogisticaFechasPage() {
                   isCurrent={wk === currentWeek}
                   colRef={(el) => { colRefs.current[wk] = el; }}
                   searchNeedle={searchNeedle}
+                  onVerMapa={(weekLabel, rows) => setMapa({ nvs: uniqueNvs(rows), titulo: `Mapa · Semana ${weekNumberFromLabel(weekLabel)}` })}
                 />
               ))
             )}
           </div>
         </div>
       )}
+
+      <PortonesMapaModal open={!!mapa} nvs={mapa?.nvs} titulo={mapa?.titulo} onClose={() => setMapa(null)} />
     </div>
   );
 }
