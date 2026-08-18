@@ -312,8 +312,13 @@ router.get('/portones', async (_req, res) => {
         from public.presupuestador_quotes q
         where q.quote_kind = 'original'
           and (
-            q.final_sale_order_name  = 'NV' || p.nv::text
-            or q.odoo_sale_order_name = 'NV' || p.nv::text
+            -- El Presupuestador no siempre usa el prefijo "NV": según el tipo
+            -- de orden en Odoo también aparece como NP/INP/INV/ONV/PLNP/PLNV/
+            -- PNP, etc., pero el número siempre es el mismo NV del portón. Se
+            -- matchea por el número anclado al final del nombre, sin importar
+            -- el prefijo de letras.
+            q.final_sale_order_name  ~ ('^[A-Za-z]*' || p.nv::text || '$')
+            or q.odoo_sale_order_name ~ ('^[A-Za-z]*' || p.nv::text || '$')
           )
         order by q.id desc
         limit 1

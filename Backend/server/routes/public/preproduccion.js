@@ -177,7 +177,7 @@ router.get('/preproduccion-valores/:nv/nv-lines', async (req, res) => {
               q.note
        FROM public.preproduccion_valores pv
        LEFT JOIN public.presupuestador_quotes q
-         ON q.odoo_sale_order_name = 'NV' || pv.nv::text
+         ON q.odoo_sale_order_name ~ ('^[A-Za-z]*' || pv.nv::text || '$')
        WHERE pv.nv = $1 AND pv.nv_tipo = $2
        LIMIT 1`,
       [nv, tipo]

@@ -96,14 +96,16 @@ const BASE_SQL = `
   LEFT JOIN public.preproduccion_valores pv
     ON pv.nv = p.nv AND pv.nv_tipo = 'NV'
 
-  -- Nombre del cliente desde presupuestador (fallback)
+  -- Nombre del cliente desde presupuestador (fallback). El prefijo de letras
+  -- no siempre es "NV" (también NP/INP/INV/ONV/PLNP/PLNV/PNP según el tipo de
+  -- orden en Odoo), pero el número siempre coincide con el NV del portón.
   LEFT JOIN LATERAL (
     SELECT q.end_customer->>'name' AS cliente_nombre
     FROM public.presupuestador_quotes q
     WHERE q.quote_kind = 'original'
       AND (
-        q.final_sale_order_name  = 'NV' || p.nv::text
-        OR q.odoo_sale_order_name = 'NV' || p.nv::text
+        q.final_sale_order_name  ~ ('^[A-Za-z]*' || p.nv::text || '$')
+        OR q.odoo_sale_order_name ~ ('^[A-Za-z]*' || p.nv::text || '$')
       )
     ORDER BY q.id DESC
     LIMIT 1
