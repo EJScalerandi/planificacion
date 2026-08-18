@@ -45,6 +45,7 @@ export default function PortonesMapaModal({ open, onClose, nvs, titulo }) {
   }, [open, nvKey]);
 
   const conUbicacion = useMemo(() => puntos.filter((p) => p.lat != null && p.lng != null), [puntos]);
+  const sinUbicacion = useMemo(() => puntos.filter((p) => p.lat == null || p.lng == null), [puntos]);
 
   // Init del mapa: una vez por apertura (el contenedor se desmonta al cerrar).
   useEffect(() => {
@@ -124,8 +125,30 @@ export default function PortonesMapaModal({ open, onClose, nvs, titulo }) {
 
         {err ? <div style={{ color: 'crimson', fontWeight: 800, fontSize: 12 }}>{err}</div> : null}
 
-        <div style={{ flex: '1 1 auto', minHeight: 0, borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)' }}>
+        {!loading && !err && sinUbicacion.length > 0 ? (
+          <div style={{ fontSize: 12, background: '#fffbeb', border: '1px solid #fcd34d', color: '#92400e', padding: '8px 10px', borderRadius: 10 }}>
+            {conUbicacion.length === 0 ? (
+              <b>Ningún portón tiene ubicación cargada.</b>
+            ) : (
+              <b>{sinUbicacion.length} portón{sinUbicacion.length === 1 ? '' : 'es'} sin ubicación</b>
+            )}
+            {' '}(sin link de Google Maps en el presupuesto, o sin presupuesto asociado): NV{' '}
+            {sinUbicacion.map((p) => p.nv).join(', ')}.
+          </div>
+        ) : null}
+
+        <div style={{ flex: '1 1 auto', minHeight: 0, borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)', position: 'relative' }}>
           <div ref={mapElRef} style={{ width: '100%', height: '100%' }} />
+          {!loading && conUbicacion.length === 0 ? (
+            <div
+              style={{
+                position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'rgba(0,0,0,0.35)', color: '#fff', fontWeight: 800, fontSize: 14, textAlign: 'center', padding: 20,
+              }}
+            >
+              Sin puntos para mostrar
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

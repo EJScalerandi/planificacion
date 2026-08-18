@@ -3,6 +3,12 @@
 // Resuelve (y cachea) los puntos de mapa de una lista de NV, para el "Ver
 // mapa" de Logística de Viajes / Planificación de Fechas: un pin por NV
 // (deduplicado - despacho e instalación del mismo NV son el mismo domicilio).
+//
+// Fuente única: end_customer.maps_url de presupuestador_quotes (decisión del
+// usuario) - NO se usa logistica_maps_url (el link que carga a mano logística
+// en /a, "Autorización Logística"), aunque a veces exista para NV sin
+// presupuesto asociado. Si un NV no matchea ninguna quote, o la quote no
+// tiene maps_url, simplemente queda sin ubicación.
 const { pool } = require('../db');
 const { resolveQuoteCoords } = require('./geocoding');
 
