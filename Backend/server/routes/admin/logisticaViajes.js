@@ -9,7 +9,8 @@ const { adminAuth } = require('../../middleware/adminAuth');
 const db = require('../../lib/logisticaViajesDb');
 const { resolveCoordsForNvs } = require('../../lib/logisticaMapa');
 const { getIaConfig, updateIaConfig } = require('../../lib/logisticaIaConfig');
-const { recomendarViaje } = require('../../lib/logisticaIaRecomendacion');
+const { recomendarViaje, planificarRutas } = require('../../lib/logisticaIaRecomendacion');
+const { listarPortonesSinViajeConUbicacion } = require('../../lib/logisticaIaContexto');
 
 const router = express.Router();
 
@@ -130,11 +131,7 @@ router.patch('/logistica/ia/config', requireFullAccess, asyncRoute(async (req, r
 // asignado todavía, con ubicación+zona resuelta - para el mapa de selección
 // de "Generar viaje con IA" en Planificación de Fechas.
 router.get('/logistica/portones-sin-viaje', asyncRoute(async (_req, res) => {
-  const pendientes = await db.listPortonesSinViaje();
-  const puntos = await resolveCoordsForNvs(pendientes.map((p) => p.nv));
-  const coordsByNv = new Map(puntos.map((p) => [p.nv, p]));
-  const items = pendientes.map((p) => ({ ...p, ...coordsByNv.get(p.nv) }));
-  res.json({ ok: true, items });
+  res.json({ ok: true, items: await listarPortonesSinViajeConUbicacion() });
 }));
 
 router.post('/logistica/ia/recomendar-viaje', requireFullAccess, asyncRoute(async (req, res) => {
@@ -142,6 +139,13 @@ router.post('/logistica/ia/recomendar-viaje', requireFullAccess, asyncRoute(asyn
     ? req.body.nvs.map((n) => Number(n)).filter(Number.isInteger).slice(0, 30)
     : [];
   res.json({ ok: true, ...(await recomendarViaje(nvs)) });
+}));
+
+// Planificación proactiva: mira TODOS los portones sin viaje, los agrupa por
+// zona, y le pide a la IA que proponga qué viajes armar en cada zona (no
+// requiere selección manual previa).
+router.post('/logistica/ia/planificar', requireFullAccess, asyncRoute(async (req, res) => {
+  res.json({ ok: true, ...(await planificarRutas()) });
 }));
 
 // ===== Zonificación geográfica (referencias por zona, para clasificar portones por ubicación) =====

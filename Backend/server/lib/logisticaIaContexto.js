@@ -9,17 +9,32 @@
 const { pool } = require('../db');
 const { resolveCoordsForNvs } = require('./logisticaMapa');
 const { haversineKm } = require('./logisticaZonificacion');
+const { computePeso } = require('./logisticaCapacidad');
+const db = require('./logisticaViajesDb');
+
+// Portones sin viaje asignado (cualquier semana) + ubicación/zona resuelta.
+// Compartido por el endpoint de mapa de selección y por la planificación
+// automática por zona.
+async function listarPortonesSinViajeConUbicacion() {
+  const pendientes = await db.listPortonesSinViaje();
+  const puntos = await resolveCoordsForNvs(pendientes.map((p) => p.nv));
+  const coordsByNv = new Map(puntos.map((p) => [p.nv, p]));
+  return pendientes.map((p) => ({ ...p, ...coordsByNv.get(p.nv) }));
+}
 
 async function fetchPortonesDataForNvs(nvs) {
   const { rows } = await pool.query(
-    `select distinct on (nv)
-       nv, sistema,
-       to_char(fecha_nv,   'YYYY-MM-DD') as fecha_nv,
-       to_char(fecha_med,  'YYYY-MM-DD') as fecha_med,
-       to_char(fecha_prod, 'YYYY-MM-DD') as fecha_prod
-     from public.portones
-     where nv = any($1::int[])
-     order by nv, nlista asc;`,
+    `select distinct on (p.nv)
+       p.nv, p.sistema,
+       to_char(p.fecha_nv,   'YYYY-MM-DD') as fecha_nv,
+       to_char(p.fecha_med,  'YYYY-MM-DD') as fecha_med,
+       to_char(p.fecha_prod, 'YYYY-MM-DD') as fecha_prod,
+       pv.data->>'Alto' as alto,
+       pv.data->>'Ancho' as ancho
+     from public.portones p
+     left join public.preproduccion_valores pv on pv.nv = p.nv and pv.nv_tipo = 'NV'
+     where p.nv = any($1::int[])
+     order by p.nv, p.nlista asc;`,
     [nvs]
   );
   return new Map(rows.map((r) => [r.nv, r]));
@@ -72,10 +87,11 @@ function sumarDias(fechaISO, dias) {
  * @returns {Promise<{ portones: Array, distancias_km: Array<{de:number,a:number,km:number}> }>}
  */
 async function construirContexto(nvs) {
-  const [puntos, portonesData, reglas] = await Promise.all([
+  const [puntos, portonesData, reglas, reglasCapacidad] = await Promise.all([
     resolveCoordsForNvs(nvs),
     fetchPortonesDataForNvs(nvs),
     fetchReglasEnvioActivas(),
+    db.listReglasCapacidad(),
   ]);
 
   const hoy = new Date().toISOString().slice(0, 10);
@@ -85,6 +101,7 @@ async function construirContexto(nvs) {
     const regla = reglaAplicable(datos, reglas);
     const fechaRef = regla ? datos[regla.fecha_referencia_campo] : null;
     const fechaHabilitada = regla ? sumarDias(fechaRef, regla.dias_minimos) : null;
+    const { peso } = computePeso({ alto: datos.alto, ancho: datos.ancho }, reglasCapacidad);
     return {
       nv: p.nv,
       nombre_cliente: p.nombre,
@@ -93,6 +110,7 @@ async function construirContexto(nvs) {
       lng: p.lng,
       zona: p.zona?.zona_nombre || null,
       sistema: datos.sistema || null,
+      peso_capacidad: peso,
       regla_envio_aplicada: regla?.nombre || null,
       fecha_habilitada_despacho: fechaHabilitada,
       cumple_regla_envio: fechaHabilitada ? fechaHabilitada <= hoy : true,
@@ -112,4 +130,4 @@ async function construirContexto(nvs) {
   return { portones, distancias_km };
 }
 
-module.exports = { construirContexto };
+module.exports = { construirContexto, listarPortonesSinViajeConUbicacion };

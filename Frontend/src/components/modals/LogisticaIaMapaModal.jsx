@@ -20,6 +20,7 @@ import {
   fetchLogisticaPortonesSinViaje,
   fetchLogisticaViajesConfig,
   recomendarLogisticaViajeIa,
+  planificarLogisticaRutasIa,
   crearLogisticaViaje,
   asignarLogisticaPorton,
 } from '../../api';
@@ -71,6 +72,13 @@ export default function LogisticaIaMapaModal({ open, onClose, onCreated }) {
   const [recomendando, setRecomendando] = useState(false);
   const [recomendacion, setRecomendacion] = useState(null);
 
+  // Vista alternativa: en vez de seleccionar a mano, la IA mira TODOS los
+  // portones pendientes, los agrupa por zona y propone qué viajes armar en
+  // cada una (Fase 3).
+  const [vista, setVista] = useState('seleccion'); // 'seleccion' | 'planes'
+  const [planificando, setPlanificando] = useState(false);
+  const [planes, setPlanes] = useState(null); // { planes, sin_zona, sin_ubicacion } | null
+
   const [confirmando, setConfirmando] = useState(false);
   const [confirmForm, setConfirmForm] = useState(null);
   const [creando, setCreando] = useState(false);
@@ -95,6 +103,8 @@ export default function LogisticaIaMapaModal({ open, onClose, onCreated }) {
     setRecomendacion(null);
     setConfirmando(false);
     setResultado(null);
+    setVista('seleccion');
+    setPlanes(null);
     setLoading(true);
     Promise.all([fetchLogisticaPortonesSinViaje(), fetchLogisticaViajesConfig()])
       .then(([itemsRes, configRes]) => {
@@ -193,17 +203,19 @@ export default function LogisticaIaMapaModal({ open, onClose, onCreated }) {
     }
   };
 
-  const abrirConfirmacion = () => {
-    const { semana, incluidos, excluidos } = agruparPorSemana(Array.from(selected), itemsByNv);
-    if (!semana) { setErr('Ninguno de los portones seleccionados tiene semana asignada.'); return; }
+  // nvsList: NV a incluir (de la selección manual, o de un viaje propuesto
+  // por la planificación automática). opts: { vehiculoSugerido, nombreSugerido }.
+  const abrirConfirmacion = (nvsList, opts = {}) => {
+    const { semana, incluidos, excluidos } = agruparPorSemana(nvsList, itemsByNv);
+    if (!semana) { setErr('Ninguno de los portones de esta propuesta tiene semana asignada.'); return; }
 
     const { start, end } = isoWeekStartEndFromLabel(semana);
     const hoy = todayISO10();
     const fechaDefault = hoy >= start && hoy <= end ? hoy : start;
 
     const vehiculoSugerido = (config?.vehiculos || []).find(
-      (v) => v.activo && recomendacion?.recomendacion?.vehiculo_sugerido &&
-        v.nombre.trim().toLowerCase() === String(recomendacion.recomendacion.vehiculo_sugerido).trim().toLowerCase()
+      (v) => v.activo && opts.vehiculoSugerido &&
+        v.nombre.trim().toLowerCase() === String(opts.vehiculoSugerido).trim().toLowerCase()
     );
 
     // Zona más frecuente entre los portones incluidos
@@ -218,9 +230,23 @@ export default function LogisticaIaMapaModal({ open, onClose, onCreated }) {
       zona_id: zonaId ? String(zonaId) : '',
       cuadrilla_id: '',
       vehiculo_id: vehiculoSugerido ? String(vehiculoSugerido.id) : '',
-      nombre: `Viaje IA · Semana ${weekNumberFromLabel(semana)}`,
+      nombre: opts.nombreSugerido || `Viaje IA · Semana ${weekNumberFromLabel(semana)}`,
     });
     setConfirmando(true);
+  };
+
+  const planificarTodo = async () => {
+    setPlanificando(true);
+    setErr('');
+    try {
+      const data = await planificarLogisticaRutasIa();
+      setPlanes(data);
+      setVista('planes');
+    } catch (e) {
+      setErr(e?.response?.data?.error || e.message);
+    } finally {
+      setPlanificando(false);
+    }
   };
 
   const crear = async () => {
@@ -386,8 +412,65 @@ export default function LogisticaIaMapaModal({ open, onClose, onCreated }) {
 
                 <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
                   <button className="btn" onClick={() => setRecomendacion(null)}>Descartar</button>
-                  <button className="btn btn--brand" onClick={abrirConfirmacion}>Crear viaje con esta recomendación</button>
+                  <button className="btn btn--brand" onClick={() => abrirConfirmacion(Array.from(selected), { vehiculoSugerido: rec.vehiculo_sugerido })}>
+                    Crear viaje con esta recomendación
+                  </button>
                 </div>
+              </div>
+            ) : vista === 'planes' ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <button className="btn" style={{ alignSelf: 'flex-start' }} onClick={() => setVista('seleccion')}>← Volver a selección manual</button>
+
+                {planes?.sin_zona?.cantidad > 0 ? (
+                  <div style={{ fontSize: 11, color: '#92400e', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, padding: 8 }}>
+                    {planes.sin_zona.cantidad} portón{planes.sin_zona.cantidad === 1 ? '' : 'es'} con ubicación pero sin zona clasificada
+                    (no se pudieron agrupar): NV {planes.sin_zona.nvs.join(', ')}. Cargá localidades de referencia en "Zonas" para incluirlos.
+                  </div>
+                ) : null}
+                {planes?.sin_ubicacion > 0 ? (
+                  <div style={{ fontSize: 11, opacity: 0.7 }}>
+                    {planes.sin_ubicacion} portones sin ubicación resuelta, no evaluados.
+                  </div>
+                ) : null}
+
+                {(planes?.planes || []).map((plan) => (
+                  <div key={plan.zona} style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 10 }}>
+                    <div style={{ fontWeight: 900, marginBottom: 6 }}>📍 {plan.zona} ({plan.total_en_zona} pendientes{plan.truncado ? ', mostrando solo una parte' : ''})</div>
+                    {plan.error ? (
+                      <div style={{ fontSize: 11, color: '#991b1b' }}>Error: {plan.error}</div>
+                    ) : (plan.viajes_propuestos || []).length === 0 ? (
+                      <div style={{ fontSize: 11, opacity: 0.7 }}>La IA no propuso viajes para esta zona.</div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {plan.viajes_propuestos.map((viaje, i) => (
+                          <div key={i} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 8, background: 'var(--surface-muted, #f9fafb)' }}>
+                            <div style={{ fontWeight: 800, fontSize: 12 }}>{viaje.nombre}</div>
+                            <div style={{ fontSize: 11, opacity: 0.8 }}>
+                              {viaje.nvs.length} portón{viaje.nvs.length === 1 ? '' : 'es'} · Semana {viaje.semana_sugerida} · {viaje.tiempo_total_estimado_horas}h
+                              {viaje.vehiculo_sugerido ? ` · ${viaje.vehiculo_sugerido}` : ''}
+                            </div>
+                            {viaje.alertas?.length > 0 ? (
+                              <div style={{ fontSize: 10, color: '#92400e', marginTop: 4 }}>
+                                {viaje.alertas.map((a, j) => <div key={j}>⚠️ {a}</div>)}
+                              </div>
+                            ) : null}
+                            <details style={{ fontSize: 10, opacity: 0.8, marginTop: 4 }}>
+                              <summary style={{ cursor: 'pointer' }}>Ver detalle</summary>
+                              <div style={{ marginTop: 4 }}>NV: {viaje.nvs.join(', ')}</div>
+                              <div style={{ marginTop: 4 }}>{viaje.razonamiento}</div>
+                            </details>
+                            <button
+                              className="btn btn--brand" style={{ marginTop: 6, fontSize: 11, padding: '3px 9px' }}
+                              onClick={() => abrirConfirmacion(viaje.nvs, { vehiculoSugerido: viaje.vehiculo_sugerido, nombreSugerido: viaje.nombre })}
+                            >
+                              Crear este viaje
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             ) : (
               <div style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 12 }}>
@@ -395,6 +478,14 @@ export default function LogisticaIaMapaModal({ open, onClose, onCreated }) {
                   Hacé click en los pines del mapa para seleccionar los portones que querés incluir en un viaje nuevo.
                   Cuando termines, pedile a la IA que te recomiende semana, orden y vehículo.
                 </div>
+
+                <button className="btn" style={{ marginBottom: 12, width: '100%' }} disabled={planificando} onClick={planificarTodo}>
+                  {planificando ? 'Planificando (puede tardar unos minutos)…' : '🗺️ Planificar todas las zonas automáticamente'}
+                </button>
+                <div style={{ fontSize: 10, opacity: 0.6, marginTop: -8, marginBottom: 12 }}>
+                  Sin seleccionar nada: la IA agrupa TODOS los portones pendientes por zona y propone qué viajes armar.
+                </div>
+
                 {selected.size > 0 ? (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 10 }}>
                     {Array.from(selected).map((nv) => (
