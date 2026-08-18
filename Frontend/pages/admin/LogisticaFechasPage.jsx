@@ -138,7 +138,6 @@ export default function LogisticaFechasPage() {
   const [err, setErr] = useState('');
   const [saving, setSaving] = useState(() => new Set());
   const [search, setSearch] = useState('');
-  const [mostrarDespachados, setMostrarDespachados] = useState(false);
 
   const [blockedNvSet, setBlockedNvSet] = useState(() => new Set());
   const [despachoFinalizadoByNv, setDespachoFinalizadoByNv] = useState(() => new Map());
@@ -177,17 +176,18 @@ export default function LogisticaFechasPage() {
     load();
   }, [accessMode, load]);
 
+  // Despacho finalizado = ya salió de fábrica: se saca de Planificación de
+  // Fechas por completo (los dos modos), no solo del modo Despacho, para
+  // no ensuciar la pantalla con portones que ya no hay que replanificar.
   const filteredRows = useMemo(() => {
     return rows.filter((row) => {
       const nv = getNvCanonicalFromRow(row);
       if (nv && blockedNvSet.has(nv)) return false;
-      if (mode === 'despacho' && !mostrarDespachados) {
-        const nvInt = Number(nv);
-        if (Number.isInteger(nvInt) && despachoFinalizadoByNv.get(nvInt) === true) return false;
-      }
+      const nvInt = Number(nv);
+      if (Number.isInteger(nvInt) && despachoFinalizadoByNv.get(nvInt) === true) return false;
       return true;
     });
-  }, [rows, blockedNvSet, mode, mostrarDespachados, despachoFinalizadoByNv]);
+  }, [rows, blockedNvSet, despachoFinalizadoByNv]);
 
   const pool = useMemo(
     () => filteredRows.filter((row) => !isoWeekLabelFromDate(getDateValue(row, mode))),
@@ -330,13 +330,6 @@ export default function LogisticaFechasPage() {
             </button>
           ))}
         </div>
-
-        {mode === 'despacho' ? (
-          <label className="btn" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <input type="checkbox" checked={mostrarDespachados} onChange={(e) => setMostrarDespachados(e.target.checked)} />
-            Mostrar ya despachados
-          </label>
-        ) : null}
 
         <button className="btn" onClick={scrollToToday}>Ir a hoy</button>
 
