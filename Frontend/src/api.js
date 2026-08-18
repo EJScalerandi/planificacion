@@ -408,7 +408,9 @@ export async function updateLogisticaIaConfig(patch) {
   return data;
 }
 export async function recomendarLogisticaViajeIa(nvs) {
-  const { data } = await api.post('/admin/logistica/ia/recomendar-viaje', { nvs });
+  // La IA puede tardar bastante más que el timeout global (razonamiento
+  // adaptativo + JSON estructurado - probado ~20-25s con pocos portones).
+  const { data } = await api.post('/admin/logistica/ia/recomendar-viaje', { nvs }, { timeout: 90000 });
   return data;
 }
 export async function fetchLogisticaPortonesSinViaje() {
