@@ -690,7 +690,14 @@ export default function App() {
           <Route path="/admin/insumos/config" element={<InsumosConfigPage />} />
           <Route path="/admin/insumos/entregas" element={<InsumosEntregasPage />} />
           <Route path="/admin/logistica-viajes" element={<LogisticaViajesPage />} />
-          <Route path="/admin/logistica-fechas" element={<LogisticaFechasPage />} />
+          <Route
+            path="/admin/logistica-fechas"
+            element={
+              <FullBleed>
+                <LogisticaFechasPage />
+              </FullBleed>
+            }
+          />
           <Route path="/usuarios" element={<UserAdminDashboard />} />
 
           <Route

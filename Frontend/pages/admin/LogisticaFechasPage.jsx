@@ -39,6 +39,11 @@ function ciIncludes(haystack, needle) {
   return String(haystack || '').toLowerCase().includes(String(needle || '').toLowerCase());
 }
 
+// Color por estado de instalación (independiente del modo que estés viendo):
+// azul = ya tiene fecha_llegada_imput (instalación) asignada, amarillo = no.
+const INSTALACION_COLOR = { border: '#3b82f6', bg: 'rgba(59,130,246,0.10)' };
+const SIN_INSTALACION_COLOR = { border: '#f59e0b', bg: 'rgba(245,158,11,0.10)' };
+
 function RowChip({ row, mode, draggable, onDragStart, onDragEnd, busy }) {
   const nv = getNvCanonicalFromRow(row);
   const d = row?.data || {};
@@ -46,6 +51,8 @@ function RowChip({ row, mode, draggable, onDragStart, onDragEnd, busy }) {
   const distribuidor = getAny(d, ['RazSoc']) || '';
   const sistema = getSistemaFromRow(row) || '';
   const fecha = getDateValue(row, mode);
+  const tieneInstalacion = !!isoWeekLabelFromDate(getDateValue(row, 'instalacion'));
+  const accent = tieneInstalacion ? INSTALACION_COLOR : SIN_INSTALACION_COLOR;
 
   return (
     <div
@@ -54,16 +61,17 @@ function RowChip({ row, mode, draggable, onDragStart, onDragEnd, busy }) {
       onDragEnd={onDragEnd}
       style={{
         border: '1px solid var(--border)',
+        borderLeft: `4px solid ${accent.border}`,
         borderRadius: 10,
         padding: '8px 10px',
-        background: 'var(--surface)',
+        background: `linear-gradient(0deg, ${accent.bg}, ${accent.bg}), var(--surface)`,
         cursor: draggable ? 'grab' : 'default',
         opacity: busy ? 0.5 : 1,
         display: 'flex',
         flexDirection: 'column',
         gap: 3,
       }}
-      title={distribuidor}
+      title={`${distribuidor}${tieneInstalacion ? ' · con instalación asignada' : ' · sin instalación asignada'}`}
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
         <span style={{ fontWeight: 900, fontSize: 13 }}>NV {nv || '—'}</span>
@@ -84,20 +92,20 @@ function WeekColumn({ weekLabel, rows, mode, canEdit, saving, onDropRow, onDragS
       onDragLeave={() => setOver(false)}
       onDrop={(e) => { if (!canEdit) return; e.preventDefault(); setOver(false); onDropRow(weekLabel, e); }}
       style={{
-        minWidth: 210, maxWidth: 210, display: 'flex', flexDirection: 'column', gap: 8,
+        minWidth: 210, maxWidth: 210, height: '100%', display: 'flex', flexDirection: 'column', gap: 8,
         border: `1px solid ${over ? 'var(--brand)' : isCurrent ? 'var(--brand)' : 'var(--border)'}`,
         borderRadius: 12, padding: 10,
         background: over ? 'var(--brand-100)' : isCurrent ? 'color-mix(in srgb, var(--brand) 6%, var(--surface))' : 'var(--surface)',
       }}
     >
-      <div>
+      <div style={{ flex: '0 0 auto' }}>
         <div style={{ fontWeight: 900, fontSize: 12 }}>
           Semana {weekNumberFromLabel(weekLabel)} {isCurrent ? <span style={{ fontSize: 10, color: 'var(--brand-700)' }}>(hoy)</span> : null}
         </div>
         <div style={{ fontSize: 10, opacity: 0.7 }}>{weekTitleFromSelection(weekLabel).replace(/^Semana \d+ /, '')}</div>
         <div style={{ fontSize: 10, opacity: 0.7, marginTop: 2 }}>{rows.length} portón{rows.length === 1 ? '' : 'es'}</div>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minHeight: 40 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minHeight: 40, flex: '1 1 auto', overflowY: 'auto' }}>
         {rows.map((row) => (
           <RowChip
             key={row.id}
@@ -287,24 +295,24 @@ export default function LogisticaFechasPage() {
   }
 
   return (
-    <div className="container">
-      <div className="header-row" style={{ alignItems: 'center' }}>
-        <h2 className="h1">Planificación de Fechas</h2>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <Link className="btn" to="/a">Ir a Preproducción (/a)</Link>
-          <Link className="btn" to="/admin/logistica-viajes">Ir a Viajes de Logística</Link>
+    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 74px)', padding: '10px 16px 16px' }}>
+      <div className="header-row" style={{ alignItems: 'center', flex: '0 0 auto' }}>
+        <h2 className="h1" style={{ fontSize: 16, padding: '6px 14px' }}>Planificación de Fechas</h2>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: 11, opacity: 0.7 }}>
+            <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, background: INSTALACION_COLOR.border, marginRight: 4 }} />
+            con instalación
+            <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, background: SIN_INSTALACION_COLOR.border, margin: '0 4px 0 10px' }} />
+            sin instalación
+          </span>
+          <Link className="btn" to="/a">/a</Link>
+          <Link className="btn" to="/admin/logistica-viajes">Viajes de Logística</Link>
           <button className="btn" onClick={load} disabled={loading}>Recargar</button>
           <button className="btn" onClick={logout}>Salir</button>
         </div>
       </div>
 
-      <div style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }}>
-        Arrastrá un portón del pool (izquierda) a la semana que le corresponda, o de una semana a otra para
-        cambiarla. Escribe directo sobre {MODES[mode].patchKey} — la misma propiedad que ves y editás en /a —
-        así que los cambios se reflejan ahí al instante (y viceversa).
-      </div>
-
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 12, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 8, flexWrap: 'wrap', flex: '0 0 auto' }}>
         <div className="btn" style={{ display: 'inline-flex', padding: 2, gap: 2 }}>
           {Object.entries(MODES).map(([key, cfg]) => (
             <button
@@ -331,14 +339,19 @@ export default function LogisticaFechasPage() {
         ) : null}
 
         <button className="btn" onClick={scrollToToday}>Ir a hoy</button>
+
+        <span style={{ fontSize: 11, opacity: 0.65 }}>
+          Arrastrá un portón para asignarle/cambiarle la semana. Escribe directo {MODES[mode].patchKey} (misma
+          propiedad que /a).
+        </span>
       </div>
 
-      {err ? <div style={{ color: 'crimson', fontWeight: 800, fontSize: 12, marginTop: 10 }}>{err}</div> : null}
+      {err ? <div style={{ color: 'crimson', fontWeight: 800, fontSize: 12, marginTop: 8, flex: '0 0 auto' }}>{err}</div> : null}
 
       {loading ? (
         <div style={{ marginTop: 16, opacity: 0.75 }}>Cargando…</div>
       ) : (
-        <div style={{ display: 'flex', gap: 12, marginTop: 14 }}>
+        <div style={{ display: 'flex', gap: 12, marginTop: 10, flex: '1 1 auto', minHeight: 0 }}>
           <div
             onDragOver={(e) => { if (!canEdit) return; e.preventDefault(); setPoolOver(true); }}
             onDragLeave={() => setPoolOver(false)}
@@ -348,15 +361,18 @@ export default function LogisticaFechasPage() {
               border: `1px solid ${poolOver ? 'var(--brand)' : 'var(--border)'}`,
               borderRadius: 12, padding: 10,
               background: poolOver ? 'var(--brand-100)' : 'var(--surface-muted, #f9fafb)',
-              maxHeight: '72vh', overflowY: 'auto',
+              overflowY: 'auto',
             }}
           >
-            <div style={{ fontWeight: 900, fontSize: 13 }}>Sin {MODES[mode].label.toLowerCase()} ({poolFiltered.length})</div>
+            <div style={{ fontWeight: 900, fontSize: 13, flex: '0 0 auto' }}>
+              Sin {MODES[mode].label.toLowerCase()} ({poolFiltered.length})
+            </div>
             <input
               className="pp-input"
               placeholder="Buscar NV, cliente, distribuidor, sistema…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              style={{ flex: '0 0 auto' }}
             />
             {poolFiltered.length === 0 ? (
               <div style={{ fontSize: 11, opacity: 0.6 }}>Nada por asignar.</div>
@@ -375,7 +391,7 @@ export default function LogisticaFechasPage() {
             )}
           </div>
 
-          <div style={{ flex: 1, display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 8, maxHeight: '72vh' }}>
+          <div style={{ flex: '1 1 auto', display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 8, minHeight: 0 }}>
             {weeks.map((wk) => (
               <WeekColumn
                 key={wk}

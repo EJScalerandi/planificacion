@@ -13,3 +13,5 @@
 **/.env.*
 !**/.env.example
 **/*clave*.txt
+.vercel
+.env*
