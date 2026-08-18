@@ -10,11 +10,11 @@
 // verificado para dar el mismo resultado que esta implementación en año nuevo,
 // semana 53 y demás bordes (ver Backend/server/lib/logisticaViajesDb.js).
 
-function pad2(n) {
+export function pad2(n) {
   return String(n).padStart(2, '0');
 }
 
-function toISODate10(v) {
+export function toISODate10(v) {
   if (!v) return '';
   const s = String(v).trim();
 
@@ -41,11 +41,11 @@ function toISODate10(v) {
   return '';
 }
 
-function isISODate10(s) {
+export function isISODate10(s) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(s || '').trim());
 }
 
-function formatDMY(date10) {
+export function formatDMY(date10) {
   const d = toISODate10(date10);
   if (!d) return '';
   const [yyyy, mm, dd] = d.split('-');
@@ -107,4 +107,23 @@ export function weekTitleFromSelection(weekLabel) {
 export function todayISO10() {
   const d = new Date();
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+// Lista contigua de semanas ISO alrededor de la de hoy (weeksBefore/weeksAfter
+// semanas para cada lado), usada para las columnas del tablero de
+// Planificación de Fechas — así siempre hay columnas para arrastrar aunque
+// esa semana todavía no tenga ningún portón. Recalcula cada semana con
+// isoWeekLabelFromDate (en vez de sumar al número W a mano) para no romperse
+// en los bordes de año (semana 53 -> semana 01, etc.)
+export function buildWeekRange(weeksBefore, weeksAfter) {
+  const currentLabel = isoWeekLabelFromDate(todayISO10());
+  const { start } = isoWeekStartEndFromLabel(currentLabel);
+  const out = [];
+  for (let i = -weeksBefore; i <= weeksAfter; i++) {
+    const d = new Date(`${start}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + i * 7);
+    const iso = `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
+    out.push(isoWeekLabelFromDate(iso));
+  }
+  return out;
 }

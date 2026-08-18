@@ -135,6 +135,26 @@ export default function AdminHomePage() {
           }}
         >
           <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 8 }}>
+            Planificación de Fechas
+          </div>
+          <div style={{ opacity: 0.75, marginBottom: 12 }}>
+            Asignar en qué semana despacha/instala cada portón arrastrándolo (mismo dato que fecha
+            salida/llegada en /a).
+          </div>
+          <Link className="btn btn--brand" to="/admin/logistica-fechas">
+            Ir a Planificación de Fechas
+          </Link>
+        </div>
+
+        <div
+          style={{
+            border: '1px solid var(--border)',
+            borderRadius: 12,
+            padding: 14,
+            background: 'var(--surface)',
+          }}
+        >
+          <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 8 }}>
             Logística de Viajes
           </div>
           <div style={{ opacity: 0.75, marginBottom: 12 }}>

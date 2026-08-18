@@ -85,6 +85,7 @@ export default function LogisticaViajesPage() {
       <div className="header-row" style={{ alignItems: 'center' }}>
         <h2 className="h1">Logística de Viajes</h2>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Link className="btn" to="/admin/logistica-fechas">Planificación de Fechas</Link>
           <Link className="btn" to="/a">Ir a Preproducción (/a)</Link>
           <Link className="btn" to="/admin">Panel Admin</Link>
           <button className="btn" onClick={logout}>Salir</button>

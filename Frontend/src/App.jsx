@@ -33,6 +33,7 @@ import InsumosComprasPage from '../pages/admin/InsumosComprasPage';
 import InsumosConfigPage from '../pages/admin/InsumosConfigPage';
 import InsumosEntregasPage from '../pages/admin/InsumosEntregasPage';
 import LogisticaViajesPage from '../pages/admin/LogisticaViajesPage';
+import LogisticaFechasPage from '../pages/admin/LogisticaFechasPage';
 
 import PreproduccionValoresTable from '../src/components/PreproduccionValoresTable';
 import IpanelPreproduccionValoresTable from '../src/components/IpanelPreproduccionValoresTable';
@@ -689,6 +690,7 @@ export default function App() {
           <Route path="/admin/insumos/config" element={<InsumosConfigPage />} />
           <Route path="/admin/insumos/entregas" element={<InsumosEntregasPage />} />
           <Route path="/admin/logistica-viajes" element={<LogisticaViajesPage />} />
+          <Route path="/admin/logistica-fechas" element={<LogisticaFechasPage />} />
           <Route path="/usuarios" element={<UserAdminDashboard />} />
 
           <Route

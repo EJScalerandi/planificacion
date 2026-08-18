@@ -36,26 +36,17 @@ import {
 
 import { getCurrentScopes, hasAny } from '../utils/adminScopes';
 
-// =====================
-// NV bloqueados (no deben aparecer) - desde TXT público
-// =====================
-const BLOCKED_NV_URL = '/blocked_nvs.txt';
+import {
+  BLOCKED_NV_URL,
+  parseBlockedNvText,
+  getAny,
+  getNvCanonicalFromRow,
+  getSistemaFromRow,
+} from '../utils/preproduccionRow';
 
-function normalizeNvToken(token) {
-  const s = String(token || '').trim();
-  if (!s || s.startsWith('#')) return '';
-  const m = s.match(/\d+/);
-  return m ? m[0] : s;
-}
-
-function parseBlockedNvText(txt) {
-  return new Set(
-    String(txt || '')
-      .split(/\s+/)
-      .map(normalizeNvToken)
-      .filter(Boolean)
-  );
-}
+// NV bloqueados (no deben aparecer) y helpers de fila: ahora en
+// ../utils/preproduccionRow (import de arriba), compartidos con la pantalla
+// de Planificación de Fechas.
 
 // =====================
 // Constantes
@@ -126,29 +117,7 @@ function formatDMY(date10) {
   return `${dd}/${mm}/${yyyy}`;
 }
 
-/**
- * getAny:
- * - Primero intenta match exacto
- * - Luego fallback case-insensitive
- */
-function getAny(obj, keys) {
-  if (!obj) return null;
-
-  for (const k of keys) {
-    if (Object.prototype.hasOwnProperty.call(obj, k) && obj[k] != null) return obj[k];
-  }
-
-  const map = {};
-  for (const k of Object.keys(obj)) map[String(k).toLowerCase()] = k;
-
-  for (const k of keys) {
-    const realKey = map[String(k).toLowerCase()];
-    if (realKey && obj[realKey] != null) return obj[realKey];
-  }
-
-  return null;
-}
-
+// getAny: ahora en ../utils/preproduccionRow (import de arriba).
 function getCellValue(row, col) {
   const data = row?.data || {};
   if (col.patchKey) {
@@ -196,21 +165,7 @@ function medidasDisplayFromRow(row) {
   return altoMm != null && anchoMm != null ? `${altoMm}x${anchoMm}` : '';
 }
 
-function getNvCanonicalFromRow(row) {
-  const d = row?.data || {};
-  const v = getAny(d, ['NV', 'nv']) ?? getAny(row, ['NV', 'nv']);
-  if (v == null) return '';
-  const s = String(v).trim();
-  const m = s.match(/\d+/);
-  return m ? m[0] : s;
-}
-
-function getSistemaFromRow(row) {
-  const d = row?.data || {};
-  const v = d.Sistema ?? d.sistema ?? d.SISTEMA ?? d.Sistemas ?? d.sistemas ?? null;
-  const s = String(v ?? '').trim();
-  return s ? s : null;
-}
+// getNvCanonicalFromRow / getSistemaFromRow: ahora en ../utils/preproduccionRow.
 
 function getNvIntFromRow(row) {
   const nvStr = getNvCanonicalFromRow(row);
@@ -1901,6 +1856,10 @@ export default function PreproduccionValoresTable() {
           <button onClick={() => setShowConsultas(true)} className="btn">
             Consultas (Técnica / Comercial)
           </button>
+
+          <Link to="/admin/logistica-fechas" className="btn" style={{ textDecoration: 'none' }}>
+            Planificación de Fechas
+          </Link>
 
           <Link to="/admin/logistica-viajes" className="btn" style={{ textDecoration: 'none' }}>
             Viajes de Logística
