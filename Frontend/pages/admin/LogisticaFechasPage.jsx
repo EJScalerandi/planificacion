@@ -39,12 +39,24 @@ function ciIncludes(haystack, needle) {
   return String(haystack || '').toLowerCase().includes(String(needle || '').toLowerCase());
 }
 
+// Buscador compartido entre el pool y el tablero de semanas: NV, cliente,
+// distribuidor, sistema.
+function matchesSearch(row, needle) {
+  if (!needle) return true;
+  const nv = getNvCanonicalFromRow(row);
+  const d = row?.data || {};
+  const nombre = getAny(d, ['Nombre']) || '';
+  const distribuidor = getAny(d, ['RazSoc']) || '';
+  const sistema = getSistemaFromRow(row) || '';
+  return ciIncludes(`${nv} ${nombre} ${distribuidor} ${sistema}`, needle);
+}
+
 // Color por estado de instalación (independiente del modo que estés viendo):
 // azul = ya tiene fecha_llegada_imput (instalación) asignada, amarillo = no.
 const INSTALACION_COLOR = { border: '#3b82f6', bg: 'rgba(59,130,246,0.10)' };
 const SIN_INSTALACION_COLOR = { border: '#f59e0b', bg: 'rgba(245,158,11,0.10)' };
 
-function RowChip({ row, mode, draggable, onDragStart, onDragEnd, busy }) {
+function RowChip({ row, mode, draggable, onDragStart, onDragEnd, busy, highlight }) {
   const nv = getNvCanonicalFromRow(row);
   const d = row?.data || {};
   const nombre = getAny(d, ['Nombre']) || '';
@@ -70,6 +82,7 @@ function RowChip({ row, mode, draggable, onDragStart, onDragEnd, busy }) {
         display: 'flex',
         flexDirection: 'column',
         gap: 3,
+        boxShadow: highlight ? '0 0 0 2px var(--brand)' : 'none',
       }}
       title={`${distribuidor}${tieneInstalacion ? ' · con instalación asignada' : ' · sin instalación asignada'}`}
     >
@@ -83,7 +96,7 @@ function RowChip({ row, mode, draggable, onDragStart, onDragEnd, busy }) {
   );
 }
 
-function WeekColumn({ weekLabel, rows, mode, canEdit, saving, onDropRow, onDragStartChip, onDragEndChip, isCurrent, colRef }) {
+function WeekColumn({ weekLabel, rows, mode, canEdit, saving, onDropRow, onDragStartChip, onDragEndChip, isCurrent, colRef, searchNeedle }) {
   const [over, setOver] = useState(false);
   return (
     <div
@@ -113,6 +126,7 @@ function WeekColumn({ weekLabel, rows, mode, canEdit, saving, onDropRow, onDragS
             mode={mode}
             draggable={canEdit}
             busy={saving.has(row.id)}
+            highlight={!!searchNeedle && matchesSearch(row, searchNeedle)}
             onDragStart={(e) => onDragStartChip(e, row)}
             onDragEnd={onDragEndChip}
           />
@@ -194,18 +208,12 @@ export default function LogisticaFechasPage() {
     [filteredRows, mode]
   );
 
-  const poolFiltered = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-    if (!needle) return pool;
-    return pool.filter((row) => {
-      const nv = getNvCanonicalFromRow(row);
-      const d = row?.data || {};
-      const nombre = getAny(d, ['Nombre']) || '';
-      const distribuidor = getAny(d, ['RazSoc']) || '';
-      const sistema = getSistemaFromRow(row) || '';
-      return ciIncludes(`${nv} ${nombre} ${distribuidor} ${sistema}`, needle);
-    });
-  }, [pool, search]);
+  const searchNeedle = search.trim().toLowerCase();
+
+  const poolFiltered = useMemo(
+    () => pool.filter((row) => matchesSearch(row, searchNeedle)),
+    [pool, searchNeedle]
+  );
 
   const rowsByWeek = useMemo(() => {
     const map = new Map();
@@ -227,10 +235,30 @@ export default function LogisticaFechasPage() {
     return Array.from(set).sort();
   }, [rowsByWeek]);
 
+  // Con búsqueda activa, el tablero se achica a solo las semanas que tienen
+  // algún match (así "3990" te dice de un vistazo en qué semana está); sin
+  // búsqueda, se ven todas como siempre.
+  const visibleWeeks = useMemo(() => {
+    if (!searchNeedle) return weeks;
+    return weeks.filter((wk) => (rowsByWeek.get(wk) || []).some((row) => matchesSearch(row, searchNeedle)));
+  }, [weeks, rowsByWeek, searchNeedle]);
+
   const colRefs = useRef({});
   const scrollToToday = () => {
     colRefs.current[currentWeek]?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
   };
+
+  // Al entrar, arrancar posicionado en la semana en curso (una sola vez, no
+  // cada vez que se recarga o se cambia de modo).
+  const didInitialScrollRef = useRef(false);
+  useEffect(() => {
+    if (loading || didInitialScrollRef.current) return;
+    didInitialScrollRef.current = true;
+    const id = requestAnimationFrame(() => {
+      colRefs.current[currentWeek]?.scrollIntoView({ behavior: 'auto', inline: 'center', block: 'nearest' });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [loading, currentWeek]);
 
   const patchRow = useCallback(async (id, patch) => {
     setSaving((prev) => new Set(prev).add(id));
@@ -362,7 +390,7 @@ export default function LogisticaFechasPage() {
             </div>
             <input
               className="pp-input"
-              placeholder="Buscar NV, cliente, distribuidor, sistema…"
+              placeholder="Buscar NV, cliente… (también filtra las semanas)"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               style={{ flex: '0 0 auto' }}
@@ -385,21 +413,28 @@ export default function LogisticaFechasPage() {
           </div>
 
           <div style={{ flex: '1 1 auto', display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 8, minHeight: 0 }}>
-            {weeks.map((wk) => (
-              <WeekColumn
-                key={wk}
-                weekLabel={wk}
-                rows={rowsByWeek.get(wk) || []}
-                mode={mode}
-                canEdit={canEdit}
-                saving={saving}
-                onDropRow={onDropToWeek}
-                onDragStartChip={onDragStartChip}
-                onDragEndChip={onDragEndChip}
-                isCurrent={wk === currentWeek}
-                colRef={(el) => { colRefs.current[wk] = el; }}
-              />
-            ))}
+            {searchNeedle && visibleWeeks.length === 0 ? (
+              <div style={{ fontSize: 12, opacity: 0.65, padding: 10 }}>
+                Ninguna semana tiene un portón que matchee "{search.trim()}" (puede estar en el pool, sin fecha).
+              </div>
+            ) : (
+              visibleWeeks.map((wk) => (
+                <WeekColumn
+                  key={wk}
+                  weekLabel={wk}
+                  rows={rowsByWeek.get(wk) || []}
+                  mode={mode}
+                  canEdit={canEdit}
+                  saving={saving}
+                  onDropRow={onDropToWeek}
+                  onDragStartChip={onDragStartChip}
+                  onDragEndChip={onDragEndChip}
+                  isCurrent={wk === currentWeek}
+                  colRef={(el) => { colRefs.current[wk] = el; }}
+                  searchNeedle={searchNeedle}
+                />
+              ))
+            )}
           </div>
         </div>
       )}
