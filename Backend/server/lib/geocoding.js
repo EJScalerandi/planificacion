@@ -29,6 +29,10 @@ const COORD_PATTERNS = [
   /@(-?\d{1,3}\.\d+),(-?\d{1,3}\.\d+)/,
   /!3d(-?\d{1,3}\.\d+)!4d(-?\d{1,3}\.\d+)/i,
   /[?&]ll=(-?\d{1,3}\.\d+),(-?\d{1,3}\.\d+)/i,
+  // Formato nuevo de Google Maps al resolver un link corto (maps.app.goo.gl):
+  // .../maps/search/-32.847914,+-60.764996?entry=tts&... (el "+" es literal,
+  // no separador de query - no lo cubría ningún patrón anterior).
+  /\/maps\/search\/(-?\d{1,3}\.\d+),\+?(-?\d{1,3}\.\d+)/i,
 ];
 
 function extractCoordsFromMapsUrl(url) {
