@@ -87,10 +87,21 @@ export default function LogisticaIaMapaModal({ open, onClose, onCreated }) {
   const [showZonas, setShowZonas] = useState(false);
   const [showIaConfig, setShowIaConfig] = useState(false);
 
+  // Ruta sugerida dibujada sobre el mapa: línea recta (no ruta real por
+  // calle - acá no hay motor de ruteo) que une los puntos en el orden que
+  // propuso la IA, con un numerito por parada. rutaActivaKey identifica cuál
+  // botón "Ver ruta" está activo (recomendación manual, o cuál viaje
+  // propuesto en la vista de planes por zona) para poder resaltarlo/togglearlo.
+  const [rutaOrdenParadas, setRutaOrdenParadas] = useState(null); // [{nv, orden}] | null
+  const [rutaActivaKey, setRutaActivaKey] = useState(null);
+
   const mapElRef = useRef(null);
   const mapRef = useRef(null);
   const markersLayerRef = useRef(null);
+  const rutaLayerRef = useRef(null);
   const markersByNvRef = useRef(new Map());
+
+  const limpiarRuta = () => { setRutaOrdenParadas(null); setRutaActivaKey(null); };
 
   const reloadConfig = () => {
     fetchLogisticaViajesConfig().then((c) => setConfig(c?.config || null)).catch(() => {});
@@ -105,6 +116,7 @@ export default function LogisticaIaMapaModal({ open, onClose, onCreated }) {
     setResultado(null);
     setVista('seleccion');
     setPlanes(null);
+    limpiarRuta();
     setLoading(true);
     Promise.all([fetchLogisticaPortonesSinViaje(), fetchLogisticaViajesConfig()])
       .then(([itemsRes, configRes]) => {
@@ -128,11 +140,15 @@ export default function LogisticaIaMapaModal({ open, onClose, onCreated }) {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     }).addTo(map);
     markersLayerRef.current = L.layerGroup().addTo(map);
+    // Se agrega DESPUÉS de los pines para que la línea/números de la ruta
+    // se dibujen por encima (si no, quedan tapados por los círculos de color).
+    rutaLayerRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
     return () => {
       map.remove();
       mapRef.current = null;
       markersLayerRef.current = null;
+      rutaLayerRef.current = null;
       markersByNvRef.current = new Map();
     };
   }, [open]);
@@ -188,6 +204,43 @@ export default function LogisticaIaMapaModal({ open, onClose, onCreated }) {
     }
   }, [selected, itemsByNv]);
 
+  // Dibuja la ruta sugerida: línea recta que une los puntos en el orden
+  // propuesto (no es la ruta real por calle - no hay motor de ruteo acá) más
+  // un numerito por parada. Se redibuja cada vez que cambia el orden activo.
+  useEffect(() => {
+    const layer = rutaLayerRef.current;
+    const map = mapRef.current;
+    if (!layer || !map) return;
+    layer.clearLayers();
+    if (!rutaOrdenParadas || rutaOrdenParadas.length === 0) return;
+
+    const ordenados = [...rutaOrdenParadas].sort((a, b) => a.orden - b.orden);
+    const puntos = [];
+    ordenados.forEach((p, i) => {
+      const it = itemsByNv.get(p.nv);
+      if (!it || it.lat == null || it.lng == null) return;
+      puntos.push([it.lat, it.lng]);
+      const icon = L.divIcon({
+        className: '',
+        html: `<div style="background:#dc2626;color:#fff;border-radius:999px;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4)">${i + 1}</div>`,
+        iconSize: [20, 20],
+        iconAnchor: [10, 10],
+      });
+      L.marker([it.lat, it.lng], { icon, interactive: false, zIndexOffset: 1000 }).addTo(layer);
+    });
+    if (puntos.length >= 2) {
+      const polyline = L.polyline(puntos, { color: '#dc2626', weight: 3, opacity: 0.8, dashArray: '8 6' }).addTo(layer);
+      map.fitBounds(polyline.getBounds(), { padding: [60, 60], maxZoom: 13 });
+    }
+  }, [rutaOrdenParadas, itemsByNv]);
+
+  const rutaSinUbicacionNvs = useMemo(() => {
+    if (!rutaOrdenParadas) return [];
+    return rutaOrdenParadas
+      .filter((p) => { const it = itemsByNv.get(p.nv); return !it || it.lat == null || it.lng == null; })
+      .map((p) => p.nv);
+  }, [rutaOrdenParadas, itemsByNv]);
+
   if (!open) return null;
 
   const generarRecomendacion = async () => {
@@ -196,6 +249,8 @@ export default function LogisticaIaMapaModal({ open, onClose, onCreated }) {
     try {
       const data = await recomendarLogisticaViajeIa(Array.from(selected));
       setRecomendacion(data);
+      setRutaOrdenParadas(data?.recomendacion?.orden_paradas || null);
+      setRutaActivaKey('recomendacion');
     } catch (e) {
       setErr(e?.response?.data?.error || e.message);
     } finally {
@@ -319,6 +374,16 @@ export default function LogisticaIaMapaModal({ open, onClose, onCreated }) {
         <div style={{ flex: '1 1 auto', minHeight: 0, display: 'flex', gap: 10 }}>
           <div style={{ flex: '1 1 auto', minWidth: 0, borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)', position: 'relative' }}>
             <div ref={mapElRef} style={{ width: '100%', height: '100%' }} />
+            {rutaOrdenParadas?.length > 0 ? (
+              <div style={{ position: 'absolute', bottom: 10, left: 10, zIndex: 1000, background: 'var(--surface)', border: '1px solid var(--border)', padding: '6px 10px', borderRadius: 8, fontSize: 11, boxShadow: '0 1px 4px rgba(0,0,0,.25)', maxWidth: 280 }}>
+                🔴 Línea = orden sugerido de paradas (distancia en línea recta, no la ruta real por calle).
+                {rutaSinUbicacionNvs.length > 0 ? (
+                  <div style={{ marginTop: 4, color: '#92400e' }}>
+                    NV {rutaSinUbicacionNvs.join(', ')} sin ubicación resuelta, no aparece{rutaSinUbicacionNvs.length === 1 ? '' : 'n'} en la línea.
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </div>
 
           <div style={{ width: 340, flex: '0 0 auto', display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto' }}>
@@ -392,7 +457,7 @@ export default function LogisticaIaMapaModal({ open, onClose, onCreated }) {
                 <div style={{ fontSize: 12 }}><b>Tiempo estimado:</b> {rec.tiempo_total_estimado_horas}h</div>
                 {rec.vehiculo_sugerido ? <div style={{ fontSize: 12 }}><b>Vehículo sugerido:</b> {rec.vehiculo_sugerido}</div> : null}
 
-                <div style={{ fontSize: 12, fontWeight: 800, marginTop: 4 }}>Orden de paradas</div>
+                <div style={{ fontSize: 12, fontWeight: 800, marginTop: 4 }}>Orden de paradas 🔴 (dibujado en el mapa)</div>
                 <ol style={{ margin: 0, paddingLeft: 18, fontSize: 11 }}>
                   {rec.orden_paradas.sort((a, b) => a.orden - b.orden).map((p) => (
                     <li key={p.nv} style={{ marginBottom: 4 }}>NV {p.nv} — {p.motivo}</li>
@@ -411,7 +476,7 @@ export default function LogisticaIaMapaModal({ open, onClose, onCreated }) {
                 </details>
 
                 <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-                  <button className="btn" onClick={() => setRecomendacion(null)}>Descartar</button>
+                  <button className="btn" onClick={() => { setRecomendacion(null); limpiarRuta(); }}>Descartar</button>
                   <button className="btn btn--brand" onClick={() => abrirConfirmacion(Array.from(selected), { vehiculoSugerido: rec.vehiculo_sugerido })}>
                     Crear viaje con esta recomendación
                   </button>
@@ -419,7 +484,7 @@ export default function LogisticaIaMapaModal({ open, onClose, onCreated }) {
               </div>
             ) : vista === 'planes' ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <button className="btn" style={{ alignSelf: 'flex-start' }} onClick={() => setVista('seleccion')}>← Volver a selección manual</button>
+                <button className="btn" style={{ alignSelf: 'flex-start' }} onClick={() => { setVista('seleccion'); limpiarRuta(); }}>← Volver a selección manual</button>
 
                 {planes?.sin_zona?.cantidad > 0 ? (
                   <div style={{ fontSize: 11, color: '#92400e', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, padding: 8 }}>
@@ -442,31 +507,46 @@ export default function LogisticaIaMapaModal({ open, onClose, onCreated }) {
                       <div style={{ fontSize: 11, opacity: 0.7 }}>La IA no propuso viajes para esta zona.</div>
                     ) : (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        {plan.viajes_propuestos.map((viaje, i) => (
-                          <div key={i} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 8, background: 'var(--surface-muted, #f9fafb)' }}>
-                            <div style={{ fontWeight: 800, fontSize: 12 }}>{viaje.nombre}</div>
-                            <div style={{ fontSize: 11, opacity: 0.8 }}>
-                              {viaje.nvs.length} portón{viaje.nvs.length === 1 ? '' : 'es'} · Semana {viaje.semana_sugerida} · {viaje.tiempo_total_estimado_horas}h
-                              {viaje.vehiculo_sugerido ? ` · ${viaje.vehiculo_sugerido}` : ''}
-                            </div>
-                            {viaje.alertas?.length > 0 ? (
-                              <div style={{ fontSize: 10, color: '#92400e', marginTop: 4 }}>
-                                {viaje.alertas.map((a, j) => <div key={j}>⚠️ {a}</div>)}
+                        {plan.viajes_propuestos.map((viaje, i) => {
+                          const key = `${plan.zona}::${i}`;
+                          const rutaActiva = rutaActivaKey === key;
+                          return (
+                            <div key={i} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 8, background: 'var(--surface-muted, #f9fafb)' }}>
+                              <div style={{ fontWeight: 800, fontSize: 12 }}>{viaje.nombre}</div>
+                              <div style={{ fontSize: 11, opacity: 0.8 }}>
+                                {viaje.nvs.length} portón{viaje.nvs.length === 1 ? '' : 'es'} · Semana {viaje.semana_sugerida} · {viaje.tiempo_total_estimado_horas}h
+                                {viaje.vehiculo_sugerido ? ` · ${viaje.vehiculo_sugerido}` : ''}
                               </div>
-                            ) : null}
-                            <details style={{ fontSize: 10, opacity: 0.8, marginTop: 4 }}>
-                              <summary style={{ cursor: 'pointer' }}>Ver detalle</summary>
-                              <div style={{ marginTop: 4 }}>NV: {viaje.nvs.join(', ')}</div>
-                              <div style={{ marginTop: 4 }}>{viaje.razonamiento}</div>
-                            </details>
-                            <button
-                              className="btn btn--brand" style={{ marginTop: 6, fontSize: 11, padding: '3px 9px' }}
-                              onClick={() => abrirConfirmacion(viaje.nvs, { vehiculoSugerido: viaje.vehiculo_sugerido, nombreSugerido: viaje.nombre })}
-                            >
-                              Crear este viaje
-                            </button>
-                          </div>
-                        ))}
+                              {viaje.alertas?.length > 0 ? (
+                                <div style={{ fontSize: 10, color: '#92400e', marginTop: 4 }}>
+                                  {viaje.alertas.map((a, j) => <div key={j}>⚠️ {a}</div>)}
+                                </div>
+                              ) : null}
+                              <details style={{ fontSize: 10, opacity: 0.8, marginTop: 4 }}>
+                                <summary style={{ cursor: 'pointer' }}>Ver detalle</summary>
+                                <div style={{ marginTop: 4 }}>NV: {viaje.nvs.join(', ')}</div>
+                                <div style={{ marginTop: 4 }}>{viaje.razonamiento}</div>
+                              </details>
+                              <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                                <button
+                                  className="btn" style={{ fontSize: 11, padding: '3px 9px', ...(rutaActiva ? { background: 'var(--brand)', color: '#fff', borderColor: 'var(--brand)' } : {}) }}
+                                  onClick={() => {
+                                    if (rutaActiva) { limpiarRuta(); }
+                                    else { setRutaOrdenParadas(viaje.orden_paradas); setRutaActivaKey(key); }
+                                  }}
+                                >
+                                  {rutaActiva ? '🗺️ Ocultar ruta' : '🗺️ Ver ruta'}
+                                </button>
+                                <button
+                                  className="btn btn--brand" style={{ fontSize: 11, padding: '3px 9px' }}
+                                  onClick={() => abrirConfirmacion(viaje.nvs, { vehiculoSugerido: viaje.vehiculo_sugerido, nombreSugerido: viaje.nombre })}
+                                >
+                                  Crear este viaje
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
