@@ -33,6 +33,21 @@ function uniqueNvs(items) {
   return Array.from(new Set((items || []).map((it) => Number(it.nv)).filter(Number.isInteger)));
 }
 
+// Igual que uniqueNvs pero preservando el orden real del viaje (items ya
+// viene ordenado por `orden` - ver itemsPorViaje) - primera aparición de
+// cada NV = cuándo se lo visita en la ruta.
+function orderedUniqueNvs(items) {
+  const seen = new Set();
+  const out = [];
+  for (const it of items || []) {
+    const nv = Number(it.nv);
+    if (!Number.isInteger(nv) || seen.has(nv)) continue;
+    seen.add(nv);
+    out.push(nv);
+  }
+  return out;
+}
+
 const DND_MIME = 'application/x-logistica-porton';
 
 function medidasLabel(item) {
@@ -598,7 +613,7 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
                     onBorrar={borrarViaje}
                     onDragStartChip={onDragStartChip}
                     onDragEndChip={onDragEndChip}
-                    onVerMapa={(viaje, items) => setMapa({ nvs: uniqueNvs(items), titulo: `Mapa · ${viaje.nombre?.trim() || `Viaje #${viaje.id}`}` })}
+                    onVerMapa={(viaje, items) => setMapa({ nvs: uniqueNvs(items), rutaNvs: orderedUniqueNvs(items), titulo: `Mapa · ${viaje.nombre?.trim() || `Viaje #${viaje.id}`}` })}
                   />
                 ))}
                 {(detalle?.viajes || []).length === 0 ? (
@@ -631,7 +646,7 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
       <LogisticaReglasCapacidadModal open={showReglas} config={config} onClose={() => setShowReglas(false)} onChanged={() => { reloadConfig(); reloadDetalle(); }} />
       <LogisticaReglasEnvioModal open={showReglasEnvio} config={config} onClose={() => setShowReglasEnvio(false)} onChanged={reloadConfig} />
       <LogisticaIaConfigModal open={showIaConfig} onClose={() => setShowIaConfig(false)} />
-      <PortonesMapaModal open={!!mapa} nvs={mapa?.nvs} titulo={mapa?.titulo} onClose={() => setMapa(null)} />
+      <PortonesMapaModal open={!!mapa} nvs={mapa?.nvs} rutaNvs={mapa?.rutaNvs} titulo={mapa?.titulo} onClose={() => setMapa(null)} />
     </div>
   );
 }

@@ -21,7 +21,7 @@ function escapeHtml(str) {
   }[c]));
 }
 
-export default function PortonesMapaModal({ open, onClose, nvs, titulo }) {
+export default function PortonesMapaModal({ open, onClose, nvs, titulo, rutaNvs }) {
   const [puntos, setPuntos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
@@ -29,6 +29,7 @@ export default function PortonesMapaModal({ open, onClose, nvs, titulo }) {
   const mapElRef = useRef(null);
   const mapRef = useRef(null);
   const markersLayerRef = useRef(null);
+  const rutaLayerRef = useRef(null);
 
   const nvKey = useMemo(() => Array.from(new Set(nvs || [])).sort((a, b) => a - b).join(','), [nvs]);
 
@@ -56,11 +57,15 @@ export default function PortonesMapaModal({ open, onClose, nvs, titulo }) {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     }).addTo(map);
     markersLayerRef.current = L.layerGroup().addTo(map);
+    // Después de los pines para que la línea/números de ruta se dibujen por
+    // encima (si no, quedan tapados por los círculos verdes).
+    rutaLayerRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
     return () => {
       map.remove();
       mapRef.current = null;
       markersLayerRef.current = null;
+      rutaLayerRef.current = null;
     };
   }, [open]);
 
@@ -106,6 +111,40 @@ export default function PortonesMapaModal({ open, onClose, nvs, titulo }) {
     }
   }, [conUbicacion]);
 
+  // Ruta guardada del viaje (rutaNvs = NV únicos en el orden real de la
+  // columna): línea recta que los une + numerito por parada. No es la ruta
+  // real por calle, mismo criterio que "Generar viaje con IA".
+  const puntosPorNv = useMemo(() => new Map(puntos.map((p) => [p.nv, p])), [puntos]);
+  useEffect(() => {
+    const layer = rutaLayerRef.current;
+    const map = mapRef.current;
+    if (!layer || !map) return;
+    layer.clearLayers();
+    if (!rutaNvs || rutaNvs.length === 0) return;
+
+    const puntosRuta = [];
+    rutaNvs.forEach((nv, i) => {
+      const p = puntosPorNv.get(nv);
+      if (!p || p.lat == null || p.lng == null) return;
+      puntosRuta.push([p.lat, p.lng]);
+      const icon = L.divIcon({
+        className: '',
+        html: `<div style="background:#dc2626;color:#fff;border-radius:999px;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4)">${i + 1}</div>`,
+        iconSize: [20, 20],
+        iconAnchor: [10, 10],
+      });
+      L.marker([p.lat, p.lng], { icon, interactive: false, zIndexOffset: 1000 }).addTo(layer);
+    });
+    if (puntosRuta.length >= 2) {
+      L.polyline(puntosRuta, { color: '#dc2626', weight: 3, opacity: 0.8, dashArray: '8 6' }).addTo(layer);
+    }
+  }, [rutaNvs, puntosPorNv]);
+
+  const rutaSinUbicacionNvs = useMemo(() => {
+    if (!rutaNvs) return [];
+    return rutaNvs.filter((nv) => { const p = puntosPorNv.get(nv); return !p || p.lat == null || p.lng == null; });
+  }, [rutaNvs, puntosPorNv]);
+
   if (!open) return null;
 
   return (
@@ -140,6 +179,16 @@ export default function PortonesMapaModal({ open, onClose, nvs, titulo }) {
 
         <div style={{ flex: '1 1 auto', minHeight: 0, borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)', position: 'relative' }}>
           <div ref={mapElRef} style={{ width: '100%', height: '100%' }} />
+          {rutaNvs?.length > 0 ? (
+            <div style={{ position: 'absolute', bottom: 10, left: 10, zIndex: 1000, background: 'var(--surface)', border: '1px solid var(--border)', padding: '6px 10px', borderRadius: 8, fontSize: 11, boxShadow: '0 1px 4px rgba(0,0,0,.25)', maxWidth: 280 }}>
+              🔴 Línea = orden guardado del viaje (distancia en línea recta, no la ruta real por calle).
+              {rutaSinUbicacionNvs.length > 0 ? (
+                <div style={{ marginTop: 4, color: '#92400e' }}>
+                  NV {rutaSinUbicacionNvs.join(', ')} sin ubicación resuelta, no aparece{rutaSinUbicacionNvs.length === 1 ? '' : 'n'} en la línea.
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           {!loading && conUbicacion.length === 0 ? (
             <div
               style={{
