@@ -89,6 +89,36 @@ async function resolverInfoNv(nv) {
   return rows[0] || null;
 }
 
+// Historial (admin + técnico) de TODAS las solicitudes previas de este NV -
+// "a modo de consulta" al cargar una solicitud nueva, para que Diego vea de
+// entrada si ya hubo pedidos anteriores sobre el mismo portón antes de
+// cargar uno nuevo a ciegas. Un NV puede tener varias solicitudes a lo largo
+// del tiempo (una por cada pedido), así que se listan las solicitudes previas
+// Y el historial de todas juntas, ordenado por fecha.
+async function listHistorialPorNv(nv) {
+  const nNv = Number(nv);
+  if (!Number.isInteger(nNv)) return { solicitudesPrevias: [], historial: [] };
+
+  const [solicitudesQ, historialQ] = await Promise.all([
+    pool.query(
+      `select id, descripcion, estado, to_char(created_at, 'YYYY-MM-DD') as fecha
+       from public.servicio_tecnico_solicitudes where nv = $1 order by created_at desc;`,
+      [nNv]
+    ),
+    pool.query(
+      `select h.id, h.tipo, h.autor, h.texto, h.attachment, h.created_at,
+         h.solicitud_id, s.descripcion as solicitud_descripcion
+       from public.servicio_tecnico_historial h
+       join public.servicio_tecnico_solicitudes s on s.id = h.solicitud_id
+       where s.nv = $1
+       order by h.created_at asc;`,
+      [nNv]
+    ),
+  ]);
+
+  return { solicitudesPrevias: solicitudesQ.rows, historial: historialQ.rows };
+}
+
 // ===========================================================================
 // CRUD de solicitudes
 // ===========================================================================
@@ -195,7 +225,7 @@ async function agregarHistorial(solicitudId, { tipo, autor, texto, attachment })
 }
 
 module.exports = {
-  resolverInfoNv,
+  resolverInfoNv, listHistorialPorNv,
   listSolicitudes, getSolicitud, createSolicitud, updateSolicitud, deleteSolicitud,
   agregarHistorial,
 };

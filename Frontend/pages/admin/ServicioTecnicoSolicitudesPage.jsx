@@ -7,15 +7,43 @@
 // un vistazo los portones que todavía están pendientes de medición (derivado
 // de fecha_med vacía, igual que Planificación de Fechas deriva de las fechas
 // de despacho/instalación).
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   getAdminToken, clearAdminToken,
-  fetchStSolicitudNvInfo, fetchStSolicitudes, createStSolicitud,
+  fetchStSolicitudNvInfo, fetchStSolicitudNvHistorial, fetchStSolicitudes, createStSolicitud, agregarStHistorial,
   fetchStPortonesPendientesMedicion,
 } from '../../src/api';
 import { formatDMY } from '../../src/utils/isoWeek';
+import { fileToAttachment } from '../../src/utils/stAttachment';
+import AttachmentPreview from '../../src/components/AttachmentPreview';
 import ServicioTecnicoSolicitudDetalleModal from '../../src/components/modals/ServicioTecnicoSolicitudDetalleModal';
+
+const ESTADO_HIST_LABEL = { pendiente: 'Pendiente', planificado: 'Planificado', en_viaje: 'En viaje', resuelto: 'Resuelto', cancelado: 'Cancelado' };
+
+// Historial (admin/técnico) de solicitudes PREVIAS del mismo NV, a modo de
+// consulta antes de cargar una solicitud nueva - de solo lectura, sin
+// agregar entradas acá (eso es en el detalle, una vez creada).
+function HistorialPrevioColumn({ titulo, entradas }) {
+  return (
+    <div style={{ flex: 1, minWidth: 0, border: '1px solid var(--border)', borderRadius: 10, padding: 8, maxHeight: 220, overflowY: 'auto' }}>
+      <div style={{ fontWeight: 800, fontSize: 12, marginBottom: 6 }}>{titulo}</div>
+      {entradas.length === 0 ? (
+        <div style={{ fontSize: 11, opacity: 0.6 }}>Sin entradas.</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {entradas.map((e) => (
+            <div key={e.id} style={{ fontSize: 11, background: 'var(--surface-muted, #f9fafb)', borderRadius: 8, padding: 6 }}>
+              <div style={{ opacity: 0.6, marginBottom: 2 }}>{e.autor || '—'} · {formatDMY(e.created_at?.slice(0, 10))} · <i>{e.solicitud_descripcion}</i></div>
+              <div>{e.texto}</div>
+              <AttachmentPreview attachment={e.attachment} />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const ESTADO_LABEL = {
   pendiente: 'Pendiente', planificado: 'Planificado', en_viaje: 'En viaje', resuelto: 'Resuelto', cancelado: 'Cancelado',
@@ -41,6 +69,11 @@ export default function ServicioTecnicoSolicitudesPage() {
   const [nvEncontrado, setNvEncontrado] = useState(null); // null | true | false
   const [creando, setCreando] = useState(false);
 
+  const [historialPrevio, setHistorialPrevio] = useState(null); // { solicitudesPrevias, historial } | null
+  const [archivoNueva, setArchivoNueva] = useState(null);
+  const [archivoNuevaErr, setArchivoNuevaErr] = useState('');
+  const fileRef = useRef(null);
+
   const [detalleId, setDetalleId] = useState(null);
 
   const reload = async () => {
@@ -64,6 +97,7 @@ export default function ServicioTecnicoSolicitudesPage() {
     if (!nv) return;
     setBuscandoNv(true);
     setNvEncontrado(null);
+    setHistorialPrevio(null);
     setErr('');
     try {
       const { info } = await fetchStSolicitudNvInfo(nv);
@@ -82,6 +116,30 @@ export default function ServicioTecnicoSolicitudesPage() {
     } finally {
       setBuscandoNv(false);
     }
+    // Historial de solicitudes previas: independiente de si el NV existe en
+    // producción (nv-info) - puede haber pedidos de técnica anteriores igual.
+    try {
+      const data = await fetchStSolicitudNvHistorial(nv);
+      if ((data?.solicitudesPrevias?.length || 0) > 0 || (data?.historial?.length || 0) > 0) {
+        setHistorialPrevio(data);
+      }
+    } catch {
+      // silencioso: esto es a modo de consulta, no bloquea la carga
+    }
+  };
+
+  const onPickArchivoNueva = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setArchivoNuevaErr('');
+    try {
+      setArchivoNueva(await fileToAttachment(file));
+    } catch (err) {
+      setArchivoNuevaErr(err.message);
+      setArchivoNueva(null);
+    } finally {
+      if (fileRef.current) fileRef.current.value = '';
+    }
   };
 
   const crear = async () => {
@@ -89,7 +147,7 @@ export default function ServicioTecnicoSolicitudesPage() {
     setCreando(true);
     setErr('');
     try {
-      await createStSolicitud({
+      const { solicitud } = await createStSolicitud({
         nv: form.nv.trim() || undefined,
         nombre_cliente: form.nombre_cliente.trim() || undefined,
         distribuidor: form.distribuidor.trim() || undefined,
@@ -98,8 +156,20 @@ export default function ServicioTecnicoSolicitudesPage() {
         telefono: form.telefono.trim() || undefined,
         descripcion: form.descripcion.trim(),
       });
+      if (archivoNueva && solicitud?.id) {
+        // No frenamos la creación si esto falla - la solicitud ya quedó
+        // cargada, la foto se puede volver a adjuntar desde el detalle.
+        try {
+          await agregarStHistorial(solicitud.id, { tipo: 'admin', texto: 'Foto adjuntada al crear la solicitud.', attachment: archivoNueva });
+        } catch (e) {
+          setErr(`La solicitud se creó, pero no se pudo adjuntar la foto: ${e?.response?.data?.error || e.message}`);
+        }
+      }
       setForm(emptyForm);
       setNvEncontrado(null);
+      setHistorialPrevio(null);
+      setArchivoNueva(null);
+      setArchivoNuevaErr('');
       await reload();
     } catch (e) {
       setErr(e?.response?.data?.error || e.message);
@@ -155,6 +225,23 @@ export default function ServicioTecnicoSolicitudesPage() {
           {nvEncontrado === false ? <span style={{ fontSize: 11, color: '#b45309', fontWeight: 800 }}>No se encontró ese NV - cargá los datos a mano</span> : null}
         </div>
 
+        {historialPrevio ? (
+          <div style={{ marginBottom: 10, border: '1px solid #fcd34d', background: '#fffbeb', borderRadius: 10, padding: 10 }}>
+            <div style={{ fontWeight: 800, fontSize: 12, color: '#92400e', marginBottom: 6 }}>
+              ⚠️ Ya hay {historialPrevio.solicitudesPrevias.length} solicitud{historialPrevio.solicitudesPrevias.length === 1 ? '' : 'es'} anterior{historialPrevio.solicitudesPrevias.length === 1 ? '' : 'es'} para este NV — revisá el historial antes de cargar una nueva:
+            </div>
+            <div style={{ fontSize: 11, opacity: 0.85, marginBottom: 8 }}>
+              {historialPrevio.solicitudesPrevias.map((s) => (
+                <div key={s.id}>· {s.descripcion} ({ESTADO_HIST_LABEL[s.estado] || s.estado}, {formatDMY(s.fecha)})</div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <HistorialPrevioColumn titulo="Historial administrativo" entradas={historialPrevio.historial.filter((h) => h.tipo === 'admin')} />
+              <HistorialPrevioColumn titulo="Historial técnico" entradas={historialPrevio.historial.filter((h) => h.tipo === 'tecnico')} />
+            </div>
+          </div>
+        ) : null}
+
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11 }}>
             Cliente
@@ -182,7 +269,20 @@ export default function ServicioTecnicoSolicitudesPage() {
           </label>
         </div>
 
-        <button className="btn btn--brand" disabled={creando || !form.descripcion.trim()} onClick={crear}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+          <input ref={fileRef} type="file" accept="image/*,application/pdf,video/mp4,video/quicktime,video/webm" style={{ display: 'none' }} onChange={onPickArchivoNueva} />
+          <button className="btn" type="button" onClick={() => fileRef.current?.click()}>📎 Adjuntar foto del portón</button>
+          {archivoNueva ? (
+            <span style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
+              {archivoNueva.name}
+              <button type="button" onClick={() => setArchivoNueva(null)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#991b1b', fontWeight: 900 }}>×</button>
+            </span>
+          ) : null}
+          {archivoNuevaErr ? <span style={{ fontSize: 11, color: 'crimson' }}>{archivoNuevaErr}</span> : null}
+        </div>
+        {archivoNueva ? <AttachmentPreview attachment={archivoNueva} /> : null}
+
+        <button className="btn btn--brand" style={{ marginTop: archivoNueva ? 10 : 0 }} disabled={creando || !form.descripcion.trim()} onClick={crear}>
           {creando ? 'Creando…' : 'Crear solicitud'}
         </button>
       </div>

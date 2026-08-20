@@ -9,6 +9,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { fetchStSolicitud, updateStSolicitud, agregarStHistorial } from '../../api';
 import { formatDMY } from '../../utils/isoWeek';
+import { fileToAttachment } from '../../utils/stAttachment';
+import AttachmentPreview from '../AttachmentPreview';
 
 const ESTADOS = [
   { value: 'pendiente', label: 'Pendiente' },
@@ -17,35 +19,6 @@ const ESTADOS = [
   { value: 'resuelto', label: 'Resuelto' },
   { value: 'cancelado', label: 'Cancelado' },
 ];
-
-const MAX_BYTES = 15 * 1024 * 1024;
-const MAX_VIDEO_BYTES = 5 * 1024 * 1024;
-const VIDEO_TYPES = new Set(['video/mp4', 'video/quicktime', 'video/webm']);
-const ALLOWED_TYPES = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/gif', ...VIDEO_TYPES]);
-
-function fileToAttachment(file) {
-  return new Promise((resolve, reject) => {
-    if (!ALLOWED_TYPES.has(file.type)) { reject(new Error('El adjunto debe ser una imagen, un PDF o un video.')); return; }
-    const maxBytes = VIDEO_TYPES.has(file.type) ? MAX_VIDEO_BYTES : MAX_BYTES;
-    if (file.size > maxBytes) { reject(new Error(`El archivo excede el tamaño permitido (máximo ${Math.round(maxBytes / (1024 * 1024))}MB).`)); return; }
-    const reader = new FileReader();
-    reader.onload = () => resolve({ name: file.name, type: file.type, size: file.size, data_url: String(reader.result || ''), uploaded_at: new Date().toISOString() });
-    reader.onerror = () => reject(new Error('No se pudo leer el archivo.'));
-    reader.readAsDataURL(file);
-  });
-}
-
-function AttachmentPreview({ attachment }) {
-  if (!attachment) return null;
-  if (attachment.type?.startsWith('image/')) {
-    return <img src={attachment.data_url} alt={attachment.name} style={{ maxWidth: '100%', maxHeight: 160, borderRadius: 6, marginTop: 4, display: 'block' }} />;
-  }
-  return (
-    <a href={attachment.data_url} download={attachment.name} style={{ fontSize: 10, display: 'block', marginTop: 4 }}>
-      📎 {attachment.name}
-    </a>
-  );
-}
 
 function HistorialColumn({ titulo, tipo, entradas, onAgregar, busy }) {
   const [texto, setTexto] = useState('');

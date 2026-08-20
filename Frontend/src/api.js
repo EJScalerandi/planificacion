@@ -273,6 +273,10 @@ export async function fetchStSolicitudNvInfo(numero) {
   const { data } = await api.get(`/admin/servicio-tecnico/solicitudes/nv-info/${encodeURIComponent(numero)}`);
   return data;
 }
+export async function fetchStSolicitudNvHistorial(numero) {
+  const { data } = await api.get(`/admin/servicio-tecnico/solicitudes/nv-historial/${encodeURIComponent(numero)}`);
+  return data;
+}
 export async function fetchStSolicitudes(estado) {
   const { data } = await api.get('/admin/servicio-tecnico/solicitudes', { params: estado ? { estado } : {} });
   return data;

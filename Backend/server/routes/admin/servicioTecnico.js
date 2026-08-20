@@ -142,6 +142,14 @@ router.get('/servicio-tecnico/solicitudes/nv-info/:numero', asyncRoute(async (re
   res.json({ ok: true, info });
 }));
 
+// Historial (admin + técnico) de solicitudes previas de este NV, a modo de
+// consulta al cargar una solicitud nueva - antes de /solicitudes/:id por el
+// mismo motivo que nv-info.
+router.get('/servicio-tecnico/solicitudes/nv-historial/:numero', asyncRoute(async (req, res) => {
+  const { solicitudesPrevias, historial } = await solicitudesDb.listHistorialPorNv(req.params.numero);
+  res.json({ ok: true, solicitudesPrevias, historial });
+}));
+
 // Mediciones pendientes: vienen del propio flujo del Presupuestador
 // (presupuestador_quotes.measurement_status), no de datos de Planta.
 router.get('/servicio-tecnico/mediciones-pendientes', asyncRoute(async (_req, res) => {
