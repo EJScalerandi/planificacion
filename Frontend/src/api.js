@@ -351,6 +351,10 @@ export async function fetchStSemanaDetalle(semana) {
   const { data } = await api.get(`/admin/servicio-tecnico/viajes-fechas/semanas/${encodeURIComponent(semana)}`);
   return data;
 }
+export async function fetchStLogisticaSombra(semana) {
+  const { data } = await api.get(`/admin/servicio-tecnico/viajes-fechas/semanas/${encodeURIComponent(semana)}/logistica-sombra`);
+  return data;
+}
 export async function crearStViaje(semana, payload) {
   const { data } = await api.post(`/admin/servicio-tecnico/viajes-fechas/semanas/${encodeURIComponent(semana)}/viajes`, payload);
   return data;

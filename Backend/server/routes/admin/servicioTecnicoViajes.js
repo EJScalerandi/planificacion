@@ -9,6 +9,7 @@ const { adminAuth } = require('../../middleware/adminAuth');
 const db = require('../../lib/servicioTecnicoViajesDb');
 const solicitudesDb = require('../../lib/servicioTecnicoSolicitudesDb');
 const medicionDb = require('../../lib/servicioTecnicoMedicionDb');
+const logisticaDb = require('../../lib/logisticaViajesDb');
 
 const router = express.Router();
 
@@ -117,6 +118,15 @@ router.get('/servicio-tecnico/viajes-fechas/semanas', asyncRoute(async (_req, re
 router.get('/servicio-tecnico/viajes-fechas/semanas/:semana', asyncRoute(async (req, res) => {
   res.json({ ok: true, detalle: await db.getSemanaDetalle(req.params.semana) });
 }));
+
+// "Sombra" de Logística: modo lectura de lo que Logística ya planificó para
+// la misma semana (mismo formato de semana ISO en ambos módulos). Reusa la
+// lectura de logisticaViajesDb pero queda gateado por el scope de Técnica -
+// Diego no tiene (ni necesita) el scope de Logística para ver esto.
+router.get('/servicio-tecnico/viajes-fechas/semanas/:semana/logistica-sombra', asyncRoute(async (req, res) => {
+  res.json({ ok: true, detalle: await logisticaDb.getSemanaDetalle(req.params.semana) });
+}));
+
 router.post('/servicio-tecnico/viajes-fechas/semanas/:semana/viajes', asyncRoute(async (req, res) => {
   res.json({ ok: true, detalle: await db.crearViaje(req.params.semana, req.body || {}) });
 }));

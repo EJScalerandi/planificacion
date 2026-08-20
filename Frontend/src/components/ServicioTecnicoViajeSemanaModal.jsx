@@ -11,6 +11,7 @@ import {
   crearStViaje, patchStViaje, borrarStViaje,
   asignarStItem, desasignarStItem,
   cerrarStSemana, reabrirStSemana,
+  fetchStLogisticaSombra,
 } from '../api';
 import { isoWeekStartEndFromLabel, weekTitleFromSelection, todayISO10 } from '../utils/isoWeek';
 import ServicioTecnicoConfigModal from './modals/ServicioTecnicoConfigModal';
@@ -141,6 +142,48 @@ function ViajeColumn({ viaje, items, canEdit, onDrop, onDragStartChip, onDesasig
   );
 }
 
+// Chip de solo lectura para un portón de Logística (despacho o instalación).
+function LogisticaSombraChip({ item }) {
+  return (
+    <div
+      style={{
+        border: '1px dashed var(--border)', borderRadius: 8, padding: '5px 8px',
+        fontSize: 11, background: 'var(--surface-muted, #f9fafb)', opacity: 0.9,
+      }}
+      title={item.direccion || ''}
+    >
+      <div style={{ fontWeight: 800 }}>
+        {item.tipo === 'despacho' ? '📦' : '🔧'} NV {item.nv} <span style={{ fontWeight: 400, opacity: 0.7 }}>({item.tipo === 'despacho' ? 'despacho' : 'instalación'})</span>
+      </div>
+      <div style={{ opacity: 0.8 }}>{item.nombre?.trim() || item.direccion?.trim() || '—'}</div>
+    </div>
+  );
+}
+
+// Columna de un viaje de Logística, de solo lectura (sin drag, sin editar/borrar).
+function LogisticaSombraColumn({ viaje, items }) {
+  return (
+    <div
+      style={{
+        minWidth: 210, maxWidth: 210, display: 'flex', flexDirection: 'column', gap: 6,
+        border: '1px dashed var(--border)', borderRadius: 12, padding: 10, background: 'var(--surface)',
+      }}
+    >
+      <div>
+        <div style={{ fontWeight: 900, fontSize: 12 }}>🔒 {viaje.nombre?.trim() || `Viaje #${viaje.id}`}</div>
+        <div style={{ fontSize: 10, opacity: 0.7 }}>
+          {String(viaje.fecha).slice(0, 10)} {viaje.zona_nombre ? `· ${viaje.zona_nombre}` : ''}
+        </div>
+        <div style={{ fontSize: 10, opacity: 0.7 }}>{viaje.vehiculo_nombre || 'sin vehículo'} · {viaje.cuadrilla_nombre || 'sin cuadrilla'}</div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minHeight: 30 }}>
+        {items.length === 0 ? <div style={{ fontSize: 10, opacity: 0.5 }}>Sin portones.</div> : null}
+        {items.map((it) => <LogisticaSombraChip key={`${it.porton_id}-${it.tipo}`} item={it} />)}
+      </div>
+    </div>
+  );
+}
+
 export default function ServicioTecnicoViajeSemanaModal({ semana, open, canEdit, onClose, onChanged }) {
   const [detalle, setDetalle] = useState(null);
   const [config, setConfig] = useState(null);
@@ -151,6 +194,13 @@ export default function ServicioTecnicoViajeSemanaModal({ semana, open, canEdit,
   const [showNuevoViaje, setShowNuevoViaje] = useState(false);
   const [editandoViaje, setEditandoViaje] = useState(null);
   const [showConfig, setShowConfig] = useState(false);
+
+  // "Sombra" de Logística: apagado por defecto, el usuario lo prende para ver
+  // (solo lectura) lo que Logística ya planificó en la misma semana.
+  const [showSombra, setShowSombra] = useState(false);
+  const [sombra, setSombra] = useState(null);
+  const [sombraLoading, setSombraLoading] = useState(false);
+  const [sombraErr, setSombraErr] = useState('');
 
   const load = useCallback(async () => {
     if (!semana) return;
@@ -178,6 +228,25 @@ export default function ServicioTecnicoViajeSemanaModal({ semana, open, canEdit,
     const c = await fetchStViajesConfig();
     setConfig(c?.config || null);
   }, []);
+
+  const loadSombra = useCallback(async () => {
+    if (!semana) return;
+    setSombraErr('');
+    setSombraLoading(true);
+    try {
+      const d = await fetchStLogisticaSombra(semana);
+      setSombra(d?.detalle || null);
+    } catch (e) {
+      setSombraErr(e?.response?.data?.error || e.message);
+    } finally {
+      setSombraLoading(false);
+    }
+  }, [semana]);
+
+  useEffect(() => {
+    if (open && showSombra) loadSombra();
+    if (!open || !showSombra) { setSombra(null); setSombraErr(''); }
+  }, [open, showSombra, semana, loadSombra]);
 
   const [poolOver, setPoolOver] = useState(false);
 
@@ -255,13 +324,40 @@ export default function ServicioTecnicoViajeSemanaModal({ semana, open, canEdit,
           <div style={{ fontWeight: 900, fontSize: 16 }}>
             {semana ? weekTitleFromSelection(semana) : ''} {cerrada ? <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 999, background: 'var(--brand)', color: '#fff' }}>Cerrada</span> : null}
           </div>
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
+              <input type="checkbox" checked={showSombra} onChange={(e) => setShowSombra(e.target.checked)} />
+              👁️ Ver plan de Logística (solo lectura)
+            </label>
             {canEdit ? <button className="btn" onClick={() => setShowConfig(true)}>Vehículos / Cuadrillas</button> : null}
             <button className="btn" onClick={onClose}>Cerrar ventana</button>
           </div>
         </div>
 
         {err ? <div style={{ color: 'crimson', fontWeight: 800, fontSize: 12 }}>{err}</div> : null}
+
+        {showSombra ? (
+          <div style={{ flex: '0 0 auto', border: '1px solid var(--border)', borderRadius: 12, padding: 10, background: 'var(--surface-muted, #f9fafb)' }}>
+            <div style={{ fontWeight: 900, fontSize: 12, marginBottom: 6 }}>
+              🔒 Plan de Logística · {semana ? weekTitleFromSelection(semana) : ''} <span style={{ fontWeight: 400, opacity: 0.7 }}>(solo lectura)</span>
+            </div>
+            {sombraErr ? <div style={{ color: 'crimson', fontWeight: 800, fontSize: 11, marginBottom: 6 }}>{sombraErr}</div> : null}
+            {sombraLoading ? (
+              <div style={{ fontSize: 12, opacity: 0.7 }}>Cargando plan de Logística…</div>
+            ) : !sombra || (sombra.viajes || []).length === 0 ? (
+              <div style={{ fontSize: 12, opacity: 0.6 }}>Logística no tiene viajes planificados en esta semana.</div>
+            ) : (
+              <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 4 }}>
+                {sombra.viajes.map((v) => (
+                  <LogisticaSombraColumn
+                    key={v.id} viaje={v}
+                    items={(sombra.items || []).filter((it) => it.viaje_id === v.id)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        ) : null}
 
         {loading ? (
           <div style={{ opacity: 0.75 }}>Cargando…</div>
