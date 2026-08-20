@@ -2,11 +2,11 @@
 //
 // Detalle de una solicitud de Servicio Técnico: datos del cliente/portón
 // (autocompletados si hay NV, o cargados a mano por Diego) + dos historiales
-// separados (admin / técnico) - cada uno con su propio hilo de notas.
-// Fotos: todavía no hay mecanismo de subida armado (el proyecto no tiene
-// storage de archivos configurado) - queda pendiente para una fase
-// siguiente; por ahora el historial es solo texto.
-import React, { useEffect, useState } from 'react';
+// separados (admin / técnico) - cada uno con su propio hilo de notas, con un
+// adjunto opcional (imagen/PDF/video). Mismo mecanismo que ya usa el
+// Presupuestador para los tickets: el archivo se manda como base64 (data
+// URL) y se guarda en una columna jsonb - sin storage externo.
+import React, { useEffect, useRef, useState } from 'react';
 import { fetchStSolicitud, updateStSolicitud, agregarStHistorial } from '../../api';
 import { formatDMY } from '../../utils/isoWeek';
 
@@ -18,10 +18,64 @@ const ESTADOS = [
   { value: 'cancelado', label: 'Cancelado' },
 ];
 
+const MAX_BYTES = 15 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 5 * 1024 * 1024;
+const VIDEO_TYPES = new Set(['video/mp4', 'video/quicktime', 'video/webm']);
+const ALLOWED_TYPES = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/gif', ...VIDEO_TYPES]);
+
+function fileToAttachment(file) {
+  return new Promise((resolve, reject) => {
+    if (!ALLOWED_TYPES.has(file.type)) { reject(new Error('El adjunto debe ser una imagen, un PDF o un video.')); return; }
+    const maxBytes = VIDEO_TYPES.has(file.type) ? MAX_VIDEO_BYTES : MAX_BYTES;
+    if (file.size > maxBytes) { reject(new Error(`El archivo excede el tamaño permitido (máximo ${Math.round(maxBytes / (1024 * 1024))}MB).`)); return; }
+    const reader = new FileReader();
+    reader.onload = () => resolve({ name: file.name, type: file.type, size: file.size, data_url: String(reader.result || ''), uploaded_at: new Date().toISOString() });
+    reader.onerror = () => reject(new Error('No se pudo leer el archivo.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function AttachmentPreview({ attachment }) {
+  if (!attachment) return null;
+  if (attachment.type?.startsWith('image/')) {
+    return <img src={attachment.data_url} alt={attachment.name} style={{ maxWidth: '100%', maxHeight: 160, borderRadius: 6, marginTop: 4, display: 'block' }} />;
+  }
+  return (
+    <a href={attachment.data_url} download={attachment.name} style={{ fontSize: 10, display: 'block', marginTop: 4 }}>
+      📎 {attachment.name}
+    </a>
+  );
+}
+
 function HistorialColumn({ titulo, tipo, entradas, onAgregar, busy }) {
   const [texto, setTexto] = useState('');
+  const [archivo, setArchivo] = useState(null);
+  const [archivoErr, setArchivoErr] = useState('');
+  const fileRef = useRef(null);
+
+  const onPickFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setArchivoErr('');
+    try {
+      setArchivo(await fileToAttachment(file));
+    } catch (err) {
+      setArchivoErr(err.message);
+      setArchivo(null);
+    } finally {
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  const enviar = async () => {
+    if (!texto.trim()) return;
+    await onAgregar(tipo, texto.trim(), archivo);
+    setTexto('');
+    setArchivo(null);
+  };
+
   return (
-    <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', border: '1px solid var(--border)', borderRadius: 10, padding: 8, minHeight: 220 }}>
+    <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', border: '1px solid var(--border)', borderRadius: 10, padding: 8, minHeight: 260 }}>
       <div style={{ fontWeight: 800, fontSize: 12, marginBottom: 6 }}>{titulo}</div>
       <div style={{ flex: '1 1 auto', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 6 }}>
         {entradas.length === 0 ? <div style={{ fontSize: 11, opacity: 0.6 }}>Sin entradas todavía.</div> : null}
@@ -29,18 +83,28 @@ function HistorialColumn({ titulo, tipo, entradas, onAgregar, busy }) {
           <div key={e.id} style={{ fontSize: 11, background: 'var(--surface-muted, #f9fafb)', borderRadius: 8, padding: 6 }}>
             <div style={{ opacity: 0.6, marginBottom: 2 }}>{e.autor || '—'} · {formatDMY(e.created_at?.slice(0, 10))}</div>
             <div>{e.texto}</div>
+            <AttachmentPreview attachment={e.attachment} />
           </div>
         ))}
       </div>
+      {archivoErr ? <div style={{ color: 'crimson', fontSize: 10, marginBottom: 4 }}>{archivoErr}</div> : null}
+      {archivo ? (
+        <div style={{ fontSize: 10, opacity: 0.75, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+          📎 {archivo.name}
+          <button type="button" onClick={() => setArchivo(null)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#991b1b', fontWeight: 900 }}>×</button>
+        </div>
+      ) : null}
       <div style={{ display: 'flex', gap: 4 }}>
         <input
           className="pp-input" style={{ flex: 1, fontSize: 11 }} placeholder="Agregar nota…" value={texto}
           onChange={(e) => setTexto(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter' && texto.trim()) { onAgregar(tipo, texto.trim()); setTexto(''); } }}
+          onKeyDown={(e) => { if (e.key === 'Enter' && texto.trim()) enviar(); }}
         />
+        <input ref={fileRef} type="file" accept="image/*,application/pdf,video/mp4,video/quicktime,video/webm" style={{ display: 'none' }} onChange={onPickFile} />
+        <button className="btn" type="button" style={{ fontSize: 11, padding: '3px 7px' }} title="Adjuntar archivo" onClick={() => fileRef.current?.click()}>📎</button>
         <button
           className="btn" style={{ fontSize: 11, padding: '3px 8px' }} disabled={busy || !texto.trim()}
-          onClick={() => { onAgregar(tipo, texto.trim()); setTexto(''); }}
+          onClick={enviar}
         >
           +
         </button>
@@ -87,11 +151,11 @@ export default function ServicioTecnicoSolicitudDetalleModal({ open, solicitudId
     }
   };
 
-  const agregarNota = async (tipo, texto) => {
+  const agregarNota = async (tipo, texto, attachment) => {
     setBusy(true);
     setErr('');
     try {
-      await agregarStHistorial(solicitudId, { tipo, texto });
+      await agregarStHistorial(solicitudId, { tipo, texto, attachment: attachment || undefined });
       reload();
     } catch (e) {
       setErr(e?.response?.data?.error || e.message);
@@ -142,10 +206,6 @@ export default function ServicioTecnicoSolicitudDetalleModal({ open, solicitudId
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               <HistorialColumn titulo="📋 Historial admin" tipo="admin" entradas={historialAdmin} onAgregar={agregarNota} busy={busy} />
               <HistorialColumn titulo="🔧 Historial técnico" tipo="tecnico" entradas={historialTecnico} onAgregar={agregarNota} busy={busy} />
-            </div>
-
-            <div style={{ fontSize: 10, opacity: 0.55, marginTop: 10 }}>
-              Adjuntar fotos todavía no está disponible - lo sumamos en una próxima vuelta.
             </div>
           </>
         )}

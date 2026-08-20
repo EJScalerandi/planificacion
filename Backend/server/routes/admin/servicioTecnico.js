@@ -4,6 +4,7 @@ const { adminAuth } = require('../../middleware/adminAuth');
 const { pool } = require('../../db');
 const { STATUS } = require('../../lib/workflow');
 const solicitudesDb = require('../../lib/servicioTecnicoSolicitudesDb');
+const medicionDb = require('../../lib/servicioTecnicoMedicionDb');
 
 const router = express.Router();
 
@@ -141,8 +142,10 @@ router.get('/servicio-tecnico/solicitudes/nv-info/:numero', asyncRoute(async (re
   res.json({ ok: true, info });
 }));
 
+// Mediciones pendientes: vienen del propio flujo del Presupuestador
+// (presupuestador_quotes.measurement_status), no de datos de Planta.
 router.get('/servicio-tecnico/mediciones-pendientes', asyncRoute(async (_req, res) => {
-  res.json({ ok: true, items: await solicitudesDb.listPortonesPendientesMedicion() });
+  res.json({ ok: true, items: await medicionDb.listMedicionesPendientes() });
 }));
 
 router.get('/servicio-tecnico/solicitudes', asyncRoute(async (req, res) => {

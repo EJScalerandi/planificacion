@@ -6,6 +6,33 @@
 // NV/NP vinculado, arma historial (admin/técnico) y organiza los viajes.
 const { pool } = require('../db');
 
+// Adjuntos en el historial: mismo formato/límites que ya usa el Presupuestador
+// para los tickets (cotizador-back/src/technicalConsultsDb.js) - base64 en
+// data_url, sin storage externo. Un adjunto por entrada de historial.
+const ALLOWED_ATTACHMENT_TYPES = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'video/mp4', 'video/quicktime', 'video/webm']);
+const VIDEO_ATTACHMENT_TYPES = new Set(['video/mp4', 'video/quicktime', 'video/webm']);
+const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
+const MAX_VIDEO_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+
+function normalizeAttachment(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const dataUrl = String(raw.data_url || '').trim();
+  if (!dataUrl) return null;
+  if (!dataUrl.startsWith('data:')) throw new Error('Adjunto inválido');
+  const type = String(raw.type || '').trim().toLowerCase();
+  if (!ALLOWED_ATTACHMENT_TYPES.has(type)) throw new Error('El adjunto debe ser una imagen, un PDF o un video');
+  const size = Number(raw.size || 0) || 0;
+  const maxBytes = VIDEO_ATTACHMENT_TYPES.has(type) ? MAX_VIDEO_ATTACHMENT_BYTES : MAX_ATTACHMENT_BYTES;
+  if (size > maxBytes) throw new Error(`El archivo excede el tamaño permitido (máximo ${Math.round(maxBytes / (1024 * 1024))}MB)`);
+  return {
+    name: String(raw.name || '').trim().slice(0, 200) || 'archivo',
+    type,
+    size,
+    data_url: dataUrl,
+    uploaded_at: raw.uploaded_at || new Date().toISOString(),
+  };
+}
+
 // ===========================================================================
 // Info de un NV/NP (para autocompletar al cargar una solicitud, y para
 // mostrar como referencia en el detalle - no se duplica todo en la
@@ -69,6 +96,7 @@ async function resolverInfoNv(nv) {
 const SOLICITUD_COLS = `
   id, nv, nombre_cliente, distribuidor, direccion, maps_url, telefono,
   to_char(fecha_venta, 'YYYY-MM-DD') as fecha_venta,
+  to_char(fecha_programada, 'YYYY-MM-DD') as fecha_programada,
   descripcion, estado, creado_por, created_at, updated_at
 `;
 
@@ -89,11 +117,11 @@ async function getSolicitud(id) {
     [Number(id)]
   );
   if (!rows.length) return null;
-  const [historial, imagenes] = await Promise.all([
-    pool.query(`select id, tipo, autor, texto, created_at from public.servicio_tecnico_historial where solicitud_id = $1 order by created_at asc;`, [Number(id)]),
-    pool.query(`select id, historial_id, url, nombre_archivo, subido_por, created_at from public.servicio_tecnico_imagenes where solicitud_id = $1 order by created_at asc;`, [Number(id)]),
-  ]);
-  return { ...rows[0], historial: historial.rows, imagenes: imagenes.rows };
+  const historial = await pool.query(
+    `select id, tipo, autor, texto, attachment, created_at from public.servicio_tecnico_historial where solicitud_id = $1 order by created_at asc;`,
+    [Number(id)]
+  );
+  return { ...rows[0], historial: historial.rows };
 }
 
 async function createSolicitud({ nv, nombre_cliente, distribuidor, direccion, maps_url, telefono, descripcion, creado_por }) {
@@ -129,7 +157,7 @@ async function createSolicitud({ nv, nombre_cliente, distribuidor, direccion, ma
 }
 
 async function updateSolicitud(id, patch) {
-  const fields = ['nombre_cliente', 'distribuidor', 'direccion', 'maps_url', 'telefono', 'descripcion', 'estado'];
+  const fields = ['nombre_cliente', 'distribuidor', 'direccion', 'maps_url', 'telefono', 'descripcion', 'estado', 'fecha_programada'];
   const sets = [];
   const params = [Number(id)];
   for (const f of fields) {
@@ -151,50 +179,23 @@ async function deleteSolicitud(id) {
   await pool.query(`delete from public.servicio_tecnico_solicitudes where id = $1;`, [Number(id)]);
 }
 
-async function agregarHistorial(solicitudId, { tipo, autor, texto }) {
+async function agregarHistorial(solicitudId, { tipo, autor, texto, attachment }) {
   const tipoStr = String(tipo || '').trim();
   if (!['admin', 'tecnico'].includes(tipoStr)) throw new Error("tipo debe ser 'admin' o 'tecnico'");
   const textoStr = String(texto || '').trim();
   if (!textoStr) throw new Error('Falta el texto');
+  const cleanAttachment = normalizeAttachment(attachment);
   const { rows } = await pool.query(
-    `insert into public.servicio_tecnico_historial (solicitud_id, tipo, autor, texto)
-     values ($1, $2, $3, $4)
-     returning id, tipo, autor, texto, created_at;`,
-    [Number(solicitudId), tipoStr, autor || null, textoStr]
+    `insert into public.servicio_tecnico_historial (solicitud_id, tipo, autor, texto, attachment)
+     values ($1, $2, $3, $4, $5)
+     returning id, tipo, autor, texto, attachment, created_at;`,
+    [Number(solicitudId), tipoStr, autor || null, textoStr, cleanAttachment ? JSON.stringify(cleanAttachment) : null]
   );
   return rows[0];
-}
-
-// ===========================================================================
-// Portones pendientes de medición: derivado de datos existentes (igual que
-// Planificación de Fechas deriva de fecha_salida_imput/fecha_llegada_imput),
-// no es una entidad nueva.
-// ===========================================================================
-async function listPortonesPendientesMedicion() {
-  const { rows } = await pool.query(
-    `
-    with base as (
-      select p.*, pv.data as pv_data
-      from public.portones p
-      left join public.preproduccion_valores pv on pv.nv = p.nv and pv.nv_tipo = 'NV'
-      where p.parent_id is null
-    )
-    select distinct on (nv)
-      nv,
-      coalesce(pv_data->>'Nombre', '') as nombre_cliente,
-      coalesce(pv_data->>'RazSoc', '') as distribuidor,
-      to_char(fecha_nv, 'YYYY-MM-DD') as fecha_venta
-    from base
-    where fecha_med is null
-    order by nv, nlista asc;
-    `
-  );
-  return rows;
 }
 
 module.exports = {
   resolverInfoNv,
   listSolicitudes, getSolicitud, createSolicitud, updateSolicitud, deleteSolicitud,
   agregarHistorial,
-  listPortonesPendientesMedicion,
 };

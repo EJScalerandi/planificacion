@@ -35,6 +35,8 @@ import InsumosConfigPage from '../pages/admin/InsumosConfigPage';
 import InsumosEntregasPage from '../pages/admin/InsumosEntregasPage';
 import LogisticaViajesPage from '../pages/admin/LogisticaViajesPage';
 import LogisticaFechasPage from '../pages/admin/LogisticaFechasPage';
+import ServicioTecnicoViajesPage from '../pages/admin/ServicioTecnicoViajesPage';
+import ServicioTecnicoFechasPage from '../pages/admin/ServicioTecnicoFechasPage';
 
 import PreproduccionValoresTable from '../src/components/PreproduccionValoresTable';
 import IpanelPreproduccionValoresTable from '../src/components/IpanelPreproduccionValoresTable';
@@ -697,6 +699,15 @@ export default function App() {
             element={
               <FullBleed>
                 <LogisticaFechasPage />
+              </FullBleed>
+            }
+          />
+          <Route path="/admin/servicio-tecnico-viajes" element={<ServicioTecnicoViajesPage />} />
+          <Route
+            path="/admin/servicio-tecnico-fechas"
+            element={
+              <FullBleed>
+                <ServicioTecnicoFechasPage />
               </FullBleed>
             }
           />

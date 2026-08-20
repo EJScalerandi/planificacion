@@ -120,6 +120,8 @@ export default function ServicioTecnicoSolicitudesPage() {
       <div className="header-row" style={{ alignItems: 'center' }}>
         <h2 className="h1">Servicio Técnico · Solicitudes</h2>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Link className="btn" to="/admin/servicio-tecnico-fechas">Planificación de Fechas</Link>
+          <Link className="btn" to="/admin/servicio-tecnico-viajes">Viajes de Técnica</Link>
           <Link className="btn" to="/admin/servicio-tecnico">Órdenes de producción (ST/OE/REFAB)</Link>
           <Link className="btn" to="/admin">Panel Admin</Link>
           <button className="btn" onClick={logout}>Salir</button>

@@ -302,6 +302,84 @@ export async function fetchStPortonesPendientesMedicion() {
   return data;
 }
 
+/* ========= Planificación de Fechas + Viajes de Servicio Técnico ========= */
+export async function fetchStFechasItems() {
+  const { data } = await api.get('/admin/servicio-tecnico/viajes-fechas/items');
+  return data;
+}
+export async function patchStFechaItem(tipo, id, fecha) {
+  const { data } = await api.patch(`/admin/servicio-tecnico/viajes-fechas/items/${tipo}/${encodeURIComponent(id)}`, { fecha });
+  return data;
+}
+export async function fetchStViajesConfig() {
+  const { data } = await api.get('/admin/servicio-tecnico/viajes-fechas/config');
+  return data;
+}
+export async function createStVehiculo(payload) {
+  const { data } = await api.post('/admin/servicio-tecnico/viajes-fechas/vehiculos', payload);
+  return data;
+}
+export async function updateStVehiculo(id, patch) {
+  const { data } = await api.patch(`/admin/servicio-tecnico/viajes-fechas/vehiculos/${id}`, patch);
+  return data;
+}
+export async function deleteStVehiculo(id) {
+  const { data } = await api.delete(`/admin/servicio-tecnico/viajes-fechas/vehiculos/${id}`);
+  return data;
+}
+export async function createStCuadrilla(payload) {
+  const { data } = await api.post('/admin/servicio-tecnico/viajes-fechas/cuadrillas', payload);
+  return data;
+}
+export async function updateStCuadrilla(id, patch) {
+  const { data } = await api.patch(`/admin/servicio-tecnico/viajes-fechas/cuadrillas/${id}`, patch);
+  return data;
+}
+export async function deleteStCuadrilla(id) {
+  const { data } = await api.delete(`/admin/servicio-tecnico/viajes-fechas/cuadrillas/${id}`);
+  return data;
+}
+export async function setStCuadrillaMiembros(id, qcUserIds) {
+  const { data } = await api.put(`/admin/servicio-tecnico/viajes-fechas/cuadrillas/${id}/miembros`, { qc_user_ids: qcUserIds });
+  return data;
+}
+export async function fetchStSemanas() {
+  const { data } = await api.get('/admin/servicio-tecnico/viajes-fechas/semanas');
+  return data;
+}
+export async function fetchStSemanaDetalle(semana) {
+  const { data } = await api.get(`/admin/servicio-tecnico/viajes-fechas/semanas/${encodeURIComponent(semana)}`);
+  return data;
+}
+export async function crearStViaje(semana, payload) {
+  const { data } = await api.post(`/admin/servicio-tecnico/viajes-fechas/semanas/${encodeURIComponent(semana)}/viajes`, payload);
+  return data;
+}
+export async function patchStViaje(id, patch) {
+  const { data } = await api.patch(`/admin/servicio-tecnico/viajes-fechas/viajes/${id}`, patch);
+  return data;
+}
+export async function borrarStViaje(id) {
+  const { data } = await api.delete(`/admin/servicio-tecnico/viajes-fechas/viajes/${id}`);
+  return data;
+}
+export async function asignarStItem(viajeId, payload) {
+  const { data } = await api.post(`/admin/servicio-tecnico/viajes-fechas/viajes/${viajeId}/items`, payload);
+  return data;
+}
+export async function desasignarStItem(viajeId, tipo, itemId) {
+  const { data } = await api.delete(`/admin/servicio-tecnico/viajes-fechas/viajes/${viajeId}/items/${tipo}/${encodeURIComponent(itemId)}`);
+  return data;
+}
+export async function cerrarStSemana(semana) {
+  const { data } = await api.post(`/admin/servicio-tecnico/viajes-fechas/semanas/${encodeURIComponent(semana)}/cerrar`);
+  return data;
+}
+export async function reabrirStSemana(semana) {
+  const { data } = await api.post(`/admin/servicio-tecnico/viajes-fechas/semanas/${encodeURIComponent(semana)}/reabrir`);
+  return data;
+}
+
 /* ========= Refabricación ========= */
 export const fetchRefabricacionPendientes = () => api.get('/refabricacion/pendientes');
 
