@@ -353,17 +353,50 @@ async function asignarItem(viajeId, { tipo, solicitud_id, quote_id }) {
     : detalle.items.find((it) => it.tipo === 'medicion' && it.quote_id === quote_id);
   if (!item) throw new Error('Ese item no está pendiente en esta semana');
 
+  // Nuevo va al final de la columna (orden de ruta), no a una posición
+  // arbitraria - mismo criterio que Logística.
+  const maxOrdenQ = await pool.query(
+    `select coalesce(max(orden), -1) + 1 as next_orden from public.servicio_tecnico_viaje_items where viaje_id = $1;`,
+    [vId]
+  );
+  const nextOrden = maxOrdenQ.rows[0].next_orden;
+
   await pool.query(
-    `insert into public.servicio_tecnico_viaje_items (viaje_id, tipo, solicitud_id, quote_id)
-     values ($1, $2, $3, $4)
-     on conflict (${tipoStr === 'solicitud' ? 'solicitud_id' : 'quote_id'}) do update set viaje_id = excluded.viaje_id;`,
-    [vId, tipoStr, tipoStr === 'solicitud' ? Number(solicitud_id) : null, tipoStr === 'medicion' ? quote_id : null]
+    `insert into public.servicio_tecnico_viaje_items (viaje_id, tipo, solicitud_id, quote_id, orden)
+     values ($1, $2, $3, $4, $5)
+     on conflict (${tipoStr === 'solicitud' ? 'solicitud_id' : 'quote_id'}) do update set viaje_id = excluded.viaje_id, orden = excluded.orden;`,
+    [vId, tipoStr, tipoStr === 'solicitud' ? Number(solicitud_id) : null, tipoStr === 'medicion' ? quote_id : null, nextOrden]
   );
 
   // Si era una solicitud, reflejar en su estado (informativo).
   if (tipoStr === 'solicitud') {
     await pool.query(`update public.servicio_tecnico_solicitudes set estado = 'planificado', updated_at = now() where id = $1 and estado = 'pendiente';`, [Number(solicitud_id)]);
   }
+
+  return getSemanaDetalle(semana);
+}
+
+// Reordena los items DENTRO de un mismo viaje - primero el que queda arriba
+// en la columna. items: [{ tipo, solicitud_id, quote_id }, ...] en el orden
+// final deseado. Mismo criterio que logisticaViajesDb.reordenarViaje.
+async function reordenarViaje(viajeId, items) {
+  const vId = Number(viajeId);
+  if (!Array.isArray(items) || !items.length) throw new Error('Falta la lista ordenada de items');
+
+  const semana = await getViajeSemana(vId);
+  await assertSemanaAbierta(semana);
+
+  await withTx(async (client) => {
+    for (let i = 0; i < items.length; i++) {
+      const { tipo, solicitud_id, quote_id } = items[i] || {};
+      const tipoStr = String(tipo || '').trim();
+      if (tipoStr === 'solicitud' && solicitud_id) {
+        await client.query(`update public.servicio_tecnico_viaje_items set orden = $1 where viaje_id = $2 and tipo = 'solicitud' and solicitud_id = $3;`, [i, vId, Number(solicitud_id)]);
+      } else if (tipoStr === 'medicion' && quote_id) {
+        await client.query(`update public.servicio_tecnico_viaje_items set orden = $1 where viaje_id = $2 and tipo = 'medicion' and quote_id = $3;`, [i, vId, quote_id]);
+      }
+    }
+  });
 
   return getSemanaDetalle(semana);
 }
@@ -410,6 +443,6 @@ module.exports = {
   getConfig,
   getSemanas, getSemanaDetalle,
   crearViaje, patchViaje, borrarViaje,
-  asignarItem, desasignarItem,
+  asignarItem, desasignarItem, reordenarViaje,
   cerrarSemana, reabrirSemana,
 };

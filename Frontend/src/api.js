@@ -383,6 +383,10 @@ export async function desasignarStItem(viajeId, tipo, itemId) {
   const { data } = await api.delete(`/admin/servicio-tecnico/viajes-fechas/viajes/${viajeId}/items/${tipo}/${encodeURIComponent(itemId)}`);
   return data;
 }
+export async function reordenarStViaje(viajeId, items) {
+  const { data } = await api.put(`/admin/servicio-tecnico/viajes-fechas/viajes/${viajeId}/orden`, { items });
+  return data;
+}
 export async function cerrarStSemana(semana) {
   const { data } = await api.post(`/admin/servicio-tecnico/viajes-fechas/semanas/${encodeURIComponent(semana)}/cerrar`);
   return data;

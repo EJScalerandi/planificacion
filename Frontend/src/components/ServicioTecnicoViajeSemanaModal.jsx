@@ -20,7 +20,7 @@ const DND_MIME = 'application/x-st-viaje-item';
 
 const TIPO_COLOR = { solicitud: '#7c3aed', medicion: '#0891b2' };
 
-function ItemChip({ item, draggable, onDragStart, busy }) {
+function ItemChip({ item, draggable, onDragStart, busy, ordenNum }) {
   return (
     <div
       draggable={draggable}
@@ -30,7 +30,14 @@ function ItemChip({ item, draggable, onDragStart, busy }) {
         cursor: draggable ? 'grab' : 'default', opacity: busy ? 0.5 : 1, fontSize: 11, background: 'var(--surface)',
       }}
     >
-      <div style={{ fontWeight: 800 }}>{item.tipo === 'solicitud' ? '🔧' : '📏'} {item.nv ? `NV ${item.nv}` : 'Sin NV'}</div>
+      <div style={{ fontWeight: 800 }}>
+        {ordenNum != null ? (
+          <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 15, height: 15, borderRadius: 999, background: '#dc2626', color: '#fff', fontSize: 9, fontWeight: 900, marginRight: 4, verticalAlign: 1 }}>
+            {ordenNum}
+          </span>
+        ) : null}
+        {item.tipo === 'solicitud' ? '🔧' : '📏'} {item.nv ? `NV ${item.nv}` : 'Sin NV'}
+      </div>
       <div style={{ opacity: 0.8 }}>{item.nombre_cliente || item.descripcion || '—'}</div>
     </div>
   );
@@ -97,13 +104,22 @@ function NuevoViajeForm({ semana, config, onCreate, onCancel, busy, initial, sub
   );
 }
 
-function ViajeColumn({ viaje, items, canEdit, onDrop, onDragStartChip, onDesasignar, onEditar, onBorrar, busySet }) {
+function ViajeColumn({ viaje, items, canEdit, onDrop, onReorder, onDragStartChip, onDesasignar, onEditar, onBorrar, busySet }) {
   const [over, setOver] = useState(false);
+  const [dragOverIndex, setDragOverIndex] = useState(null);
   return (
     <div
       onDragOver={(e) => { if (!canEdit) return; e.preventDefault(); setOver(true); }}
-      onDragLeave={() => setOver(false)}
-      onDrop={(e) => { if (!canEdit) return; e.preventDefault(); setOver(false); onDrop(viaje.id, e); }}
+      onDragLeave={() => { setOver(false); setDragOverIndex(null); }}
+      onDrop={(e) => {
+        if (!canEdit) return;
+        e.preventDefault();
+        setOver(false);
+        setDragOverIndex(null);
+        // Si soltó sobre un chip puntual, ese chip ya frenó la propagación
+        // (más abajo) - esto solo cubre el área vacía de la columna.
+        onDrop(viaje.id, e);
+      }}
       style={{
         minWidth: 220, maxWidth: 220, display: 'flex', flexDirection: 'column', gap: 6,
         border: `1px solid ${over ? 'var(--brand)' : 'var(--border)'}`, borderRadius: 12, padding: 10,
@@ -123,11 +139,27 @@ function ViajeColumn({ viaje, items, canEdit, onDrop, onDragStartChip, onDesasig
           </div>
         ) : null}
       </div>
+      {canEdit && items.length > 1 ? (
+        <div style={{ fontSize: 9, opacity: 0.55 }}>Arrastrá para reordenar la ruta.</div>
+      ) : null}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minHeight: 40 }}>
         {items.length === 0 ? <div style={{ fontSize: 10, opacity: 0.5 }}>Arrastrá items acá.</div> : null}
-        {items.map((it) => (
-          <div key={it.id} style={{ position: 'relative' }}>
-            <ItemChip item={it} draggable={canEdit} busy={busySet.has(it.id)} onDragStart={(e) => onDragStartChip(e, it)} />
+        {items.map((it, idx) => (
+          <div
+            key={it.id}
+            style={{ position: 'relative' }}
+            onDragOver={(e) => { if (!canEdit) return; e.preventDefault(); setDragOverIndex(idx); }}
+            onDrop={(e) => {
+              if (!canEdit) return;
+              e.preventDefault();
+              e.stopPropagation();
+              setOver(false);
+              setDragOverIndex(null);
+              onReorder(viaje.id, e, idx);
+            }}
+          >
+            {dragOverIndex === idx ? <div style={{ height: 3, background: 'var(--brand)', borderRadius: 2, marginBottom: 3 }} /> : null}
+            <ItemChip item={it} draggable={canEdit} busy={busySet.has(it.id)} onDragStart={(e) => onDragStartChip(e, it)} ordenNum={items.length > 1 ? idx + 1 : null} />
             {canEdit ? (
               <button
                 onClick={() => onDesasignar(viaje.id, it)}
@@ -283,11 +315,54 @@ export default function ServicioTecnicoViajeSemanaModal({ semana, open, canEdit,
     e.dataTransfer.effectAllowed = 'move';
   };
 
+  // Reordena DENTRO de una misma columna (o asigna si viene de otro lado)
+  // según en qué posición soltó - mismo criterio que Logística.
+  const handleReorder = (viajeId, payload, targetIndex) => {
+    if (!payload?.id) return;
+
+    if (payload.viaje_id !== viajeId) {
+      setBusySet((prev) => new Set(prev).add(payload.id));
+      runMutation(() => asignarStItem(viajeId, { tipo: payload.tipo, solicitud_id: payload.solicitud_id, quote_id: payload.quote_id }))
+        .finally(() => setBusySet((prev) => { const n = new Set(prev); n.delete(payload.id); return n; }));
+      return;
+    }
+
+    const actuales = itemsByViaje.get(viajeId) || [];
+    const origenIdx = actuales.findIndex((it) => it.id === payload.id);
+    const sinArrastrado = actuales.filter((it) => it.id !== payload.id);
+
+    let destino = targetIndex;
+    if (origenIdx !== -1 && origenIdx < targetIndex) destino -= 1;
+    destino = Math.max(0, Math.min(destino, sinArrastrado.length));
+    if (origenIdx === destino) return;
+
+    const reordenado = [...sinArrastrado];
+    reordenado.splice(destino, 0, { id: payload.id, tipo: payload.tipo, solicitud_id: payload.solicitud_id, quote_id: payload.quote_id });
+
+    setBusySet((prev) => new Set(prev).add(payload.id));
+    runMutation(() => reordenarStViaje(viajeId, reordenado.map((it) => ({ tipo: it.tipo, solicitud_id: it.solicitud_id, quote_id: it.quote_id }))))
+      .finally(() => setBusySet((prev) => { const n = new Set(prev); n.delete(payload.id); return n; }));
+  };
+
+  const onReorderDrop = (viajeId, e, targetIndex) => {
+    const raw = e.dataTransfer.getData(DND_MIME);
+    if (!raw) return;
+    let payload;
+    try { payload = JSON.parse(raw); } catch { return; }
+    handleReorder(viajeId, payload, targetIndex);
+  };
+
   const onDropToViaje = (viajeId, e) => {
     const raw = e.dataTransfer.getData(DND_MIME);
     if (!raw) return;
     let payload;
     try { payload = JSON.parse(raw); } catch { return; }
+    if (payload.viaje_id === viajeId) {
+      // Soltó en el área vacía de su propia columna: al final de la ruta.
+      const actuales = itemsByViaje.get(viajeId) || [];
+      handleReorder(viajeId, payload, actuales.length);
+      return;
+    }
     setBusySet((prev) => new Set(prev).add(payload.id));
     runMutation(() => asignarStItem(viajeId, { tipo: payload.tipo, solicitud_id: payload.solicitud_id, quote_id: payload.quote_id }))
       .finally(() => setBusySet((prev) => { const n = new Set(prev); n.delete(payload.id); return n; }));
@@ -316,6 +391,10 @@ export default function ServicioTecnicoViajeSemanaModal({ semana, open, canEdit,
     if (!itemsByViaje.has(it.viaje_id)) itemsByViaje.set(it.viaje_id, []);
     itemsByViaje.get(it.viaje_id).push(it);
   }
+  // orden = orden real de la ruta (primero el que queda arriba). Empate en 0
+  // (items agregados antes de que existiera esta columna) se desempata por
+  // id para que sea estable hasta que el usuario los reordene.
+  for (const arr of itemsByViaje.values()) arr.sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0) || String(a.id).localeCompare(String(b.id)));
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12 }} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}>
@@ -399,7 +478,7 @@ export default function ServicioTecnicoViajeSemanaModal({ semana, open, canEdit,
                 {(detalle?.viajes || []).map((viaje) => (
                   <ViajeColumn
                     key={viaje.id} viaje={viaje} items={itemsByViaje.get(viaje.id) || []} canEdit={canEdit && !cerrada}
-                    onDrop={onDropToViaje} onDragStartChip={onDragStartChip} onDesasignar={onDesasignar}
+                    onDrop={onDropToViaje} onReorder={onReorderDrop} onDragStartChip={onDragStartChip} onDesasignar={onDesasignar}
                     onEditar={setEditandoViaje} onBorrar={borrarViaje} busySet={busySet}
                   />
                 ))}

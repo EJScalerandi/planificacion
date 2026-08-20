@@ -149,6 +149,10 @@ router.post('/servicio-tecnico/viajes-fechas/viajes/:id/items', asyncRoute(async
 router.delete('/servicio-tecnico/viajes-fechas/viajes/:id/items/:tipo/:itemId', asyncRoute(async (req, res) => {
   res.json({ ok: true, detalle: await db.desasignarItem(req.params.id, req.params.tipo, req.params.itemId) });
 }));
+// Reordenar items DENTRO de un viaje (orden de ruta). Body: { items: [{tipo, solicitud_id, quote_id}, ...] }.
+router.put('/servicio-tecnico/viajes-fechas/viajes/:id/orden', asyncRoute(async (req, res) => {
+  res.json({ ok: true, detalle: await db.reordenarViaje(req.params.id, req.body?.items) });
+}));
 
 router.post('/servicio-tecnico/viajes-fechas/semanas/:semana/cerrar', asyncRoute(async (req, res) => {
   res.json({ ok: true, detalle: await db.cerrarSemana(req.params.semana, req.admin?.username) });
