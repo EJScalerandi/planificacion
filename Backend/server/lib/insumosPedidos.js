@@ -114,42 +114,57 @@ async function loadPedidoConItems(client, pedidoId) {
   return { ...pedido, items };
 }
 
-// Cierra pedidos vencidos: ABIERTO -> CERRADO_VACIO (se descartan los items sin
-// confirmar) o CONFIRMADO -> CERRADO (se conservan). Los dias ESTRICTAMENTE
-// anteriores a hoy siempre se cierran para TODAS las secciones (cubre fines
-// de semana/feriados/caidas del server sin dejar pedidos viejos colgados).
-// El dia de HOY solo se cierra para las secciones en seccionesVencidasHoy
-// (ya paso SU horario de cierre configurado, ver insumosSeccionCierreDb.js) -
-// las demas quedan abiertas hasta que llegue el suyo. Antes esto era un
-// closeToday booleano global (un solo horario de corte para todas); ahora
-// cada seccion tiene el suyo, por eso el llamador (insumosScheduler.js)
-// resuelve la lista de secciones vencidas antes de llamar a esta funcion.
+// Cierra pedidos vencidos: CONFIRMADO -> CERRADO (se conservan, como antes).
+// ABIERTO -> se auto-envía como CERRADO si ya tiene items precargados (no
+// hace falta que nadie lo haya confirmado a mano: si llegó el horario de
+// cierre con algo cargado, se manda tal cual) o CERRADO_VACIO solo si de
+// verdad no tiene ningún item (ahí no hay nada que enviar). Antes CUALQUIER
+// ABIERTO cerraba vacío y perdía lo precargado sin importar el contenido -
+// era el bug reportado.
+// Los dias ESTRICTAMENTE anteriores a hoy siempre se cierran para TODAS las
+// secciones (cubre fines de semana/feriados/caidas del server sin dejar
+// pedidos viejos colgados). El dia de HOY solo se cierra para las secciones
+// en seccionesVencidasHoy (ya paso SU horario de cierre configurado, ver
+// insumosSeccionCierreDb.js) - las demas quedan abiertas hasta que llegue el
+// suyo. Antes esto era un closeToday booleano global (un solo horario de
+// corte para todas); ahora cada seccion tiene el suyo, por eso el llamador
+// (insumosScheduler.js) resuelve la lista de secciones vencidas antes de
+// llamar a esta funcion.
 async function closeStaleOpenPedidos(client, hoyStr, { seccionesVencidasHoy = [] } = {}) {
   const hasVencidasHoy = Array.isArray(seccionesVencidasHoy) && seccionesVencidasHoy.length > 0;
-  const condHoy = hasVencidasHoy ? `(fecha = $1 and seccion = any($2::text[]))` : 'false';
+  const condHoy = hasVencidasHoy ? `(p.fecha = $1 and p.seccion = any($2::text[]))` : 'false';
   const params = hasVencidasHoy ? [hoyStr, seccionesVencidasHoy] : [hoyStr];
 
   const confirmados = await client.query(
-    `update public.insumos_pedidos
+    `update public.insumos_pedidos p
         set status = 'CERRADO', closed_at = now()
-      where status = 'CONFIRMADO' and (fecha < $1 or ${condHoy})
-      returning id`,
+      where p.status = 'CONFIRMADO' and (p.fecha < $1 or ${condHoy})
+      returning p.id`,
     params
   );
 
-  const abiertos = await client.query(
-    `update public.insumos_pedidos
+  const abiertosConItems = await client.query(
+    `update public.insumos_pedidos p
+        set status = 'CERRADO', closed_at = now()
+      where p.status = 'ABIERTO' and (p.fecha < $1 or ${condHoy})
+        and exists (select 1 from public.insumos_pedido_items i where i.pedido_id = p.id)
+      returning p.id`,
+    params
+  );
+
+  const abiertosVacios = await client.query(
+    `update public.insumos_pedidos p
         set status = 'CERRADO_VACIO', closed_at = now()
-      where status = 'ABIERTO' and (fecha < $1 or ${condHoy})
-      returning id`,
+      where p.status = 'ABIERTO' and (p.fecha < $1 or ${condHoy})
+        and not exists (select 1 from public.insumos_pedido_items i where i.pedido_id = p.id)
+      returning p.id`,
     params
   );
-  const abiertoIds = abiertos.rows.map((r) => r.id);
-  if (abiertoIds.length) {
-    await client.query(`delete from public.insumos_pedido_items where pedido_id = any($1::int[])`, [abiertoIds]);
-  }
 
-  return { cerrados: confirmados.rows.length, cerrados_vacios: abiertoIds.length };
+  return {
+    cerrados: confirmados.rows.length + abiertosConItems.rows.length,
+    cerrados_vacios: abiertosVacios.rows.length,
+  };
 }
 
 module.exports = { getOrCreatePedidoDelDia, loadPedidoConItems, closeStaleOpenPedidos, argentinaTodayStr, AR_TZ };
