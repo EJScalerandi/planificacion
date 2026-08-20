@@ -387,6 +387,28 @@ export async function reordenarStViaje(viajeId, items) {
   const { data } = await api.put(`/admin/servicio-tecnico/viajes-fechas/viajes/${viajeId}/orden`, { items });
   return data;
 }
+
+/* ========= IA de Servicio Técnico (espejo de la IA de Logística) ========= */
+export async function fetchStIaConfig() {
+  const { data } = await api.get('/admin/servicio-tecnico/viajes-fechas/ia/config');
+  return data;
+}
+export async function updateStIaConfig(patch) {
+  const { data } = await api.patch('/admin/servicio-tecnico/viajes-fechas/ia/config', patch);
+  return data;
+}
+export async function fetchStItemsSinFecha() {
+  const { data } = await api.get('/admin/servicio-tecnico/viajes-fechas/items-sin-fecha');
+  return data;
+}
+export async function recomendarStViajeIa(items) {
+  const { data } = await api.post('/admin/servicio-tecnico/viajes-fechas/ia/recomendar-viaje', { items }, { timeout: 90000 });
+  return data;
+}
+export async function planificarStRutasIa() {
+  const { data } = await api.post('/admin/servicio-tecnico/viajes-fechas/ia/planificar', {}, { timeout: 180000 });
+  return data;
+}
 export async function cerrarStSemana(semana) {
   const { data } = await api.post(`/admin/servicio-tecnico/viajes-fechas/semanas/${encodeURIComponent(semana)}/cerrar`);
   return data;

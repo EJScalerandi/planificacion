@@ -13,6 +13,7 @@ import {
   isoWeekLabelFromDate, isoWeekStartEndFromLabel, weekNumberFromLabel,
   weekTitleFromSelection, buildWeekRange, formatDMY, todayISO10,
 } from '../../src/utils/isoWeek';
+import ServicioTecnicoIaMapaModal from '../../src/components/modals/ServicioTecnicoIaMapaModal';
 
 const DND_MIME = 'application/x-st-fecha-item';
 
@@ -130,6 +131,7 @@ export default function ServicioTecnicoFechasPage() {
   const [err, setErr] = useState('');
   const [saving, setSaving] = useState(() => new Set());
   const [search, setSearch] = useState('');
+  const [showIaMapa, setShowIaMapa] = useState(false);
 
   // "Sombra" de Logística: apagado por defecto, el usuario lo prende para ver
   // (solo lectura) lo que Logística ya tiene planificado en cada semana.
@@ -275,6 +277,7 @@ export default function ServicioTecnicoFechasPage() {
           </span>
           <Link className="btn" to="/admin/servicio-tecnico-solicitudes">Solicitudes</Link>
           <Link className="btn" to="/admin/servicio-tecnico-viajes">Viajes de Técnica</Link>
+          <button className="btn btn--brand" onClick={() => setShowIaMapa(true)}>🤖 Generar viaje con IA</button>
           <button className="btn" onClick={load} disabled={loading}>Recargar</button>
           <button className="btn" onClick={logout}>Salir</button>
         </div>
@@ -340,6 +343,8 @@ export default function ServicioTecnicoFechasPage() {
           </div>
         </div>
       )}
+
+      <ServicioTecnicoIaMapaModal open={showIaMapa} onClose={() => setShowIaMapa(false)} onCreated={load} />
     </div>
   );
 }

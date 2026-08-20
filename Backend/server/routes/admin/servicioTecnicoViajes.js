@@ -10,6 +10,9 @@ const db = require('../../lib/servicioTecnicoViajesDb');
 const solicitudesDb = require('../../lib/servicioTecnicoSolicitudesDb');
 const medicionDb = require('../../lib/servicioTecnicoMedicionDb');
 const logisticaDb = require('../../lib/logisticaViajesDb');
+const { getIaConfig, updateIaConfig } = require('../../lib/servicioTecnicoIaConfig');
+const { listarItemsPendientesConUbicacion } = require('../../lib/servicioTecnicoIaContexto');
+const { recomendarViaje, planificarRutas } = require('../../lib/servicioTecnicoIaRecomendacion');
 
 const router = express.Router();
 
@@ -86,6 +89,33 @@ router.patch('/servicio-tecnico/viajes-fechas/items/:tipo/:id', asyncRoute(async
     return res.json({ ok: true });
   }
   return res.status(400).json({ error: 'tipo debe ser solicitud o medicion' });
+}));
+
+// ===== Motor de IA de Técnica: config editable + recomendación (espejo de Logística) =====
+router.get('/servicio-tecnico/viajes-fechas/ia/config', asyncRoute(async (_req, res) => {
+  res.json({ ok: true, config: await getIaConfig() });
+}));
+router.patch('/servicio-tecnico/viajes-fechas/ia/config', asyncRoute(async (req, res) => {
+  res.json({ ok: true, config: await updateIaConfig(req.body || {}) });
+}));
+
+// Items (solicitudes + mediciones) pendientes de fecha, con ubicación/zona
+// resuelta - para el mapa de selección de "Generar viaje con IA".
+router.get('/servicio-tecnico/viajes-fechas/items-sin-fecha', asyncRoute(async (_req, res) => {
+  res.json({ ok: true, items: await listarItemsPendientesConUbicacion() });
+}));
+
+router.post('/servicio-tecnico/viajes-fechas/ia/recomendar-viaje', asyncRoute(async (req, res) => {
+  const items = Array.isArray(req.body?.items)
+    ? req.body.items.filter((it) => it?.tipo && it?.id != null).slice(0, 30)
+    : [];
+  res.json({ ok: true, ...(await recomendarViaje(items)) });
+}));
+
+// Planificación proactiva: mira TODOS los items pendientes, los agrupa por
+// zona, y le pide a la IA que proponga qué viajes armar en cada zona.
+router.post('/servicio-tecnico/viajes-fechas/ia/planificar', asyncRoute(async (_req, res) => {
+  res.json({ ok: true, ...(await planificarRutas()) });
 }));
 
 // ===== Config: zonas (lectura, compartidas con Logística) / vehículos / cuadrillas =====
