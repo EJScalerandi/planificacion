@@ -754,14 +754,50 @@ async function asignarPorton(viajeId, { porton_id, tipo }) {
     }
   }
 
+  // Nuevo va al final de la columna (no a la posición 0) - así no reordena
+  // por sorpresa lo que el usuario ya venía acomodando a mano en ese viaje.
+  const maxOrdenQ = await pool.query(
+    `select coalesce(max(orden), -1) + 1 as next_orden from public.logistica_viaje_portones where viaje_id = $1;`,
+    [vId]
+  );
+  const nextOrden = maxOrdenQ.rows[0].next_orden;
+
   await pool.query(
-    `insert into public.logistica_viaje_portones (viaje_id, porton_id, tipo, peso)
-     values ($1, $2, $3, $4)
-     on conflict (porton_id, tipo) do update set viaje_id = excluded.viaje_id, peso = excluded.peso;`,
-    [vId, porton_id, tipoNorm, item.peso]
+    `insert into public.logistica_viaje_portones (viaje_id, porton_id, tipo, peso, orden)
+     values ($1, $2, $3, $4, $5)
+     on conflict (porton_id, tipo) do update set viaje_id = excluded.viaje_id, peso = excluded.peso, orden = excluded.orden;`,
+    [vId, porton_id, tipoNorm, item.peso, nextOrden]
   );
 
   return getSemanaDetalle(viaje.semana);
+}
+
+// Reordena los portones DENTRO de un mismo viaje - el orden de la columna en
+// Logística de Viajes pasa a ser el orden real de la ruta (primero se hace
+// el que queda arriba). itemsOrdenados: [{porton_id, tipo}, ...] en el orden
+// final deseado; se les asigna orden = posición en el array.
+async function reordenarViaje(viajeId, itemsOrdenados) {
+  const vId = Number(viajeId);
+  if (!Array.isArray(itemsOrdenados) || !itemsOrdenados.length) throw new Error('Falta la lista ordenada de items');
+
+  const viajeQ = await pool.query(`select semana from public.logistica_viajes where id = $1;`, [vId]);
+  if (!viajeQ.rowCount) throw new Error('Viaje no encontrado');
+  const semana = viajeQ.rows[0].semana;
+  await assertSemanaAbierta(semana);
+
+  await withTx(async (client) => {
+    for (let i = 0; i < itemsOrdenados.length; i++) {
+      const { porton_id, tipo } = itemsOrdenados[i] || {};
+      const tipoNorm = String(tipo || '').trim();
+      if (!porton_id || !['despacho', 'instalacion'].includes(tipoNorm)) continue;
+      await client.query(
+        `update public.logistica_viaje_portones set orden = $1 where viaje_id = $2 and porton_id = $3 and tipo = $4;`,
+        [i, vId, porton_id, tipoNorm]
+      );
+    }
+  });
+
+  return getSemanaDetalle(semana);
 }
 
 async function desasignarPorton(viajeId, portonId, tipo) {
@@ -818,6 +854,6 @@ module.exports = {
   getSemanas,
   getSemanaDetalle,
   crearViaje, patchViaje, borrarViaje,
-  asignarPorton, desasignarPorton,
+  asignarPorton, desasignarPorton, reordenarViaje,
   cerrarSemana, reabrirSemana,
 };

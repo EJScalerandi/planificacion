@@ -15,6 +15,7 @@ import {
   borrarLogisticaViaje,
   asignarLogisticaPorton,
   desasignarLogisticaPorton,
+  reordenarLogisticaViaje,
   cerrarLogisticaSemana,
   reabrirLogisticaSemana,
 } from '../api';
@@ -58,7 +59,7 @@ function TipoBadge({ tipo }) {
   );
 }
 
-function PortonChip({ item, draggable, onDragStart, onDragEnd }) {
+function PortonChip({ item, draggable, onDragStart, onDragEnd, ordenNum }) {
   return (
     <div
       draggable={draggable}
@@ -73,11 +74,19 @@ function PortonChip({ item, draggable, onDragStart, onDragEnd }) {
         display: 'flex',
         flexDirection: 'column',
         gap: 4,
+        position: 'relative',
       }}
       title={item.direccion || ''}
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-        <span style={{ fontWeight: 900, fontSize: 13 }}>NV {item.nv}</span>
+        <span style={{ fontWeight: 900, fontSize: 13 }}>
+          {ordenNum != null ? (
+            <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, borderRadius: 999, background: '#dc2626', color: '#fff', fontSize: 9, fontWeight: 900, marginRight: 5, verticalAlign: 2 }}>
+              {ordenNum}
+            </span>
+          ) : null}
+          NV {item.nv}
+        </span>
         <TipoBadge tipo={item.tipo} />
       </div>
       <div style={{ fontSize: 12, opacity: 0.85 }}>{item.nombre?.trim() || item.sistema || '—'}</div>
@@ -167,19 +176,25 @@ function NuevoViajeForm({ semana, config, onCreate, onCancel, busy, initial, sub
   );
 }
 
-function ViajeColumn({ viaje, items, canEdit, cerrada, onDropItem, onEditar, onBorrar, onDragStartChip, onDragEndChip, onVerMapa }) {
+function ViajeColumn({ viaje, items, canEdit, cerrada, onDropItem, onReorder, onEditar, onBorrar, onDragStartChip, onDragEndChip, onVerMapa }) {
   const [over, setOver] = useState(false);
+  const [dragOverIndex, setDragOverIndex] = useState(null);
   const capacidad = Number(viaje.vehiculo_capacidad || 0);
   const usado = Number(viaje.peso_despacho_usado || 0);
+  const puedeReordenar = canEdit && !cerrada && items.length > 1;
 
   return (
     <div
       onDragOver={(e) => { if (!canEdit || cerrada) return; e.preventDefault(); setOver(true); }}
-      onDragLeave={() => setOver(false)}
+      onDragLeave={() => { setOver(false); setDragOverIndex(null); }}
       onDrop={(e) => {
         if (!canEdit || cerrada) return;
         e.preventDefault();
         setOver(false);
+        setDragOverIndex(null);
+        // Si soltó sobre un chip puntual, ese chip ya frenó la propagación
+        // (más abajo) y esto no llega a ejecutarse - esto solo cubre soltar
+        // en el área vacía de la columna (manda al final).
         onDropItem(viaje.id, e);
       }}
       style={{
@@ -231,18 +246,41 @@ function ViajeColumn({ viaje, items, canEdit, cerrada, onDropItem, onEditar, onB
         )}
       </div>
 
+      {puedeReordenar ? (
+        <div style={{ fontSize: 10, opacity: 0.55 }}>Arrastrá para reordenar la ruta (1º arriba = primera parada).</div>
+      ) : null}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minHeight: 60 }}>
         {items.length === 0 ? (
           <div style={{ fontSize: 11, opacity: 0.5, padding: 8, textAlign: 'center' }}>Arrastrá portones acá</div>
         ) : (
-          items.map((it) => (
-            <PortonChip
+          items.map((it, idx) => (
+            <div
               key={`${it.porton_id}-${it.tipo}`}
-              item={it}
-              draggable={canEdit && !cerrada}
-              onDragStart={(e) => onDragStartChip(e, it)}
-              onDragEnd={onDragEndChip}
-            />
+              onDragOver={(e) => {
+                if (!canEdit || cerrada) return;
+                e.preventDefault();
+                setDragOverIndex(idx);
+              }}
+              onDrop={(e) => {
+                if (!canEdit || cerrada) return;
+                e.preventDefault();
+                e.stopPropagation();
+                setOver(false);
+                setDragOverIndex(null);
+                onReorder(viaje.id, e, idx);
+              }}
+            >
+              {dragOverIndex === idx ? (
+                <div style={{ height: 3, background: 'var(--brand)', borderRadius: 2, marginBottom: 4 }} />
+              ) : null}
+              <PortonChip
+                item={it}
+                draggable={canEdit && !cerrada}
+                onDragStart={(e) => onDragStartChip(e, it)}
+                onDragEnd={onDragEndChip}
+                ordenNum={items.length > 1 ? idx + 1 : null}
+              />
+            </div>
           ))
         )}
       </div>
@@ -314,6 +352,11 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
       if (!map.has(it.viaje_id)) map.set(it.viaje_id, []);
       map.get(it.viaje_id).push(it);
     }
+    // Orden = orden real de la ruta (primero el que queda arriba en la
+    // columna). Portones agregados antes de que existiera esta columna de
+    // orden quedan todos en 0 (empate) - se desempata por porton_id para que
+    // al menos sea estable entre renders, hasta que el usuario los reordene.
+    for (const arr of map.values()) arr.sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0) || String(a.porton_id).localeCompare(String(b.porton_id)));
     return map;
   }, [detalle]);
 
@@ -347,16 +390,66 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
   };
   const onDragEndChip = () => {};
 
+  // Reordena DENTRO de una misma columna (o inserta ahí si viene de otro
+  // lado) según en qué posición soltó. targetIndex se calcula contra el
+  // array YA ordenado por `orden` (itemsPorViaje) que ve el chip sobre el
+  // que soltó.
+  const handleReorder = useCallback((viajeId, payload, targetIndex) => {
+    if (!payload?.porton_id || !payload?.tipo) return;
+
+    if (payload.viaje_id !== viajeId) {
+      // Viene de otra columna o del pool: se asigna (entra al final); si el
+      // usuario quiere una posición puntual, lo reordena después con un
+      // segundo arrastre dentro de la misma columna.
+      runMutation(() => asignarLogisticaPorton(viajeId, payload.porton_id, payload.tipo));
+      return;
+    }
+
+    const actuales = itemsPorViaje.get(viajeId) || [];
+    const origenIdx = actuales.findIndex((it) => it.porton_id === payload.porton_id && it.tipo === payload.tipo);
+    const sinArrastrado = actuales.filter((it) => !(it.porton_id === payload.porton_id && it.tipo === payload.tipo));
+
+    // Si el arrastrado estaba ANTES de donde soltó, al sacarlo el resto se
+    // corre un lugar - hay que compensar para que caiga justo donde soltó.
+    let destino = targetIndex;
+    if (origenIdx !== -1 && origenIdx < targetIndex) destino -= 1;
+    destino = Math.max(0, Math.min(destino, sinArrastrado.length));
+
+    if (origenIdx === destino) return; // no cambió nada
+
+    const reordenado = [...sinArrastrado];
+    reordenado.splice(destino, 0, { porton_id: payload.porton_id, tipo: payload.tipo });
+
+    runMutation(() => reordenarLogisticaViaje(viajeId, reordenado.map((it) => ({ porton_id: it.porton_id, tipo: it.tipo }))));
+  }, [itemsPorViaje, runMutation]);
+
+  // Wrapper para el onDrop de un chip puntual (llega con el DragEvent crudo,
+  // no con el payload ya parseado como handleDrop/handleReorder esperan).
+  const onReorderDrop = useCallback((viajeId, e, targetIndex) => {
+    const raw = e.dataTransfer.getData(DND_MIME);
+    if (!raw) return;
+    let payload;
+    try { payload = JSON.parse(raw); } catch { return; }
+    handleReorder(viajeId, payload, targetIndex);
+  }, [handleReorder]);
+
   const handleDrop = useCallback((targetViajeId, e) => {
     const raw = e.dataTransfer.getData(DND_MIME);
     if (!raw) return;
     let payload;
     try { payload = JSON.parse(raw); } catch { return; }
     if (!payload?.porton_id || !payload?.tipo) return;
-    if (payload.viaje_id === targetViajeId) return; // soltó en la misma columna
+
+    if (payload.viaje_id === targetViajeId) {
+      // Soltó en el área vacía de su propia columna (no sobre un chip
+      // puntual): lo manda al final de la ruta.
+      const actuales = itemsPorViaje.get(targetViajeId) || [];
+      handleReorder(targetViajeId, payload, actuales.length);
+      return;
+    }
 
     runMutation(() => asignarLogisticaPorton(targetViajeId, payload.porton_id, payload.tipo));
-  }, [runMutation]);
+  }, [runMutation, itemsPorViaje, handleReorder]);
 
   const [poolOver, setPoolOver] = useState(false);
   const handleDropToPool = useCallback((e) => {
@@ -500,6 +593,7 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
                     canEdit={canEdit}
                     cerrada={cerrada}
                     onDropItem={handleDrop}
+                    onReorder={onReorderDrop}
                     onEditar={setEditandoViaje}
                     onBorrar={borrarViaje}
                     onDragStartChip={onDragStartChip}

@@ -62,6 +62,21 @@ function agruparPorSemana(nvsSeleccionados, itemsByNv) {
   return { semana, incluidos, excluidos };
 }
 
+// Reordena una lista de NV según el orden_paradas que propuso la IA, para
+// que al crear el viaje (asignación secuencial, ver crear()) las columnas ya
+// nazcan en el orden real de la ruta - así el usuario no tiene que rehacer a
+// mano el orden que la IA ya pensó. NV que no aparecen en orden_paradas
+// (no debería pasar, pero por las dudas) quedan al final, en su orden original.
+function nvsEnOrdenSugerido(nvsList, ordenParadas) {
+  if (!ordenParadas?.length) return nvsList;
+  const ordenPorNv = new Map(ordenParadas.map((p) => [p.nv, p.orden]));
+  return [...nvsList].sort((a, b) => {
+    const oa = ordenPorNv.has(a) ? ordenPorNv.get(a) : Infinity;
+    const ob = ordenPorNv.has(b) ? ordenPorNv.get(b) : Infinity;
+    return oa - ob;
+  });
+}
+
 export default function LogisticaIaMapaModal({ open, onClose, onCreated }) {
   const [items, setItems] = useState([]);
   const [config, setConfig] = useState(null);
@@ -477,7 +492,7 @@ export default function LogisticaIaMapaModal({ open, onClose, onCreated }) {
 
                 <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
                   <button className="btn" onClick={() => { setRecomendacion(null); limpiarRuta(); }}>Descartar</button>
-                  <button className="btn btn--brand" onClick={() => abrirConfirmacion(Array.from(selected), { vehiculoSugerido: rec.vehiculo_sugerido })}>
+                  <button className="btn btn--brand" onClick={() => abrirConfirmacion(nvsEnOrdenSugerido(Array.from(selected), rec.orden_paradas), { vehiculoSugerido: rec.vehiculo_sugerido })}>
                     Crear viaje con esta recomendación
                   </button>
                 </div>
@@ -539,7 +554,7 @@ export default function LogisticaIaMapaModal({ open, onClose, onCreated }) {
                                 </button>
                                 <button
                                   className="btn btn--brand" style={{ fontSize: 11, padding: '3px 9px' }}
-                                  onClick={() => abrirConfirmacion(viaje.nvs, { vehiculoSugerido: viaje.vehiculo_sugerido, nombreSugerido: viaje.nombre })}
+                                  onClick={() => abrirConfirmacion(nvsEnOrdenSugerido(viaje.nvs, viaje.orden_paradas), { vehiculoSugerido: viaje.vehiculo_sugerido, nombreSugerido: viaje.nombre })}
                                 >
                                   Crear este viaje
                                 </button>

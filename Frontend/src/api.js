@@ -575,6 +575,10 @@ export async function desasignarLogisticaPorton(viajeId, portonId, tipo) {
   );
   return data;
 }
+export async function reordenarLogisticaViaje(viajeId, items) {
+  const { data } = await api.put(`/admin/logistica/viajes/${viajeId}/orden`, { items });
+  return data;
+}
 export async function cerrarLogisticaSemana(semana) {
   const { data } = await api.post(`/admin/logistica/semanas/${encodeURIComponent(semana)}/cerrar`, {});
   return data;

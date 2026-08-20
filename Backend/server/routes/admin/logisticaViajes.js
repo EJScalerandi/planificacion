@@ -198,6 +198,12 @@ router.delete('/logistica/viajes/:id/portones/:porton_id', requireFullAccess, as
   res.json({ ok: true, detalle: await db.desasignarPorton(req.params.id, req.params.porton_id, req.query?.tipo) });
 }));
 
+// Reordenar los portones DENTRO de un viaje (orden de ruta: primero el que
+// queda arriba). Body: { items: [{ porton_id, tipo }, ...] } en el orden final.
+router.put('/logistica/viajes/:id/orden', requireFullAccess, asyncRoute(async (req, res) => {
+  res.json({ ok: true, detalle: await db.reordenarViaje(req.params.id, req.body?.items) });
+}));
+
 router.post('/logistica/semanas/:semana/cerrar', requireFullAccess, asyncRoute(async (req, res) => {
   const cerradaBy = req?.admin?.username || req?.admin?.name || null;
   res.json({ ok: true, detalle: await db.cerrarSemana(req.params.semana, cerradaBy) });
