@@ -3,6 +3,7 @@ const express = require('express');
 const { adminAuth } = require('../../middleware/adminAuth');
 const { pool } = require('../../db');
 const { STATUS } = require('../../lib/workflow');
+const solicitudesDb = require('../../lib/servicioTecnicoSolicitudesDb');
 
 const router = express.Router();
 
@@ -116,5 +117,62 @@ router.post('/servicio-tecnico/ordenes', async (req, res) => {
     client.release();
   }
 });
+
+function asyncRoute(fn) {
+  return (req, res) => {
+    Promise.resolve(fn(req, res)).catch((err) => {
+      console.error('servicio-tecnico-solicitudes error:', err);
+      res.status(err.status || 400).json({ error: err.message || 'Error inesperado' });
+    });
+  };
+}
+
+// ===========================================================================
+// Solicitudes de Servicio Técnico (Fase 0 - paso antes de generar una
+// st_orden de producción). Mismo scope 'servicio_tecnico:admin' que ya
+// gatea /servicio-tecnico arriba.
+// ===========================================================================
+
+// Info de un NV/NP para autocompletar - va ANTES de /solicitudes/:id para
+// que Express no confunda "nv-info" con un :id.
+router.get('/servicio-tecnico/solicitudes/nv-info/:numero', asyncRoute(async (req, res) => {
+  const info = await solicitudesDb.resolverInfoNv(req.params.numero);
+  if (!info) return res.status(404).json({ error: `No se encontró el NV ${req.params.numero}` });
+  res.json({ ok: true, info });
+}));
+
+router.get('/servicio-tecnico/mediciones-pendientes', asyncRoute(async (_req, res) => {
+  res.json({ ok: true, items: await solicitudesDb.listPortonesPendientesMedicion() });
+}));
+
+router.get('/servicio-tecnico/solicitudes', asyncRoute(async (req, res) => {
+  res.json({ ok: true, solicitudes: await solicitudesDb.listSolicitudes({ estado: req.query.estado }) });
+}));
+
+router.get('/servicio-tecnico/solicitudes/:id', asyncRoute(async (req, res) => {
+  const solicitud = await solicitudesDb.getSolicitud(req.params.id);
+  if (!solicitud) return res.status(404).json({ error: 'Solicitud no encontrada' });
+  res.json({ ok: true, solicitud });
+}));
+
+router.post('/servicio-tecnico/solicitudes', asyncRoute(async (req, res) => {
+  const solicitud = await solicitudesDb.createSolicitud({ ...req.body, creado_por: req.admin?.username || null });
+  res.status(201).json({ ok: true, solicitud });
+}));
+
+router.patch('/servicio-tecnico/solicitudes/:id', asyncRoute(async (req, res) => {
+  const solicitud = await solicitudesDb.updateSolicitud(req.params.id, req.body || {});
+  res.json({ ok: true, solicitud });
+}));
+
+router.delete('/servicio-tecnico/solicitudes/:id', asyncRoute(async (req, res) => {
+  await solicitudesDb.deleteSolicitud(req.params.id);
+  res.json({ ok: true });
+}));
+
+router.post('/servicio-tecnico/solicitudes/:id/historial', asyncRoute(async (req, res) => {
+  const entrada = await solicitudesDb.agregarHistorial(req.params.id, { ...req.body, autor: req.body?.autor || req.admin?.username || null });
+  res.status(201).json({ ok: true, entrada });
+}));
 
 module.exports = router;

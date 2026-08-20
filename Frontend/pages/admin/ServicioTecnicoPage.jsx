@@ -97,6 +97,7 @@ export default function ServicioTecnicoPage() {
       <div className="header-row" style={{ alignItems: 'center' }}>
         <h2 className="h1">Servicio Técnico, Órdenes Externas y Refabricado</h2>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Link className="btn" to="/admin/servicio-tecnico-solicitudes">Solicitudes (antes de producción)</Link>
           <Link className="btn" to="/admin">Volver</Link>
           <Link className="btn" to="/">Inicio</Link>
           <button className="btn" onClick={logout}>Salir</button>

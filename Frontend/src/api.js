@@ -268,6 +268,40 @@ export const stopStStage = (id, stage) => api.post(`/servicio-tecnico/${id}/stag
 export const adminListStOrdenes = () => api.get('/admin/servicio-tecnico/ordenes');
 export const adminCreateStOrden = (payload) => api.post('/admin/servicio-tecnico/ordenes', payload);
 
+/* ========= Solicitudes de Servicio Técnico (paso antes de generar una ST de producción) ========= */
+export async function fetchStSolicitudNvInfo(numero) {
+  const { data } = await api.get(`/admin/servicio-tecnico/solicitudes/nv-info/${encodeURIComponent(numero)}`);
+  return data;
+}
+export async function fetchStSolicitudes(estado) {
+  const { data } = await api.get('/admin/servicio-tecnico/solicitudes', { params: estado ? { estado } : {} });
+  return data;
+}
+export async function fetchStSolicitud(id) {
+  const { data } = await api.get(`/admin/servicio-tecnico/solicitudes/${id}`);
+  return data;
+}
+export async function createStSolicitud(payload) {
+  const { data } = await api.post('/admin/servicio-tecnico/solicitudes', payload);
+  return data;
+}
+export async function updateStSolicitud(id, patch) {
+  const { data } = await api.patch(`/admin/servicio-tecnico/solicitudes/${id}`, patch);
+  return data;
+}
+export async function deleteStSolicitud(id) {
+  const { data } = await api.delete(`/admin/servicio-tecnico/solicitudes/${id}`);
+  return data;
+}
+export async function agregarStHistorial(id, payload) {
+  const { data } = await api.post(`/admin/servicio-tecnico/solicitudes/${id}/historial`, payload);
+  return data;
+}
+export async function fetchStPortonesPendientesMedicion() {
+  const { data } = await api.get('/admin/servicio-tecnico/mediciones-pendientes');
+  return data;
+}
+
 /* ========= Refabricación ========= */
 export const fetchRefabricacionPendientes = () => api.get('/refabricacion/pendientes');
 

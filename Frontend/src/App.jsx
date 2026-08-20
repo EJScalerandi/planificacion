@@ -29,6 +29,7 @@ import AdminQcPage from '../pages/admin/AdminQcPage';
 import AdminExcelInfoPage from '../pages/admin/AdminExcelInfoPage';
 import PrefabricadosConfigPage from '../pages/admin/PrefabricadosConfigPage';
 import ServicioTecnicoPage from '../pages/admin/ServicioTecnicoPage';
+import ServicioTecnicoSolicitudesPage from '../pages/admin/ServicioTecnicoSolicitudesPage';
 import InsumosComprasPage from '../pages/admin/InsumosComprasPage';
 import InsumosConfigPage from '../pages/admin/InsumosConfigPage';
 import InsumosEntregasPage from '../pages/admin/InsumosEntregasPage';
@@ -686,6 +687,7 @@ export default function App() {
           <Route path="/admin/excel-info" element={<AdminExcelInfoPage />} />
           <Route path="/admin/prefabricados" element={<PrefabricadosConfigPage />} />
           <Route path="/admin/servicio-tecnico" element={<ServicioTecnicoPage />} />
+          <Route path="/admin/servicio-tecnico-solicitudes" element={<ServicioTecnicoSolicitudesPage />} />
           <Route path="/admin/insumos" element={<InsumosComprasPage />} />
           <Route path="/admin/insumos/config" element={<InsumosConfigPage />} />
           <Route path="/admin/insumos/entregas" element={<InsumosEntregasPage />} />
