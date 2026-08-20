@@ -179,6 +179,8 @@ export default function ServicioTecnicoViajeSemanaModal({ semana, open, canEdit,
     setConfig(c?.config || null);
   }, []);
 
+  const [poolOver, setPoolOver] = useState(false);
+
   if (!open) return null;
 
   const cerrada = !!detalle?.cerrada;
@@ -228,7 +230,6 @@ export default function ServicioTecnicoViajeSemanaModal({ semana, open, canEdit,
       .finally(() => setBusySet((prev) => { const n = new Set(prev); n.delete(item.id); return n; }));
   };
 
-  const [poolOver, setPoolOver] = useState(false);
   const onDropToPool = (e) => {
     const raw = e.dataTransfer.getData(DND_MIME);
     if (!raw) return;
