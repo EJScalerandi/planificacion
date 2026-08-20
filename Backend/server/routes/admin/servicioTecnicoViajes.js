@@ -66,6 +66,13 @@ router.get('/servicio-tecnico/viajes-fechas/items', asyncRoute(async (_req, res)
   res.json({ ok: true, items });
 }));
 
+// "Sombra" de Logística para el tablero completo (todas las semanas
+// visibles a la vez, no una por una) - de solo lectura, mismo motivo que la
+// de /semanas/:semana/logistica-sombra: gateado por el scope de Técnica.
+router.get('/servicio-tecnico/viajes-fechas/logistica-sombra', asyncRoute(async (_req, res) => {
+  res.json({ ok: true, items: await logisticaDb.listItemsAllSemanas() });
+}));
+
 // Arrastrar un item a una semana (o sacarlo, fecha=null vuelve al pool).
 router.patch('/servicio-tecnico/viajes-fechas/items/:tipo/:id', asyncRoute(async (req, res) => {
   const { tipo, id } = req.params;

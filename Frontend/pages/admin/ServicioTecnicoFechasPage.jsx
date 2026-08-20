@@ -8,7 +8,7 @@
 // medición) en un solo tablero.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { getAdminToken, clearAdminToken, fetchStFechasItems, patchStFechaItem } from '../../src/api';
+import { getAdminToken, clearAdminToken, fetchStFechasItems, patchStFechaItem, fetchStLogisticaSombraFechas } from '../../src/api';
 import {
   isoWeekLabelFromDate, isoWeekStartEndFromLabel, weekNumberFromLabel,
   weekTitleFromSelection, buildWeekRange, formatDMY, todayISO10,
@@ -57,7 +57,27 @@ function ItemChip({ item, draggable, onDragStart, onDragEnd, busy, highlight }) 
   );
 }
 
-function WeekColumn({ weekLabel, items, canEdit, saving, onDropItem, onDragStartChip, onDragEndChip, isCurrent, colRef, searchNeedle }) {
+// Chip de solo lectura para un portón que Logística ya tiene planificado esa
+// semana (despacho o instalación) - "sombra", no se puede arrastrar ni tocar.
+function LogisticaSombraChip({ item }) {
+  return (
+    <div
+      style={{
+        border: '1px dashed var(--border)', borderRadius: 8, padding: '6px 8px',
+        background: 'var(--surface-muted, #f9fafb)', opacity: 0.85,
+        display: 'flex', flexDirection: 'column', gap: 2,
+      }}
+      title={item.direccion?.trim() || ''}
+    >
+      <div style={{ fontWeight: 800, fontSize: 11 }}>
+        🔒 {item.tipo === 'despacho' ? '📦' : '🔧'} NV {item.nv} <span style={{ fontWeight: 400, opacity: 0.7 }}>({item.tipo === 'despacho' ? 'despacho' : 'instalación'})</span>
+      </div>
+      <div style={{ fontSize: 11, opacity: 0.8 }}>{item.nombre?.trim() || item.direccion?.trim() || '—'}</div>
+    </div>
+  );
+}
+
+function WeekColumn({ weekLabel, items, sombraItems, canEdit, saving, onDropItem, onDragStartChip, onDragEndChip, isCurrent, colRef, searchNeedle }) {
   const [over, setOver] = useState(false);
   return (
     <div
@@ -87,6 +107,14 @@ function WeekColumn({ weekLabel, items, canEdit, saving, onDropItem, onDragStart
             onDragStart={(e) => onDragStartChip(e, item)} onDragEnd={onDragEndChip}
           />
         ))}
+        {sombraItems && sombraItems.length > 0 ? (
+          <>
+            <div style={{ fontSize: 10, fontWeight: 800, opacity: 0.6, marginTop: 4, borderTop: '1px dashed var(--border)', paddingTop: 6 }}>
+              Logística ({sombraItems.length})
+            </div>
+            {sombraItems.map((it, i) => <LogisticaSombraChip key={`${it.porton_id}-${it.tipo}-${i}`} item={it} />)}
+          </>
+        ) : null}
       </div>
     </div>
   );
@@ -103,6 +131,13 @@ export default function ServicioTecnicoFechasPage() {
   const [saving, setSaving] = useState(() => new Set());
   const [search, setSearch] = useState('');
 
+  // "Sombra" de Logística: apagado por defecto, el usuario lo prende para ver
+  // (solo lectura) lo que Logística ya tiene planificado en cada semana.
+  const [showSombra, setShowSombra] = useState(false);
+  const [sombraItems, setSombraItems] = useState([]);
+  const [sombraLoading, setSombraLoading] = useState(false);
+  const [sombraErr, setSombraErr] = useState('');
+
   const load = useCallback(async () => {
     setErr('');
     setLoading(true);
@@ -116,6 +151,33 @@ export default function ServicioTecnicoFechasPage() {
     }
   }, []);
   useEffect(() => { load(); }, [load]);
+
+  const loadSombra = useCallback(async () => {
+    setSombraErr('');
+    setSombraLoading(true);
+    try {
+      const data = await fetchStLogisticaSombraFechas();
+      setSombraItems(Array.isArray(data?.items) ? data.items : []);
+    } catch (e) {
+      setSombraErr(e?.response?.data?.error || e.message);
+    } finally {
+      setSombraLoading(false);
+    }
+  }, []);
+  useEffect(() => {
+    if (showSombra) loadSombra();
+    else { setSombraItems([]); setSombraErr(''); }
+  }, [showSombra, loadSombra]);
+
+  const sombraByWeek = useMemo(() => {
+    const map = new Map();
+    for (const it of sombraItems) {
+      if (!it.semana) continue;
+      if (!map.has(it.semana)) map.set(it.semana, []);
+      map.get(it.semana).push(it);
+    }
+    return map;
+  }, [sombraItems]);
 
   const pool = useMemo(() => items.filter((it) => !it.fecha), [items]);
   const searchNeedle = search.trim().toLowerCase();
@@ -138,8 +200,9 @@ export default function ServicioTecnicoFechasPage() {
     const base = buildWeekRange(4, 20);
     const set = new Set(base);
     for (const wk of itemsByWeek.keys()) set.add(wk);
+    if (showSombra) for (const wk of sombraByWeek.keys()) set.add(wk);
     return Array.from(set).sort();
-  }, [itemsByWeek]);
+  }, [itemsByWeek, showSombra, sombraByWeek]);
   const visibleWeeks = useMemo(() => {
     if (!searchNeedle) return weeks;
     return weeks.filter((wk) => (itemsByWeek.get(wk) || []).some((it) => matchesSearch(it, searchNeedle)));
@@ -220,9 +283,14 @@ export default function ServicioTecnicoFechasPage() {
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 8, flexWrap: 'wrap', flex: '0 0 auto' }}>
         <button className="btn" onClick={scrollToToday}>Ir a hoy</button>
         <span style={{ fontSize: 11, opacity: 0.65 }}>Arrastrá un item para asignarle/cambiarle la semana.</span>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer', marginLeft: 'auto' }}>
+          <input type="checkbox" checked={showSombra} onChange={(e) => setShowSombra(e.target.checked)} />
+          👁️ Ver plan de Logística (solo lectura){sombraLoading ? '…' : ''}
+        </label>
       </div>
 
       {err ? <div style={{ color: 'crimson', fontWeight: 800, fontSize: 12, marginTop: 8, flex: '0 0 auto' }}>{err}</div> : null}
+      {sombraErr ? <div style={{ color: 'crimson', fontWeight: 800, fontSize: 12, marginTop: 4, flex: '0 0 auto' }}>Plan de Logística: {sombraErr}</div> : null}
 
       {loading ? (
         <div style={{ marginTop: 16, opacity: 0.75 }}>Cargando…</div>
@@ -261,7 +329,9 @@ export default function ServicioTecnicoFechasPage() {
             ) : (
               visibleWeeks.map((wk) => (
                 <WeekColumn
-                  key={wk} weekLabel={wk} items={itemsByWeek.get(wk) || []} canEdit={canEdit} saving={saving}
+                  key={wk} weekLabel={wk} items={itemsByWeek.get(wk) || []}
+                  sombraItems={showSombra ? (sombraByWeek.get(wk) || []) : null}
+                  canEdit={canEdit} saving={saving}
                   onDropItem={onDropToWeek} onDragStartChip={onDragStartChip} onDragEndChip={onDragEndChip}
                   isCurrent={wk === currentWeek} colRef={(el) => { colRefs.current[wk] = el; }} searchNeedle={searchNeedle}
                 />

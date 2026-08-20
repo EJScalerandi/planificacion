@@ -311,6 +311,10 @@ export async function patchStFechaItem(tipo, id, fecha) {
   const { data } = await api.patch(`/admin/servicio-tecnico/viajes-fechas/items/${tipo}/${encodeURIComponent(id)}`, { fecha });
   return data;
 }
+export async function fetchStLogisticaSombraFechas() {
+  const { data } = await api.get('/admin/servicio-tecnico/viajes-fechas/logistica-sombra');
+  return data;
+}
 export async function fetchStViajesConfig() {
   const { data } = await api.get('/admin/servicio-tecnico/viajes-fechas/config');
   return data;

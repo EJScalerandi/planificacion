@@ -399,6 +399,47 @@ async function fetchItemsForSemana(semana) {
   return rows;
 }
 
+// Igual que fetchItemsForSemana pero para TODAS las semanas de una vez
+// (acotado a una ventana razonable alrededor de hoy), con o sin viaje
+// asignado - para la "sombra" de Logística en Planificación de Fechas de
+// Servicio Técnico (a diferencia de listPortonesSinViaje, que solo trae lo
+// SIN asignar). Un row por despacho/instalación, con su semana ya calculada.
+async function listItemsAllSemanas() {
+  const { rows } = await pool.query(
+    `
+    with base as (
+      select p.*, pv.data as pv_data
+      from public.portones p
+      left join public.preproduccion_valores pv on pv.nv = p.nv and pv.nv_tipo = 'NV'
+      where p.parent_id is null
+    )
+    select ${ITEMS_SELECT_COLS},
+      'despacho' as tipo,
+      nullif(p.pv_data->>'fecha_salida_imput','')::date as fecha,
+      to_char(nullif(p.pv_data->>'fecha_salida_imput','')::date, 'IYYY-"W"IW') as semana,
+      vp.viaje_id
+    from base p
+    left join public.logistica_viaje_portones vp on vp.porton_id = p.id and vp.tipo = 'despacho'
+    where nullif(p.pv_data->>'fecha_salida_imput','') is not null
+      and p.despacho is distinct from 'Finalizado'
+      and nullif(p.pv_data->>'fecha_salida_imput','')::date between (current_date - interval '35 days') and (current_date + interval '150 days')
+
+    union all
+
+    select ${ITEMS_SELECT_COLS},
+      'instalacion' as tipo,
+      nullif(p.pv_data->>'fecha_llegada_imput','')::date as fecha,
+      to_char(nullif(p.pv_data->>'fecha_llegada_imput','')::date, 'IYYY-"W"IW') as semana,
+      vp.viaje_id
+    from base p
+    left join public.logistica_viaje_portones vp on vp.porton_id = p.id and vp.tipo = 'instalacion'
+    where nullif(p.pv_data->>'fecha_llegada_imput','') is not null
+      and nullif(p.pv_data->>'fecha_llegada_imput','')::date between (current_date - interval '35 days') and (current_date + interval '150 days')
+    `
+  );
+  return rows;
+}
+
 // NV con despacho y/o instalación pendiente (fecha cargada, sin viaje
 // asignado todavía) de CUALQUIER semana - para el mapa de selección de
 // "Generar viaje con IA" en Planificación de Fechas (a diferencia de
@@ -773,6 +814,7 @@ module.exports = {
   listReglasEnvio, createReglaEnvio, updateReglaEnvio, deleteReglaEnvio,
   getConfig,
   listPortonesSinViaje,
+  listItemsAllSemanas,
   getSemanas,
   getSemanaDetalle,
   crearViaje, patchViaje, borrarViaje,
