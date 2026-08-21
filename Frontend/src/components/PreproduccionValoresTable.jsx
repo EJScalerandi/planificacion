@@ -173,6 +173,21 @@ function getNvIntFromRow(row) {
   return Number.isFinite(nv) ? nv : null;
 }
 
+// nv_tipo: prefijo con el que el Presupuestador nombra la orden en Odoo según
+// el catálogo de origen (ver getReferenceFamilyPrefix/extractNvTipo en
+// measurementFinalization.js) - "NV" es el portón normal (no lleva badge acá),
+// el resto son los otros catálogos que también entran a Preproducción.
+const NV_TIPO_LABELS = {
+  PNV: 'Puerta',
+  INV: 'iPanel',
+  ONV: 'Otros',
+  PLNV: 'Plegado',
+};
+function nvTipoLabel(nvTipo) {
+  const t = String(nvTipo || 'NV').trim().toUpperCase();
+  return NV_TIPO_LABELS[t] || null;
+}
+
 // =====================
 // Corte para vista ADMIN:
 // "no mostrar muy futuro": incluir todo lo pasado y hasta el VIERNES de la semana siguiente
@@ -1475,6 +1490,20 @@ export default function PreproduccionValoresTable() {
     const data = row?.data || {};
     const id = row.id;
     const isBusy = saving.has(id);
+
+    // ===== NV: si no es un portón normal, mostrar de dónde viene (Puerta/
+    // iPanel/Otros/Plegado) al lado del número - antes de cualquier rama de
+    // accessMode, para que se vea igual en los 3 modos =====
+    if (col.id === 'nv') {
+      const raw = getCellValue(row, col);
+      const origen = nvTipoLabel(row?.nv_tipo);
+      return (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <span>{toStr(raw)}</span>
+          {origen ? <span className="pp-badge pp-badge--muted">{origen}</span> : null}
+        </span>
+      );
+    }
 
     // ===== limited: SOLO LECTURA =====
     if (accessMode === 'limited') {
