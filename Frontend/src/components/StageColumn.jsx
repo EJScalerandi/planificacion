@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { qcAuthorize, qcGetMotives, qcHistory, fetchNvLines } from '../api';
 import NuevoPedidoPrefabricadoModal from './modals/NuevoPedidoPrefabricadoModal';
+import { sectionLabel } from '../constants/sections';
 
 const bordo = '#008241ff';
 const cardBorder = '#1d4ed8';
@@ -974,6 +975,31 @@ export default function StageColumn({
     );
   }, [mode, prefabTipos, stageKey]);
 
+  // Historial de pedidos de prefabricado solicitados por ESTA sección, para
+  // mostrar en el popup de "Nuevo pedido" en qué etapa del workflow está
+  // parado cada uno hoy. Si ninguna etapa de su ruta está Pendiente/En Proceso
+  // se considera Finalizado (recorrió toda la ruta).
+  const prefabHistorialSeccion = useMemo(() => {
+    if (mode !== 'porton') return [];
+    const src = Array.isArray(allItems) ? allItems : [];
+    return src
+      .filter((p) => p?.__kind === 'prefabricado' && p?.solicitado_por_seccion === stageKey)
+      .map((p) => {
+        const stages = Array.isArray(p?.workflow_stages) ? p.workflow_stages : [];
+        const pendienteEn = stages.find((st) => low(p?.[st]) !== 'finalizado');
+        return {
+          id: p.id,
+          numero: p.numero,
+          tipo_nombre: p.tipo_nombre,
+          cantidad: p.cantidad,
+          created_at: p.created_at,
+          finalizado: !pendienteEn,
+          seccionActual: pendienteEn ? sectionLabel(pendienteEn) : null,
+        };
+      })
+      .sort((a, b) => (Number(b.numero) || 0) - (Number(a.numero) || 0));
+  }, [mode, allItems, stageKey]);
+
   // NV -> portón "puro" (sin __kind), para resolverle la semana a ST/Refab
   // (ver resolveWeekSourceItem). allItems trae el listado completo, no solo
   // lo que entra en esta columna.
@@ -1384,7 +1410,9 @@ export default function StageColumn({
           onClose={() => setNuevoPedidoOpen(false)}
           tipos={eligiblePrefabTipos}
           seccion={stageKey}
+          seccionLabel={title}
           onCreate={onCreatePrefabOrden}
+          historial={prefabHistorialSeccion}
         />
       ) : null}
     </div>
