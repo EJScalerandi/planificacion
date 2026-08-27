@@ -1,5 +1,5 @@
 // pages/admin/AdminExcelInfoPage.jsx
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import usePortones from '../../src/hooks/usePortones';
 import useIpanels from '../../src/hooks/useIpanels';
 import InformeSemanalPortones from '../../src/components/InformeSemanalPortones';
@@ -37,37 +37,40 @@ const IPANEL_STAGES = [
   { key: 'despacho', label: 'Despacho' },
 ];
 
+// nota: "Fecha Plan Entrega" existió acá pero se sacó (2026-08-27) porque para
+// Portones nunca se carga (ningún flujo la escribe) y, si se cargara, sería
+// redundante con "Fecha Salida (Plan)". En iPanel sí es un dato real y
+// distinto (se sincroniza desde Presupuestador), por eso ahí se mantiene.
 const PORTON_BASE_FIELDS = [
-  { key: 'nv', label: 'NV', get: (r) => r.nv ?? '' },
-  { key: 'nlista', label: 'N° Portón (Lista)', get: (r) => r.nlista ?? '' },
-  { key: 'partida', label: 'Partida', get: (r) => r.partida ?? '' },
-  { key: 'nv_tipo', label: 'Tipo NV', get: (r) => r.nv_tipo ?? '' },
-  { key: 'nombre_cliente', label: 'Nombre Cliente', get: (r) => r.nombre_cliente ?? '' },
-  { key: 'fecha_aprobacion_cliente', label: 'Fecha Aprobación Cliente', get: (r) => fmtDateTime(r.fecha_aprobacion_cliente) },
-  { key: 'fecha_nv', label: 'Fecha NV', get: (r) => dateOnly(r.fecha_nv) },
-  { key: 'fecha_prod', label: 'Fecha Producción', get: (r) => dateOnly(r.fecha_prod) },
-  { key: 'fecha_plan', label: 'Fecha Salida (Plan)', get: (r) => dateOnly(r.fecha_plan) },
-  { key: 'fecha_med', label: 'Fecha Medición', get: (r) => dateOnly(r.fecha_med) },
-  { key: 'fecha_plan_entrega', label: 'Fecha Plan Entrega', get: (r) => dateOnly(r.fecha_plan_entrega) },
-  { key: 'sistema', label: 'Sistema', get: (r) => r.sistema ?? '' },
-  { key: 'tipo', label: 'Tipo', get: (r) => r.tipo ?? '' },
-  { key: 'created_at', label: 'Fecha de creación', get: (r) => fmtDateTime(r.created_at) },
-  { key: 'revision_ok', label: 'Revisión OK', get: (r) => (r.revision_ok == null ? '' : (r.revision_ok ? 'Sí' : 'No')) },
-  { key: 'revision_ok_at', label: 'Fecha revisión', get: (r) => fmtDateTime(r.revision_ok_at) },
-  { key: 'observaciones', label: 'Observaciones', get: (r) => r.observaciones ?? '' },
+  { key: 'nv', label: 'NV', get: (r) => r.nv ?? '', hint: 'Número de venta: identifica el pedido en Presupuestador y en Planta.' },
+  { key: 'nlista', label: 'N° Portón (Lista)', get: (r) => r.nlista ?? '', hint: 'Número de portón dentro del pedido. Puede repetir el NV cuando hay más de un portón por pedido (por ejemplo, en refabricaciones).' },
+  { key: 'partida', label: 'Partida', get: (r) => r.partida ?? '', hint: 'Número de partida de producción asignado al portón.' },
+  { key: 'nv_tipo', label: 'Tipo NV', get: (r) => r.nv_tipo ?? '', hint: 'Prefijo de origen del NV en Presupuestador: vacío = Portón, PNV = Puerta, INV = iPanel, ONV = Otros, PLNV = Plegado.' },
+  { key: 'nombre_cliente', label: 'Nombre Cliente', get: (r) => r.nombre_cliente ?? '', hint: 'Nombre del cliente final del pedido.' },
+  { key: 'fecha_aprobacion_cliente', label: 'Fecha Aprobación Cliente', get: (r) => fmtDateTime(r.fecha_aprobacion_cliente), hint: 'Fecha en que el cliente aprobó la medición final en Presupuestador.' },
+  { key: 'fecha_nv', label: 'Fecha NV', get: (r) => dateOnly(r.fecha_nv), hint: 'Fecha en que se generó el NV en Presupuestador.' },
+  { key: 'fecha_prod', label: 'Fecha Producción', get: (r) => dateOnly(r.fecha_prod), hint: 'Fecha planificada de inicio de producción en planta.' },
+  { key: 'fecha_plan', label: 'Fecha Salida (Plan)', get: (r) => dateOnly(r.fecha_plan), hint: 'Fecha planificada de salida/despacho del portón.' },
+  { key: 'fecha_med', label: 'Fecha Medición', get: (r) => dateOnly(r.fecha_med), hint: 'Fecha en que se realizó la medición del portón.' },
+  { key: 'sistema', label: 'Sistema', get: (r) => r.sistema ?? '', hint: 'Sistema constructivo del portón (Coplanar, Común, etc.).' },
+  { key: 'tipo', label: 'Tipo', get: (r) => r.tipo ?? '', hint: 'Tipo de portón.' },
+  { key: 'created_at', label: 'Fecha de creación', get: (r) => fmtDateTime(r.created_at), hint: 'Fecha en que se creó el registro del portón en Planificación Planta.' },
+  { key: 'revision_ok', label: 'Revisión OK', get: (r) => (r.revision_ok == null ? '' : (r.revision_ok ? 'Sí' : 'No')), hint: 'Indica si un portón con observación de calidad fue revisado y aprobado para seguir sin refabricar (pantalla de Refabricación).' },
+  { key: 'revision_ok_at', label: 'Fecha revisión', get: (r) => fmtDateTime(r.revision_ok_at), hint: 'Fecha en que se marcó esa revisión como aprobada.' },
+  { key: 'observaciones', label: 'Observaciones', get: (r) => r.observaciones ?? '', hint: 'Observaciones cargadas para el portón.' },
 ];
 
 const IPANEL_BASE_FIELDS = [
-  { key: 'nv', label: 'NV', get: (r) => r.nv ?? '' },
-  { key: 'partida', label: 'Partida', get: (r) => r.partida ?? '' },
-  { key: 'fecha_nv', label: 'Fecha NV', get: (r) => dateOnly(r.fecha_nv) },
-  { key: 'fecha_prod', label: 'Fecha Producción', get: (r) => dateOnly(r.fecha_prod) },
-  { key: 'fecha_plan', label: 'Fecha Salida (Plan)', get: (r) => dateOnly(r.fecha_plan) },
-  { key: 'fecha_med', label: 'Fecha Medición', get: (r) => dateOnly(r.fecha_med) },
-  { key: 'fecha_plan_entrega', label: 'Fecha Plan Entrega', get: (r) => dateOnly(r.fecha_plan_entrega) },
-  { key: 'descripcion', label: 'Descripción', get: (r) => r.descripcion ?? '' },
-  { key: 'descripcion_simple', label: 'Descripción simple', get: (r) => r.descripcion_simple ?? '' },
-  { key: 'observaciones', label: 'Observaciones', get: (r) => r.observaciones ?? '' },
+  { key: 'nv', label: 'NV', get: (r) => r.nv ?? '', hint: 'Número de venta: identifica el pedido en Presupuestador y en Planta.' },
+  { key: 'partida', label: 'Partida', get: (r) => r.partida ?? '', hint: 'Número de partida de producción asignado.' },
+  { key: 'fecha_nv', label: 'Fecha NV', get: (r) => dateOnly(r.fecha_nv), hint: 'Fecha en que se generó el NV en Presupuestador.' },
+  { key: 'fecha_prod', label: 'Fecha Producción', get: (r) => dateOnly(r.fecha_prod), hint: 'Fecha planificada de inicio de producción.' },
+  { key: 'fecha_plan', label: 'Fecha Salida (Plan)', get: (r) => dateOnly(r.fecha_plan), hint: 'Fecha planificada de salida/despacho.' },
+  { key: 'fecha_med', label: 'Fecha Medición', get: (r) => dateOnly(r.fecha_med), hint: 'Fecha en que se realizó la medición.' },
+  { key: 'fecha_plan_entrega', label: 'Fecha Plan Entrega', get: (r) => dateOnly(r.fecha_plan_entrega), hint: 'Fecha comprometida de entrega al cliente, sincronizada desde Presupuestador.' },
+  { key: 'descripcion', label: 'Descripción', get: (r) => r.descripcion ?? '', hint: 'Descripción completa del ítem de iPanel.' },
+  { key: 'descripcion_simple', label: 'Descripción simple', get: (r) => r.descripcion_simple ?? '', hint: 'Descripción simplificada del ítem, pensada para mostrarse en planta.' },
+  { key: 'observaciones', label: 'Observaciones', get: (r) => r.observaciones ?? '', hint: 'Observaciones cargadas para el ítem.' },
 ];
 
 function buildStageFields(stages) {
@@ -90,6 +93,57 @@ const STAGE_COLS = [
   { suf: 'inicio', label: 'Inicio' },
   { suf: 'fin', label: 'Fin' },
 ];
+
+const STAGE_COLS_HINT = 'Estado: en qué paso está la etapa (Pendiente / En Proceso / Finalizado). Inicio / Fin: cuándo arrancó y cuándo terminó esa etapa para este ítem.';
+
+// Botón "?" que al tocarlo muestra una reseña de qué representa el campo.
+// Se cierra al tocar afuera o al tocarlo de nuevo.
+function FieldHint({ text }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [open]);
+
+  if (!text) return null;
+
+  return (
+    <span ref={ref} style={{ position: 'relative', display: 'inline-flex', flexShrink: 0 }}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        title="Qué significa este campo"
+        aria-label="Qué significa este campo"
+        style={{
+          width: 16, height: 16, borderRadius: '50%', border: '1px solid var(--border)',
+          background: 'transparent', color: 'inherit', fontSize: 10, fontWeight: 800,
+          lineHeight: '14px', padding: 0, cursor: 'pointer', opacity: 0.65,
+        }}
+      >
+        ?
+      </button>
+      {open && (
+        <div
+          style={{
+            position: 'absolute', top: '130%', left: 0, zIndex: 30,
+            width: 240, padding: '8px 10px', borderRadius: 8,
+            border: '1px solid var(--border)', background: 'var(--surface)',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.18)', fontSize: 12, fontWeight: 400,
+            lineHeight: 1.4,
+          }}
+        >
+          {text}
+        </div>
+      )}
+    </span>
+  );
+}
 
 export default function AdminExcelInfoPage() {
   const [activeTab, setActiveTab] = useState('columnas'); // 'columnas' | 'semanal'
@@ -235,14 +289,20 @@ export default function AdminExcelInfoPage() {
               <div style={{ fontWeight: 700, fontSize: 13, opacity: 0.8, marginBottom: 6 }}>Datos generales</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 16 }}>
                 {cfg.baseFields.map((f) => (
-                  <label key={f.key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <input type="checkbox" checked={selectedKeys.includes(f.key)} onChange={() => toggleField(f.key)} />
-                    {f.label}
-                  </label>
+                  <div key={f.key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
+                      <input type="checkbox" checked={selectedKeys.includes(f.key)} onChange={() => toggleField(f.key)} />
+                      {f.label}
+                    </label>
+                    <FieldHint text={f.hint} />
+                  </div>
                 ))}
               </div>
 
-              <div style={{ fontWeight: 700, fontSize: 13, opacity: 0.8, marginBottom: 6 }}>Etapas de producción</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                <div style={{ fontWeight: 700, fontSize: 13, opacity: 0.8 }}>Etapas de producción</div>
+                <FieldHint text={STAGE_COLS_HINT} />
+              </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {cfg.stages.map((s) => (
                   <div
