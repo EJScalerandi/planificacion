@@ -383,7 +383,7 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
       zona_id: zonaId ? String(zonaId) : '',
       cuadrilla_id: '',
       vehiculo_id: vehiculoSugerido ? String(vehiculoSugerido.id) : '',
-      nombre: opts.nombreSugerido || `Viaje IA · Semana ${weekNumberFromLabel(semana)}`,
+      nombre: opts.nombreSugerido || `Viaje · Semana ${weekNumberFromLabel(semana)}`,
     });
     setConfirmando(true);
   };
@@ -667,15 +667,8 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
             ) : (
               <div style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 12 }}>
                 <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 10 }}>
-                  Hacé click en los pines pendientes para seleccionarlos, y pedile a la IA que te recomiende semana,
-                  orden y vehículo. Los pines grises ya están en un viaje (solo consulta).
-                </div>
-
-                <button className="btn" style={{ marginBottom: 12, width: '100%' }} disabled={planificando} onClick={planificarTodo}>
-                  {planificando ? 'Planificando (puede tardar unos minutos)…' : '🗺️ Planificar todas las zonas automáticamente'}
-                </button>
-                <div style={{ fontSize: 10, opacity: 0.6, marginTop: -8, marginBottom: 12 }}>
-                  Mira TODOS los portones pendientes (cualquier semana), no solo lo que estás filtrando acá.
+                  Hacé click en los pines pendientes para seleccionarlos. Los pines grises ya están en un viaje
+                  (solo consulta).
                 </div>
 
                 {selected.size > 0 ? (
@@ -685,9 +678,27 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
                     ))}
                   </div>
                 ) : null}
-                <button className="btn btn--brand" disabled={selected.size === 0 || recomendando} onClick={generarRecomendacion}>
-                  {recomendando ? 'Pensando…' : `Generar viaje con IA (${selected.size})`}
+
+                <button className="btn btn--brand" style={{ width: '100%', marginBottom: 8 }} disabled={selected.size === 0} onClick={() => abrirConfirmacion(Array.from(selected))}>
+                  Crear viaje con esta selección ({selected.size})
                 </button>
+                <div style={{ fontSize: 10, opacity: 0.6, marginTop: -4, marginBottom: 12 }}>
+                  Armalo vos: elegís fecha, zona, cuadrilla y vehículo a mano en el paso siguiente.
+                </div>
+
+                <button className="btn" style={{ width: '100%', marginBottom: 4 }} disabled={selected.size === 0 || recomendando} onClick={generarRecomendacion}>
+                  {recomendando ? 'Pensando…' : `🤖 Que la IA recomiende (${selected.size})`}
+                </button>
+                <div style={{ fontSize: 10, opacity: 0.6, marginBottom: 12 }}>
+                  Te sugiere orden de paradas, semana y vehículo antes de crear — revisás y confirmás igual.
+                </div>
+
+                <button className="btn" style={{ width: '100%' }} disabled={planificando} onClick={planificarTodo}>
+                  {planificando ? 'Planificando (puede tardar unos minutos)…' : '🗺️ Planificar todas las zonas automáticamente'}
+                </button>
+                <div style={{ fontSize: 10, opacity: 0.6, marginTop: 4 }}>
+                  Mira TODOS los portones pendientes (cualquier semana), no solo lo que estás filtrando acá.
+                </div>
               </div>
             )}
           </div>
