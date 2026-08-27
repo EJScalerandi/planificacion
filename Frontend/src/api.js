@@ -567,6 +567,10 @@ export async function fetchLogisticaPortonesSinViaje() {
   const { data } = await api.get('/admin/logistica/portones-sin-viaje');
   return data;
 }
+export async function fetchLogisticaSinFechaSalida() {
+  const { data } = await api.get('/admin/logistica/sin-fecha-salida');
+  return data;
+}
 export async function planificarLogisticaRutasIa() {
   // Una llamada a la IA por zona (en paralelo) - probado ~130s con una zona
   // grande (20 portones); le damos bastante margen.

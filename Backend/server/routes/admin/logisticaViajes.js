@@ -15,6 +15,7 @@ const { getPromesaConfig, updatePromesaConfig } = require('../../lib/logisticaPr
 const { getSemanaPromesaMapa } = require('../../lib/logisticaPromesaMapa');
 const { buildMensajeViaje } = require('../../lib/logisticaMensajeViaje');
 const { resolveEtapasPorNv, resolveSemanaPrometidaPorNv, resolveSemanaRealPorNv } = require('../../lib/logisticaMapaExtras');
+const { listPortonesSinFechaSalida } = require('../../lib/logisticaSinFechaSalida');
 
 // Le suma a cada item {nv,...} su barrita de etapas de producción (diseño/
 // pintura/armado final) - común a los 3 mapas (sin filtro, semana real,
@@ -181,6 +182,16 @@ router.get('/logistica/portones-sin-viaje', asyncRoute(async (_req, res) => {
   ]);
   const itemsFinal = items.map((it) => ({ ...it, semana_prometida: semanaPrometidaPorNv.get(it.nv) || null }));
   res.json({ ok: true, items: itemsFinal });
+}));
+
+// NV (portones/puertas/iPanel) sin "Fecha Salida" cargada todavía en /a -
+// mismo criterio EXACTO que el filtro "Sin fecha" de esa columna ahí (ver
+// lib/logisticaSinFechaSalida.js). Vista de solo consulta: sin fecha no hay
+// con qué agrupar en un viaje, es para decidir prioridad de carga por
+// cercanía geográfica.
+router.get('/logistica/sin-fecha-salida', asyncRoute(async (_req, res) => {
+  const items = await listPortonesSinFechaSalida();
+  res.json({ ok: true, items });
 }));
 
 router.post('/logistica/ia/recomendar-viaje', requireFullAccess, asyncRoute(async (req, res) => {
