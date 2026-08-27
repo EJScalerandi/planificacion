@@ -13,6 +13,7 @@ const { recomendarViaje, planificarRutas } = require('../../lib/logisticaIaRecom
 const { listarPortonesSinViajeConUbicacion } = require('../../lib/logisticaIaContexto');
 const { getPromesaConfig, updatePromesaConfig } = require('../../lib/logisticaPromesaConfig');
 const { getSemanaPromesaMapa } = require('../../lib/logisticaPromesaMapa');
+const { buildMensajeViaje } = require('../../lib/logisticaMensajeViaje');
 
 const router = express.Router();
 
@@ -223,6 +224,12 @@ router.delete('/logistica/viajes/:id/portones/:porton_id', requireFullAccess, as
 // queda arriba). Body: { items: [{ porton_id, tipo }, ...] } en el orden final.
 router.put('/logistica/viajes/:id/orden', requireFullAccess, asyncRoute(async (req, res) => {
   res.json({ ok: true, detalle: await db.reordenarViaje(req.params.id, req.body?.items) });
+}));
+
+// Mensaje de texto (borrador) para mandarle a la cuadrilla - solo lectura,
+// no modifica nada, alcanza con cualquiera de los 3 scopes de Preproducción.
+router.get('/logistica/viajes/:id/mensaje', asyncRoute(async (req, res) => {
+  res.json({ ok: true, texto: await buildMensajeViaje(req.params.id) });
 }));
 
 router.post('/logistica/semanas/:semana/cerrar', requireFullAccess, asyncRoute(async (req, res) => {

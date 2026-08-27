@@ -646,4 +646,10 @@ export async function fetchLogisticaSemanaPromesaMapa(semana) {
   return data;
 }
 
+// Mensaje de texto (borrador) para mandarle a la cuadrilla de un viaje.
+export async function fetchLogisticaMensajeViaje(viajeId) {
+  const { data } = await api.get(`/admin/logistica/viajes/${viajeId}/mensaje`);
+  return data;
+}
+
 export default api;

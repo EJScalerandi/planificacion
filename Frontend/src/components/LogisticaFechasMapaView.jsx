@@ -28,6 +28,7 @@ import { isoWeekStartEndFromLabel, weekNumberFromLabel, weekTitleFromSelection, 
 import LogisticaZonasModal from './modals/LogisticaZonasModal';
 import LogisticaIaConfigModal from './modals/LogisticaIaConfigModal';
 import LogisticaPromesaConfigModal from './modals/LogisticaPromesaConfigModal';
+import LogisticaMensajeViajeModal from './modals/LogisticaMensajeViajeModal';
 
 const ARGENTINA_CENTER = [-38.4, -63.6];
 const ARGENTINA_ZOOM = 4;
@@ -144,6 +145,7 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
 
   const [showZonas, setShowZonas] = useState(false);
   const [showIaConfig, setShowIaConfig] = useState(false);
+  const [mensajeViaje, setMensajeViaje] = useState(null); // { viajeId, titulo } | null
 
   const [rutaOrdenParadas, setRutaOrdenParadas] = useState(null); // ruta sugerida por la IA (preview, antes de crear)
   const [rutaActivaKey, setRutaActivaKey] = useState(null);
@@ -548,12 +550,18 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
       </div>
 
       {semanaFiltro && rutasPorViaje.length > 0 ? (
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 11 }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 11, alignItems: 'center' }}>
           <span style={{ fontWeight: 700, opacity: 0.75 }}>Viajes de esta semana:</span>
           {rutasPorViaje.map(({ viajeId, viaje, color }) => (
-            <span key={viajeId}>
-              <span style={{ display: 'inline-block', width: 10, height: 3, background: color, marginRight: 4, verticalAlign: 2 }} />
+            <span key={viajeId} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ display: 'inline-block', width: 10, height: 3, background: color, verticalAlign: 2 }} />
               {viaje.nombre?.trim() || `Viaje #${viajeId}`} ({viaje.vehiculo_nombre || 'sin vehículo'})
+              <button
+                className="btn" style={{ fontSize: 10, padding: '1px 6px' }}
+                onClick={() => setMensajeViaje({ viajeId, titulo: viaje.nombre?.trim() || `Viaje #${viajeId}` })}
+              >
+                📋 Mensaje
+              </button>
             </span>
           ))}
         </div>
@@ -775,6 +783,7 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
       <LogisticaZonasModal open={showZonas} config={config} onClose={() => setShowZonas(false)} onChanged={reloadConfig} />
       <LogisticaIaConfigModal open={showIaConfig} onClose={() => setShowIaConfig(false)} />
       <LogisticaPromesaConfigModal open={showPromesaConfig} onClose={() => setShowPromesaConfig(false)} onChanged={load} />
+      <LogisticaMensajeViajeModal open={!!mensajeViaje} viajeId={mensajeViaje?.viajeId} titulo={mensajeViaje?.titulo} onClose={() => setMensajeViaje(null)} />
     </div>
   );
 }

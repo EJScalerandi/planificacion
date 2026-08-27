@@ -27,6 +27,7 @@ import LogisticaReglasCapacidadModal from './modals/LogisticaReglasCapacidadModa
 import LogisticaReglasEnvioModal from './modals/LogisticaReglasEnvioModal';
 import LogisticaIaConfigModal from './modals/LogisticaIaConfigModal';
 import PortonesMapaModal from './modals/PortonesMapaModal';
+import LogisticaMensajeViajeModal from './modals/LogisticaMensajeViajeModal';
 
 // NV únicos (despacho e instalación del mismo NV son el mismo domicilio).
 function uniqueNvs(items) {
@@ -191,7 +192,7 @@ function NuevoViajeForm({ semana, config, onCreate, onCancel, busy, initial, sub
   );
 }
 
-function ViajeColumn({ viaje, items, canEdit, cerrada, onDropItem, onReorder, onEditar, onBorrar, onDragStartChip, onDragEndChip, onVerMapa }) {
+function ViajeColumn({ viaje, items, canEdit, cerrada, onDropItem, onReorder, onEditar, onBorrar, onDragStartChip, onDragEndChip, onVerMapa, onMensaje }) {
   const [over, setOver] = useState(false);
   const [dragOverIndex, setDragOverIndex] = useState(null);
   const capacidad = Number(viaje.vehiculo_capacidad || 0);
@@ -231,6 +232,15 @@ function ViajeColumn({ viaje, items, canEdit, cerrada, onDropItem, onReorder, on
             onClick={() => onVerMapa(viaje, items)}
           >
             🗺️ Mapa
+          </button>
+          <button
+            type="button"
+            className="btn"
+            style={{ padding: '1px 6px', fontSize: 10, marginTop: 4, marginLeft: 4 }}
+            disabled={items.length === 0}
+            onClick={() => onMensaje(viaje)}
+          >
+            📋 Mensaje
           </button>
         </div>
         {canEdit && !cerrada ? (
@@ -319,6 +329,7 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
   const [showReglasEnvio, setShowReglasEnvio] = useState(false);
   const [showIaConfig, setShowIaConfig] = useState(false);
   const [mapa, setMapa] = useState(null); // { nvs, titulo } | null
+  const [mensajeViaje, setMensajeViaje] = useState(null); // { viajeId, titulo } | null
 
   const load = useCallback(async () => {
     if (!semana) return;
@@ -614,6 +625,7 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
                     onDragStartChip={onDragStartChip}
                     onDragEndChip={onDragEndChip}
                     onVerMapa={(viaje, items) => setMapa({ nvs: uniqueNvs(items), rutaNvs: orderedUniqueNvs(items), titulo: `Mapa · ${viaje.nombre?.trim() || `Viaje #${viaje.id}`}` })}
+                    onMensaje={(viaje) => setMensajeViaje({ viajeId: viaje.id, titulo: viaje.nombre?.trim() || `Viaje #${viaje.id}` })}
                   />
                 ))}
                 {(detalle?.viajes || []).length === 0 ? (
@@ -647,6 +659,7 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
       <LogisticaReglasEnvioModal open={showReglasEnvio} config={config} onClose={() => setShowReglasEnvio(false)} onChanged={reloadConfig} />
       <LogisticaIaConfigModal open={showIaConfig} onClose={() => setShowIaConfig(false)} />
       <PortonesMapaModal open={!!mapa} nvs={mapa?.nvs} rutaNvs={mapa?.rutaNvs} titulo={mapa?.titulo} onClose={() => setMapa(null)} />
+      <LogisticaMensajeViajeModal open={!!mensajeViaje} viajeId={mensajeViaje?.viajeId} titulo={mensajeViaje?.titulo} onClose={() => setMensajeViaje(null)} />
     </div>
   );
 }
