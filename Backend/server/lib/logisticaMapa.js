@@ -12,6 +12,7 @@
 const { pool } = require('../db');
 const { resolveQuoteCoords } = require('./geocoding');
 const { clasificarZonas } = require('./logisticaZonificacion');
+const db = require('./logisticaViajesDb');
 
 // Igual patrón prefijo-agnóstico que ya usan routes/public/portones.js y
 // routes/external/ia.js: el prefijo de letras no siempre es "NV" (también
@@ -101,4 +102,20 @@ async function resolveCoordsForNvs(nvList) {
   return puntos.map((p, i) => ({ ...p, zona: zonas[i] }));
 }
 
-module.exports = { resolveCoordsForNvs };
+// Detalle de una semana (items + viajes, ver logisticaViajesDb.getSemanaDetalle)
+// enriquecido con ubicación/zona por NV - para el nuevo mapa de
+// Planificación de Fechas: filtrar por semana y ver, en un solo mapa, tanto
+// los portones ya repartidos en viajes (con su ruta) como los que todavía
+// no tienen viaje (seleccionables).
+async function getSemanaMapa(semana) {
+  const detalle = await db.getSemanaDetalle(semana);
+
+  const nvs = Array.from(new Set(detalle.items.map((it) => it.nv).filter(Number.isInteger)));
+  const puntos = await resolveCoordsForNvs(nvs);
+  const coordsByNv = new Map(puntos.map((p) => [p.nv, p]));
+
+  const items = detalle.items.map((it) => ({ ...it, ...(coordsByNv.get(it.nv) || {}) }));
+  return { ...detalle, items };
+}
+
+module.exports = { resolveCoordsForNvs, getSemanaMapa };

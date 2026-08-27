@@ -625,4 +625,11 @@ export async function fetchLogisticaMapa(nvs) {
   return data;
 }
 
+// Detalle de una semana (items asignados + sin asignar, con ubicación/zona)
+// para el mapa de Planificación de Fechas filtrado por semana.
+export async function fetchLogisticaSemanaMapa(semana) {
+  const { data } = await api.get(`/admin/logistica/semana/${encodeURIComponent(semana)}/mapa`);
+  return data;
+}
+
 export default api;

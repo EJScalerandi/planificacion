@@ -7,7 +7,7 @@
 const express = require('express');
 const { adminAuth } = require('../../middleware/adminAuth');
 const db = require('../../lib/logisticaViajesDb');
-const { resolveCoordsForNvs } = require('../../lib/logisticaMapa');
+const { resolveCoordsForNvs, getSemanaMapa } = require('../../lib/logisticaMapa');
 const { getIaConfig, updateIaConfig } = require('../../lib/logisticaIaConfig');
 const { recomendarViaje, planificarRutas } = require('../../lib/logisticaIaRecomendacion');
 const { listarPortonesSinViajeConUbicacion } = require('../../lib/logisticaIaContexto');
@@ -71,6 +71,14 @@ router.get('/logistica/mapa', asyncRoute(async (req, res) => {
     .filter(Number.isInteger)
     .slice(0, 200); // cap defensivo
   res.json({ ok: true, puntos: await resolveCoordsForNvs(nvs) });
+}));
+
+// Detalle de una semana + ubicación/zona por item - para el mapa de
+// Planificación de Fechas filtrado por semana (a diferencia de
+// portones-sin-viaje, acá se ven TAMBIÉN los que ya tienen viaje, con su
+// ruta, para poder consultar/ajustar sin perder el contexto geográfico).
+router.get('/logistica/semana/:semana/mapa', asyncRoute(async (req, res) => {
+  res.json({ ok: true, detalle: await getSemanaMapa(req.params.semana) });
 }));
 
 router.post('/logistica/zonas', requireFullAccess, asyncRoute(async (req, res) => {

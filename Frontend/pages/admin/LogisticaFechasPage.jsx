@@ -22,7 +22,7 @@ import {
 } from '../../src/utils/isoWeek';
 import { BLOCKED_NV_URL, parseBlockedNvText, getAny, getNvCanonicalFromRow, getSistemaFromRow } from '../../src/utils/preproduccionRow';
 import PortonesMapaModal from '../../src/components/modals/PortonesMapaModal';
-import LogisticaIaMapaModal from '../../src/components/modals/LogisticaIaMapaModal';
+import LogisticaFechasMapaView from '../../src/components/LogisticaFechasMapaView';
 
 // NV únicos de un conjunto de filas (despacho e instalación del mismo NV son
 // el mismo domicilio).
@@ -163,6 +163,12 @@ export default function LogisticaFechasPage() {
   const accessMode = getPreproduccionAccessMode();
   const canEdit = accessMode === 'full';
 
+  // Vista principal: mapa (default - portones pendientes de asignar, filtro
+  // por semana, ver/crear viajes) o tablero clásico (arrastrar por semana
+  // para fijar fecha_salida_imput/fecha_llegada_imput) - secundario, para
+  // consultar/ajustar fechas sueltas.
+  const [vista, setVista] = useState('mapa'); // 'mapa' | 'tablero'
+
   const [mode, setMode] = useState('despacho');
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -170,7 +176,6 @@ export default function LogisticaFechasPage() {
   const [saving, setSaving] = useState(() => new Set());
   const [search, setSearch] = useState('');
   const [mapa, setMapa] = useState(null); // { nvs, titulo } | null
-  const [showIaMapa, setShowIaMapa] = useState(false);
 
   const [blockedNvSet, setBlockedNvSet] = useState(() => new Set());
   const [despachoFinalizadoByNv, setDespachoFinalizadoByNv] = useState(() => new Map());
@@ -346,124 +351,143 @@ export default function LogisticaFechasPage() {
       <div className="header-row" style={{ alignItems: 'center', flex: '0 0 auto' }}>
         <h2 className="h1" style={{ fontSize: 16, padding: '6px 14px' }}>Planificación de Fechas</h2>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ fontSize: 11, opacity: 0.7 }}>
-            <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, background: INSTALACION_COLOR.border, marginRight: 4 }} />
-            con instalación
-            <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, background: SIN_INSTALACION_COLOR.border, margin: '0 4px 0 10px' }} />
-            sin instalación
-          </span>
+          <div className="btn" style={{ display: 'inline-flex', padding: 2, gap: 2 }}>
+            <button
+              type="button" onClick={() => setVista('mapa')} className="btn"
+              style={{ border: 'none', background: vista === 'mapa' ? 'var(--brand)' : 'transparent', color: vista === 'mapa' ? '#fff' : undefined }}
+            >
+              🗺️ Mapa
+            </button>
+            <button
+              type="button" onClick={() => setVista('tablero')} className="btn"
+              style={{ border: 'none', background: vista === 'tablero' ? 'var(--brand)' : 'transparent', color: vista === 'tablero' ? '#fff' : undefined }}
+            >
+              📋 Tablero clásico
+            </button>
+          </div>
           <Link className="btn" to="/a">/a</Link>
           <Link className="btn" to="/admin/logistica-viajes">Viajes de Logística</Link>
-          {canEdit ? (
-            <button className="btn btn--brand" onClick={() => setShowIaMapa(true)}>🤖 Generar viaje con IA</button>
-          ) : null}
           <button className="btn" onClick={load} disabled={loading}>Recargar</button>
           <button className="btn" onClick={logout}>Salir</button>
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 8, flexWrap: 'wrap', flex: '0 0 auto' }}>
-        <div className="btn" style={{ display: 'inline-flex', padding: 2, gap: 2 }}>
-          {Object.entries(MODES).map(([key, cfg]) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setMode(key)}
-              className="btn"
-              style={{
-                border: 'none',
-                background: mode === key ? 'var(--brand)' : 'transparent',
-                color: mode === key ? '#fff' : undefined,
-              }}
-            >
-              {cfg.label}
-            </button>
-          ))}
+      {vista === 'mapa' ? (
+        <div style={{ flex: '1 1 auto', minHeight: 0, marginTop: 10 }}>
+          <LogisticaFechasMapaView canEdit={canEdit} onCreated={load} />
         </div>
-
-        <button className="btn" onClick={scrollToToday}>Ir a hoy</button>
-
-        <span style={{ fontSize: 11, opacity: 0.65 }}>
-          Arrastrá un portón para asignarle/cambiarle la semana. Escribe directo {MODES[mode].patchKey} (misma
-          propiedad que /a).
-        </span>
-      </div>
-
-      {err ? <div style={{ color: 'crimson', fontWeight: 800, fontSize: 12, marginTop: 8, flex: '0 0 auto' }}>{err}</div> : null}
-
-      {loading ? (
-        <div style={{ marginTop: 16, opacity: 0.75 }}>Cargando…</div>
       ) : (
-        <div style={{ display: 'flex', gap: 12, marginTop: 10, flex: '1 1 auto', minHeight: 0 }}>
-          <div
-            onDragOver={(e) => { if (!canEdit) return; e.preventDefault(); setPoolOver(true); }}
-            onDragLeave={() => setPoolOver(false)}
-            onDrop={(e) => { if (!canEdit) return; e.preventDefault(); setPoolOver(false); onDropToPool(e); }}
-            style={{
-              minWidth: 300, maxWidth: 300, display: 'flex', flexDirection: 'column', gap: 8,
-              border: `1px solid ${poolOver ? 'var(--brand)' : 'var(--border)'}`,
-              borderRadius: 12, padding: 10,
-              background: poolOver ? 'var(--brand-100)' : 'var(--surface-muted, #f9fafb)',
-              overflowY: 'auto',
-            }}
-          >
-            <div style={{ fontWeight: 900, fontSize: 13, flex: '0 0 auto' }}>
-              Sin {MODES[mode].label.toLowerCase()} ({poolFiltered.length})
+        <>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 8, flexWrap: 'wrap', flex: '0 0 auto' }}>
+            <div className="btn" style={{ display: 'inline-flex', padding: 2, gap: 2 }}>
+              {Object.entries(MODES).map(([key, cfg]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setMode(key)}
+                  className="btn"
+                  style={{
+                    border: 'none',
+                    background: mode === key ? 'var(--brand)' : 'transparent',
+                    color: mode === key ? '#fff' : undefined,
+                  }}
+                >
+                  {cfg.label}
+                </button>
+              ))}
             </div>
-            <input
-              className="pp-input"
-              placeholder="Buscar NV, cliente… (también filtra las semanas)"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              style={{ flex: '0 0 auto' }}
-            />
-            {poolFiltered.length === 0 ? (
-              <div style={{ fontSize: 11, opacity: 0.6 }}>Nada por asignar.</div>
-            ) : (
-              poolFiltered.map((row) => (
-                <RowChip
-                  key={row.id}
-                  row={row}
-                  mode={mode}
-                  draggable={canEdit}
-                  busy={saving.has(row.id)}
-                  onDragStart={(e) => onDragStartChip(e, row)}
-                  onDragEnd={onDragEndChip}
-                />
-              ))
-            )}
+
+            <button className="btn" onClick={scrollToToday}>Ir a hoy</button>
+
+            <span style={{ fontSize: 11, opacity: 0.7 }}>
+              <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, background: INSTALACION_COLOR.border, marginRight: 4 }} />
+              con instalación
+              <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, background: SIN_INSTALACION_COLOR.border, margin: '0 4px 0 10px' }} />
+              sin instalación
+            </span>
+
+            <span style={{ fontSize: 11, opacity: 0.65 }}>
+              Arrastrá un portón para asignarle/cambiarle la semana. Escribe directo {MODES[mode].patchKey} (misma
+              propiedad que /a).
+            </span>
           </div>
 
-          <div style={{ flex: '1 1 auto', display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 8, minHeight: 0 }}>
-            {searchNeedle && visibleWeeks.length === 0 ? (
-              <div style={{ fontSize: 12, opacity: 0.65, padding: 10 }}>
-                Ninguna semana tiene un portón que matchee "{search.trim()}" (puede estar en el pool, sin fecha).
-              </div>
-            ) : (
-              visibleWeeks.map((wk) => (
-                <WeekColumn
-                  key={wk}
-                  weekLabel={wk}
-                  rows={rowsByWeek.get(wk) || []}
-                  mode={mode}
-                  canEdit={canEdit}
-                  saving={saving}
-                  onDropRow={onDropToWeek}
-                  onDragStartChip={onDragStartChip}
-                  onDragEndChip={onDragEndChip}
-                  isCurrent={wk === currentWeek}
-                  colRef={(el) => { colRefs.current[wk] = el; }}
-                  searchNeedle={searchNeedle}
-                  onVerMapa={(weekLabel, rows) => setMapa({ nvs: uniqueNvs(rows), titulo: `Mapa · Semana ${weekNumberFromLabel(weekLabel)}` })}
+          {err ? <div style={{ color: 'crimson', fontWeight: 800, fontSize: 12, marginTop: 8, flex: '0 0 auto' }}>{err}</div> : null}
+
+          {loading ? (
+            <div style={{ marginTop: 16, opacity: 0.75 }}>Cargando…</div>
+          ) : (
+            <div style={{ display: 'flex', gap: 12, marginTop: 10, flex: '1 1 auto', minHeight: 0 }}>
+              <div
+                onDragOver={(e) => { if (!canEdit) return; e.preventDefault(); setPoolOver(true); }}
+                onDragLeave={() => setPoolOver(false)}
+                onDrop={(e) => { if (!canEdit) return; e.preventDefault(); setPoolOver(false); onDropToPool(e); }}
+                style={{
+                  minWidth: 300, maxWidth: 300, display: 'flex', flexDirection: 'column', gap: 8,
+                  border: `1px solid ${poolOver ? 'var(--brand)' : 'var(--border)'}`,
+                  borderRadius: 12, padding: 10,
+                  background: poolOver ? 'var(--brand-100)' : 'var(--surface-muted, #f9fafb)',
+                  overflowY: 'auto',
+                }}
+              >
+                <div style={{ fontWeight: 900, fontSize: 13, flex: '0 0 auto' }}>
+                  Sin {MODES[mode].label.toLowerCase()} ({poolFiltered.length})
+                </div>
+                <input
+                  className="pp-input"
+                  placeholder="Buscar NV, cliente… (también filtra las semanas)"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  style={{ flex: '0 0 auto' }}
                 />
-              ))
-            )}
-          </div>
-        </div>
+                {poolFiltered.length === 0 ? (
+                  <div style={{ fontSize: 11, opacity: 0.6 }}>Nada por asignar.</div>
+                ) : (
+                  poolFiltered.map((row) => (
+                    <RowChip
+                      key={row.id}
+                      row={row}
+                      mode={mode}
+                      draggable={canEdit}
+                      busy={saving.has(row.id)}
+                      onDragStart={(e) => onDragStartChip(e, row)}
+                      onDragEnd={onDragEndChip}
+                    />
+                  ))
+                )}
+              </div>
+
+              <div style={{ flex: '1 1 auto', display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 8, minHeight: 0 }}>
+                {searchNeedle && visibleWeeks.length === 0 ? (
+                  <div style={{ fontSize: 12, opacity: 0.65, padding: 10 }}>
+                    Ninguna semana tiene un portón que matchee "{search.trim()}" (puede estar en el pool, sin fecha).
+                  </div>
+                ) : (
+                  visibleWeeks.map((wk) => (
+                    <WeekColumn
+                      key={wk}
+                      weekLabel={wk}
+                      rows={rowsByWeek.get(wk) || []}
+                      mode={mode}
+                      canEdit={canEdit}
+                      saving={saving}
+                      onDropRow={onDropToWeek}
+                      onDragStartChip={onDragStartChip}
+                      onDragEndChip={onDragEndChip}
+                      isCurrent={wk === currentWeek}
+                      colRef={(el) => { colRefs.current[wk] = el; }}
+                      searchNeedle={searchNeedle}
+                      onVerMapa={(weekLabel, rows) => setMapa({ nvs: uniqueNvs(rows), titulo: `Mapa · Semana ${weekNumberFromLabel(weekLabel)}` })}
+                    />
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       <PortonesMapaModal open={!!mapa} nvs={mapa?.nvs} titulo={mapa?.titulo} onClose={() => setMapa(null)} />
-      <LogisticaIaMapaModal open={showIaMapa} onClose={() => setShowIaMapa(false)} onCreated={load} />
     </div>
   );
 }
