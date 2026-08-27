@@ -14,6 +14,15 @@ const { listarPortonesSinViajeConUbicacion } = require('../../lib/logisticaIaCon
 const { getPromesaConfig, updatePromesaConfig } = require('../../lib/logisticaPromesaConfig');
 const { getSemanaPromesaMapa } = require('../../lib/logisticaPromesaMapa');
 const { buildMensajeViaje } = require('../../lib/logisticaMensajeViaje');
+const { resolveEtapasPorNv, resolveSemanaPrometidaPorNv, resolveSemanaRealPorNv } = require('../../lib/logisticaMapaExtras');
+
+// Le suma a cada item {nv,...} su barrita de etapas de producción (diseño/
+// pintura/armado final) - común a los 3 mapas (sin filtro, semana real,
+// semana prometida).
+async function conEtapas(items) {
+  const etapasPorNv = await resolveEtapasPorNv(items.map((it) => it.nv));
+  return items.map((it) => ({ ...it, etapas: etapasPorNv.get(it.nv) || null }));
+}
 
 const router = express.Router();
 
@@ -81,7 +90,13 @@ router.get('/logistica/mapa', asyncRoute(async (req, res) => {
 // portones-sin-viaje, acá se ven TAMBIÉN los que ya tienen viaje, con su
 // ruta, para poder consultar/ajustar sin perder el contexto geográfico).
 router.get('/logistica/semana/:semana/mapa', asyncRoute(async (req, res) => {
-  res.json({ ok: true, detalle: await getSemanaMapa(req.params.semana) });
+  const detalle = await getSemanaMapa(req.params.semana);
+  const [items, semanaPrometidaPorNv] = await Promise.all([
+    conEtapas(detalle.items),
+    resolveSemanaPrometidaPorNv(detalle.items.map((it) => it.nv)),
+  ]);
+  const itemsFinal = items.map((it) => ({ ...it, semana_prometida: semanaPrometidaPorNv.get(it.nv) || null }));
+  res.json({ ok: true, detalle: { ...detalle, items: itemsFinal } });
 }));
 
 // ===== Semana prometida (producción reservada por el Presupuestador + margen configurable) =====
@@ -92,7 +107,13 @@ router.patch('/logistica/promesa-config', requireFullAccess, asyncRoute(async (r
   res.json({ ok: true, config: await updatePromesaConfig(req.body || {}) });
 }));
 router.get('/logistica/semana/:semana/mapa-promesa', asyncRoute(async (req, res) => {
-  res.json({ ok: true, ...(await getSemanaPromesaMapa(req.params.semana)) });
+  const data = await getSemanaPromesaMapa(req.params.semana);
+  const [items, semanaRealPorNv] = await Promise.all([
+    conEtapas(data.items),
+    resolveSemanaRealPorNv(data.items.map((it) => it.nv)),
+  ]);
+  const itemsFinal = items.map((it) => ({ ...it, semana_real: semanaRealPorNv.get(it.nv) || null }));
+  res.json({ ok: true, ...data, items: itemsFinal });
 }));
 
 router.post('/logistica/zonas', requireFullAccess, asyncRoute(async (req, res) => {
@@ -153,7 +174,13 @@ router.patch('/logistica/ia/config', requireFullAccess, asyncRoute(async (req, r
 // asignado todavía, con ubicación+zona resuelta - para el mapa de selección
 // de "Generar viaje con IA" en Planificación de Fechas.
 router.get('/logistica/portones-sin-viaje', asyncRoute(async (_req, res) => {
-  res.json({ ok: true, items: await listarPortonesSinViajeConUbicacion() });
+  const pendientes = await listarPortonesSinViajeConUbicacion();
+  const [items, semanaPrometidaPorNv] = await Promise.all([
+    conEtapas(pendientes),
+    resolveSemanaPrometidaPorNv(pendientes.map((it) => it.nv)),
+  ]);
+  const itemsFinal = items.map((it) => ({ ...it, semana_prometida: semanaPrometidaPorNv.get(it.nv) || null }));
+  res.json({ ok: true, items: itemsFinal });
 }));
 
 router.post('/logistica/ia/recomendar-viaje', requireFullAccess, asyncRoute(async (req, res) => {

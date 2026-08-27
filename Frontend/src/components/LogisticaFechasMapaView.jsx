@@ -60,6 +60,27 @@ function colorDe(item) {
   return COLOR_ASIGNADO_SIN_PENDIENTE;
 }
 
+// Barrita de etapas de producción: Pendiente=rojo, En Proceso=amarillo,
+// Finalizado=verde (pedido explícito del usuario).
+function colorPorEstadoEtapa(estado) {
+  if (estado === 'Finalizado') return '#16a34a';
+  if (estado === 'En Proceso') return '#eab308';
+  return '#dc2626';
+}
+
+// Semana cruzada a mostrar arriba del pin: en modo real, la semana
+// prometida; en modo promesa, la semana real (despacho/instalación) - así
+// se puede comparar sin cambiar de vista.
+function semanaCruzadaLabel(it, modoSemana, weekNumberFromLabel) {
+  if (modoSemana === 'promesa') {
+    const partes = [];
+    if (it.semana_real?.semana_despacho) partes.push(`D S${weekNumberFromLabel(it.semana_real.semana_despacho)}`);
+    if (it.semana_real?.semana_instalacion) partes.push(`I S${weekNumberFromLabel(it.semana_real.semana_instalacion)}`);
+    return partes.length ? `Real: ${partes.join(' / ')}` : '';
+  }
+  return it.semana_prometida ? `Prom: S${weekNumberFromLabel(it.semana_prometida)}` : '';
+}
+
 function agruparPorSemana(nvsSeleccionados, itemsByNv) {
   const pares = [];
   for (const nv of nvsSeleccionados) {
@@ -95,8 +116,9 @@ function nvsEnOrdenSugerido(nvsList, ordenParadas) {
 function expandirSinViaje(items) {
   const out = [];
   for (const it of items) {
-    if (it.despacho_pendiente) out.push({ nv: it.nv, tipo: 'despacho', semana: it.semana_despacho, viaje_id: null, lat: it.lat, lng: it.lng, zona: it.zona, nombre: it.nombre, direccion: it.direccion });
-    if (it.instalacion_pendiente) out.push({ nv: it.nv, tipo: 'instalacion', semana: it.semana_instalacion, viaje_id: null, lat: it.lat, lng: it.lng, zona: it.zona, nombre: it.nombre, direccion: it.direccion });
+    const base = { nv: it.nv, lat: it.lat, lng: it.lng, zona: it.zona, nombre: it.nombre, direccion: it.direccion, etapas: it.etapas, semana_prometida: it.semana_prometida };
+    if (it.despacho_pendiente) out.push({ ...base, tipo: 'despacho', semana: it.semana_despacho, viaje_id: null });
+    if (it.instalacion_pendiente) out.push({ ...base, tipo: 'instalacion', semana: it.semana_instalacion, viaje_id: null });
   }
   return out;
 }
@@ -109,7 +131,7 @@ function expandirSinViaje(items) {
 function expandirPromesa(items) {
   const out = [];
   for (const it of items) {
-    const base = { nv: it.nv, lat: it.lat, lng: it.lng, zona: it.zona, nombre: it.nombre, direccion: it.direccion, fecha_prometida: it.fecha_prometida, tiene_pendiente_real: it.tiene_pendiente_real };
+    const base = { nv: it.nv, lat: it.lat, lng: it.lng, zona: it.zona, nombre: it.nombre, direccion: it.direccion, fecha_prometida: it.fecha_prometida, tiene_pendiente_real: it.tiene_pendiente_real, etapas: it.etapas, semana_real: it.semana_real };
     if (it.despacho_pendiente) out.push({ ...base, tipo: 'despacho', semana: it.semana_despacho, viaje_id: null });
     if (it.instalacion_pendiente) out.push({ ...base, tipo: 'instalacion', semana: it.semana_instalacion, viaje_id: null });
     if (!it.despacho_pendiente && !it.instalacion_pendiente) out.push({ ...base, tipo: 'promesa', semana: null, viaje_id: null });
@@ -156,6 +178,7 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
   const markersLayerRef = useRef(null);
   const rutaSugeridaLayerRef = useRef(null);
   const rutasViajesLayerRef = useRef(null);
+  const infoExtraLayerRef = useRef(null); // etiqueta de semana cruzada + barrita de etapas
   const markersByNvRef = useRef(new Map());
 
   const reloadConfig = () => {
@@ -224,6 +247,7 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
           nv: it.nv, lat: it.lat, lng: it.lng, zona: it.zona, nombre: it.nombre, direccion: it.direccion,
           despacho_pendiente: false, instalacion_pendiente: false, semana_despacho: null, semana_instalacion: null,
           fecha_prometida: it.fecha_prometida ?? null, tiene_pendiente_real: it.tiene_pendiente_real ?? null,
+          etapas: it.etapas ?? null, semana_prometida: it.semana_prometida ?? null, semana_real: it.semana_real ?? null,
         });
       }
       const acc = map.get(it.nv);
@@ -266,6 +290,7 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     }).addTo(map);
     markersLayerRef.current = L.layerGroup().addTo(map);
+    infoExtraLayerRef.current = L.layerGroup().addTo(map);
     rutasViajesLayerRef.current = L.layerGroup().addTo(map);
     rutaSugeridaLayerRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
@@ -273,6 +298,7 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
       map.remove();
       mapRef.current = null;
       markersLayerRef.current = null;
+      infoExtraLayerRef.current = null;
       rutasViajesLayerRef.current = null;
       rutaSugeridaLayerRef.current = null;
       markersByNvRef.current = new Map();
@@ -318,6 +344,44 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
       map.fitBounds(bounds, { padding: [40, 40], maxZoom: 12 });
     }
   }, [conUbicacion, canEdit]);
+
+  // Etiqueta de semana cruzada (arriba del pin) + barrita de etapas de
+  // producción (al lado, de abajo hacia arriba: diseño -> pintura sistema ->
+  // armado final, roja/amarilla/verde según Pendiente/En Proceso/Finalizado).
+  useEffect(() => {
+    const map = mapRef.current;
+    const layer = infoExtraLayerRef.current;
+    if (!map || !layer) return;
+    layer.clearLayers();
+
+    conUbicacion.forEach((it) => {
+      const label = semanaCruzadaLabel(it, modoSemana, weekNumberFromLabel);
+      if (label) {
+        const labelIcon = L.divIcon({
+          className: '',
+          html: `<div style="background:#fff;color:#111;border:1px solid #999;border-radius:4px;padding:1px 4px;font-size:9px;font-weight:800;white-space:nowrap;box-shadow:0 1px 2px rgba(0,0,0,.35);">${label}</div>`,
+          iconSize: [1, 1], iconAnchor: [-6, 18],
+        });
+        L.marker([it.lat, it.lng], { icon: labelIcon, interactive: false, zIndexOffset: 800 }).addTo(layer);
+      }
+
+      if (it.etapas) {
+        const segs = [
+          colorPorEstadoEtapa(it.etapas.armado_final), // arriba
+          colorPorEstadoEtapa(it.etapas.pintura),       // medio
+          colorPorEstadoEtapa(it.etapas.diseno),        // abajo (empieza acá)
+        ];
+        const barIcon = L.divIcon({
+          className: '',
+          html: `<div style="display:flex;flex-direction:column;gap:1px;">${segs.map((c) => `<div style="width:6px;height:6px;background:${c};border:1px solid rgba(0,0,0,.25);"></div>`).join('')}</div>`,
+          iconSize: [6, 20], iconAnchor: [-9, 10],
+        });
+        const marker = L.marker([it.lat, it.lng], { icon: barIcon, interactive: false, zIndexOffset: 700 });
+        marker.bindTooltip(`Diseño: ${it.etapas.diseno}<br>Pintura sistema: ${it.etapas.pintura}<br>Armado final: ${it.etapas.armado_final}`, { direction: 'right' });
+        marker.addTo(layer);
+      }
+    });
+  }, [conUbicacion, modoSemana]);
 
   // Selección resaltada
   useEffect(() => {
