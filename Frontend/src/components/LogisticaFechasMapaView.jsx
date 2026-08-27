@@ -159,6 +159,11 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
   const [modoSemana, setModoSemana] = useState('real');
   const [showPromesaConfig, setShowPromesaConfig] = useState(false);
   const [rawItems, setRawItems] = useState([]); // fila por (nv,tipo)
+  // Solo aplica en modo real sin semana elegida (el pool de "pendientes de
+  // cualquier semana"): filtra ESE pool a una semana en particular, sin
+  // perder la vista de "todas" - pedido del usuario porque 99 pendientes
+  // juntos era demasiado para mirar de un vistazo.
+  const [semanaPendientesFiltro, setSemanaPendientesFiltro] = useState('');
   const [viajesSemana, setViajesSemana] = useState([]); // solo con filtro activo
   const [config, setConfig] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -239,6 +244,7 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
     setResultado(null);
     setVista('seleccion');
     setPlanes(null);
+    setSemanaPendientesFiltro('');
     limpiarRutaSugerida();
     load();
   }, [load]);
@@ -250,12 +256,32 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
     if (modoSemana === 'promesa' && !semanaFiltro) setSemanaFiltro(isoWeekLabelFromDate(todayISO10()));
   }, [modoSemana, semanaFiltro]);
 
+  // Semanas presentes en el pool de pendientes (modo real, sin semana
+  // elegida) con cuánto pesa cada una - para poder filtrar el "todas" a una
+  // semana en particular en vez de mirar el pool entero de una.
+  const semanasPendientesConteo = useMemo(() => {
+    if (semanaFiltro || modoSemana !== 'real') return [];
+    const counts = new Map();
+    for (const it of rawItems) {
+      if (!it.semana) continue;
+      counts.set(it.semana, (counts.get(it.semana) || 0) + 1);
+    }
+    return Array.from(counts.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [rawItems, semanaFiltro, modoSemana]);
+
+  const rawItemsVisibles = useMemo(() => {
+    if (!semanaFiltro && modoSemana === 'real' && semanaPendientesFiltro) {
+      return rawItems.filter((it) => it.semana === semanaPendientesFiltro);
+    }
+    return rawItems;
+  }, [rawItems, semanaFiltro, modoSemana, semanaPendientesFiltro]);
+
   // Resumen por NV (une despacho/instalación) - mismo shape que ya usaba
   // LogisticaIaMapaModal, así toda la lógica de selección/agrupación/creación
   // se reutiliza tal cual sea cual sea la fuente de datos activa.
   const itemsByNv = useMemo(() => {
     const map = new Map();
-    for (const it of rawItems) {
+    for (const it of rawItemsVisibles) {
       if (!map.has(it.nv)) {
         map.set(it.nv, {
           nv: it.nv, lat: it.lat, lng: it.lng, zona: it.zona, nombre: it.nombre, direccion: it.direccion,
@@ -269,7 +295,7 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
       if (it.tipo === 'instalacion' && it.viaje_id == null) { acc.instalacion_pendiente = true; acc.semana_instalacion = it.semana; }
     }
     return map;
-  }, [rawItems]);
+  }, [rawItemsVisibles]);
 
   const items = useMemo(() => Array.from(itemsByNv.values()), [itemsByNv]);
   const conUbicacion = useMemo(() => items.filter((i) => i.lat != null && i.lng != null), [items]);
@@ -661,6 +687,17 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
             ))}
           </select>
         </label>
+        {modoSemana === 'real' && !semanaFiltro && semanasPendientesConteo.length > 0 ? (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700 }}>
+            Filtrar pendientes por semana
+            <select className="pp-select" value={semanaPendientesFiltro} onChange={(e) => setSemanaPendientesFiltro(e.target.value)}>
+              <option value="">— Todas —</option>
+              {semanasPendientesConteo.map(([wk, count]) => (
+                <option key={wk} value={wk}>Semana {weekNumberFromLabel(wk)} ({count})</option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         <div style={{ fontSize: 11, opacity: 0.7 }}>
           {loading ? 'Cargando…' : modoSemana === 'promesa'
             ? `${conUbicacion.length} de ${items.length} portones prometidos para esta semana con ubicación${sinUbicacion ? ` (+${sinUbicacion} sin ubicación)` : ''} · ${selected.size} seleccionado${selected.size === 1 ? '' : 's'}`
