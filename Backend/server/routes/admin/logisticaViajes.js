@@ -15,7 +15,7 @@ const { getPromesaConfig, updatePromesaConfig } = require('../../lib/logisticaPr
 const { getSemanaPromesaMapa } = require('../../lib/logisticaPromesaMapa');
 const { buildMensajeViaje } = require('../../lib/logisticaMensajeViaje');
 const { resolveEtapasPorNv, resolveSemanaPrometidaPorNv, resolveSemanaRealPorNv } = require('../../lib/logisticaMapaExtras');
-const { listPortonesSinFechaSalida } = require('../../lib/logisticaSinFechaSalida');
+const { listPortonesSinFechaSalida, asignarFechaSalida } = require('../../lib/logisticaSinFechaSalida');
 
 // Le suma a cada item {nv,...} su barrita de etapas de producción (diseño/
 // pintura/armado final) - común a los 3 mapas (sin filtro, semana real,
@@ -192,6 +192,15 @@ router.get('/logistica/portones-sin-viaje', asyncRoute(async (_req, res) => {
 router.get('/logistica/sin-fecha-salida', asyncRoute(async (_req, res) => {
   const items = await listPortonesSinFechaSalida();
   res.json({ ok: true, items });
+}));
+
+// Carga "Fecha Salida" para un lote de NV elegidos en el mapa - mismo campo
+// que /a, pero de a varios a la vez agrupados por cercanía geográfica.
+router.patch('/logistica/sin-fecha-salida/asignar', requireFullAccess, asyncRoute(async (req, res) => {
+  const items = Array.isArray(req.body?.items) ? req.body.items : [];
+  const fecha = req.body?.fecha;
+  const resultado = await asignarFechaSalida(items, fecha);
+  res.json({ ok: true, ...resultado });
 }));
 
 router.post('/logistica/ia/recomendar-viaje', requireFullAccess, asyncRoute(async (req, res) => {

@@ -19,6 +19,7 @@ import {
   fetchLogisticaSemanaMapa,
   fetchLogisticaSemanaPromesaMapa,
   fetchLogisticaSinFechaSalida,
+  asignarLogisticaFechaSalida,
   fetchLogisticaViajesConfig,
   recomendarLogisticaViajeIa,
   planificarLogisticaRutasIa,
@@ -200,6 +201,12 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
   const [showIaConfig, setShowIaConfig] = useState(false);
   const [mensajeViaje, setMensajeViaje] = useState(null); // { viajeId, titulo } | null
 
+  // Asignar "Fecha Salida" desde el mapa (modo 'sin_fecha_salida') - mismo
+  // campo que /a, para varios NV a la vez elegidos por cercanía geográfica.
+  const [fechaSalidaAsignar, setFechaSalidaAsignar] = useState('');
+  const [asignandoFechaSalida, setAsignandoFechaSalida] = useState(false);
+  const [resultadoFechaSalida, setResultadoFechaSalida] = useState(null); // { actualizados } | null
+
   const [rutaOrdenParadas, setRutaOrdenParadas] = useState(null); // ruta sugerida por la IA (preview, antes de crear)
   const [rutaActivaKey, setRutaActivaKey] = useState(null);
   const limpiarRutaSugerida = () => { setRutaOrdenParadas(null); setRutaActivaKey(null); };
@@ -264,6 +271,8 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
     setVista('seleccion');
     setPlanes(null);
     setSemanaPendientesFiltro('');
+    setFechaSalidaAsignar('');
+    setResultadoFechaSalida(null);
     limpiarRutaSugerida();
     load();
   }, [load]);
@@ -394,7 +403,7 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
     markersByNvRef.current = new Map();
 
     conUbicacion.forEach((it) => {
-      const seleccionable = canEdit && (it.despacho_pendiente || it.instalacion_pendiente);
+      const seleccionable = canEdit && (it.despacho_pendiente || it.instalacion_pendiente || it.sin_fecha_salida);
       const marker = L.circleMarker([it.lat, it.lng], {
         radius: 10, color: '#fff', weight: 2, fillColor: colorDe(it), fillOpacity: 0.9,
         // interactive siempre true (así se puede ver el tooltip al pasar el
@@ -674,6 +683,29 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
     }
   };
 
+  const asignarFechaSalida = async () => {
+    if (!fechaSalidaAsignar || selected.size === 0) return;
+    setAsignandoFechaSalida(true);
+    setErr('');
+    try {
+      const items = Array.from(selected)
+        .map((nv) => itemsByNv.get(nv))
+        .filter(Boolean)
+        .map((it) => ({ nv: it.nv, nv_tipo: it.nv_tipo }));
+      const data = await asignarLogisticaFechaSalida(items, fechaSalidaAsignar);
+      setResultadoFechaSalida({ actualizados: data?.actualizados ?? items.length });
+      setSelected(new Set());
+      setFechaSalidaAsignar('');
+      // Los NV recién asignados dejan de tener "Fecha Salida" vacía, así que
+      // tienen que desaparecer de este pool.
+      load();
+    } catch (e) {
+      setErr(e?.response?.data?.error || e.message);
+    } finally {
+      setAsignandoFechaSalida(false);
+    }
+  };
+
   const rec = recomendacion?.recomendacion;
 
   const semanasDisponibles = useMemo(() => {
@@ -738,7 +770,10 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, fontSize: 11, alignItems: 'center', flexWrap: 'wrap' }}>
           {modoSemana === 'sin_fecha_salida' ? (
-            <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 999, background: COLOR_SIN_FECHA_SALIDA, marginRight: 3 }} />sin fecha de salida</span>
+            <>
+              <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 999, background: COLOR_SIN_FECHA_SALIDA, marginRight: 3 }} />sin fecha de salida</span>
+              <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 999, background: COLOR_SELECCIONADO, marginRight: 3 }} />seleccionado</span>
+            </>
           ) : (
             <>
               <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 999, background: COLOR_DESPACHO, marginRight: 3 }} />despacho</span>
@@ -790,13 +825,46 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
         </div>
 
         {canEdit && modoSemana === 'sin_fecha_salida' ? (
-          <div style={{ width: 340, flex: '0 0 auto', overflowY: 'auto' }}>
+          <div style={{ width: 340, flex: '0 0 auto', display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto' }}>
             <div style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 12, fontSize: 12, opacity: 0.85 }}>
-              Vista de solo consulta: son NV sin "Fecha Salida" cargada todavía en /a (mismo
-              filtro "Sin fecha" de esa columna) - sin fecha no hay con qué agrupar en un viaje.
-              Sirve para decidir con qué prioridad cargarles fecha según dónde están / si hay
-              varios agrupados por zona o distribuidor.
+              Son NV sin "Fecha Salida" cargada todavía en /a (mismo filtro "Sin fecha" de esa
+              columna). Hacé click en los pines para seleccionar los que quieras agrupar por
+              cercanía y cargarles la misma fecha de una - equivale a editar esa columna en /a,
+              uno por uno.
             </div>
+
+            {resultadoFechaSalida ? (
+              <div style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 12, background: 'var(--surface-muted, #f9fafb)' }}>
+                <div style={{ fontWeight: 900, marginBottom: 6 }}>✅ Fecha de salida cargada</div>
+                <div style={{ fontSize: 12, marginBottom: 8 }}>
+                  {resultadoFechaSalida.actualizados} NV actualizado{resultadoFechaSalida.actualizados === 1 ? '' : 's'}.
+                </div>
+                <button className="btn btn--brand" onClick={() => setResultadoFechaSalida(null)}>Listo</button>
+              </div>
+            ) : (
+              <div style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 12 }}>
+                {selected.size > 0 ? (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 10 }}>
+                    {Array.from(selected).map((nv) => (
+                      <span key={nv} style={{ fontSize: 11, padding: '2px 7px', borderRadius: 999, background: 'var(--surface-muted, #f3f4f6)', border: '1px solid var(--border)' }}>NV {nv}</span>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 10 }}>Ningún NV seleccionado todavía.</div>
+                )}
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 11, marginBottom: 10 }}>
+                  Fecha de salida
+                  <input className="pp-input" type="date" value={fechaSalidaAsignar} onChange={(e) => setFechaSalidaAsignar(e.target.value)} />
+                </label>
+                <button
+                  className="btn btn--brand" style={{ width: '100%' }}
+                  disabled={selected.size === 0 || !fechaSalidaAsignar || asignandoFechaSalida}
+                  onClick={asignarFechaSalida}
+                >
+                  {asignandoFechaSalida ? 'Cargando…' : `Cargar fecha de salida (${selected.size})`}
+                </button>
+              </div>
+            )}
           </div>
         ) : canEdit ? (
           <div style={{ width: 340, flex: '0 0 auto', display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto' }}>

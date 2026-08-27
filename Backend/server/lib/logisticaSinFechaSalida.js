@@ -103,4 +103,50 @@ async function listPortonesSinFechaSalida() {
   }));
 }
 
-module.exports = { listPortonesSinFechaSalida };
+const FECHA_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Carga "Fecha Salida" (mismo campo que /a) para un lote de NV, directo
+ * desde el mapa - equivalente a editar esa columna en /a, pero para varios
+ * a la vez elegidos por cercanía geográfica. Matchea por (nv, nv_tipo), no
+ * solo por nv, para no pisar por accidente otra fila si algún NV tuviera más
+ * de una entrada en preproduccion_valores (ej. portón + puerta con el mismo
+ * número).
+ * @param {Array<{nv:number, nv_tipo:string}>} pares
+ * @param {string} fechaISO - 'YYYY-MM-DD'
+ * @returns {Promise<{ actualizados:number }>}
+ */
+async function asignarFechaSalida(pares, fechaISO) {
+  if (!FECHA_RE.test(String(fechaISO || ''))) {
+    const err = new Error('fecha debe tener formato YYYY-MM-DD');
+    err.status = 400;
+    throw err;
+  }
+  const nvs = [];
+  const nvTipos = [];
+  for (const p of pares || []) {
+    const nv = Number(p?.nv);
+    const nvTipo = String(p?.nv_tipo || '').trim();
+    if (!Number.isInteger(nv) || !nvTipo) continue;
+    nvs.push(nv);
+    nvTipos.push(nvTipo);
+  }
+  if (!nvs.length) return { actualizados: 0 };
+
+  const { rowCount } = await pool.query(
+    `
+    with pares as (
+      select unnest($1::int[]) as nv, unnest($2::text[]) as nv_tipo
+    )
+    update public.preproduccion_valores pv
+    set data = coalesce(pv.data, '{}'::jsonb) || jsonb_build_object('fecha_salida_imput', $3::text),
+        updated_at = now()
+    from pares p
+    where pv.nv = p.nv and pv.nv_tipo = p.nv_tipo;
+    `,
+    [nvs, nvTipos, fechaISO]
+  );
+  return { actualizados: rowCount };
+}
+
+module.exports = { listPortonesSinFechaSalida, asignarFechaSalida };
