@@ -17,6 +17,7 @@ import 'leaflet/dist/leaflet.css';
 import {
   fetchLogisticaPortonesSinViaje,
   fetchLogisticaSemanaMapa,
+  fetchLogisticaSemanaPromesaMapa,
   fetchLogisticaViajesConfig,
   recomendarLogisticaViajeIa,
   planificarLogisticaRutasIa,
@@ -26,6 +27,7 @@ import {
 import { isoWeekStartEndFromLabel, weekNumberFromLabel, weekTitleFromSelection, todayISO10, buildWeekRange, isoWeekLabelFromDate } from '../utils/isoWeek';
 import LogisticaZonasModal from './modals/LogisticaZonasModal';
 import LogisticaIaConfigModal from './modals/LogisticaIaConfigModal';
+import LogisticaPromesaConfigModal from './modals/LogisticaPromesaConfigModal';
 
 const ARGENTINA_CENTER = [-38.4, -63.6];
 const ARGENTINA_ZOOM = 4;
@@ -35,6 +37,7 @@ const COLOR_DESPACHO = '#008241';
 const COLOR_INSTALACION = '#2563eb';
 const COLOR_SELECCIONADO = '#f59e0b';
 const COLOR_ASIGNADO_SIN_PENDIENTE = '#9ca3af';
+const COLOR_PROMESA_INFO = '#0891b2';
 
 // Un color estable por vehículo (por posición en la lista de config, no por
 // id crudo, para que el orden sea predecible) + gris para "sin vehículo".
@@ -49,6 +52,10 @@ function colorDe(item) {
   if (item.despacho_pendiente && item.instalacion_pendiente) return COLOR_AMBOS;
   if (item.despacho_pendiente) return COLOR_DESPACHO;
   if (item.instalacion_pendiente) return COLOR_INSTALACION;
+  // Modo "semana prometida": sabemos explícitamente que este NV todavía no
+  // tiene despacho/instalación real (tiene_pendiente_real===false, no solo
+  // "no aplica") - se distingue del gris de "ya asignado" del modo real.
+  if (item.tiene_pendiente_real === false) return COLOR_PROMESA_INFO;
   return COLOR_ASIGNADO_SIN_PENDIENTE;
 }
 
@@ -93,8 +100,29 @@ function expandirSinViaje(items) {
   return out;
 }
 
+// Igual que expandirSinViaje, pero para getSemanaPromesaMapa: además de los
+// NV con despacho/instalación pendiente real (accionables, se expanden
+// igual), agrega una fila "promesa" para los que todavía NO tienen fecha
+// real - si no, expandirSinViaje los descartaría del todo y no aparecerían
+// como pin en el mapa.
+function expandirPromesa(items) {
+  const out = [];
+  for (const it of items) {
+    const base = { nv: it.nv, lat: it.lat, lng: it.lng, zona: it.zona, nombre: it.nombre, direccion: it.direccion, fecha_prometida: it.fecha_prometida, tiene_pendiente_real: it.tiene_pendiente_real };
+    if (it.despacho_pendiente) out.push({ ...base, tipo: 'despacho', semana: it.semana_despacho, viaje_id: null });
+    if (it.instalacion_pendiente) out.push({ ...base, tipo: 'instalacion', semana: it.semana_instalacion, viaje_id: null });
+    if (!it.despacho_pendiente && !it.instalacion_pendiente) out.push({ ...base, tipo: 'promesa', semana: null, viaje_id: null });
+  }
+  return out;
+}
+
 export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
   const [semanaFiltro, setSemanaFiltro] = useState(''); // '' = sin filtro (pendientes de cualquier semana)
+  // 'real' = fecha_salida_imput/fecha_llegada_imput (lo de siempre); 'promesa'
+  // = semana de producción ya reservada por el Presupuestador + margen
+  // configurable (ver LogisticaPromesaConfigModal) - requiere semana elegida.
+  const [modoSemana, setModoSemana] = useState('real');
+  const [showPromesaConfig, setShowPromesaConfig] = useState(false);
   const [rawItems, setRawItems] = useState([]); // fila por (nv,tipo)
   const [viajesSemana, setViajesSemana] = useState([]); // solo con filtro activo
   const [config, setConfig] = useState(null);
@@ -134,14 +162,20 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
 
   const load = useCallback(async () => {
     setErr('');
+    if (modoSemana === 'promesa' && !semanaFiltro) { setRawItems([]); setViajesSemana([]); return; }
     setLoading(true);
     try {
       const [configRes, dataRes] = await Promise.all([
         fetchLogisticaViajesConfig(),
-        semanaFiltro ? fetchLogisticaSemanaMapa(semanaFiltro) : fetchLogisticaPortonesSinViaje(),
+        modoSemana === 'promesa'
+          ? fetchLogisticaSemanaPromesaMapa(semanaFiltro)
+          : (semanaFiltro ? fetchLogisticaSemanaMapa(semanaFiltro) : fetchLogisticaPortonesSinViaje()),
       ]);
       setConfig(configRes?.config || null);
-      if (semanaFiltro) {
+      if (modoSemana === 'promesa') {
+        setRawItems(expandirPromesa(Array.isArray(dataRes?.items) ? dataRes.items : []));
+        setViajesSemana([]);
+      } else if (semanaFiltro) {
         // getSemanaMapa no devuelve `semana` por item (es implícito: son
         // todos de la semana que pedimos) - se la taggeamos acá para que
         // agruparPorSemana/itemsByNv puedan armar el viaje.
@@ -157,7 +191,7 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
     } finally {
       setLoading(false);
     }
-  }, [semanaFiltro]);
+  }, [semanaFiltro, modoSemana]);
 
   useEffect(() => {
     setSelected(new Set());
@@ -170,6 +204,13 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
     load();
   }, [load]);
 
+  // Al pasar a "semana prometida" sin ninguna semana elegida todavía, arranca
+  // en la actual (no tiene sentido un "sin filtro" ahí - podrían ser cientos
+  // de semanas futuras).
+  useEffect(() => {
+    if (modoSemana === 'promesa' && !semanaFiltro) setSemanaFiltro(isoWeekLabelFromDate(todayISO10()));
+  }, [modoSemana, semanaFiltro]);
+
   // Resumen por NV (une despacho/instalación) - mismo shape que ya usaba
   // LogisticaIaMapaModal, así toda la lógica de selección/agrupación/creación
   // se reutiliza tal cual sea cual sea la fuente de datos activa.
@@ -180,6 +221,7 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
         map.set(it.nv, {
           nv: it.nv, lat: it.lat, lng: it.lng, zona: it.zona, nombre: it.nombre, direccion: it.direccion,
           despacho_pendiente: false, instalacion_pendiente: false, semana_despacho: null, semana_instalacion: null,
+          fecha_prometida: it.fecha_prometida ?? null, tiene_pendiente_real: it.tiene_pendiente_real ?? null,
         });
       }
       const acc = map.get(it.nv);
@@ -251,10 +293,11 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
         // mouse aunque ya esté asignado - "consultar" es un caso de uso
         // explícito), el click a seleccionar se ata aparte solo si aplica.
       });
-      marker.bindTooltip(
-        `NV ${it.nv} — ${it.nombre || 'sin nombre'}${it.despacho_pendiente ? ' · despacho pendiente' : ''}${it.instalacion_pendiente ? ' · instalación pendiente' : ''}${!it.despacho_pendiente && !it.instalacion_pendiente ? ' · ya asignado' : ''}`,
-        { direction: 'top' }
-      );
+      const estadoExtra = it.despacho_pendiente ? ' · despacho pendiente'
+        : it.instalacion_pendiente ? ' · instalación pendiente'
+        : it.tiene_pendiente_real === false ? ' · prometido, sin fecha real todavía'
+        : ' · ya asignado';
+      marker.bindTooltip(`NV ${it.nv} — ${it.nombre || 'sin nombre'}${estadoExtra}`, { direction: 'top' });
       if (seleccionable) {
         marker.on('click', () => {
           setSelected((prev) => {
@@ -460,29 +503,48 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10, height: '100%' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <div className="btn" style={{ display: 'inline-flex', padding: 2, gap: 2 }}>
+          <button
+            type="button" className="btn" onClick={() => setModoSemana('real')}
+            style={{ border: 'none', background: modoSemana === 'real' ? 'var(--brand)' : 'transparent', color: modoSemana === 'real' ? '#fff' : undefined }}
+          >
+            Fecha real
+          </button>
+          <button
+            type="button" className="btn" onClick={() => setModoSemana('promesa')}
+            style={{ border: 'none', background: modoSemana === 'promesa' ? 'var(--brand)' : 'transparent', color: modoSemana === 'promesa' ? '#fff' : undefined }}
+          >
+            Fecha prometida
+          </button>
+        </div>
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700 }}>
           Semana
           <select className="pp-select" value={semanaFiltro} onChange={(e) => setSemanaFiltro(e.target.value)}>
-            <option value="">— Pendientes de asignar (todas) —</option>
+            {modoSemana === 'real' ? <option value="">— Pendientes de asignar (todas) —</option> : null}
             {semanasDisponibles.map((wk) => (
               <option key={wk} value={wk}>Semana {weekNumberFromLabel(wk)} — {weekTitleFromSelection(wk).replace(/^Semana \d+ /, '')}</option>
             ))}
           </select>
         </label>
         <div style={{ fontSize: 11, opacity: 0.7 }}>
-          {loading ? 'Cargando…' : semanaFiltro
-            ? `${conUbicacion.length} de ${items.length} portones de la semana con ubicación${sinUbicacion ? ` (+${sinUbicacion} sin ubicación)` : ''} · ${rutasPorViaje.length} viaje${rutasPorViaje.length === 1 ? '' : 's'} · ${selected.size} seleccionado${selected.size === 1 ? '' : 's'}`
-            : `${conUbicacion.length} portones sin viaje con ubicación${sinUbicacion ? ` (+${sinUbicacion} sin ubicación resuelta)` : ''} · ${selected.size} seleccionado${selected.size === 1 ? '' : 's'}`}
+          {loading ? 'Cargando…' : modoSemana === 'promesa'
+            ? `${conUbicacion.length} de ${items.length} portones prometidos para esta semana con ubicación${sinUbicacion ? ` (+${sinUbicacion} sin ubicación)` : ''} · ${selected.size} seleccionado${selected.size === 1 ? '' : 's'}`
+            : semanaFiltro
+              ? `${conUbicacion.length} de ${items.length} portones de la semana con ubicación${sinUbicacion ? ` (+${sinUbicacion} sin ubicación)` : ''} · ${rutasPorViaje.length} viaje${rutasPorViaje.length === 1 ? '' : 's'} · ${selected.size} seleccionado${selected.size === 1 ? '' : 's'}`
+              : `${conUbicacion.length} portones sin viaje con ubicación${sinUbicacion ? ` (+${sinUbicacion} sin ubicación resuelta)` : ''} · ${selected.size} seleccionado${selected.size === 1 ? '' : 's'}`}
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, fontSize: 11, alignItems: 'center', flexWrap: 'wrap' }}>
           <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 999, background: COLOR_DESPACHO, marginRight: 3 }} />despacho</span>
           <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 999, background: COLOR_INSTALACION, marginRight: 3 }} />instalación</span>
           <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 999, background: COLOR_AMBOS, marginRight: 3 }} />ambos</span>
           <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 999, background: COLOR_SELECCIONADO, marginRight: 3 }} />seleccionado</span>
-          {semanaFiltro ? <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 999, background: COLOR_ASIGNADO_SIN_PENDIENTE, marginRight: 3 }} />ya asignado</span> : null}
+          {modoSemana === 'promesa'
+            ? <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 999, background: COLOR_PROMESA_INFO, marginRight: 3 }} />prometido, sin fecha real</span>
+            : semanaFiltro ? <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 999, background: COLOR_ASIGNADO_SIN_PENDIENTE, marginRight: 3 }} />ya asignado</span> : null}
         </div>
         {canEdit ? <button className="btn" onClick={() => setShowZonas(true)}>Zonas</button> : null}
         {canEdit ? <button className="btn" onClick={() => setShowIaConfig(true)}>🤖 Config IA</button> : null}
+        {canEdit ? <button className="btn" onClick={() => setShowPromesaConfig(true)}>📅 Config promesa</button> : null}
       </div>
 
       {semanaFiltro && rutasPorViaje.length > 0 ? (
@@ -671,8 +733,9 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
             ) : (
               <div style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 12 }}>
                 <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 10 }}>
-                  Hacé click en los pines pendientes para seleccionarlos. Los pines grises ya están en un viaje
-                  (solo consulta).
+                  {modoSemana === 'promesa'
+                    ? 'Hacé click en los pines de colores para seleccionarlos. Los pines celestes todavía no tienen fecha real imputada en /a (solo consulta, para planificar con anticipación).'
+                    : 'Hacé click en los pines pendientes para seleccionarlos. Los pines grises ya están en un viaje (solo consulta).'}
                 </div>
 
                 {selected.size > 0 ? (
@@ -711,6 +774,7 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
 
       <LogisticaZonasModal open={showZonas} config={config} onClose={() => setShowZonas(false)} onChanged={reloadConfig} />
       <LogisticaIaConfigModal open={showIaConfig} onClose={() => setShowIaConfig(false)} />
+      <LogisticaPromesaConfigModal open={showPromesaConfig} onClose={() => setShowPromesaConfig(false)} onChanged={load} />
     </div>
   );
 }

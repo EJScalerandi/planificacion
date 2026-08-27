@@ -632,4 +632,18 @@ export async function fetchLogisticaSemanaMapa(semana) {
   return data;
 }
 
+// "Semana prometida" (producción reservada por el Presupuestador + margen configurable).
+export async function fetchLogisticaPromesaConfig() {
+  const { data } = await api.get('/admin/logistica/promesa-config');
+  return data;
+}
+export async function updateLogisticaPromesaConfig(patch) {
+  const { data } = await api.patch('/admin/logistica/promesa-config', patch);
+  return data;
+}
+export async function fetchLogisticaSemanaPromesaMapa(semana) {
+  const { data } = await api.get(`/admin/logistica/semana/${encodeURIComponent(semana)}/mapa-promesa`);
+  return data;
+}
+
 export default api;

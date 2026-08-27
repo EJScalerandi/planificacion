@@ -11,6 +11,8 @@ const { resolveCoordsForNvs, getSemanaMapa } = require('../../lib/logisticaMapa'
 const { getIaConfig, updateIaConfig } = require('../../lib/logisticaIaConfig');
 const { recomendarViaje, planificarRutas } = require('../../lib/logisticaIaRecomendacion');
 const { listarPortonesSinViajeConUbicacion } = require('../../lib/logisticaIaContexto');
+const { getPromesaConfig, updatePromesaConfig } = require('../../lib/logisticaPromesaConfig');
+const { getSemanaPromesaMapa } = require('../../lib/logisticaPromesaMapa');
 
 const router = express.Router();
 
@@ -79,6 +81,17 @@ router.get('/logistica/mapa', asyncRoute(async (req, res) => {
 // ruta, para poder consultar/ajustar sin perder el contexto geográfico).
 router.get('/logistica/semana/:semana/mapa', asyncRoute(async (req, res) => {
   res.json({ ok: true, detalle: await getSemanaMapa(req.params.semana) });
+}));
+
+// ===== Semana prometida (producción reservada por el Presupuestador + margen configurable) =====
+router.get('/logistica/promesa-config', asyncRoute(async (_req, res) => {
+  res.json({ ok: true, config: await getPromesaConfig() });
+}));
+router.patch('/logistica/promesa-config', requireFullAccess, asyncRoute(async (req, res) => {
+  res.json({ ok: true, config: await updatePromesaConfig(req.body || {}) });
+}));
+router.get('/logistica/semana/:semana/mapa-promesa', asyncRoute(async (req, res) => {
+  res.json({ ok: true, ...(await getSemanaPromesaMapa(req.params.semana)) });
 }));
 
 router.post('/logistica/zonas', requireFullAccess, asyncRoute(async (req, res) => {
