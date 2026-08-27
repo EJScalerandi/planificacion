@@ -316,7 +316,7 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
     conUbicacion.forEach((it) => {
       const seleccionable = canEdit && (it.despacho_pendiente || it.instalacion_pendiente);
       const marker = L.circleMarker([it.lat, it.lng], {
-        radius: 8, color: '#fff', weight: 2, fillColor: colorDe(it), fillOpacity: 0.9,
+        radius: 10, color: '#fff', weight: 2, fillColor: colorDe(it), fillOpacity: 0.9,
         // interactive siempre true (así se puede ver el tooltip al pasar el
         // mouse aunque ya esté asignado - "consultar" es un caso de uso
         // explícito), el click a seleccionar se ata aparte solo si aplica.
@@ -360,7 +360,7 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
         const labelIcon = L.divIcon({
           className: '',
           html: `<div style="background:#fff;color:#111;border:1px solid #999;border-radius:4px;padding:1px 4px;font-size:9px;font-weight:800;white-space:nowrap;box-shadow:0 1px 2px rgba(0,0,0,.35);">${label}</div>`,
-          iconSize: [1, 1], iconAnchor: [-6, 18],
+          iconSize: [1, 1], iconAnchor: [-4, 20],
         });
         L.marker([it.lat, it.lng], { icon: labelIcon, interactive: false, zIndexOffset: 800 }).addTo(layer);
       }
@@ -374,10 +374,13 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
         const barIcon = L.divIcon({
           className: '',
           html: `<div style="display:flex;flex-direction:column;gap:1px;">${segs.map((c) => `<div style="width:6px;height:6px;background:${c};border:1px solid rgba(0,0,0,.25);"></div>`).join('')}</div>`,
-          iconSize: [6, 20], iconAnchor: [-9, 10],
+          // Anchor a la DERECHA del ícono (valor positivo) para que el
+          // dibujo quede a la IZQUIERDA del pin - así no se pisa con la
+          // etiqueta de semana cruzada, que va arriba/derecha.
+          iconSize: [6, 20], iconAnchor: [18, 10],
         });
         const marker = L.marker([it.lat, it.lng], { icon: barIcon, interactive: false, zIndexOffset: 700 });
-        marker.bindTooltip(`Diseño: ${it.etapas.diseno}<br>Pintura sistema: ${it.etapas.pintura}<br>Armado final: ${it.etapas.armado_final}`, { direction: 'right' });
+        marker.bindTooltip(`Diseño: ${it.etapas.diseno}<br>Pintura sistema: ${it.etapas.pintura}<br>Armado final: ${it.etapas.armado_final}`, { direction: 'left' });
         marker.addTo(layer);
       }
     });
@@ -390,7 +393,7 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
       const isSel = selected.has(nv);
       marker.setStyle({
         fillColor: isSel ? COLOR_SELECCIONADO : colorDe(it),
-        radius: isSel ? 11 : 8,
+        radius: isSel ? 13 : 10,
         weight: isSel ? 3 : 2,
       });
     }
