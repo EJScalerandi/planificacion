@@ -18,6 +18,7 @@
 // varios usuarios arman viajes al mismo tiempo.
 const { pool } = require('../db');
 const { computePeso } = require('./logisticaCapacidad');
+const { DEPOSITO } = require('./logisticaDeposito');
 const { geocodeAddress } = require('./geocoding');
 
 async function withTx(fn) {
@@ -341,7 +342,7 @@ async function getConfig() {
     listReglasEnvio(),
     pool.query(`select id, name, is_active from public.qc_users where is_active is true order by name asc;`),
   ]);
-  return { zonas, vehiculos, cuadrillas, reglas, zona_referencias: zonaReferencias, reglas_envio: reglasEnvio, qc_users: qcUsersQ.rows };
+  return { zonas, vehiculos, cuadrillas, reglas, zona_referencias: zonaReferencias, reglas_envio: reglasEnvio, qc_users: qcUsersQ.rows, deposito: DEPOSITO };
 }
 
 // ===========================================================================

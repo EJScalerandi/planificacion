@@ -61,7 +61,7 @@ async function fechaYSemanaActual() {
   return rows[0];
 }
 
-function armarPromptUsuario({ portones, distancias_km, vehiculos, cuadrillas, config, hoy, semanaActual }) {
+function armarPromptUsuario({ portones, distancias_km, deposito, distancias_desde_deposito_km, vehiculos, cuadrillas, config, hoy, semanaActual }) {
   const lineasPortones = portones.map((p) => {
     const ubicacion = p.lat != null ? `(${p.lat}, ${p.lng})` : 'SIN UBICACIÓN';
     const zona = p.zona || 'sin zona clasificada';
@@ -73,6 +73,7 @@ function armarPromptUsuario({ portones, distancias_km, vehiculos, cuadrillas, co
     return `- NV ${p.nv} | ${p.nombre_cliente || 'sin nombre'} | ${p.direccion || 'sin dirección'} | ubicación ${ubicacion} | zona: ${zona} | sistema: ${p.sistema || '—'} | pesa ${p.peso_capacidad} portón(es) de capacidad | ${cumple}`;
   }).join('\n');
 
+  const lineasDepot = distancias_desde_deposito_km.map((d) => `- Depósito -> NV ${d.nv}: ${d.km} km (~${(d.km / config.velocidad_kmh).toFixed(1)}h)`).join('\n') || '(sin distancias al depósito calculadas)';
   const lineasDistancias = distancias_km.map((d) => `- NV ${d.de} <-> NV ${d.a}: ${d.km} km (~${(d.km / config.velocidad_kmh).toFixed(1)}h a ${config.velocidad_kmh}km/h)`).join('\n') || '(sin pares con ubicación suficiente para calcular distancias)';
 
   const lineasVehiculos = (vehiculos || []).filter((v) => v.activo).map((v) => `- ${v.nombre} (capacidad: ${v.capacidad_portones} portones de despacho)`).join('\n') || '(sin vehículos configurados)';
@@ -81,6 +82,11 @@ function armarPromptUsuario({ portones, distancias_km, vehiculos, cuadrillas, co
   return `Fecha de hoy: ${hoy}. Semana ISO actual: ${semanaActual}.
 
 Parámetros operativos: velocidad de viaje asumida ${config.velocidad_kmh} km/h, ${config.horas_por_instalacion}h por instalación.
+
+Punto de partida (depósito) de TODOS los viajes: ${deposito.nombre} (${deposito.lat}, ${deposito.lng}). El vehículo siempre sale de ahí y vuelve ahí al terminar - tenelo en cuenta para elegir qué parada va primero (la más cercana al depósito o la más conveniente por recorrido) y para el tiempo total estimado (incluye ida y vuelta al depósito, no solo entre paradas).
+
+Distancias desde el depósito a cada portón (línea recta):
+${lineasDepot}
 
 Portones seleccionados por el usuario para este viaje:
 ${lineasPortones}
@@ -214,7 +220,7 @@ const PLAN_ZONA_SCHEMA = {
   additionalProperties: false,
 };
 
-function armarPromptZona({ zonaNombre, portones, distancias_km, vehiculos, cuadrillas, config, hoy, semanaActual, truncado, totalEnZona }) {
+function armarPromptZona({ zonaNombre, portones, distancias_km, deposito, distancias_desde_deposito_km, vehiculos, cuadrillas, config, hoy, semanaActual, truncado, totalEnZona }) {
   const lineasPortones = portones.map((p) => {
     const ubicacion = p.lat != null ? `(${p.lat}, ${p.lng})` : 'SIN UBICACIÓN';
     const cumple = p.regla_envio_aplicada
@@ -225,6 +231,7 @@ function armarPromptZona({ zonaNombre, portones, distancias_km, vehiculos, cuadr
     return `- NV ${p.nv} | ${p.nombre_cliente || 'sin nombre'} | ${p.direccion || 'sin dirección'} | ubicación ${ubicacion} | sistema: ${p.sistema || '—'} | pesa ${p.peso_capacidad} portón(es) de capacidad | ${cumple}`;
   }).join('\n');
 
+  const lineasDepot = distancias_desde_deposito_km.map((d) => `- Depósito -> NV ${d.nv}: ${d.km} km (~${(d.km / config.velocidad_kmh).toFixed(1)}h)`).join('\n') || '(sin distancias al depósito calculadas)';
   const lineasDistancias = distancias_km.map((d) => `- NV ${d.de} <-> NV ${d.a}: ${d.km} km (~${(d.km / config.velocidad_kmh).toFixed(1)}h a ${config.velocidad_kmh}km/h)`).join('\n') || '(sin pares con ubicación suficiente para calcular distancias)';
 
   const lineasVehiculos = (vehiculos || []).filter((v) => v.activo).map((v) => `- ${v.nombre} (capacidad: ${v.capacidad_portones} portones de despacho)`).join('\n') || '(sin vehículos configurados)';
@@ -240,6 +247,11 @@ capacidad de cada portón incluido); si no entran todos en un viaje, proponé va
 ${truncado ? `\nOJO: esta zona tiene ${totalEnZona} portones pendientes en total; para no saturar el análisis solo te paso los primeros ${portones.length}. Decilo en una alerta general.\n` : ''}
 
 Parámetros operativos: velocidad de viaje asumida ${config.velocidad_kmh} km/h, ${config.horas_por_instalacion}h por instalación.
+
+Punto de partida (depósito) de TODOS los viajes: ${deposito.nombre} (${deposito.lat}, ${deposito.lng}). Cada viaje que propongas sale de ahí y vuelve ahí al terminar - tenelo en cuenta para el orden de paradas y el tiempo total estimado (incluye ida y vuelta al depósito, no solo entre paradas).
+
+Distancias desde el depósito a cada portón (línea recta):
+${lineasDepot}
 
 Portones pendientes en esta zona:
 ${lineasPortones}

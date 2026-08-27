@@ -192,6 +192,7 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
   const rutasViajesLayerRef = useRef(null);
   const infoExtraLayerRef = useRef(null); // etiqueta de semana cruzada + barrita de etapas
   const markersByNvRef = useRef(new Map());
+  const depositoMarkerRef = useRef(null); // punto de partida fijo (De Grandis Portones)
   const [zoom, setZoom] = useState(ARGENTINA_ZOOM);
 
   const reloadConfig = () => {
@@ -320,6 +321,24 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
     };
   }, []);
 
+  // Punto de partida fijo de todos los viajes (De Grandis Portones) - se
+  // muestra siempre, no depende del filtro de semana ni se limpia con los
+  // demás layers. Coordenadas vienen del config (mismo endpoint que zonas/
+  // vehículos/cuadrillas) para no duplicarlas también acá.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !config?.deposito) return;
+    if (depositoMarkerRef.current) { depositoMarkerRef.current.remove(); depositoMarkerRef.current = null; }
+    const { lat, lng, nombre } = config.deposito;
+    const icon = L.divIcon({
+      className: '',
+      html: `<div style="display:flex;align-items:center;gap:4px;background:#1e293b;color:#fff;border-radius:6px;padding:3px 7px;font-size:11px;font-weight:900;white-space:nowrap;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);">🏭 ${nombre}</div>`,
+      iconSize: [1, 1], iconAnchor: [-10, 14],
+    });
+    const marker = L.marker([lat, lng], { icon, interactive: false, zIndexOffset: 1200 }).addTo(map);
+    depositoMarkerRef.current = marker;
+  }, [config]);
+
   // Pines
   useEffect(() => {
     const map = mapRef.current;
@@ -370,16 +389,34 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
     layer.clearLayers();
     const escala = escalaPorZoom(zoom);
 
+    // Cuando dos o más pines caen muy cerca en pantalla (misma dirección o
+    // casi, ej. despacho e instalación de NV distintos en la misma cuadra),
+    // sus etiquetas se pisan y quedan ilegibles - se agrupan por cercanía en
+    // PÍXELES (no en metros, así el criterio es el mismo en cualquier zoom)
+    // y se apilan una arriba de la otra en vez de superponerse.
+    const UMBRAL_PX = 24;
+    const clusters = [];
     conUbicacion.forEach((it) => {
+      const pt = map.latLngToContainerPoint([it.lat, it.lng]);
+      let cluster = clusters.find((c) => Math.hypot(c.x - pt.x, c.y - pt.y) < UMBRAL_PX);
+      if (!cluster) { cluster = { x: pt.x, y: pt.y, nvs: [] }; clusters.push(cluster); }
+      cluster.nvs.push(it.nv);
+    });
+    const stackIndexByNv = new Map();
+    for (const c of clusters) c.nvs.forEach((nv, i) => stackIndexByNv.set(nv, i));
+
+    conUbicacion.forEach((it) => {
+      const stackIdx = stackIndexByNv.get(it.nv) || 0;
       const label = semanaCruzadaLabel(it, modoSemana, weekNumberFromLabel);
       if (label) {
         const fontSize = 9 * escala;
         const padY = 1 * escala;
         const padX = 4 * escala;
+        const alturaEtiqueta = 13 * escala; // separación entre etiquetas apiladas del mismo cluster
         const labelIcon = L.divIcon({
           className: '',
           html: `<div style="background:#fff;color:#111;border:1px solid #999;border-radius:4px;padding:${padY}px ${padX}px;font-size:${fontSize}px;font-weight:800;white-space:nowrap;box-shadow:0 1px 2px rgba(0,0,0,.35);">${label}</div>`,
-          iconSize: [1, 1], iconAnchor: [-4 * escala, 20 * escala],
+          iconSize: [1, 1], iconAnchor: [-4 * escala, 20 * escala + stackIdx * alturaEtiqueta],
         });
         L.marker([it.lat, it.lng], { icon: labelIcon, interactive: false, zIndexOffset: 800 }).addTo(layer);
       }
@@ -400,8 +437,10 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
           // dibujo quede a la IZQUIERDA del pin - así no se pisa con la
           // etiqueta de semana cruzada, que va arriba/derecha. El offset
           // también escala con el tamaño para que no se meta debajo del pin
-          // al agrandarse con el zoom.
-          iconSize: [segSize, barAlto], iconAnchor: [12 + segSize, barAlto / 2],
+          // al agrandarse con el zoom, y se corre más a la izquierda por
+          // cada barrita apilada del mismo cluster para que tampoco se pisen
+          // entre sí.
+          iconSize: [segSize, barAlto], iconAnchor: [12 + segSize + stackIdx * (segSize + 4), barAlto / 2],
         });
         const marker = L.marker([it.lat, it.lng], { icon: barIcon, interactive: false, zIndexOffset: 700 });
         marker.bindTooltip(`Diseño: ${it.etapas.diseno}<br>Pintura sistema: ${it.etapas.pintura}<br>Armado final: ${it.etapas.armado_final}`, { direction: 'left' });
@@ -433,7 +472,10 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
     layer.clearLayers();
 
     for (const { nvsEnOrden, color, viaje, viajeId } of rutasPorViaje) {
-      const puntos = [];
+      // Todo viaje sale del depósito (De Grandis Portones) - lo agregamos
+      // como primer punto de la línea, sin numerito (el numerito 1 sigue
+      // siendo la primera parada real).
+      const puntos = config?.deposito ? [[config.deposito.lat, config.deposito.lng]] : [];
       nvsEnOrden.forEach((nv, i) => {
         const it = itemsByNv.get(nv);
         if (!it || it.lat == null || it.lng == null) return;
@@ -451,7 +493,7 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
         L.polyline(puntos, { color, weight: 3, opacity: 0.75 }).addTo(layer);
       }
     }
-  }, [rutasPorViaje, itemsByNv]);
+  }, [rutasPorViaje, itemsByNv, config]);
 
   // Ruta SUGERIDA por la IA (preview antes de crear) - línea punteada roja +
   // numerito, se dibuja por encima de todo lo demás.
@@ -463,7 +505,7 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
     if (!rutaOrdenParadas || rutaOrdenParadas.length === 0) return;
 
     const ordenados = [...rutaOrdenParadas].sort((a, b) => a.orden - b.orden);
-    const puntos = [];
+    const puntos = config?.deposito ? [[config.deposito.lat, config.deposito.lng]] : [];
     ordenados.forEach((p, i) => {
       const it = itemsByNv.get(p.nv);
       if (!it || it.lat == null || it.lng == null) return;
@@ -479,7 +521,7 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
       const polyline = L.polyline(puntos, { color: '#dc2626', weight: 3, opacity: 0.8, dashArray: '8 6' }).addTo(layer);
       map.fitBounds(polyline.getBounds(), { padding: [60, 60], maxZoom: 13 });
     }
-  }, [rutaOrdenParadas, itemsByNv]);
+  }, [rutaOrdenParadas, itemsByNv, config]);
 
   const rutaSinUbicacionNvs = useMemo(() => {
     if (!rutaOrdenParadas) return [];

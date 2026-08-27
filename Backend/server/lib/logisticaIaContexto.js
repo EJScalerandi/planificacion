@@ -10,6 +10,7 @@ const { pool } = require('../db');
 const { resolveCoordsForNvs } = require('./logisticaMapa');
 const { haversineKm } = require('./logisticaZonificacion');
 const { computePeso } = require('./logisticaCapacidad');
+const { DEPOSITO } = require('./logisticaDeposito');
 const db = require('./logisticaViajesDb');
 
 // Portones sin viaje asignado (cualquier semana) + ubicación/zona resuelta.
@@ -127,7 +128,15 @@ async function construirContexto(nvs) {
     }
   }
 
-  return { portones, distancias_km };
+  // Punto de partida (y de regreso) de todos los viajes - la IA lo necesita
+  // para ordenar las paradas y estimar el tiempo total desde un origen real,
+  // no asumiendo que arranca "gratis" en el primer portón de la lista.
+  const distancias_desde_deposito_km = conUbicacion.map((p) => ({
+    nv: p.nv,
+    km: Math.round(haversineKm(DEPOSITO.lat, DEPOSITO.lng, p.lat, p.lng) * 10) / 10,
+  }));
+
+  return { portones, distancias_km, deposito: DEPOSITO, distancias_desde_deposito_km };
 }
 
 module.exports = { construirContexto, listarPortonesSinViajeConUbicacion };
