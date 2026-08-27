@@ -68,6 +68,18 @@ function colorPorEstadoEtapa(estado) {
   return '#dc2626';
 }
 
+// Tamaño de la etiqueta de semana cruzada y la barrita de etapas: crecen un
+// poco al acercar el zoom (pedido del usuario) - a nivel base (como se veía
+// antes) quedan igual que siempre, y hasta el doble bien acercado, donde hay
+// más lugar en pantalla para leerlas cómodas.
+const ZOOM_BASE = 12;
+const ZOOM_TOPE = 17;
+function escalaPorZoom(zoom) {
+  if (zoom == null) return 1;
+  const t = Math.min(1, Math.max(0, (zoom - ZOOM_BASE) / (ZOOM_TOPE - ZOOM_BASE)));
+  return 1 + t;
+}
+
 // Semana cruzada a mostrar arriba del pin: en modo real, la semana
 // prometida; en modo promesa, la semana real (despacho/instalación) - así
 // se puede comparar sin cambiar de vista.
@@ -180,6 +192,7 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
   const rutasViajesLayerRef = useRef(null);
   const infoExtraLayerRef = useRef(null); // etiqueta de semana cruzada + barrita de etapas
   const markersByNvRef = useRef(new Map());
+  const [zoom, setZoom] = useState(ARGENTINA_ZOOM);
 
   const reloadConfig = () => {
     fetchLogisticaViajesConfig().then((c) => setConfig(c?.config || null)).catch(() => {});
@@ -294,6 +307,8 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
     rutasViajesLayerRef.current = L.layerGroup().addTo(map);
     rutaSugeridaLayerRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
+    setZoom(map.getZoom());
+    map.on('zoomend', () => setZoom(map.getZoom()));
     return () => {
       map.remove();
       mapRef.current = null;
@@ -353,14 +368,18 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
     const layer = infoExtraLayerRef.current;
     if (!map || !layer) return;
     layer.clearLayers();
+    const escala = escalaPorZoom(zoom);
 
     conUbicacion.forEach((it) => {
       const label = semanaCruzadaLabel(it, modoSemana, weekNumberFromLabel);
       if (label) {
+        const fontSize = 9 * escala;
+        const padY = 1 * escala;
+        const padX = 4 * escala;
         const labelIcon = L.divIcon({
           className: '',
-          html: `<div style="background:#fff;color:#111;border:1px solid #999;border-radius:4px;padding:1px 4px;font-size:9px;font-weight:800;white-space:nowrap;box-shadow:0 1px 2px rgba(0,0,0,.35);">${label}</div>`,
-          iconSize: [1, 1], iconAnchor: [-4, 20],
+          html: `<div style="background:#fff;color:#111;border:1px solid #999;border-radius:4px;padding:${padY}px ${padX}px;font-size:${fontSize}px;font-weight:800;white-space:nowrap;box-shadow:0 1px 2px rgba(0,0,0,.35);">${label}</div>`,
+          iconSize: [1, 1], iconAnchor: [-4 * escala, 20 * escala],
         });
         L.marker([it.lat, it.lng], { icon: labelIcon, interactive: false, zIndexOffset: 800 }).addTo(layer);
       }
@@ -371,20 +390,25 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
           colorPorEstadoEtapa(it.etapas.pintura),       // medio
           colorPorEstadoEtapa(it.etapas.diseno),        // abajo (empieza acá)
         ];
+        const segSize = 6 * escala;
+        const gap = 1 * escala;
+        const barAlto = segSize * 3 + gap * 2;
         const barIcon = L.divIcon({
           className: '',
-          html: `<div style="display:flex;flex-direction:column;gap:1px;">${segs.map((c) => `<div style="width:6px;height:6px;background:${c};border:1px solid rgba(0,0,0,.25);"></div>`).join('')}</div>`,
+          html: `<div style="display:flex;flex-direction:column;gap:${gap}px;">${segs.map((c) => `<div style="width:${segSize}px;height:${segSize}px;background:${c};border:1px solid rgba(0,0,0,.25);"></div>`).join('')}</div>`,
           // Anchor a la DERECHA del ícono (valor positivo) para que el
           // dibujo quede a la IZQUIERDA del pin - así no se pisa con la
-          // etiqueta de semana cruzada, que va arriba/derecha.
-          iconSize: [6, 20], iconAnchor: [18, 10],
+          // etiqueta de semana cruzada, que va arriba/derecha. El offset
+          // también escala con el tamaño para que no se meta debajo del pin
+          // al agrandarse con el zoom.
+          iconSize: [segSize, barAlto], iconAnchor: [12 + segSize, barAlto / 2],
         });
         const marker = L.marker([it.lat, it.lng], { icon: barIcon, interactive: false, zIndexOffset: 700 });
         marker.bindTooltip(`Diseño: ${it.etapas.diseno}<br>Pintura sistema: ${it.etapas.pintura}<br>Armado final: ${it.etapas.armado_final}`, { direction: 'left' });
         marker.addTo(layer);
       }
     });
-  }, [conUbicacion, modoSemana]);
+  }, [conUbicacion, modoSemana, zoom]);
 
   // Selección resaltada
   useEffect(() => {
