@@ -142,7 +142,11 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
       ]);
       setConfig(configRes?.config || null);
       if (semanaFiltro) {
-        setRawItems(dataRes?.detalle?.items || []);
+        // getSemanaMapa no devuelve `semana` por item (es implícito: son
+        // todos de la semana que pedimos) - se la taggeamos acá para que
+        // agruparPorSemana/itemsByNv puedan armar el viaje.
+        const itemsConSemana = (dataRes?.detalle?.items || []).map((it) => ({ ...it, semana: semanaFiltro }));
+        setRawItems(itemsConSemana);
         setViajesSemana(dataRes?.detalle?.viajes || []);
       } else {
         setRawItems(expandirSinViaje(Array.isArray(dataRes?.items) ? dataRes.items : []));
