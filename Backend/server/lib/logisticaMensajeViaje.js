@@ -83,7 +83,16 @@ async function fetchDatosPorNv(nvs) {
       b.nv,
       nullif(trim(both ' ' from coalesce(b.pv_data->>'RazSoc', b.pv_data->>'distribuidor_nombre', '')), '') as distribuidor,
       nullif(trim(both ' ' from coalesce(b.pv_data->>'INSTALACION_Posicion', '')), '') as posicion,
-      sq.nombre_cliente, sq.telefono, sq.direccion, sq.localidad, sq.maps_url
+      -- presupuestador_quotes.end_customer es la fuente preferida (más
+      -- completa y estructurada), pero NV viejos/sin presupuesto asociado
+      -- no matchean ninguna quote - ahí cae al snapshot que ya vive en
+      -- preproduccion_valores (cargado a mano o importado en su momento),
+      -- mismo patrón que resolverInfoNv del módulo de Servicio Técnico.
+      nullif(trim(both ' ' from coalesce(nullif(sq.nombre_cliente,''), b.pv_data->>'cliente_nombre', b.pv_data->>'Nombre', '')), '') as nombre_cliente,
+      nullif(trim(both ' ' from coalesce(nullif(sq.telefono,''), b.pv_data->>'cliente_telefono', '')), '') as telefono,
+      nullif(trim(both ' ' from coalesce(nullif(sq.direccion,''), b.pv_data->>'cliente_direccion', b.pv_data->>'Direccion', b.pv_data->>'Dirección', '')), '') as direccion,
+      nullif(trim(both ' ' from coalesce(nullif(sq.localidad,''), b.pv_data->>'cliente_localidad', '')), '') as localidad,
+      nullif(trim(both ' ' from coalesce(nullif(sq.maps_url,''), b.pv_data->>'cliente_maps_url', b.pv_data->>'logistica_maps_url', b.pv_data->>'pp_direccion_url', '')), '') as maps_url
     from base b
     left join lateral (
       select
@@ -141,9 +150,12 @@ async function buildMensajeViaje(viajeId) {
   const paradas = [];
   for (const it of items) {
     const d = datosPorNv.get(it.nv) || {};
-    const clave = `${d.nombre_cliente || ''}::${d.direccion || ''}`;
+    // Sin cliente Y sin dirección conocidos, clave = null -> NUNCA agrupa
+    // (si no, dos NV totalmente distintos que ambos "no matchean nada"
+    // terminaban mezclados en un solo bloque "Cliente sin nombre").
+    const clave = (d.nombre_cliente && d.direccion) ? `${d.nombre_cliente}::${d.direccion}` : null;
     const ultima = paradas[paradas.length - 1];
-    if (ultima && ultima.clave === clave) ultima.items.push({ ...it, ...d });
+    if (clave && ultima && ultima.clave === clave) ultima.items.push({ ...it, ...d });
     else paradas.push({ clave, datos: d, items: [{ ...it, ...d }] });
   }
 
