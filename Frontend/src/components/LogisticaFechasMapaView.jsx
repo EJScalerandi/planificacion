@@ -225,6 +225,12 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
   // dibujar la línea indicadora de "acá cae" mientras se arrastra.
   const [dragRuta, setDragRuta] = useState(null); // { viajeId, idx } | null
   const [dragOverRuta, setDragOverRuta] = useState(null); // { viajeId, idx } | null
+  // Con más de un viaje en la semana, "Rutas de la semana" muestra solo el
+  // elegido (pedido del usuario, para no scrollear entre varias tarjetas
+  // largas) - pestañas arriba para cambiar. Se resuelve contra la lista
+  // actual más abajo (viajeActivoId), no acá, para no tener que resetearlo a
+  // mano cada vez que cambia la semana o se borra el viaje elegido.
+  const [viajeSeleccionadoId, setViajeSeleccionadoId] = useState(null);
 
   // Asignar "Fecha Salida" desde el mapa (modo 'sin_fecha_salida') - mismo
   // campo que /a, para varios NV a la vez elegidos por cercanía geográfica.
@@ -423,6 +429,14 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
     }
     return map;
   }, [rawItems, viajesSemana]);
+
+  // Viaje que se muestra en "Rutas de la semana" - el elegido si sigue
+  // existiendo en esta semana, si no el primero (cubre cambio de semana,
+  // viaje borrado, o primera carga sin nada elegido todavía).
+  const viajeActivoId = useMemo(() => {
+    if (viajeSeleccionadoId != null && rutasPorViaje.some((r) => r.viajeId === viajeSeleccionadoId)) return viajeSeleccionadoId;
+    return rutasPorViaje[0]?.viajeId ?? null;
+  }, [viajeSeleccionadoId, rutasPorViaje]);
 
   // Init del mapa (una sola vez)
   useEffect(() => {
@@ -1062,7 +1076,34 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
         {semanaFiltro && rutasPorViaje.length > 0 ? (
           <div style={{ width: 260, flex: '0 0 auto', display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto' }}>
             <div style={{ fontWeight: 900, fontSize: 13 }}>Rutas de la semana</div>
-            {rutasPorViaje.map(({ viajeId, viaje, color, puntosRuta }) => {
+
+            {rutasPorViaje.length > 1 ? (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {rutasPorViaje.map(({ viajeId, viaje, color }) => {
+                  const activo = viajeActivoId === viajeId;
+                  return (
+                    <button
+                      key={viajeId}
+                      type="button"
+                      onClick={() => setViajeSeleccionadoId(viajeId)}
+                      title={viaje.nombre?.trim() || `Viaje #${viajeId}`}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: activo ? 800 : 600,
+                        padding: '3px 8px', borderRadius: 999, cursor: 'pointer',
+                        border: `1px solid ${activo ? color : 'var(--border)'}`,
+                        background: activo ? color : 'var(--surface)',
+                        color: activo ? '#fff' : 'inherit',
+                      }}
+                    >
+                      <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: 999, background: activo ? '#fff' : color, flex: '0 0 auto' }} />
+                      {viaje.nombre?.trim() || `Viaje #${viajeId}`}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+
+            {rutasPorViaje.filter(({ viajeId }) => viajeId === viajeActivoId).map(({ viajeId, viaje, color, puntosRuta }) => {
               const itemsRuta = itemsPorViajeMapa.get(viajeId) || [];
               return (
                 <div key={viajeId} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
