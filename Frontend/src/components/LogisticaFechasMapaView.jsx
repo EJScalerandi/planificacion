@@ -26,13 +26,19 @@ import {
   planificarLogisticaRutasIa,
   crearLogisticaViaje,
   asignarLogisticaPorton,
+  desasignarLogisticaPorton,
+  reordenarLogisticaViaje,
+  fetchLogisticaPuntosExtra,
+  createLogisticaPuntoExtra,
+  asignarLogisticaParadaExtra,
+  desasignarLogisticaParadaExtra,
 } from '../api';
 import { isoWeekStartEndFromLabel, weekNumberFromLabel, weekTitleFromSelection, todayISO10, buildWeekRange, isoWeekLabelFromDate } from '../utils/isoWeek';
 import LogisticaZonasModal from './modals/LogisticaZonasModal';
 import LogisticaIaConfigModal from './modals/LogisticaIaConfigModal';
 import LogisticaPromesaConfigModal from './modals/LogisticaPromesaConfigModal';
 import LogisticaMensajeViajeModal from './modals/LogisticaMensajeViajeModal';
-import LogisticaViajeSemanaModal from './LogisticaViajeSemanaModal';
+import LogisticaViajeSemanaModal, { AgregarParadaExtra } from './LogisticaViajeSemanaModal';
 
 const ARGENTINA_CENTER = [-38.4, -63.6];
 const ARGENTINA_ZOOM = 4;
@@ -205,7 +211,15 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
   const [showZonas, setShowZonas] = useState(false);
   const [showIaConfig, setShowIaConfig] = useState(false);
   const [mensajeViaje, setMensajeViaje] = useState(null); // { viajeId, titulo } | null
-  const [semanaModalAbierta, setSemanaModalAbierta] = useState(false); // abre LogisticaViajeSemanaModal (mismo popup que en Logística de Viajes)
+  const [semanaModalAbierta, setSemanaModalAbierta] = useState(false); // abre LogisticaViajeSemanaModal (mismo popup que en Logística de Viajes) - ahora solo para fecha/zona/cuadrilla/vehículo/borrar; reordenar y agregar/quitar paradas ya se hace acá mismo
+
+  // Editar la ruta de un viaje directamente en el panel del mapa (sin abrir
+  // el popup completo) - pedido explícito del usuario ("quiero editarlo
+  // directamente en ese mapa"). Catálogo de paradas extra (reutilizable
+  // entre viajes) + qué viaje tiene abierto el picker para agregar una.
+  const [puntosExtra, setPuntosExtra] = useState([]);
+  const [agregandoParadaViajeId, setAgregandoParadaViajeId] = useState(null);
+  const [agregandoParadaBusy, setAgregandoParadaBusy] = useState(false);
 
   // Asignar "Fecha Salida" desde el mapa (modo 'sin_fecha_salida') - mismo
   // campo que /a, para varios NV a la vez elegidos por cercanía geográfica.
@@ -243,15 +257,20 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
     if (modoSemana === 'promesa' && !semanaFiltro) { setRawItems([]); setViajesSemana([]); return; }
     setLoading(true);
     try {
-      const [configRes, dataRes] = await Promise.all([
+      const [configRes, dataRes, peRes] = await Promise.all([
         fetchLogisticaViajesConfig(),
         modoSemana === 'sin_fecha_salida'
           ? fetchLogisticaSinFechaSalida()
           : modoSemana === 'promesa'
             ? fetchLogisticaSemanaPromesaMapa(semanaFiltro)
             : (semanaFiltro ? fetchLogisticaSemanaMapa(semanaFiltro) : fetchLogisticaPortonesSinViaje()),
+        // Catálogo de paradas extra (ej. hoteles) - liviano, se pide siempre
+        // para no bloquear el panel de "Rutas de la semana" con un segundo
+        // request cuando el usuario abre "+ Parada".
+        fetchLogisticaPuntosExtra().catch(() => null),
       ]);
       setConfig(configRes?.config || null);
+      setPuntosExtra((peRes?.puntos || []).filter((p) => p.activo !== false));
       if (modoSemana === 'sin_fecha_salida') {
         setRawItems(expandirSinFechaSalida(Array.isArray(dataRes?.items) ? dataRes.items : []));
         setViajesSemana([]);
@@ -374,6 +393,31 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
       return { viajeId, viaje, nvsEnOrden, puntosRuta, color: colorPorVehiculo(viaje.vehiculo_id, config?.vehiculos) };
     });
   }, [rawItems, viajesSemana, semanaFiltro, config]);
+
+  // Igual criterio que itemsPorViaje en LogisticaViajeSemanaModal.jsx (portón
+  // por (nv,tipo), no deduplicado - despacho e instalación del mismo NV
+  // pueden tener su propio lugar en la ruta) - se usa para poder reordenar/
+  // quitar/agregar paradas directamente en el panel del mapa, sin abrir ese
+  // popup. Distinto de puntosRuta (que sí dedupea por NV, solo para dibujar
+  // UN pin por domicilio).
+  const itemsPorViajeMapa = useMemo(() => {
+    const map = new Map();
+    for (const it of rawItems) {
+      if (it.viaje_id == null) continue;
+      if (!map.has(it.viaje_id)) map.set(it.viaje_id, []);
+      map.get(it.viaje_id).push(it);
+    }
+    for (const v of viajesSemana) {
+      for (const p of v.paradas_extra || []) {
+        if (!map.has(v.id)) map.set(v.id, []);
+        map.get(v.id).push({ punto_extra_id: p.punto_extra_id, nombre: p.nombre, maps_url: p.maps_url, orden: p.orden });
+      }
+    }
+    for (const arr of map.values()) {
+      arr.sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0) || String(a.porton_id ?? `x${a.punto_extra_id}`).localeCompare(String(b.porton_id ?? `x${b.punto_extra_id}`)));
+    }
+    return map;
+  }, [rawItems, viajesSemana]);
 
   // Init del mapa (una sola vez)
   useEffect(() => {
@@ -803,6 +847,73 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
     }
   };
 
+  // Edición de la ruta directamente en el panel del mapa - mismo mecanismo
+  // (reordenarLogisticaViaje acepta la lista mixta completa) que usa
+  // LogisticaViajeSemanaModal, solo que acá el reorden es con flechas ▲▼ en
+  // vez de arrastre (más simple de sostener en una columna angosta de 260px).
+  const moverItemRuta = async (viajeId, idx, direccion) => {
+    const items = itemsPorViajeMapa.get(viajeId) || [];
+    const destino = idx + direccion;
+    if (idx < 0 || destino < 0 || destino >= items.length) return;
+    const reordenado = [...items];
+    [reordenado[idx], reordenado[destino]] = [reordenado[destino], reordenado[idx]];
+    const payload = reordenado.map((it) => (it.punto_extra_id != null ? { punto_extra_id: it.punto_extra_id } : { porton_id: it.porton_id, tipo: it.tipo }));
+    try {
+      await reordenarLogisticaViaje(viajeId, payload);
+      load();
+    } catch (e) {
+      setErr(e?.response?.data?.error || e.message);
+    }
+  };
+
+  const quitarPortonRuta = async (viajeId, portonId, tipo) => {
+    try {
+      await desasignarLogisticaPorton(viajeId, portonId, tipo);
+      load();
+    } catch (e) {
+      setErr(e?.response?.data?.error || e.message);
+    }
+  };
+
+  const quitarParadaExtraRuta = async (viajeId, puntoExtraId) => {
+    try {
+      await desasignarLogisticaParadaExtra(viajeId, puntoExtraId);
+      load();
+    } catch (e) {
+      setErr(e?.response?.data?.error || e.message);
+    }
+  };
+
+  const elegirParadaRuta = async (viajeId, puntoExtraId) => {
+    setAgregandoParadaBusy(true);
+    setErr('');
+    try {
+      await asignarLogisticaParadaExtra(viajeId, puntoExtraId);
+      setAgregandoParadaViajeId(null);
+      load();
+    } catch (e) {
+      setErr(e?.response?.data?.error || e.message);
+    } finally {
+      setAgregandoParadaBusy(false);
+    }
+  };
+
+  const crearParadaRuta = async (viajeId, nombre, mapsUrl) => {
+    setAgregandoParadaBusy(true);
+    setErr('');
+    try {
+      const { punto } = await createLogisticaPuntoExtra({ nombre, maps_url: mapsUrl });
+      setPuntosExtra((prev) => [...prev, punto].sort((a, b) => a.nombre.localeCompare(b.nombre)));
+      await asignarLogisticaParadaExtra(viajeId, punto.id);
+      setAgregandoParadaViajeId(null);
+      load();
+    } catch (e) {
+      setErr(e?.response?.data?.error || e.message);
+    } finally {
+      setAgregandoParadaBusy(false);
+    }
+  };
+
   const asignarFechaSalida = async () => {
     if (!fechaSalidaAsignar || selected.size === 0) return;
     setAsignandoFechaSalida(true);
@@ -927,55 +1038,122 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
         </div>
 
         {semanaFiltro && rutasPorViaje.length > 0 ? (
-          <div style={{ width: 220, flex: '0 0 auto', display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto' }}>
+          <div style={{ width: 260, flex: '0 0 auto', display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto' }}>
             <div style={{ fontWeight: 900, fontSize: 13 }}>Rutas de la semana</div>
-            {rutasPorViaje.map(({ viajeId, viaje, color, puntosRuta }) => (
-              <div
-                key={viajeId}
-                role="button" tabIndex={0}
-                onClick={() => setSemanaModalAbierta(true)}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSemanaModalAbierta(true); }}
-                style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 8, cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 4 }}
-                title="Ver / editar este viaje"
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 999, background: color, flex: '0 0 auto' }} />
-                  <span style={{ fontWeight: 800, fontSize: 12 }}>{viaje.nombre?.trim() || `Viaje #${viajeId}`}</span>
-                </div>
-                <div style={{ fontSize: 11, opacity: 0.75 }}>
-                  {viaje.vehiculo_nombre || 'sin vehículo'} · {puntosRuta.length} parada{puntosRuta.length === 1 ? '' : 's'}
-                  {viaje.ruta_real ? ` · ${viaje.ruta_real.distancia_km} km · ${viaje.ruta_real.duracion_horas}h por calle` : ''}
-                </div>
-                {viaje.zonas?.length > 0 ? (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                    {viaje.zonas.map((z) => (
-                      <button
-                        key={z.zona_id}
-                        type="button"
-                        disabled={!canEdit}
-                        onClick={(e) => { e.stopPropagation(); toggleZona(viajeId, z.zona_id, !z.habilitada); }}
-                        title={(z.habilitada ? 'Zona habilitada' : 'Zona deshabilitada') + ' - la ruta pasa por acá · click para cambiar'}
-                        style={{
-                          fontSize: 9, padding: '1px 6px', borderRadius: 999, border: '1px solid var(--border)',
-                          background: z.habilitada ? 'var(--brand-100)' : 'var(--surface-muted, #f3f4f6)',
-                          color: z.habilitada ? 'var(--brand-700)' : 'inherit',
-                          opacity: z.habilitada ? 1 : 0.6,
-                          cursor: canEdit ? 'pointer' : 'default',
-                        }}
-                      >
-                        {z.habilitada ? '✓ ' : '· '}{z.zona_nombre}
-                      </button>
-                    ))}
+            {rutasPorViaje.map(({ viajeId, viaje, color, puntosRuta }) => {
+              const itemsRuta = itemsPorViajeMapa.get(viajeId) || [];
+              return (
+                <div key={viajeId} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 999, background: color, flex: '0 0 auto' }} />
+                    <span style={{ fontWeight: 800, fontSize: 12, flex: 1 }}>{viaje.nombre?.trim() || `Viaje #${viajeId}`}</span>
+                    <button
+                      type="button" className="btn" style={{ fontSize: 9, padding: '1px 5px', flex: '0 0 auto' }}
+                      onClick={() => setSemanaModalAbierta(true)}
+                      title={canEdit ? 'Editar fecha, zona, cuadrilla, vehículo, hora de salida o borrar el viaje' : 'Ver todos los detalles del viaje'}
+                    >
+                      ⚙️
+                    </button>
                   </div>
-                ) : null}
-                <button
-                  type="button" className="btn" style={{ fontSize: 10, padding: '1px 6px', alignSelf: 'flex-start' }}
-                  onClick={(e) => { e.stopPropagation(); setMensajeViaje({ viajeId, titulo: viaje.nombre?.trim() || `Viaje #${viajeId}` }); }}
-                >
-                  📋 Mensaje
-                </button>
-              </div>
-            ))}
+                  <div style={{ fontSize: 11, opacity: 0.75 }}>
+                    {viaje.vehiculo_nombre || 'sin vehículo'} · {puntosRuta.length} parada{puntosRuta.length === 1 ? '' : 's'}
+                    {viaje.hora_salida ? ` · sale ${viaje.hora_salida}` : ''}
+                    {viaje.ruta_real ? ` · ${viaje.ruta_real.distancia_km} km · ${viaje.ruta_real.duracion_horas}h por calle` : ''}
+                  </div>
+                  {viaje.zonas?.length > 0 ? (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                      {viaje.zonas.map((z) => (
+                        <button
+                          key={z.zona_id}
+                          type="button"
+                          disabled={!canEdit}
+                          onClick={() => toggleZona(viajeId, z.zona_id, !z.habilitada)}
+                          title={(z.habilitada ? 'Zona habilitada' : 'Zona deshabilitada') + ' - la ruta pasa por acá · click para cambiar'}
+                          style={{
+                            fontSize: 9, padding: '1px 6px', borderRadius: 999, border: '1px solid var(--border)',
+                            background: z.habilitada ? 'var(--brand-100)' : 'var(--surface-muted, #f3f4f6)',
+                            color: z.habilitada ? 'var(--brand-700)' : 'inherit',
+                            opacity: z.habilitada ? 1 : 0.6,
+                            cursor: canEdit ? 'pointer' : 'default',
+                          }}
+                        >
+                          {z.habilitada ? '✓ ' : '· '}{z.zona_nombre}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {canEdit && itemsRuta.length > 1 ? (
+                    <div style={{ fontSize: 9, opacity: 0.55 }}>Usá ▲▼ para reordenar la ruta (1º arriba = primera parada).</div>
+                  ) : null}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                    {itemsRuta.map((it, idx) => {
+                      const esExtra = it.punto_extra_id != null;
+                      return (
+                        <div
+                          key={esExtra ? `extra-${it.punto_extra_id}` : `${it.porton_id}-${it.tipo}`}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: 4, borderRadius: 6, padding: '3px 5px',
+                            border: `1px solid ${esExtra ? '#f59e0b' : 'var(--border)'}`,
+                            background: esExtra ? 'rgba(245,158,11,0.08)' : 'transparent',
+                          }}
+                        >
+                          <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: 999, background: '#dc2626', color: '#fff', fontSize: 8, fontWeight: 900, flex: '0 0 auto' }}>
+                            {idx + 1}
+                          </span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 10, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {esExtra ? `🏨 ${it.nombre}` : `NV ${it.nv}${it.tipo ? ` · ${it.tipo === 'despacho' ? 'Desp.' : 'Inst.'}` : ''}`}
+                            </div>
+                            {!esExtra && it.nombre ? (
+                              <div style={{ fontSize: 9, opacity: 0.7, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.nombre}</div>
+                            ) : null}
+                          </div>
+                          {canEdit ? (
+                            <>
+                              <div style={{ display: 'flex', flexDirection: 'column', flex: '0 0 auto' }}>
+                                <button type="button" className="btn" disabled={idx === 0} onClick={() => moverItemRuta(viajeId, idx, -1)} style={{ padding: '0 3px', fontSize: 8, lineHeight: '10px' }} title="Subir">▲</button>
+                                <button type="button" className="btn" disabled={idx === itemsRuta.length - 1} onClick={() => moverItemRuta(viajeId, idx, 1)} style={{ padding: '0 3px', fontSize: 8, lineHeight: '10px' }} title="Bajar">▼</button>
+                              </div>
+                              <button
+                                type="button" className="btn" style={{ padding: '0 4px', fontSize: 10, flex: '0 0 auto', borderColor: '#ef4444', color: '#991b1b' }}
+                                onClick={() => (esExtra ? quitarParadaExtraRuta(viajeId, it.punto_extra_id) : quitarPortonRuta(viajeId, it.porton_id, it.tipo))}
+                                title="Quitar del viaje"
+                              >
+                                ×
+                              </button>
+                            </>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {canEdit ? (
+                    agregandoParadaViajeId === viajeId ? (
+                      <AgregarParadaExtra
+                        puntosExtra={puntosExtra}
+                        busy={agregandoParadaBusy}
+                        onElegir={(puntoExtraId) => elegirParadaRuta(viajeId, puntoExtraId)}
+                        onCrear={(nombre, mapsUrl) => crearParadaRuta(viajeId, nombre, mapsUrl)}
+                        onCancelar={() => setAgregandoParadaViajeId(null)}
+                      />
+                    ) : (
+                      <button type="button" className="btn" style={{ fontSize: 10 }} onClick={() => setAgregandoParadaViajeId(viajeId)}>
+                        🏨 + Parada
+                      </button>
+                    )
+                  ) : null}
+
+                  <button
+                    type="button" className="btn" style={{ fontSize: 10, padding: '1px 6px', alignSelf: 'flex-start' }}
+                    onClick={() => setMensajeViaje({ viajeId, titulo: viaje.nombre?.trim() || `Viaje #${viajeId}` })}
+                  >
+                    📋 Mensaje
+                  </button>
+                </div>
+              );
+            })}
           </div>
         ) : null}
 

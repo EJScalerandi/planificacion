@@ -223,7 +223,9 @@ function ParadaExtraChip({ item, ordenNum, canEdit, onSubir, onBajar, onQuitar, 
 // Agregar una parada extra a un viaje: elegir una ya cargada (catálogo
 // reutilizable, ej. "Hotel San Vicente" que se vuelve a usar en otro viaje
 // sin repegar la URL) o cargar una nueva.
-function AgregarParadaExtra({ puntosExtra, busy, onElegir, onCrear, onCancelar }) {
+// Exportado: también lo usa LogisticaFechasMapaView.jsx para agregar paradas
+// directamente desde el panel del mapa, sin pasar por este modal.
+export function AgregarParadaExtra({ puntosExtra, busy, onElegir, onCrear, onCancelar }) {
   const [modo, setModo] = useState(puntosExtra?.length ? 'elegir' : 'nuevo');
   const [seleccionado, setSeleccionado] = useState('');
   const [nombre, setNombre] = useState('');
