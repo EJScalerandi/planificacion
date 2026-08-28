@@ -31,6 +31,7 @@ import LogisticaZonasModal from './modals/LogisticaZonasModal';
 import LogisticaIaConfigModal from './modals/LogisticaIaConfigModal';
 import LogisticaPromesaConfigModal from './modals/LogisticaPromesaConfigModal';
 import LogisticaMensajeViajeModal from './modals/LogisticaMensajeViajeModal';
+import LogisticaViajeSemanaModal from './LogisticaViajeSemanaModal';
 
 const ARGENTINA_CENTER = [-38.4, -63.6];
 const ARGENTINA_ZOOM = 4;
@@ -167,7 +168,10 @@ function expandirSinFechaSalida(items) {
 }
 
 export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
-  const [semanaFiltro, setSemanaFiltro] = useState(''); // '' = sin filtro (pendientes de cualquier semana)
+  // Arranca en la semana en curso (pedido del usuario) - '' sigue siendo una
+  // opción válida desde el selector ("Pendientes de asignar (todas)"), solo
+  // que ya no es el default al entrar a la página.
+  const [semanaFiltro, setSemanaFiltro] = useState(() => isoWeekLabelFromDate(todayISO10()));
   // 'real' = fecha_salida_imput/fecha_llegada_imput (lo de siempre); 'promesa'
   // = semana de producción ya reservada por el Presupuestador + margen
   // configurable (ver LogisticaPromesaConfigModal) - requiere semana elegida.
@@ -200,6 +204,7 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
   const [showZonas, setShowZonas] = useState(false);
   const [showIaConfig, setShowIaConfig] = useState(false);
   const [mensajeViaje, setMensajeViaje] = useState(null); // { viajeId, titulo } | null
+  const [semanaModalAbierta, setSemanaModalAbierta] = useState(false); // abre LogisticaViajeSemanaModal (mismo popup que en Logística de Viajes)
 
   // Asignar "Fecha Salida" desde el mapa (modo 'sin_fecha_salida') - mismo
   // campo que /a, para varios NV a la vez elegidos por cercanía geográfica.
@@ -791,24 +796,6 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
         {canEdit ? <button className="btn" onClick={() => setShowPromesaConfig(true)}>📅 Config promesa</button> : null}
       </div>
 
-      {semanaFiltro && rutasPorViaje.length > 0 ? (
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 11, alignItems: 'center' }}>
-          <span style={{ fontWeight: 700, opacity: 0.75 }}>Viajes de esta semana:</span>
-          {rutasPorViaje.map(({ viajeId, viaje, color }) => (
-            <span key={viajeId} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ display: 'inline-block', width: 10, height: 3, background: color, verticalAlign: 2 }} />
-              {viaje.nombre?.trim() || `Viaje #${viajeId}`} ({viaje.vehiculo_nombre || 'sin vehículo'})
-              <button
-                className="btn" style={{ fontSize: 10, padding: '1px 6px' }}
-                onClick={() => setMensajeViaje({ viajeId, titulo: viaje.nombre?.trim() || `Viaje #${viajeId}` })}
-              >
-                📋 Mensaje
-              </button>
-            </span>
-          ))}
-        </div>
-      ) : null}
-
       {err ? <div style={{ color: 'crimson', fontWeight: 800, fontSize: 12 }}>{err}</div> : null}
 
       <div style={{ flex: '1 1 auto', minHeight: 0, display: 'flex', gap: 10 }}>
@@ -823,6 +810,36 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
             </div>
           ) : null}
         </div>
+
+        {semanaFiltro && rutasPorViaje.length > 0 ? (
+          <div style={{ width: 220, flex: '0 0 auto', display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto' }}>
+            <div style={{ fontWeight: 900, fontSize: 13 }}>Rutas de la semana</div>
+            {rutasPorViaje.map(({ viajeId, viaje, color, nvsEnOrden }) => (
+              <div
+                key={viajeId}
+                role="button" tabIndex={0}
+                onClick={() => setSemanaModalAbierta(true)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSemanaModalAbierta(true); }}
+                style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 8, cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 4 }}
+                title="Ver / editar este viaje"
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 999, background: color, flex: '0 0 auto' }} />
+                  <span style={{ fontWeight: 800, fontSize: 12 }}>{viaje.nombre?.trim() || `Viaje #${viajeId}`}</span>
+                </div>
+                <div style={{ fontSize: 11, opacity: 0.75 }}>
+                  {viaje.vehiculo_nombre || 'sin vehículo'} · {nvsEnOrden.length} parada{nvsEnOrden.length === 1 ? '' : 's'}
+                </div>
+                <button
+                  type="button" className="btn" style={{ fontSize: 10, padding: '1px 6px', alignSelf: 'flex-start' }}
+                  onClick={(e) => { e.stopPropagation(); setMensajeViaje({ viajeId, titulo: viaje.nombre?.trim() || `Viaje #${viajeId}` }); }}
+                >
+                  📋 Mensaje
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
 
         {canEdit && modoSemana === 'sin_fecha_salida' ? (
           <div style={{ width: 340, flex: '0 0 auto', display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto' }}>
@@ -1068,6 +1085,13 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
       <LogisticaIaConfigModal open={showIaConfig} onClose={() => setShowIaConfig(false)} />
       <LogisticaPromesaConfigModal open={showPromesaConfig} onClose={() => setShowPromesaConfig(false)} onChanged={load} />
       <LogisticaMensajeViajeModal open={!!mensajeViaje} viajeId={mensajeViaje?.viajeId} titulo={mensajeViaje?.titulo} onClose={() => setMensajeViaje(null)} />
+      <LogisticaViajeSemanaModal
+        semana={semanaFiltro}
+        open={semanaModalAbierta}
+        canEdit={canEdit}
+        onClose={() => setSemanaModalAbierta(false)}
+        onChanged={load}
+      />
     </div>
   );
 }
