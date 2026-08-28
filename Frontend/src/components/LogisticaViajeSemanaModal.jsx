@@ -376,6 +376,12 @@ function ViajeColumn({ viaje, items, canEdit, cerrada, onDropItem, onReorder, on
         )}
       </div>
 
+      {viaje.ruta_real ? (
+        <div style={{ fontSize: 11, opacity: 0.75 }}>
+          🚚 {viaje.ruta_real.distancia_km} km · ~{viaje.ruta_real.duracion_horas}h por calle
+        </div>
+      ) : null}
+
       <ZonaPills zonas={viaje.zonas} canEdit={canEdit} onToggle={(zonaId, habilitada) => onToggleZona(viaje.id, zonaId, habilitada)} />
 
       {puedeReordenar ? (
@@ -860,6 +866,7 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
                         nvs: uniqueNvs(items),
                         rutaOrden,
                         paradasExtra: items.filter((it) => it.punto_extra_id != null),
+                        rutaReal: viaje.ruta_real || null,
                         titulo: `Mapa · ${viaje.nombre?.trim() || `Viaje #${viaje.id}`}`,
                       });
                     }}
@@ -906,7 +913,7 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
       <LogisticaReglasCapacidadModal open={showReglas} config={config} onClose={() => setShowReglas(false)} onChanged={() => { reloadConfig(); reloadDetalle(); }} />
       <LogisticaReglasEnvioModal open={showReglasEnvio} config={config} onClose={() => setShowReglasEnvio(false)} onChanged={reloadConfig} />
       <LogisticaIaConfigModal open={showIaConfig} onClose={() => setShowIaConfig(false)} />
-      <PortonesMapaModal open={!!mapa} nvs={mapa?.nvs} rutaOrden={mapa?.rutaOrden} paradasExtra={mapa?.paradasExtra} titulo={mapa?.titulo} onClose={() => setMapa(null)} />
+      <PortonesMapaModal open={!!mapa} nvs={mapa?.nvs} rutaOrden={mapa?.rutaOrden} paradasExtra={mapa?.paradasExtra} rutaReal={mapa?.rutaReal} titulo={mapa?.titulo} onClose={() => setMapa(null)} />
       <LogisticaMensajeViajeModal open={!!mensajeViaje} viajeId={mensajeViaje?.viajeId} titulo={mensajeViaje?.titulo} onClose={() => setMensajeViaje(null)} />
     </div>
   );

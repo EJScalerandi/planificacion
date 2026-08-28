@@ -581,8 +581,14 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
         m.bindTooltip(`${viaje.nombre?.trim() || `Viaje #${viajeId}`} · ${etiqueta}`, { direction: 'top' });
         m.addTo(layer);
       });
-      if (puntos.length >= 2) {
-        L.polyline(puntos, { color, weight: 3, opacity: 0.75 }).addTo(layer);
+      // Ruta real por calle (OpenRouteService, perfil camión), si ya se
+      // calculó para este viaje - si no, cae a la línea recta de siempre
+      // entre las paradas (mismo criterio que el resto de la app).
+      const geometria = viaje.ruta_real?.geometria;
+      if (geometria?.length >= 2) {
+        L.polyline(geometria, { color, weight: 4, opacity: 0.8 }).addTo(layer);
+      } else if (puntos.length >= 2) {
+        L.polyline(puntos, { color, weight: 3, opacity: 0.75, dashArray: '2 6' }).addTo(layer);
       }
     }
   }, [rutasPorViaje, itemsByNv, config]);
@@ -869,6 +875,7 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
                 </div>
                 <div style={{ fontSize: 11, opacity: 0.75 }}>
                   {viaje.vehiculo_nombre || 'sin vehículo'} · {puntosRuta.length} parada{puntosRuta.length === 1 ? '' : 's'}
+                  {viaje.ruta_real ? ` · ${viaje.ruta_real.distancia_km} km · ${viaje.ruta_real.duracion_horas}h por calle` : ''}
                 </div>
                 {viaje.zonas?.length > 0 ? (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>

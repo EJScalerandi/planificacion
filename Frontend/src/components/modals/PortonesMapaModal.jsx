@@ -21,7 +21,7 @@ function escapeHtml(str) {
   }[c]));
 }
 
-export default function PortonesMapaModal({ open, onClose, nvs, titulo, rutaNvs, rutaOrden, paradasExtra }) {
+export default function PortonesMapaModal({ open, onClose, nvs, titulo, rutaNvs, rutaOrden, paradasExtra, rutaReal }) {
   const [puntos, setPuntos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
@@ -173,10 +173,14 @@ export default function PortonesMapaModal({ open, onClose, nvs, titulo, rutaNvs,
       });
       L.marker([p.lat, p.lng], { icon, interactive: false, zIndexOffset: 1000 }).addTo(layer);
     });
-    if (puntosRuta.length >= 2) {
+    // Ruta real por calle (OpenRouteService, perfil camión) si ya se
+    // calculó para este viaje - si no, cae a la línea recta entre paradas.
+    if (rutaReal?.geometria?.length >= 2) {
+      L.polyline(rutaReal.geometria, { color: '#dc2626', weight: 4, opacity: 0.85 }).addTo(layer);
+    } else if (puntosRuta.length >= 2) {
       L.polyline(puntosRuta, { color: '#dc2626', weight: 3, opacity: 0.8, dashArray: '8 6' }).addTo(layer);
     }
-  }, [ordenRuta, puntosPorNv, paradasExtraPorId]);
+  }, [ordenRuta, puntosPorNv, paradasExtraPorId, rutaReal]);
 
   const rutaSinUbicacionNvs = useMemo(() => {
     return ordenRuta
@@ -225,7 +229,9 @@ export default function PortonesMapaModal({ open, onClose, nvs, titulo, rutaNvs,
           <div ref={mapElRef} style={{ width: '100%', height: '100%' }} />
           {ordenRuta.length > 0 ? (
             <div style={{ position: 'absolute', bottom: 10, left: 10, zIndex: 1000, background: 'var(--surface)', border: '1px solid var(--border)', padding: '6px 10px', borderRadius: 8, fontSize: 11, boxShadow: '0 1px 4px rgba(0,0,0,.25)', maxWidth: 280 }}>
-              🔴 Línea = orden guardado del viaje (distancia en línea recta, no la ruta real por calle).
+              🔴 {rutaReal?.geometria?.length >= 2
+                ? `Ruta real por calle: ${rutaReal.distancia_km} km, ~${rutaReal.duracion_horas}h de viaje.`
+                : 'Línea = orden guardado del viaje (distancia en línea recta, no la ruta real por calle).'}
               {rutaSinUbicacionNvs.length > 0 ? (
                 <div style={{ marginTop: 4, color: '#92400e' }}>
                   NV {rutaSinUbicacionNvs.join(', ')} sin ubicación resuelta, no aparece{rutaSinUbicacionNvs.length === 1 ? '' : 'n'} en la línea.

@@ -17,10 +17,17 @@ const { buildMensajeViaje } = require('../../lib/logisticaMensajeViaje');
 const { resolveEtapasPorNv, resolveSemanaPrometidaPorNv, resolveSemanaRealPorNv } = require('../../lib/logisticaMapaExtras');
 const { listPortonesSinFechaSalida, asignarFechaSalida } = require('../../lib/logisticaSinFechaSalida');
 const { sincronizarZonasViaje, listZonasViaje, setZonaHabilitada } = require('../../lib/logisticaRutaZonas');
+const { sincronizarRutaReal } = require('../../lib/logisticaRuteo');
 const {
   listPuntosExtra, crearPuntoExtra, updatePuntoExtra, deletePuntoExtra,
   listParadasExtraViaje, asignarParadaExtra, desasignarParadaExtra,
 } = require('../../lib/logisticaParadasExtra');
+
+// Zonas del corredor + ruta real por calle comparten el mismo trigger
+// (cualquier cambio de paradas/orden de un viaje) - se disparan juntas.
+async function sincronizarRuta(viajeId) {
+  await Promise.all([sincronizarZonasViaje(viajeId), sincronizarRutaReal(viajeId)]);
+}
 
 // Zonas que cada viaje de la semana atraviesa (no solo la parada, todo el
 // corredor - ver logisticaRutaZonas.js) + paradas que no son un portón (ej.
@@ -283,13 +290,13 @@ router.delete('/logistica/viajes/:id', requireFullAccess, asyncRoute(async (req,
 
 router.post('/logistica/viajes/:id/portones', requireFullAccess, asyncRoute(async (req, res) => {
   const detalle = await db.asignarPorton(req.params.id, req.body || {});
-  await sincronizarZonasViaje(req.params.id);
+  await sincronizarRuta(req.params.id);
   res.json({ ok: true, detalle: await conDetallesViajes(detalle) });
 }));
 
 router.delete('/logistica/viajes/:id/portones/:porton_id', requireFullAccess, asyncRoute(async (req, res) => {
   const detalle = await db.desasignarPorton(req.params.id, req.params.porton_id, req.query?.tipo);
-  await sincronizarZonasViaje(req.params.id);
+  await sincronizarRuta(req.params.id);
   res.json({ ok: true, detalle: await conDetallesViajes(detalle) });
 }));
 
@@ -300,7 +307,7 @@ router.put('/logistica/viajes/:id/orden', requireFullAccess, asyncRoute(async (r
   // El orden cambia la forma del corredor (los tramos entre paradas
   // consecutivas son otros) - las zonas que atraviesa pueden cambiar aunque
   // las paradas sean las mismas.
-  await sincronizarZonasViaje(req.params.id);
+  await sincronizarRuta(req.params.id);
   res.json({ ok: true, detalle: await conDetallesViajes(detalle) });
 }));
 
@@ -326,13 +333,13 @@ router.delete('/logistica/puntos-extra/:id', requireFullAccess, asyncRoute(async
 // para la detección de zonas del corredor, y aparece en el mensaje.
 router.post('/logistica/viajes/:id/paradas-extra', requireFullAccess, asyncRoute(async (req, res) => {
   await asignarParadaExtra(req.params.id, req.body?.punto_extra_id);
-  await sincronizarZonasViaje(req.params.id);
+  await sincronizarRuta(req.params.id);
   const semana = await db.getViajeSemana(req.params.id);
   res.json({ ok: true, detalle: await conDetallesViajes(await db.getSemanaDetalle(semana)) });
 }));
 router.delete('/logistica/viajes/:id/paradas-extra/:punto_extra_id', requireFullAccess, asyncRoute(async (req, res) => {
   await desasignarParadaExtra(req.params.id, req.params.punto_extra_id);
-  await sincronizarZonasViaje(req.params.id);
+  await sincronizarRuta(req.params.id);
   const semana = await db.getViajeSemana(req.params.id);
   res.json({ ok: true, detalle: await conDetallesViajes(await db.getSemanaDetalle(semana)) });
 }));

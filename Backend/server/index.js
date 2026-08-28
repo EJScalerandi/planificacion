@@ -163,6 +163,20 @@ const MIGRATIONS = [
       );
     `,
   },
+  {
+    // Ruta REAL por calle (no línea recta) - pedido del usuario: "que la
+    // ruta respete las rutas reales, donde se mueve el camión". Se calcula
+    // con OpenRouteService (perfil driving-hgv, camión de carga - más
+    // realista que auto para portones) y se cachea acá: geometría +
+    // distancia/duración reales, recalculada solo cuando cambian las
+    // paradas/el orden de la ruta (mismo trigger que las zonas del
+    // corredor, ver server/lib/logisticaRuteo.js).
+    name: 'logistica_viajes_ruta_real',
+    sql: `
+      ALTER TABLE public.logistica_viajes
+        ADD COLUMN IF NOT EXISTS ruta_real JSONB;
+    `,
+  },
 ];
 
 async function runMigrations() {

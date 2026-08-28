@@ -607,6 +607,7 @@ async function getViajesForSemana(semana) {
       vi.zona_id, z.nombre as zona_nombre,
       vi.cuadrilla_id, c.nombre as cuadrilla_nombre,
       vi.vehiculo_id, veh.nombre as vehiculo_nombre, coalesce(veh.capacidad_portones, 0) as vehiculo_capacidad,
+      vi.ruta_real,
       vi.created_at, vi.updated_at
     from public.logistica_viajes vi
     left join public.logistica_zonas z on z.id = vi.zona_id

@@ -75,14 +75,13 @@ async function listZonasViaje(viajeId) {
 }
 
 /**
- * Recalcula el corredor de un viaje (depósito + sus paradas en orden real) y
- * sincroniza logistica_viaje_zonas: agrega las zonas nuevas (habilitada=true
- * por defecto), saca las que ya no aplican, y NO toca el habilitada de las
- * que siguen aplicando - así una zona que el usuario deshabilitó a mano no
- * se resetea sola con cada cambio de ruta (asignar/reordenar/sacar portón).
- * @returns {Promise<Array<{zona_id:number, zona_nombre:string, habilitada:boolean}>>}
+ * Depósito + paradas de un viaje (portones + paradas extra, ej. alojamiento)
+ * en el orden real de la ruta - punto de partida común para detectar zonas
+ * del corredor (acá abajo) y para calcular la ruta real por calle
+ * (logisticaRuteo.js), que necesita exactamente la misma secuencia.
+ * @returns {Promise<Array<{lat:number, lng:number}>>}
  */
-async function sincronizarZonasViaje(viajeId) {
+async function construirRutaViaje(viajeId) {
   const vId = Number(viajeId);
   const [{ rows: items }, { rows: paradasExtra }] = await Promise.all([
     pool.query(
@@ -124,7 +123,20 @@ async function sincronizarZonasViaje(viajeId) {
   }
   paradas.sort((a, b) => a.orden - b.orden);
 
-  const ruta = [{ lat: DEPOSITO.lat, lng: DEPOSITO.lng }, ...paradas.map((p) => ({ lat: p.lat, lng: p.lng }))];
+  return [{ lat: DEPOSITO.lat, lng: DEPOSITO.lng }, ...paradas.map((p) => ({ lat: p.lat, lng: p.lng }))];
+}
+
+/**
+ * Recalcula el corredor de un viaje (depósito + sus paradas en orden real) y
+ * sincroniza logistica_viaje_zonas: agrega las zonas nuevas (habilitada=true
+ * por defecto), saca las que ya no aplican, y NO toca el habilitada de las
+ * que siguen aplicando - así una zona que el usuario deshabilitó a mano no
+ * se resetea sola con cada cambio de ruta (asignar/reordenar/sacar portón).
+ * @returns {Promise<Array<{zona_id:number, zona_nombre:string, habilitada:boolean}>>}
+ */
+async function sincronizarZonasViaje(viajeId) {
+  const vId = Number(viajeId);
+  const ruta = await construirRutaViaje(vId);
 
   // Sin ninguna parada con ubicación resuelta, no hay corredor que detectar
   // (el depósito solo no atraviesa nada) - se limpia lo que hubiera.
@@ -157,4 +169,4 @@ async function setZonaHabilitada(viajeId, zonaId, habilitada) {
   return listZonasViaje(viajeId);
 }
 
-module.exports = { detectarZonasDeRuta, sincronizarZonasViaje, listZonasViaje, setZonaHabilitada };
+module.exports = { detectarZonasDeRuta, construirRutaViaje, sincronizarZonasViaje, listZonasViaje, setZonaHabilitada };
