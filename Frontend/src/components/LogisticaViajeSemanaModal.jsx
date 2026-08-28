@@ -730,7 +730,12 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
   return (
     <div
       style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 60,
+        // 9999 (no un valor bajo cualquiera): Leaflet pone sus controles
+        // propios (zoom, etc.) en z-index 1000 - un modal con z-index menor
+        // a eso queda atrás del mapa de fondo cuando la página que lo abre
+        // tiene uno (ej. Planificación de Fechas). Mismo valor que usa el
+        // resto de los modales de la app.
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 9999,
         display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12,
       }}
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}

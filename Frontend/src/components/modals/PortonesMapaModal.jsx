@@ -189,7 +189,11 @@ export default function PortonesMapaModal({ open, onClose, nvs, titulo, rutaNvs,
 
   return (
     <div
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+      // 10000, no un valor bajo cualquiera: Leaflet pone sus controles
+      // propios en z-index 1000, y este modal a veces se abre DESDE OTRO
+      // modal (LogisticaViajeSemanaModal, z-index 9999) - tiene que quedar
+      // por encima de ambos.
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
     >
       <div style={{ width: 'min(1000px, 100%)', height: 'min(760px, 92vh)', background: 'var(--surface)', borderRadius: 14, border: '1px solid var(--border)', boxShadow: '0 12px 32px rgba(0,0,0,0.25)', padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
