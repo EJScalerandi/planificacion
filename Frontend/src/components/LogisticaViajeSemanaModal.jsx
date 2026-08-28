@@ -40,6 +40,44 @@ function uniqueNvs(items) {
   return Array.from(new Set((items || []).map((it) => Number(it.nv)).filter(Number.isInteger)));
 }
 
+// Horario estimado de llegada a cada tramo, acumulando desde hora_salida -
+// segmentosHoras viene de ruta_real (uno por tramo real entre paradas
+// consecutivas, calculado con OpenRouteService). +Nd si el acumulado cruza
+// medianoche (viajes largos, ej. 27hs totales, son reales en esta app).
+function calcularHorariosLlegada(horaSalida, segmentosHoras) {
+  if (!horaSalida || !segmentosHoras?.length) return [];
+  const [h, m] = horaSalida.split(':').map(Number);
+  let minutosAcumulados = h * 60 + m;
+  return segmentosHoras.map((horas) => {
+    minutosAcumulados += horas * 60;
+    const totalMin = Math.round(minutosAcumulados);
+    const dias = Math.floor(totalMin / 1440);
+    const minDia = totalMin % 1440;
+    const hora = `${String(Math.floor(minDia / 60)).padStart(2, '0')}:${String(minDia % 60).padStart(2, '0')}`;
+    return dias > 0 ? `${hora} (+${dias}d)` : hora;
+  });
+}
+
+// Une el horario calculado por tramo con la parada real que le corresponde -
+// dedupeando por NV (despacho+instalación del mismo NV = mismo domicilio,
+// mismo horario de llegada) igual que construirRutaViaje en el backend, así
+// coinciden en orden con segmentosHoras.
+function horariosPorParada(items, horaSalida, segmentosHoras) {
+  const horarios = calcularHorariosLlegada(horaSalida, segmentosHoras);
+  const map = new Map();
+  if (!horarios.length) return map;
+  const vistos = new Set();
+  let i = 0;
+  for (const it of items || []) {
+    const key = it.punto_extra_id != null ? `extra-${it.punto_extra_id}` : `nv-${it.nv}`;
+    if (vistos.has(key)) continue;
+    vistos.add(key);
+    if (horarios[i] != null) map.set(key, horarios[i]);
+    i += 1;
+  }
+  return map;
+}
+
 const DND_MIME = 'application/x-logistica-porton';
 
 function medidasLabel(item) {
@@ -98,7 +136,7 @@ function ZonaPills({ zonas, canEdit, onToggle }) {
   );
 }
 
-function PortonChip({ item, draggable, onDragStart, onDragEnd, ordenNum }) {
+function PortonChip({ item, draggable, onDragStart, onDragEnd, ordenNum, horaLlegada }) {
   return (
     <div
       draggable={draggable}
@@ -134,6 +172,9 @@ function PortonChip({ item, draggable, onDragStart, onDragEnd, ordenNum }) {
         {medidasLabel(item) ? <span>{medidasLabel(item)}</span> : null}
         {item.peso > 1 ? <span style={{ fontWeight: 800 }}>pesa {item.peso}</span> : null}
       </div>
+      {horaLlegada ? (
+        <div style={{ fontSize: 11, fontWeight: 800, color: '#0a6a33' }}>🕒 Llegada estimada: {horaLlegada}</div>
+      ) : null}
     </div>
   );
 }
@@ -143,7 +184,7 @@ function PortonChip({ item, draggable, onDragStart, onDragEnd, ordenNum }) {
 // distinguirla de un vistazo. Se reordena con flechas en vez de arrastre
 // (más simple que sumarla al mecanismo de drag&drop existente) pero entra
 // en la MISMA secuencia de `orden` que los portones - ver reordenarViaje.
-function ParadaExtraChip({ item, ordenNum, canEdit, onSubir, onBajar, onQuitar, esPrimera, esUltima }) {
+function ParadaExtraChip({ item, ordenNum, canEdit, onSubir, onBajar, onQuitar, esPrimera, esUltima, horaLlegada }) {
   return (
     <div
       style={{
@@ -171,6 +212,9 @@ function ParadaExtraChip({ item, ordenNum, canEdit, onSubir, onBajar, onQuitar, 
       </div>
       {item.maps_url ? (
         <a href={item.maps_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#b45309' }}>Ver ubicación →</a>
+      ) : null}
+      {horaLlegada ? (
+        <div style={{ fontSize: 11, fontWeight: 800, color: '#0a6a33' }}>🕒 Llegada estimada: {horaLlegada}</div>
       ) : null}
     </div>
   );
@@ -233,6 +277,7 @@ function NuevoViajeForm({ semana, config, onCreate, onCancel, busy, initial, sub
   const [cuadrillaId, setCuadrillaId] = useState(() => (initial?.cuadrilla_id != null ? String(initial.cuadrilla_id) : ''));
   const [vehiculoId, setVehiculoId] = useState(() => (initial?.vehiculo_id != null ? String(initial.vehiculo_id) : ''));
   const [nombre, setNombre] = useState(() => initial?.nombre || '');
+  const [horaSalida, setHoraSalida] = useState(() => initial?.hora_salida || '');
 
   const zonasActivas = (config?.zonas || []).filter((z) => z.activo !== false);
   const cuadrillasActivas = (config?.cuadrillas || []).filter((c) => c.activo !== false);
@@ -274,6 +319,10 @@ function NuevoViajeForm({ semana, config, onCreate, onCancel, busy, initial, sub
         Nombre (opcional)
         <input className="pp-input" value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej: Viaje 1" />
       </label>
+      <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
+        Hora de salida (opcional)
+        <input type="time" className="pp-input" value={horaSalida} onChange={(e) => setHoraSalida(e.target.value)} />
+      </label>
 
       <div style={{ display: 'flex', gap: 8 }}>
         <button
@@ -287,6 +336,7 @@ function NuevoViajeForm({ semana, config, onCreate, onCancel, busy, initial, sub
               cuadrilla_id: cuadrillaId ? Number(cuadrillaId) : null,
               vehiculo_id: vehiculoId ? Number(vehiculoId) : null,
               nombre: nombre.trim() || null,
+              hora_salida: horaSalida || null,
             })
           }
         >
@@ -304,6 +354,7 @@ function ViajeColumn({ viaje, items, canEdit, cerrada, onDropItem, onReorder, on
   const capacidad = Number(viaje.vehiculo_capacidad || 0);
   const usado = Number(viaje.peso_despacho_usado || 0);
   const puedeReordenar = canEdit && !cerrada && items.length > 1;
+  const horarios = horariosPorParada(items, viaje.hora_salida, viaje.ruta_real?.segmentos_horas);
 
   return (
     <div
@@ -329,7 +380,10 @@ function ViajeColumn({ viaje, items, canEdit, cerrada, onDropItem, onReorder, on
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 6 }}>
         <div>
           <div style={{ fontWeight: 900, fontSize: 13 }}>{viaje.nombre?.trim() || `Viaje #${viaje.id}`}</div>
-          <div style={{ fontSize: 11, opacity: 0.75 }}>{String(viaje.fecha).slice(0, 10).split('-').reverse().join('/')}</div>
+          <div style={{ fontSize: 11, opacity: 0.75 }}>
+            {String(viaje.fecha).slice(0, 10).split('-').reverse().join('/')}
+            {viaje.hora_salida ? ` · sale ${viaje.hora_salida}` : ''}
+          </div>
           <button
             type="button"
             className="btn"
@@ -434,6 +488,7 @@ function ViajeColumn({ viaje, items, canEdit, cerrada, onDropItem, onReorder, on
                   onSubir={() => onMoverParada(viaje.id, it.punto_extra_id, -1)}
                   onBajar={() => onMoverParada(viaje.id, it.punto_extra_id, 1)}
                   onQuitar={() => onQuitarParada(viaje.id, it.punto_extra_id)}
+                  horaLlegada={horarios.get(`extra-${it.punto_extra_id}`)}
                 />
               ) : (
                 <PortonChip
@@ -442,6 +497,7 @@ function ViajeColumn({ viaje, items, canEdit, cerrada, onDropItem, onReorder, on
                   onDragStart={(e) => onDragStartChip(e, it)}
                   onDragEnd={onDragEndChip}
                   ordenNum={items.length > 1 ? idx + 1 : null}
+                  horaLlegada={horarios.get(`nv-${it.nv}`)}
                 />
               )}
             </div>
@@ -891,6 +947,7 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
                         rutaOrden,
                         paradasExtra: items.filter((it) => it.punto_extra_id != null),
                         rutaReal: viaje.ruta_real || null,
+                        horaSalida: viaje.hora_salida || null,
                         titulo: `Mapa · ${viaje.nombre?.trim() || `Viaje #${viaje.id}`}`,
                       });
                     }}
@@ -939,7 +996,7 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
       <LogisticaReglasCapacidadModal open={showReglas} config={config} onClose={() => setShowReglas(false)} onChanged={() => { reloadConfig(); reloadDetalle(); }} />
       <LogisticaReglasEnvioModal open={showReglasEnvio} config={config} onClose={() => setShowReglasEnvio(false)} onChanged={reloadConfig} />
       <LogisticaIaConfigModal open={showIaConfig} onClose={() => setShowIaConfig(false)} />
-      <PortonesMapaModal open={!!mapa} nvs={mapa?.nvs} rutaOrden={mapa?.rutaOrden} paradasExtra={mapa?.paradasExtra} rutaReal={mapa?.rutaReal} titulo={mapa?.titulo} onClose={() => setMapa(null)} />
+      <PortonesMapaModal open={!!mapa} nvs={mapa?.nvs} rutaOrden={mapa?.rutaOrden} paradasExtra={mapa?.paradasExtra} rutaReal={mapa?.rutaReal} horaSalida={mapa?.horaSalida} titulo={mapa?.titulo} onClose={() => setMapa(null)} />
       <LogisticaMensajeViajeModal open={!!mensajeViaje} viajeId={mensajeViaje?.viajeId} titulo={mensajeViaje?.titulo} onClose={() => setMensajeViaje(null)} />
     </div>
   );

@@ -21,7 +21,24 @@ function escapeHtml(str) {
   }[c]));
 }
 
-export default function PortonesMapaModal({ open, onClose, nvs, titulo, rutaNvs, rutaOrden, paradasExtra, rutaReal }) {
+// Horario estimado de llegada a cada tramo, acumulando desde horaSalida -
+// segmentosHoras viene de ruta_real (uno por tramo real entre paradas
+// consecutivas, OpenRouteService). +Nd si el acumulado cruza medianoche.
+function calcularHorariosLlegada(horaSalida, segmentosHoras) {
+  if (!horaSalida || !segmentosHoras?.length) return [];
+  const [h, m] = horaSalida.split(':').map(Number);
+  let minutosAcumulados = h * 60 + m;
+  return segmentosHoras.map((horas) => {
+    minutosAcumulados += horas * 60;
+    const totalMin = Math.round(minutosAcumulados);
+    const dias = Math.floor(totalMin / 1440);
+    const minDia = totalMin % 1440;
+    const hora = `${String(Math.floor(minDia / 60)).padStart(2, '0')}:${String(minDia % 60).padStart(2, '0')}`;
+    return dias > 0 ? `${hora} (+${dias}d)` : hora;
+  });
+}
+
+export default function PortonesMapaModal({ open, onClose, nvs, titulo, rutaNvs, rutaOrden, paradasExtra, rutaReal, horaSalida }) {
   const [puntos, setPuntos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
@@ -157,6 +174,11 @@ export default function PortonesMapaModal({ open, onClose, nvs, titulo, rutaNvs,
     layer.clearLayers();
     if (!ordenRuta.length) return;
 
+    // Solo tiene sentido si ruta_real ya se calculó: segmentos_horas viene
+    // de ahí (un tramo real por OpenRouteService), y ordenRuta ya está
+    // dedupeado por NV (armado así en el llamador) - mismo orden.
+    const horarios = calcularHorariosLlegada(horaSalida, rutaReal?.segmentos_horas);
+
     const puntosRuta = [];
     let numParada = 0;
     ordenRuta.forEach((w) => {
@@ -164,6 +186,7 @@ export default function PortonesMapaModal({ open, onClose, nvs, titulo, rutaNvs,
       const p = esExtra ? paradasExtraPorId.get(w.punto_extra_id) : puntosPorNv.get(w.nv);
       if (!p || p.lat == null || p.lng == null) return;
       puntosRuta.push([p.lat, p.lng]);
+      const horaLlegada = horarios[numParada];
       numParada += 1;
       const icon = L.divIcon({
         className: '',
@@ -171,7 +194,11 @@ export default function PortonesMapaModal({ open, onClose, nvs, titulo, rutaNvs,
         iconSize: [20, 20],
         iconAnchor: [10, 10],
       });
-      L.marker([p.lat, p.lng], { icon, interactive: false, zIndexOffset: 1000 }).addTo(layer);
+      const marker = L.marker([p.lat, p.lng], { icon, zIndexOffset: 1000 });
+      if (horaLlegada) {
+        marker.bindTooltip(`🕒 Llegada estimada: ${horaLlegada}`, { direction: 'top', permanent: false });
+      }
+      marker.addTo(layer);
     });
     // Ruta real por calle (OpenRouteService, perfil camión) si ya se
     // calculó para este viaje - si no, cae a la línea recta entre paradas.
@@ -180,7 +207,7 @@ export default function PortonesMapaModal({ open, onClose, nvs, titulo, rutaNvs,
     } else if (puntosRuta.length >= 2) {
       L.polyline(puntosRuta, { color: '#dc2626', weight: 3, opacity: 0.8, dashArray: '8 6' }).addTo(layer);
     }
-  }, [ordenRuta, puntosPorNv, paradasExtraPorId, rutaReal]);
+  }, [ordenRuta, puntosPorNv, paradasExtraPorId, rutaReal, horaSalida]);
 
   const rutaSinUbicacionNvs = useMemo(() => {
     return ordenRuta

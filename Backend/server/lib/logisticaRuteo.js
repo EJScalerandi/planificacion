@@ -24,8 +24,12 @@ const ORS_URL = 'https://api.openrouteservice.org/v2/directions/driving-hgv/geoj
 
 /**
  * @param {Array<{lat:number, lng:number}>} puntosEnOrden - depósito primero, después cada parada en orden de ruta
- * @returns {Promise<{ geometria: Array<[number,number]>, distancia_km:number, duracion_horas:number } | null>}
+ * @returns {Promise<{ geometria: Array<[number,number]>, distancia_km:number, duracion_horas:number, segmentos_horas:number[] } | null>}
  *   geometria en [lat,lng] (formato Leaflet) - ORS devuelve [lng,lat], se invierte acá.
+ *   segmentos_horas: duración de cada TRAMO entre paradas consecutivas (ej.
+ *   depósito->parada1, parada1->parada2, ...) - uno menos que puntosEnOrden.
+ *   Para el horario estimado de llegada a cada parada (hora_salida + suma
+ *   acumulada de segmentos_horas hasta ahí).
  */
 async function calcularRutaReal(puntosEnOrden) {
   if (!ORS_API_KEY) return null;
@@ -52,10 +56,14 @@ async function calcularRutaReal(puntosEnOrden) {
     if (!feature) return null;
     const geometria = (feature.geometry?.coordinates || []).map(([lng, lat]) => [lat, lng]);
     const summary = feature.properties?.summary;
+    const segmentos_horas = (feature.properties?.segments || []).map(
+      (s) => Math.round((s.duration / 3600) * 100) / 100
+    );
     return {
       geometria,
       distancia_km: summary?.distance != null ? Math.round((summary.distance / 1000) * 10) / 10 : null,
       duracion_horas: summary?.duration != null ? Math.round((summary.duration / 3600) * 100) / 100 : null,
+      segmentos_horas,
     };
   } catch (e) {
     // No romper el flujo del viaje por un problema de la API externa (rate

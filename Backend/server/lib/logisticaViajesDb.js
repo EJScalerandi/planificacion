@@ -607,7 +607,7 @@ async function getViajesForSemana(semana) {
       vi.zona_id, z.nombre as zona_nombre,
       vi.cuadrilla_id, c.nombre as cuadrilla_nombre,
       vi.vehiculo_id, veh.nombre as vehiculo_nombre, coalesce(veh.capacidad_portones, 0) as vehiculo_capacidad,
-      vi.ruta_real,
+      vi.ruta_real, to_char(vi.hora_salida, 'HH24:MI') as hora_salida,
       vi.created_at, vi.updated_at
     from public.logistica_viajes vi
     left join public.logistica_zonas z on z.id = vi.zona_id
@@ -685,7 +685,15 @@ async function getSemanaDetalle(semana) {
   return { semana, cerrada, counts, items: itemsOut, viajes: viajesOut };
 }
 
-async function crearViaje(semana, { fecha, zona_id, cuadrilla_id, vehiculo_id, nombre, orden }) {
+// Acepta HH:MM o HH:MM:SS (lo que ya entiende <input type="time">).
+function normalizaHoraSalida(horaSalida) {
+  if (horaSalida == null || horaSalida === '') return null;
+  const s = String(horaSalida).trim();
+  if (!/^\d{2}:\d{2}(:\d{2})?$/.test(s)) throw new Error('hora_salida debe tener formato HH:MM');
+  return s;
+}
+
+async function crearViaje(semana, { fecha, zona_id, cuadrilla_id, vehiculo_id, nombre, orden, hora_salida }) {
   await assertSemanaAbierta(semana);
   const fechaStr = String(fecha || '').trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaStr)) throw new Error('fecha inválida');
@@ -696,9 +704,9 @@ async function crearViaje(semana, { fecha, zona_id, cuadrilla_id, vehiculo_id, n
   }
 
   await pool.query(
-    `insert into public.logistica_viajes (semana, fecha, zona_id, cuadrilla_id, vehiculo_id, nombre, orden)
-     values ($1, $2, $3, $4, $5, $6, coalesce($7, 0));`,
-    [semana, fechaStr, zona_id || null, cuadrilla_id || null, vehiculo_id || null, nombre || null, orden ?? null]
+    `insert into public.logistica_viajes (semana, fecha, zona_id, cuadrilla_id, vehiculo_id, nombre, orden, hora_salida)
+     values ($1, $2, $3, $4, $5, $6, coalesce($7, 0), $8);`,
+    [semana, fechaStr, zona_id || null, cuadrilla_id || null, vehiculo_id || null, nombre || null, orden ?? null, normalizaHoraSalida(hora_salida)]
   );
 
   return getSemanaDetalle(semana);
@@ -710,7 +718,7 @@ async function getViajeSemana(viajeId) {
   return rows[0].semana;
 }
 
-async function patchViaje(id, { fecha, zona_id, cuadrilla_id, vehiculo_id, nombre, orden }) {
+async function patchViaje(id, { fecha, zona_id, cuadrilla_id, vehiculo_id, nombre, orden, hora_salida }) {
   const viajeId = Number(id);
   const semana = await getViajeSemana(viajeId);
   await assertSemanaAbierta(semana);
@@ -731,6 +739,7 @@ async function patchViaje(id, { fecha, zona_id, cuadrilla_id, vehiculo_id, nombr
   if (vehiculo_id !== undefined) { params.push(vehiculo_id || null); sets.push(`vehiculo_id = $${params.length}`); }
   if (nombre !== undefined) { params.push(nombre || null); sets.push(`nombre = $${params.length}`); }
   if (orden !== undefined) { params.push(orden); sets.push(`orden = $${params.length}`); }
+  if (hora_salida !== undefined) { params.push(normalizaHoraSalida(hora_salida)); sets.push(`hora_salida = $${params.length}`); }
 
   if (sets.length) {
     sets.push('updated_at = now()');

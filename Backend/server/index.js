@@ -177,6 +177,18 @@ const MIGRATIONS = [
         ADD COLUMN IF NOT EXISTS ruta_real JSONB;
     `,
   },
+  {
+    // Hora de salida del viaje (ademas de la fecha) - pedido del usuario:
+    // con esto + los tiempos reales por tramo que ya devuelve OpenRouteService
+    // (ruta_real ahora tambien guarda segmentos_horas, uno por tramo entre
+    // paradas consecutivas) se calcula el horario estimado de llegada a
+    // cada parada.
+    name: 'logistica_viajes_hora_salida',
+    sql: `
+      ALTER TABLE public.logistica_viajes
+        ADD COLUMN IF NOT EXISTS hora_salida TIME;
+    `,
+  },
 ];
 
 async function runMigrations() {
