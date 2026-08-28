@@ -21,7 +21,7 @@ function escapeHtml(str) {
   }[c]));
 }
 
-export default function PortonesMapaModal({ open, onClose, nvs, titulo, rutaNvs }) {
+export default function PortonesMapaModal({ open, onClose, nvs, titulo, rutaNvs, rutaOrden, paradasExtra }) {
   const [puntos, setPuntos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
@@ -47,6 +47,11 @@ export default function PortonesMapaModal({ open, onClose, nvs, titulo, rutaNvs 
 
   const conUbicacion = useMemo(() => puntos.filter((p) => p.lat != null && p.lng != null), [puntos]);
   const sinUbicacion = useMemo(() => puntos.filter((p) => p.lat == null || p.lng == null), [puntos]);
+
+  // Paradas que no son un portón (ej. alojamiento) - ya vienen con lat/lng
+  // resueltos desde el padre (logistica_puntos_extra), no hace falta pedirlas.
+  const paradasExtraConUbicacion = useMemo(() => (paradasExtra || []).filter((p) => p.lat != null && p.lng != null), [paradasExtra]);
+  const paradasExtraPorId = useMemo(() => new Map((paradasExtra || []).map((p) => [p.punto_extra_id, p])), [paradasExtra]);
 
   // Init del mapa: una vez por apertura (el contenedor se desmonta al cerrar).
   useEffect(() => {
@@ -105,31 +110,64 @@ export default function PortonesMapaModal({ open, onClose, nvs, titulo, rutaNvs 
       marker.addTo(layer);
     });
 
-    if (conUbicacion.length > 0) {
-      const bounds = L.latLngBounds(conUbicacion.map((p) => [p.lat, p.lng]));
-      map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
-    }
-  }, [conUbicacion]);
+    // Paradas que no son un portón (ej. alojamiento) - mismo trato que un
+    // portón en el mapa, con su propio color (ámbar) para distinguirlas.
+    paradasExtraConUbicacion.forEach((p) => {
+      const marker = L.circleMarker([p.lat, p.lng], {
+        radius: 9,
+        color: '#fff',
+        weight: 2,
+        fillColor: '#f59e0b',
+        fillOpacity: 0.9,
+      });
 
-  // Ruta guardada del viaje (rutaNvs = NV únicos en el orden real de la
-  // columna): línea recta que los une + numerito por parada. No es la ruta
-  // real por calle, mismo criterio que "Generar viaje con IA".
+      const popupEl = document.createElement('div');
+      popupEl.style.minWidth = '200px';
+      popupEl.innerHTML = `<div style="font-weight:700;margin-bottom:4px;color:#333;">🏨 ${escapeHtml(p.nombre)}</div>`;
+      if (p.maps_url) {
+        const link = document.createElement('a');
+        link.href = p.maps_url;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.textContent = 'Abrir en Google Maps →';
+        link.style.cssText = 'display:block;margin-top:4px;font-size:12px;font-weight:700;color:#b45309;';
+        popupEl.appendChild(link);
+      }
+      marker.bindPopup(popupEl);
+      marker.addTo(layer);
+    });
+
+    const todosLosPuntos = [...conUbicacion.map((p) => [p.lat, p.lng]), ...paradasExtraConUbicacion.map((p) => [p.lat, p.lng])];
+    if (todosLosPuntos.length > 0) {
+      map.fitBounds(L.latLngBounds(todosLosPuntos), { padding: [40, 40], maxZoom: 14 });
+    }
+  }, [conUbicacion, paradasExtraConUbicacion]);
+
+  // Ruta guardada del viaje: línea recta que une las paradas en su orden
+  // real + numerito (🏨 para una parada que no es un portón). No es la ruta
+  // real por calle, mismo criterio que "Generar viaje con IA". rutaOrden
+  // (mixto, [{nv}|{punto_extra_id}]) es el formato nuevo; si no viene, cae a
+  // rutaNvs (solo NV, formato viejo) por compatibilidad.
   const puntosPorNv = useMemo(() => new Map(puntos.map((p) => [p.nv, p])), [puntos]);
+  const ordenRuta = useMemo(() => rutaOrden || (rutaNvs || []).map((nv) => ({ nv })), [rutaOrden, rutaNvs]);
   useEffect(() => {
     const layer = rutaLayerRef.current;
     const map = mapRef.current;
     if (!layer || !map) return;
     layer.clearLayers();
-    if (!rutaNvs || rutaNvs.length === 0) return;
+    if (!ordenRuta.length) return;
 
     const puntosRuta = [];
-    rutaNvs.forEach((nv, i) => {
-      const p = puntosPorNv.get(nv);
+    let numParada = 0;
+    ordenRuta.forEach((w) => {
+      const esExtra = w.punto_extra_id != null;
+      const p = esExtra ? paradasExtraPorId.get(w.punto_extra_id) : puntosPorNv.get(w.nv);
       if (!p || p.lat == null || p.lng == null) return;
       puntosRuta.push([p.lat, p.lng]);
+      numParada += 1;
       const icon = L.divIcon({
         className: '',
-        html: `<div style="background:#dc2626;color:#fff;border-radius:999px;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4)">${i + 1}</div>`,
+        html: `<div style="background:${esExtra ? '#f59e0b' : '#dc2626'};color:#fff;border-radius:999px;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4)">${esExtra ? '🏨' : numParada}</div>`,
         iconSize: [20, 20],
         iconAnchor: [10, 10],
       });
@@ -138,12 +176,14 @@ export default function PortonesMapaModal({ open, onClose, nvs, titulo, rutaNvs 
     if (puntosRuta.length >= 2) {
       L.polyline(puntosRuta, { color: '#dc2626', weight: 3, opacity: 0.8, dashArray: '8 6' }).addTo(layer);
     }
-  }, [rutaNvs, puntosPorNv]);
+  }, [ordenRuta, puntosPorNv, paradasExtraPorId]);
 
   const rutaSinUbicacionNvs = useMemo(() => {
-    if (!rutaNvs) return [];
-    return rutaNvs.filter((nv) => { const p = puntosPorNv.get(nv); return !p || p.lat == null || p.lng == null; });
-  }, [rutaNvs, puntosPorNv]);
+    return ordenRuta
+      .filter((w) => w.punto_extra_id == null)
+      .map((w) => w.nv)
+      .filter((nv) => { const p = puntosPorNv.get(nv); return !p || p.lat == null || p.lng == null; });
+  }, [ordenRuta, puntosPorNv]);
 
   if (!open) return null;
 
@@ -157,7 +197,7 @@ export default function PortonesMapaModal({ open, onClose, nvs, titulo, rutaNvs 
           <div>
             <div style={{ fontWeight: 900, fontSize: 15 }}>{titulo || 'Mapa'}</div>
             <div style={{ fontSize: 12, opacity: 0.7 }}>
-              {loading ? 'Resolviendo ubicaciones…' : `${conUbicacion.length} de ${puntos.length} portones con ubicación`}
+              {loading ? 'Resolviendo ubicaciones…' : `${conUbicacion.length} de ${puntos.length} portones con ubicación${paradasExtra?.length ? ` · ${paradasExtraConUbicacion.length} de ${paradasExtra.length} paradas 🏨` : ''}`}
             </div>
           </div>
           <button className="btn" style={{ marginLeft: 'auto' }} onClick={onClose}>Cerrar</button>
@@ -179,7 +219,7 @@ export default function PortonesMapaModal({ open, onClose, nvs, titulo, rutaNvs 
 
         <div style={{ flex: '1 1 auto', minHeight: 0, borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)', position: 'relative' }}>
           <div ref={mapElRef} style={{ width: '100%', height: '100%' }} />
-          {rutaNvs?.length > 0 ? (
+          {ordenRuta.length > 0 ? (
             <div style={{ position: 'absolute', bottom: 10, left: 10, zIndex: 1000, background: 'var(--surface)', border: '1px solid var(--border)', padding: '6px 10px', borderRadius: 8, fontSize: 11, boxShadow: '0 1px 4px rgba(0,0,0,.25)', maxWidth: 280 }}>
               🔴 Línea = orden guardado del viaje (distancia en línea recta, no la ruta real por calle).
               {rutaSinUbicacionNvs.length > 0 ? (
@@ -189,7 +229,7 @@ export default function PortonesMapaModal({ open, onClose, nvs, titulo, rutaNvs 
               ) : null}
             </div>
           ) : null}
-          {!loading && conUbicacion.length === 0 ? (
+          {!loading && conUbicacion.length === 0 && paradasExtraConUbicacion.length === 0 ? (
             <div
               style={{
                 position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',

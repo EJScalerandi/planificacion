@@ -39,21 +39,6 @@ function uniqueNvs(items) {
   return Array.from(new Set((items || []).map((it) => Number(it.nv)).filter(Number.isInteger)));
 }
 
-// Igual que uniqueNvs pero preservando el orden real del viaje (items ya
-// viene ordenado por `orden` - ver itemsPorViaje) - primera aparición de
-// cada NV = cuándo se lo visita en la ruta.
-function orderedUniqueNvs(items) {
-  const seen = new Set();
-  const out = [];
-  for (const it of items || []) {
-    const nv = Number(it.nv);
-    if (!Number.isInteger(nv) || seen.has(nv)) continue;
-    seen.add(nv);
-    out.push(nv);
-  }
-  return out;
-}
-
 const DND_MIME = 'application/x-logistica-porton';
 
 function medidasLabel(item) {
@@ -854,7 +839,25 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
                     onBorrar={borrarViaje}
                     onDragStartChip={onDragStartChip}
                     onDragEndChip={onDragEndChip}
-                    onVerMapa={(viaje, items) => setMapa({ nvs: uniqueNvs(items), rutaNvs: orderedUniqueNvs(items), titulo: `Mapa · ${viaje.nombre?.trim() || `Viaje #${viaje.id}`}` })}
+                    onVerMapa={(viaje, items) => {
+                      // items ya viene mezclado (portones + paradas extra) y
+                      // ordenado por `orden` real de la ruta (itemsPorViaje) -
+                      // se arma la secuencia mixta [{nv}|{punto_extra_id}]
+                      // deduplicando NV (despacho+instalación = mismo punto).
+                      const vistos = new Set();
+                      const rutaOrden = items.filter((it) => {
+                        if (it.punto_extra_id != null) return true;
+                        if (vistos.has(it.nv)) return false;
+                        vistos.add(it.nv);
+                        return true;
+                      }).map((it) => (it.punto_extra_id != null ? { punto_extra_id: it.punto_extra_id } : { nv: it.nv }));
+                      setMapa({
+                        nvs: uniqueNvs(items),
+                        rutaOrden,
+                        paradasExtra: items.filter((it) => it.punto_extra_id != null),
+                        titulo: `Mapa · ${viaje.nombre?.trim() || `Viaje #${viaje.id}`}`,
+                      });
+                    }}
                     onMensaje={(viaje) => setMensajeViaje({ viajeId: viaje.id, titulo: viaje.nombre?.trim() || `Viaje #${viaje.id}` })}
                     onToggleZona={onToggleZona}
                     puntosExtra={puntosExtra}
@@ -898,7 +901,7 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
       <LogisticaReglasCapacidadModal open={showReglas} config={config} onClose={() => setShowReglas(false)} onChanged={() => { reloadConfig(); reloadDetalle(); }} />
       <LogisticaReglasEnvioModal open={showReglasEnvio} config={config} onClose={() => setShowReglasEnvio(false)} onChanged={reloadConfig} />
       <LogisticaIaConfigModal open={showIaConfig} onClose={() => setShowIaConfig(false)} />
-      <PortonesMapaModal open={!!mapa} nvs={mapa?.nvs} rutaNvs={mapa?.rutaNvs} titulo={mapa?.titulo} onClose={() => setMapa(null)} />
+      <PortonesMapaModal open={!!mapa} nvs={mapa?.nvs} rutaOrden={mapa?.rutaOrden} paradasExtra={mapa?.paradasExtra} titulo={mapa?.titulo} onClose={() => setMapa(null)} />
       <LogisticaMensajeViajeModal open={!!mensajeViaje} viajeId={mensajeViaje?.viajeId} titulo={mensajeViaje?.titulo} onClose={() => setMensajeViaje(null)} />
     </div>
   );
