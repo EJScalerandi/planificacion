@@ -419,8 +419,12 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
     </svg>`;
     const icon = L.divIcon({
       className: '',
-      html: `<div style="display:flex;align-items:center;gap:6px;background:#1e293b;color:#fff;border-radius:8px;padding:5px 10px;font-size:13px;font-weight:900;white-space:nowrap;border:2px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.45);">${castilloSvg}${nombre}</div>`,
-      iconSize: [1, 1], iconAnchor: [-14, 20],
+      // width:max-content (no solo iconSize:[1,1]) para que el fondo se
+      // ajuste al contenido real, no al tamaño chico que le asigna Leaflet
+      // al contenedor - antes el fondo quedaba recortado al ancho del
+      // ícono y el texto se salía sin fondo detrás.
+      html: `<div style="display:flex;align-items:center;gap:6px;background:#1e293b;color:#fff;border-radius:8px;padding:5px 10px;font-size:13px;font-weight:900;white-space:nowrap;border:2px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.45);width:max-content;">${castilloSvg}${nombre}</div>`,
+      iconSize: [220, 34], iconAnchor: [-14, 20],
     });
     const marker = L.marker([lat, lng], { icon, interactive: false, zIndexOffset: 1200 }).addTo(map);
     depositoMarkerRef.current = marker;
