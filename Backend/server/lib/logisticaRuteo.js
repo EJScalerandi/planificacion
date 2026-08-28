@@ -35,7 +35,17 @@ async function calcularRutaReal(puntosEnOrden) {
   try {
     const { data } = await axios.post(
       ORS_URL,
-      { coordinates: validos.map((p) => [p.lng, p.lat]) }, // ORS quiere [lng, lat]
+      {
+        coordinates: validos.map((p) => [p.lng, p.lat]), // ORS quiere [lng, lat]
+        // Por defecto ORS busca una calle a menos de 350m de cada punto y
+        // rechaza el pedido ENTERO si uno solo queda más lejos (pasó con un
+        // NV geocodificado en pleno humedal del Delta del Paraná, sin
+        // calles cerca) - con direcciones rurales/pines imprecisos esto es
+        // común. -1 = sin límite, busca la calle más cercana sea cual sea
+        // la distancia; no importa la precisión exacta para dibujar la
+        // línea del camión, importa que la ruta no falle.
+        radiuses: validos.map(() => -1),
+      },
       { headers: { Authorization: ORS_API_KEY, 'Content-Type': 'application/json' }, timeout: 15000 }
     );
     const feature = data?.features?.[0];
