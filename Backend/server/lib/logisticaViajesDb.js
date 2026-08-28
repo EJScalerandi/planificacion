@@ -47,32 +47,51 @@ async function withTx(fn) {
 
 async function listZonas() {
   const { rows } = await pool.query(
-    `select id, nombre, activo, created_at, updated_at from public.logistica_zonas order by nombre asc;`
+    `select id, nombre, activo, poligono, created_at, updated_at from public.logistica_zonas order by nombre asc;`
   );
   return rows;
 }
 
-async function createZona({ nombre, activo }) {
+// poligono: [[lat,lng], ...] (>=3 puntos) dibujado a mano en el mapa, o null
+// (zona clasificada solo por localidades de referencia, como antes).
+function normalizaPoligono(poligono) {
+  if (poligono == null) return null;
+  if (!Array.isArray(poligono) || poligono.length < 3) throw new Error('poligono debe tener al menos 3 puntos');
+  return poligono.map((p) => {
+    const lat = Number(p?.[0]);
+    const lng = Number(p?.[1]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) throw new Error('poligono tiene un punto inválido');
+    return [lat, lng];
+  });
+}
+
+async function createZona({ nombre, activo, poligono }) {
   const nm = String(nombre || '').trim();
   if (!nm) throw new Error('Falta nombre');
+  const poligonoNorm = normalizaPoligono(poligono);
   const { rows } = await pool.query(
-    `insert into public.logistica_zonas (nombre, activo) values ($1, $2)
-     returning id, nombre, activo, created_at, updated_at;`,
-    [nm, activo !== false]
+    `insert into public.logistica_zonas (nombre, activo, poligono) values ($1, $2, $3)
+     returning id, nombre, activo, poligono, created_at, updated_at;`,
+    [nm, activo !== false, poligonoNorm ? JSON.stringify(poligonoNorm) : null]
   );
   return rows[0];
 }
 
-async function updateZona(id, { nombre, activo }) {
+async function updateZona(id, { nombre, activo, poligono }) {
   const sets = [];
   const params = [Number(id)];
   if (nombre !== undefined) { params.push(String(nombre || '').trim()); sets.push(`nombre = $${params.length}`); }
   if (activo !== undefined) { params.push(!!activo); sets.push(`activo = $${params.length}`); }
+  if (poligono !== undefined) {
+    const poligonoNorm = normalizaPoligono(poligono);
+    params.push(poligonoNorm ? JSON.stringify(poligonoNorm) : null);
+    sets.push(`poligono = $${params.length}`);
+  }
   if (!sets.length) throw new Error('Nada para actualizar');
   sets.push('updated_at = now()');
   const { rows, rowCount } = await pool.query(
     `update public.logistica_zonas set ${sets.join(', ')} where id = $1
-     returning id, nombre, activo, created_at, updated_at;`,
+     returning id, nombre, activo, poligono, created_at, updated_at;`,
     params
   );
   if (!rowCount) throw new Error('Zona no encontrada');

@@ -119,6 +119,20 @@ const MIGRATIONS = [
       );
     `,
   },
+  {
+    // Zona dibujada a mano en el mapa (polígono) en vez de (o además de)
+    // localidades de referencia - pedido del usuario ("pintar zonas a
+    // gusto"). [[lat,lng], ...] en orden, sin cerrar el anillo (el primer y
+    // último punto no se repiten). Si una zona tiene polígono, la
+    // clasificación usa "¿el punto cae adentro?" antes que "referencia más
+    // cercana" (logisticaZonificacion.js) - compatible con las zonas viejas
+    // que solo tienen referencias, esas siguen funcionando igual.
+    name: 'logistica_zonas_poligono',
+    sql: `
+      ALTER TABLE public.logistica_zonas
+        ADD COLUMN IF NOT EXISTS poligono JSONB;
+    `,
+  },
 ];
 
 async function runMigrations() {
