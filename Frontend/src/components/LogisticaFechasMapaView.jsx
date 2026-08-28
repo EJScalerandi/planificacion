@@ -227,6 +227,13 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
   const depositoMarkerRef = useRef(null); // punto de partida fijo (De Grandis Portones)
   const [zoom, setZoom] = useState(ARGENTINA_ZOOM);
 
+  // Espejo de `selected` en un ref: el selector de portones superpuestos
+  // (más abajo) lo lee al abrir el popup sin depender de que el efecto de
+  // "Pines" se vuelva a ejecutar (si `selected` estuviera en sus deps,
+  // cada click recrearía todos los marcadores y cerraría el popup solo).
+  const selectedRef = useRef(selected);
+  useEffect(() => { selectedRef.current = selected; }, [selected]);
+
   const reloadConfig = () => {
     fetchLogisticaViajesConfig().then((c) => setConfig(c?.config || null)).catch(() => {});
   };
@@ -438,6 +445,60 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
     layer.clearLayers();
     markersByNvRef.current = new Map();
 
+    // Cuando 2+ portones caen prácticamente en el mismo punto (misma
+    // dirección, o muy cerca), Leaflet solo deja clickear el que quedó
+    // arriba en el z-order - los de abajo quedan inalcanzables. Se agrupan
+    // por cercanía en PÍXELES (mismo criterio que la etiqueta de semana
+    // cruzada más abajo) y, si hay más de uno, el click abre un selector en
+    // vez de tildar directo - así se puede elegir cuál (o cuáles).
+    const UMBRAL_SUPERPUESTOS_PX = 16;
+    const clustersSuperpuestos = [];
+    conUbicacion.forEach((it) => {
+      const pt = map.latLngToContainerPoint([it.lat, it.lng]);
+      let cluster = clustersSuperpuestos.find((c) => Math.hypot(c.x - pt.x, c.y - pt.y) < UMBRAL_SUPERPUESTOS_PX);
+      if (!cluster) { cluster = { x: pt.x, y: pt.y, items: [] }; clustersSuperpuestos.push(cluster); }
+      cluster.items.push(it);
+    });
+    const clusterPorNv = new Map();
+    for (const c of clustersSuperpuestos) for (const it of c.items) clusterPorNv.set(it.nv, c);
+
+    const abrirSelectorSuperpuestos = (marker, items) => {
+      const cont = document.createElement('div');
+      cont.style.cssText = 'min-width:220px;max-width:280px;display:flex;flex-direction:column;gap:4px;';
+      const titulo = document.createElement('div');
+      titulo.style.cssText = 'font-weight:900;font-size:12px;margin-bottom:2px;';
+      titulo.textContent = `${items.length} portones en este punto:`;
+      cont.appendChild(titulo);
+      items.forEach((it) => {
+        const puedeElegir = canEdit && (it.despacho_pendiente || it.instalacion_pendiente || it.sin_fecha_salida);
+        // selectedRef (no el `selected` del closure del efecto, que puede
+        // haber quedado viejo si el popup se reabre sin que "Pines" se
+        // vuelva a correr) para el estado inicial; de ahí en más se togglea
+        // local en cada click, sin releer React (evita quedar stale entre
+        // clicks sucesivos dentro del mismo popup abierto).
+        let isSel = selectedRef.current.has(it.nv);
+        const row = document.createElement('div');
+        const pintar = () => {
+          row.style.cssText = `display:flex;align-items:center;gap:6px;padding:5px 7px;border-radius:6px;border:1px solid var(--border);${puedeElegir ? 'cursor:pointer;' : 'opacity:.6;'}background:${isSel ? 'var(--brand-100, #e0f2ea)' : 'transparent'};`;
+          row.innerHTML = `<span style="display:inline-block;width:9px;height:9px;border-radius:999px;background:${colorDe(it)};flex:0 0 auto;"></span><span style="font-weight:800;font-size:12px;">${isSel ? '✓ ' : ''}NV ${it.nv}</span><span style="font-size:11px;opacity:.7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${it.nombre || ''}</span>`;
+        };
+        pintar();
+        if (puedeElegir) {
+          row.onclick = () => {
+            isSel = !isSel;
+            setSelected((prev) => {
+              const next = new Set(prev);
+              if (next.has(it.nv)) next.delete(it.nv); else next.add(it.nv);
+              return next;
+            });
+            pintar();
+          };
+        }
+        cont.appendChild(row);
+      });
+      marker.bindPopup(cont, { closeButton: true, minWidth: 220 }).openPopup();
+    };
+
     conUbicacion.forEach((it) => {
       const seleccionable = canEdit && (it.despacho_pendiente || it.instalacion_pendiente || it.sin_fecha_salida);
       const marker = L.circleMarker([it.lat, it.lng], {
@@ -451,8 +512,12 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
         : it.instalacion_pendiente ? ' · instalación pendiente'
         : it.tiene_pendiente_real === false ? ' · prometido, sin fecha real todavía'
         : ' · ya asignado';
-      marker.bindTooltip(`NV ${it.nv} — ${it.nombre || 'sin nombre'}${estadoExtra}`, { direction: 'top' });
-      if (seleccionable) {
+      const cluster = clusterPorNv.get(it.nv);
+      const superpuesto = cluster && cluster.items.length > 1;
+      marker.bindTooltip(`NV ${it.nv} — ${it.nombre || 'sin nombre'}${estadoExtra}${superpuesto ? ` · +${cluster.items.length - 1} más acá` : ''}`, { direction: 'top' });
+      if (superpuesto) {
+        marker.on('click', () => abrirSelectorSuperpuestos(marker, cluster.items));
+      } else if (seleccionable) {
         marker.on('click', () => {
           setSelected((prev) => {
             const next = new Set(prev);
