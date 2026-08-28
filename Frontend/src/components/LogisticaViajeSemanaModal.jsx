@@ -16,6 +16,7 @@ import {
   asignarLogisticaPorton,
   desasignarLogisticaPorton,
   reordenarLogisticaViaje,
+  toggleLogisticaViajeZona,
   cerrarLogisticaSemana,
   reabrirLogisticaSemana,
 } from '../api';
@@ -72,6 +73,38 @@ function TipoBadge({ tipo }) {
     >
       {isDespacho ? 'Despacho' : 'Instalación'}
     </span>
+  );
+}
+
+// Zonas que la RUTA de este viaje atraviesa (corredor completo, no solo las
+// paradas - ver server/lib/logisticaRutaZonas.js), con toggle habilitar/
+// deshabilitar - pedido del usuario para una integración futura con el
+// Presupuestador (avisar cupo de entrega si el viaje llega antes que la
+// producción). Se recalcula solo cuando cambian las paradas/el orden; el
+// toggle es la única parte editable a mano.
+function ZonaPills({ zonas, canEdit, onToggle }) {
+  if (!zonas?.length) return null;
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+      {zonas.map((z) => (
+        <button
+          key={z.zona_id}
+          type="button"
+          disabled={!canEdit}
+          onClick={() => onToggle(z.zona_id, !z.habilitada)}
+          title={z.habilitada ? 'Zona habilitada - click para deshabilitar' : 'Zona deshabilitada - click para habilitar'}
+          style={{
+            fontSize: 10, padding: '2px 7px', borderRadius: 999, border: '1px solid var(--border)',
+            background: z.habilitada ? 'var(--brand-100)' : 'var(--surface-muted, #f3f4f6)',
+            color: z.habilitada ? 'var(--brand-700)' : 'inherit',
+            opacity: z.habilitada ? 1 : 0.6,
+            cursor: canEdit ? 'pointer' : 'default',
+          }}
+        >
+          {z.habilitada ? '✓ ' : '· '}{z.zona_nombre}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -192,7 +225,7 @@ function NuevoViajeForm({ semana, config, onCreate, onCancel, busy, initial, sub
   );
 }
 
-function ViajeColumn({ viaje, items, canEdit, cerrada, onDropItem, onReorder, onEditar, onBorrar, onDragStartChip, onDragEndChip, onVerMapa, onMensaje }) {
+function ViajeColumn({ viaje, items, canEdit, cerrada, onDropItem, onReorder, onEditar, onBorrar, onDragStartChip, onDragEndChip, onVerMapa, onMensaje, onToggleZona }) {
   const [over, setOver] = useState(false);
   const [dragOverIndex, setDragOverIndex] = useState(null);
   const capacidad = Number(viaje.vehiculo_capacidad || 0);
@@ -270,6 +303,8 @@ function ViajeColumn({ viaje, items, canEdit, cerrada, onDropItem, onReorder, on
           <span style={{ color: '#b91c1c' }}>Sin vehículo (no puede sumar despacho)</span>
         )}
       </div>
+
+      <ZonaPills zonas={viaje.zonas} canEdit={canEdit} onToggle={(zonaId, habilitada) => onToggleZona(viaje.id, zonaId, habilitada)} />
 
       {puedeReordenar ? (
         <div style={{ fontSize: 10, opacity: 0.55 }}>Arrastrá para reordenar la ruta (1º arriba = primera parada).</div>
@@ -510,6 +545,10 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
     runMutation(() => reabrirLogisticaSemana(semana));
   };
 
+  const onToggleZona = (viajeId, zonaId, habilitada) => {
+    runMutation(() => toggleLogisticaViajeZona(viajeId, zonaId, habilitada));
+  };
+
   if (!open) return null;
 
   return (
@@ -626,6 +665,7 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
                     onDragEndChip={onDragEndChip}
                     onVerMapa={(viaje, items) => setMapa({ nvs: uniqueNvs(items), rutaNvs: orderedUniqueNvs(items), titulo: `Mapa · ${viaje.nombre?.trim() || `Viaje #${viaje.id}`}` })}
                     onMensaje={(viaje) => setMensajeViaje({ viajeId: viaje.id, titulo: viaje.nombre?.trim() || `Viaje #${viaje.id}` })}
+                    onToggleZona={onToggleZona}
                   />
                 ))}
                 {(detalle?.viajes || []).length === 0 ? (

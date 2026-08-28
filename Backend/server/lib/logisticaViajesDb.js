@@ -19,6 +19,11 @@
 const { pool } = require('../db');
 const { computePeso } = require('./logisticaCapacidad');
 const { DEPOSITO } = require('./logisticaDeposito');
+// OJO: logisticaRutaZonas.js depende de logisticaMapa.js, que a su vez
+// depende de ESTE archivo (logisticaViajesDb.js) - importarlo acá cerraría
+// un ciclo de require. La sincronización de zonas por viaje se dispara
+// desde la capa de rutas (routes/admin/logisticaViajes.js), no desde acá -
+// mismo patrón ya usado para logisticaMapaExtras.js.
 const { geocodeAddress } = require('./geocoding');
 
 async function withTx(fn) {
@@ -857,4 +862,5 @@ module.exports = {
   crearViaje, patchViaje, borrarViaje,
   asignarPorton, desasignarPorton, reordenarViaje,
   cerrarSemana, reabrirSemana,
+  getViajeSemana,
 };

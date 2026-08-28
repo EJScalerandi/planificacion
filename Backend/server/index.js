@@ -99,6 +99,26 @@ const MIGRATIONS = [
         ADD COLUMN IF NOT EXISTS geo_updated_at TIMESTAMPTZ;
     `,
   },
+  {
+    // Zonas que una RUTA (no un portón individual) atraviesa - pedido del
+    // usuario: un viaje a Bahía Blanca puede "pasar por" Santa Fe o Gral
+    // Pico sin tener ninguna parada ahí, detectado por el corredor entre
+    // depósito/paradas (ver server/lib/logisticaRutaZonas.js), no por la
+    // clasificación de zona de cada portón (esa sigue igual, es otra cosa).
+    // habilitada = para una integración futura con el Presupuestador (avisar
+    // cupo de entrega disponible en una zona si el viaje llega antes que la
+    // producción) - se guarda ya, se usa después.
+    name: 'logistica_viaje_zonas',
+    sql: `
+      CREATE TABLE IF NOT EXISTS public.logistica_viaje_zonas (
+        viaje_id INTEGER NOT NULL REFERENCES public.logistica_viajes(id) ON DELETE CASCADE,
+        zona_id INTEGER NOT NULL REFERENCES public.logistica_zonas(id) ON DELETE CASCADE,
+        habilitada BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        PRIMARY KEY (viaje_id, zona_id)
+      );
+    `,
+  },
 ];
 
 async function runMigrations() {

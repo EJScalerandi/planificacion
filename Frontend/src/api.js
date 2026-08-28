@@ -617,6 +617,10 @@ export async function reordenarLogisticaViaje(viajeId, items) {
   const { data } = await api.put(`/admin/logistica/viajes/${viajeId}/orden`, { items });
   return data;
 }
+export async function toggleLogisticaViajeZona(viajeId, zonaId, habilitada) {
+  const { data } = await api.patch(`/admin/logistica/viajes/${viajeId}/zonas/${zonaId}`, { habilitada });
+  return data;
+}
 export async function cerrarLogisticaSemana(semana) {
   const { data } = await api.post(`/admin/logistica/semanas/${encodeURIComponent(semana)}/cerrar`, {});
   return data;

@@ -20,6 +20,7 @@ import {
   fetchLogisticaSemanaPromesaMapa,
   fetchLogisticaSinFechaSalida,
   asignarLogisticaFechaSalida,
+  toggleLogisticaViajeZona,
   fetchLogisticaViajesConfig,
   recomendarLogisticaViajeIa,
   planificarLogisticaRutasIa,
@@ -392,7 +393,7 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
     const { lat, lng, nombre } = config.deposito;
     const icon = L.divIcon({
       className: '',
-      html: `<div style="display:flex;align-items:center;gap:4px;background:#1e293b;color:#fff;border-radius:6px;padding:3px 7px;font-size:11px;font-weight:900;white-space:nowrap;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);">🏭 ${nombre}</div>`,
+      html: `<div style="display:flex;align-items:center;gap:4px;background:#1e293b;color:#fff;border-radius:6px;padding:3px 7px;font-size:11px;font-weight:900;white-space:nowrap;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);">🏰 ${nombre}</div>`,
       iconSize: [1, 1], iconAnchor: [-10, 14],
     });
     const marker = L.marker([lat, lng], { icon, interactive: false, zIndexOffset: 1200 }).addTo(map);
@@ -688,6 +689,15 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
     }
   };
 
+  const toggleZona = async (viajeId, zonaId, habilitada) => {
+    try {
+      await toggleLogisticaViajeZona(viajeId, zonaId, habilitada);
+      load();
+    } catch (e) {
+      setErr(e?.response?.data?.error || e.message);
+    }
+  };
+
   const asignarFechaSalida = async () => {
     if (!fechaSalidaAsignar || selected.size === 0) return;
     setAsignandoFechaSalida(true);
@@ -830,6 +840,28 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
                 <div style={{ fontSize: 11, opacity: 0.75 }}>
                   {viaje.vehiculo_nombre || 'sin vehículo'} · {nvsEnOrden.length} parada{nvsEnOrden.length === 1 ? '' : 's'}
                 </div>
+                {viaje.zonas?.length > 0 ? (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                    {viaje.zonas.map((z) => (
+                      <button
+                        key={z.zona_id}
+                        type="button"
+                        disabled={!canEdit}
+                        onClick={(e) => { e.stopPropagation(); toggleZona(viajeId, z.zona_id, !z.habilitada); }}
+                        title={(z.habilitada ? 'Zona habilitada' : 'Zona deshabilitada') + ' - la ruta pasa por acá · click para cambiar'}
+                        style={{
+                          fontSize: 9, padding: '1px 6px', borderRadius: 999, border: '1px solid var(--border)',
+                          background: z.habilitada ? 'var(--brand-100)' : 'var(--surface-muted, #f3f4f6)',
+                          color: z.habilitada ? 'var(--brand-700)' : 'inherit',
+                          opacity: z.habilitada ? 1 : 0.6,
+                          cursor: canEdit ? 'pointer' : 'default',
+                        }}
+                      >
+                        {z.habilitada ? '✓ ' : '· '}{z.zona_nombre}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
                 <button
                   type="button" className="btn" style={{ fontSize: 10, padding: '1px 6px', alignSelf: 'flex-start' }}
                   onClick={(e) => { e.stopPropagation(); setMensajeViaje({ viajeId, titulo: viaje.nombre?.trim() || `Viaje #${viajeId}` }); }}

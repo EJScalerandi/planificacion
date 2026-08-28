@@ -16,6 +16,18 @@ const { getSemanaPromesaMapa } = require('../../lib/logisticaPromesaMapa');
 const { buildMensajeViaje } = require('../../lib/logisticaMensajeViaje');
 const { resolveEtapasPorNv, resolveSemanaPrometidaPorNv, resolveSemanaRealPorNv } = require('../../lib/logisticaMapaExtras');
 const { listPortonesSinFechaSalida, asignarFechaSalida } = require('../../lib/logisticaSinFechaSalida');
+const { sincronizarZonasViaje, listZonasViaje, setZonaHabilitada } = require('../../lib/logisticaRutaZonas');
+
+// Zonas que cada viaje de la semana atraviesa (no solo la parada, todo el
+// corredor - ver logisticaRutaZonas.js) - se agrega acá, a nivel ruta, para
+// no crear otro ciclo de require entre logisticaViajesDb.js/logisticaMapa.js
+// (logisticaRutaZonas.js depende de logisticaMapa.js, que depende de
+// logisticaViajesDb.js).
+async function conZonasViajes(detalle) {
+  if (!detalle?.viajes?.length) return detalle;
+  const viajes = await Promise.all(detalle.viajes.map(async (v) => ({ ...v, zonas: await listZonasViaje(v.id) })));
+  return { ...detalle, viajes };
+}
 
 // Le suma a cada item {nv,...} su barrita de etapas de producción (diseño/
 // pintura/armado final) - común a los 3 mapas (sin filtro, semana real,
@@ -92,12 +104,13 @@ router.get('/logistica/mapa', asyncRoute(async (req, res) => {
 // ruta, para poder consultar/ajustar sin perder el contexto geográfico).
 router.get('/logistica/semana/:semana/mapa', asyncRoute(async (req, res) => {
   const detalle = await getSemanaMapa(req.params.semana);
-  const [items, semanaPrometidaPorNv] = await Promise.all([
+  const [items, semanaPrometidaPorNv, detalleConZonas] = await Promise.all([
     conEtapas(detalle.items),
     resolveSemanaPrometidaPorNv(detalle.items.map((it) => it.nv)),
+    conZonasViajes(detalle),
   ]);
   const itemsFinal = items.map((it) => ({ ...it, semana_prometida: semanaPrometidaPorNv.get(it.nv) || null }));
-  res.json({ ok: true, detalle: { ...detalle, items: itemsFinal } });
+  res.json({ ok: true, detalle: { ...detalleConZonas, items: itemsFinal } });
 }));
 
 // ===== Semana prometida (producción reservada por el Presupuestador + margen configurable) =====
@@ -244,33 +257,52 @@ router.get('/logistica/semanas', asyncRoute(async (_req, res) => {
 }));
 
 router.get('/logistica/semanas/:semana', asyncRoute(async (req, res) => {
-  res.json({ ok: true, detalle: await db.getSemanaDetalle(req.params.semana) });
+  res.json({ ok: true, detalle: await conZonasViajes(await db.getSemanaDetalle(req.params.semana)) });
 }));
 
 router.post('/logistica/semanas/:semana/viajes', requireFullAccess, asyncRoute(async (req, res) => {
-  res.json({ ok: true, detalle: await db.crearViaje(req.params.semana, req.body || {}) });
+  res.json({ ok: true, detalle: await conZonasViajes(await db.crearViaje(req.params.semana, req.body || {})) });
 }));
 
 router.patch('/logistica/viajes/:id', requireFullAccess, asyncRoute(async (req, res) => {
-  res.json({ ok: true, detalle: await db.patchViaje(req.params.id, req.body || {}) });
+  res.json({ ok: true, detalle: await conZonasViajes(await db.patchViaje(req.params.id, req.body || {})) });
 }));
 
 router.delete('/logistica/viajes/:id', requireFullAccess, asyncRoute(async (req, res) => {
-  res.json({ ok: true, detalle: await db.borrarViaje(req.params.id) });
+  res.json({ ok: true, detalle: await conZonasViajes(await db.borrarViaje(req.params.id)) });
 }));
 
 router.post('/logistica/viajes/:id/portones', requireFullAccess, asyncRoute(async (req, res) => {
-  res.json({ ok: true, detalle: await db.asignarPorton(req.params.id, req.body || {}) });
+  const detalle = await db.asignarPorton(req.params.id, req.body || {});
+  await sincronizarZonasViaje(req.params.id);
+  res.json({ ok: true, detalle: await conZonasViajes(detalle) });
 }));
 
 router.delete('/logistica/viajes/:id/portones/:porton_id', requireFullAccess, asyncRoute(async (req, res) => {
-  res.json({ ok: true, detalle: await db.desasignarPorton(req.params.id, req.params.porton_id, req.query?.tipo) });
+  const detalle = await db.desasignarPorton(req.params.id, req.params.porton_id, req.query?.tipo);
+  await sincronizarZonasViaje(req.params.id);
+  res.json({ ok: true, detalle: await conZonasViajes(detalle) });
 }));
 
 // Reordenar los portones DENTRO de un viaje (orden de ruta: primero el que
 // queda arriba). Body: { items: [{ porton_id, tipo }, ...] } en el orden final.
 router.put('/logistica/viajes/:id/orden', requireFullAccess, asyncRoute(async (req, res) => {
-  res.json({ ok: true, detalle: await db.reordenarViaje(req.params.id, req.body?.items) });
+  const detalle = await db.reordenarViaje(req.params.id, req.body?.items);
+  // El orden cambia la forma del corredor (los tramos entre paradas
+  // consecutivas son otros) - las zonas que atraviesa pueden cambiar aunque
+  // las paradas sean las mismas.
+  await sincronizarZonasViaje(req.params.id);
+  res.json({ ok: true, detalle: await conZonasViajes(detalle) });
+}));
+
+// Habilita/deshabilita una zona detectada para un viaje (queda guardado
+// para una integración futura con el Presupuestador - por ahora es solo
+// informativo). No requiere semana abierta: es un dato posterior a la
+// ruta, tiene sentido seguir tocándolo incluso con el viaje ya en curso.
+router.patch('/logistica/viajes/:id/zonas/:zona_id', requireFullAccess, asyncRoute(async (req, res) => {
+  await setZonaHabilitada(req.params.id, req.params.zona_id, req.body?.habilitada);
+  const semana = await db.getViajeSemana(req.params.id);
+  res.json({ ok: true, detalle: await conZonasViajes(await db.getSemanaDetalle(semana)) });
 }));
 
 // Mensaje de texto (borrador) para mandarle a la cuadrilla - solo lectura,
