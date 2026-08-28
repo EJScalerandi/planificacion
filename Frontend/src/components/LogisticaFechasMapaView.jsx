@@ -220,6 +220,11 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
   const [puntosExtra, setPuntosExtra] = useState([]);
   const [agregandoParadaViajeId, setAgregandoParadaViajeId] = useState(null);
   const [agregandoParadaBusy, setAgregandoParadaBusy] = useState(false);
+  // Arrastre nativo de una parada de la ruta a otra posición (mismo viaje) -
+  // qué item se está arrastrando y sobre cuál está pasando ahora, para poder
+  // dibujar la línea indicadora de "acá cae" mientras se arrastra.
+  const [dragRuta, setDragRuta] = useState(null); // { viajeId, idx } | null
+  const [dragOverRuta, setDragOverRuta] = useState(null); // { viajeId, idx } | null
 
   // Asignar "Fecha Salida" desde el mapa (modo 'sin_fecha_salida') - mismo
   // campo que /a, para varios NV a la vez elegidos por cercanía geográfica.
@@ -849,21 +854,38 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
 
   // Edición de la ruta directamente en el panel del mapa - mismo mecanismo
   // (reordenarLogisticaViaje acepta la lista mixta completa) que usa
-  // LogisticaViajeSemanaModal, solo que acá el reorden es con flechas ▲▼ en
-  // vez de arrastre (más simple de sostener en una columna angosta de 260px).
-  const moverItemRuta = async (viajeId, idx, direccion) => {
-    const items = itemsPorViajeMapa.get(viajeId) || [];
-    const destino = idx + direccion;
-    if (idx < 0 || destino < 0 || destino >= items.length) return;
-    const reordenado = [...items];
-    [reordenado[idx], reordenado[destino]] = [reordenado[destino], reordenado[idx]];
-    const payload = reordenado.map((it) => (it.punto_extra_id != null ? { punto_extra_id: it.punto_extra_id } : { porton_id: it.porton_id, tipo: it.tipo }));
+  // LogisticaViajeSemanaModal, disponible de dos formas: arrastrar la parada
+  // a la posición nueva, o las flechas ▲▼ para ajustes finos de a un lugar.
+  const aplicarNuevoOrdenRuta = async (viajeId, itemsEnNuevoOrden) => {
+    const payload = itemsEnNuevoOrden.map((it) => (it.punto_extra_id != null ? { punto_extra_id: it.punto_extra_id } : { porton_id: it.porton_id, tipo: it.tipo }));
     try {
       await reordenarLogisticaViaje(viajeId, payload);
       load();
     } catch (e) {
       setErr(e?.response?.data?.error || e.message);
     }
+  };
+
+  const moverItemRuta = (viajeId, idx, direccion) => {
+    const items = itemsPorViajeMapa.get(viajeId) || [];
+    const destino = idx + direccion;
+    if (destino < 0 || destino >= items.length) return;
+    const reordenado = [...items];
+    [reordenado[idx], reordenado[destino]] = [reordenado[destino], reordenado[idx]];
+    aplicarNuevoOrdenRuta(viajeId, reordenado);
+  };
+
+  // Splice: sacar de origenIdx e insertar en destinoIdx - si destinoIdx cae
+  // en o después del último lugar, splice lo deja al final (no hace falta
+  // "soltar en el área vacía" como sí necesita el drag&drop de la columna
+  // del modal completo, acá siempre se suelta sobre una parada puntual).
+  const arrastrarItemRuta = (viajeId, origenIdx, destinoIdx) => {
+    if (origenIdx === destinoIdx) return;
+    const items = itemsPorViajeMapa.get(viajeId) || [];
+    const reordenado = [...items];
+    const [movido] = reordenado.splice(origenIdx, 1);
+    reordenado.splice(destinoIdx, 0, movido);
+    aplicarNuevoOrdenRuta(viajeId, reordenado);
   };
 
   const quitarPortonRuta = async (viajeId, portonId, tipo) => {
@@ -1084,46 +1106,69 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
                   ) : null}
 
                   {canEdit && itemsRuta.length > 1 ? (
-                    <div style={{ fontSize: 9, opacity: 0.55 }}>Usá ▲▼ para reordenar la ruta (1º arriba = primera parada).</div>
+                    <div style={{ fontSize: 9, opacity: 0.55 }}>Arrastrá una parada a su nuevo lugar, o usá ▲▼ para ajustes finos.</div>
                   ) : null}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                     {itemsRuta.map((it, idx) => {
                       const esExtra = it.punto_extra_id != null;
+                      const key = esExtra ? `extra-${it.punto_extra_id}` : `${it.porton_id}-${it.tipo}`;
+                      const esDragOver = dragOverRuta?.viajeId === viajeId && dragOverRuta?.idx === idx;
                       return (
-                        <div
-                          key={esExtra ? `extra-${it.punto_extra_id}` : `${it.porton_id}-${it.tipo}`}
-                          style={{
-                            display: 'flex', alignItems: 'center', gap: 4, borderRadius: 6, padding: '3px 5px',
-                            border: `1px solid ${esExtra ? '#f59e0b' : 'var(--border)'}`,
-                            background: esExtra ? 'rgba(245,158,11,0.08)' : 'transparent',
-                          }}
-                        >
-                          <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: 999, background: '#dc2626', color: '#fff', fontSize: 8, fontWeight: 900, flex: '0 0 auto' }}>
-                            {idx + 1}
-                          </span>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 10, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {esExtra ? `🏨 ${it.nombre}` : `NV ${it.nv}${it.tipo ? ` · ${it.tipo === 'despacho' ? 'Desp.' : 'Inst.'}` : ''}`}
+                        <div key={key}>
+                          {esDragOver ? <div style={{ height: 3, background: 'var(--brand)', borderRadius: 2, marginBottom: 2 }} /> : null}
+                          <div
+                            draggable={canEdit}
+                            onDragStart={(e) => { setDragRuta({ viajeId, idx }); e.dataTransfer.effectAllowed = 'move'; }}
+                            onDragEnd={() => { setDragRuta(null); setDragOverRuta(null); }}
+                            onDragOver={(e) => {
+                              if (!canEdit || !dragRuta || dragRuta.viajeId !== viajeId) return;
+                              e.preventDefault();
+                              if (dragOverRuta?.idx !== idx) setDragOverRuta({ viajeId, idx });
+                            }}
+                            onDrop={(e) => {
+                              if (!canEdit) return;
+                              e.preventDefault();
+                              e.stopPropagation();
+                              const origen = dragRuta;
+                              setDragRuta(null);
+                              setDragOverRuta(null);
+                              if (!origen || origen.viajeId !== viajeId || origen.idx === idx) return;
+                              arrastrarItemRuta(viajeId, origen.idx, idx);
+                            }}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: 4, borderRadius: 6, padding: '3px 5px',
+                              border: `1px solid ${esExtra ? '#f59e0b' : 'var(--border)'}`,
+                              background: esExtra ? 'rgba(245,158,11,0.08)' : 'transparent',
+                              cursor: canEdit ? 'grab' : 'default',
+                            }}
+                          >
+                            <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: 999, background: '#dc2626', color: '#fff', fontSize: 8, fontWeight: 900, flex: '0 0 auto' }}>
+                              {idx + 1}
+                            </span>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 10, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {esExtra ? `🏨 ${it.nombre}` : `NV ${it.nv}${it.tipo ? ` · ${it.tipo === 'despacho' ? 'Desp.' : 'Inst.'}` : ''}`}
+                              </div>
+                              {!esExtra && it.nombre ? (
+                                <div style={{ fontSize: 9, opacity: 0.7, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.nombre}</div>
+                              ) : null}
                             </div>
-                            {!esExtra && it.nombre ? (
-                              <div style={{ fontSize: 9, opacity: 0.7, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.nombre}</div>
+                            {canEdit ? (
+                              <>
+                                <div style={{ display: 'flex', flexDirection: 'column', flex: '0 0 auto' }}>
+                                  <button type="button" className="btn" disabled={idx === 0} onClick={() => moverItemRuta(viajeId, idx, -1)} style={{ padding: '0 3px', fontSize: 8, lineHeight: '10px' }} title="Subir">▲</button>
+                                  <button type="button" className="btn" disabled={idx === itemsRuta.length - 1} onClick={() => moverItemRuta(viajeId, idx, 1)} style={{ padding: '0 3px', fontSize: 8, lineHeight: '10px' }} title="Bajar">▼</button>
+                                </div>
+                                <button
+                                  type="button" className="btn" style={{ padding: '0 4px', fontSize: 10, flex: '0 0 auto', borderColor: '#ef4444', color: '#991b1b' }}
+                                  onClick={() => (esExtra ? quitarParadaExtraRuta(viajeId, it.punto_extra_id) : quitarPortonRuta(viajeId, it.porton_id, it.tipo))}
+                                  title="Quitar del viaje"
+                                >
+                                  ×
+                                </button>
+                              </>
                             ) : null}
                           </div>
-                          {canEdit ? (
-                            <>
-                              <div style={{ display: 'flex', flexDirection: 'column', flex: '0 0 auto' }}>
-                                <button type="button" className="btn" disabled={idx === 0} onClick={() => moverItemRuta(viajeId, idx, -1)} style={{ padding: '0 3px', fontSize: 8, lineHeight: '10px' }} title="Subir">▲</button>
-                                <button type="button" className="btn" disabled={idx === itemsRuta.length - 1} onClick={() => moverItemRuta(viajeId, idx, 1)} style={{ padding: '0 3px', fontSize: 8, lineHeight: '10px' }} title="Bajar">▼</button>
-                              </div>
-                              <button
-                                type="button" className="btn" style={{ padding: '0 4px', fontSize: 10, flex: '0 0 auto', borderColor: '#ef4444', color: '#991b1b' }}
-                                onClick={() => (esExtra ? quitarParadaExtraRuta(viajeId, it.punto_extra_id) : quitarPortonRuta(viajeId, it.porton_id, it.tipo))}
-                                title="Quitar del viaje"
-                              >
-                                ×
-                              </button>
-                            </>
-                          ) : null}
                         </div>
                       );
                     })}
