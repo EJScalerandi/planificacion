@@ -291,13 +291,17 @@ router.delete('/logistica/viajes/:id', requireFullAccess, asyncRoute(async (req,
 router.post('/logistica/viajes/:id/portones', requireFullAccess, asyncRoute(async (req, res) => {
   const detalle = await db.asignarPorton(req.params.id, req.body || {});
   await sincronizarRuta(req.params.id);
-  res.json({ ok: true, detalle: await conDetallesViajes(detalle) });
+  // OJO: `detalle` es de ANTES de sincronizarRuta - trae ruta_real desactualizado
+  // (un paso atrás). Se vuelve a leer fresco después de sincronizar, no se
+  // reusa el que ya teníamos (confirmado con datos reales: sin este re-fetch
+  // el ruta_real que ve el frontend queda un paso atrás del que hay en la base).
+  res.json({ ok: true, detalle: await conDetallesViajes(await db.getSemanaDetalle(detalle.semana)) });
 }));
 
 router.delete('/logistica/viajes/:id/portones/:porton_id', requireFullAccess, asyncRoute(async (req, res) => {
   const detalle = await db.desasignarPorton(req.params.id, req.params.porton_id, req.query?.tipo);
   await sincronizarRuta(req.params.id);
-  res.json({ ok: true, detalle: await conDetallesViajes(detalle) });
+  res.json({ ok: true, detalle: await conDetallesViajes(await db.getSemanaDetalle(detalle.semana)) });
 }));
 
 // Reordenar los portones DENTRO de un viaje (orden de ruta: primero el que
@@ -308,7 +312,7 @@ router.put('/logistica/viajes/:id/orden', requireFullAccess, asyncRoute(async (r
   // consecutivas son otros) - las zonas que atraviesa pueden cambiar aunque
   // las paradas sean las mismas.
   await sincronizarRuta(req.params.id);
-  res.json({ ok: true, detalle: await conDetallesViajes(detalle) });
+  res.json({ ok: true, detalle: await conDetallesViajes(await db.getSemanaDetalle(detalle.semana)) });
 }));
 
 // ===== Paradas extra (catálogo reutilizable, ej. "Hotel San Vicente" para
@@ -350,6 +354,16 @@ router.delete('/logistica/viajes/:id/paradas-extra/:punto_extra_id', requireFull
 // ruta, tiene sentido seguir tocándolo incluso con el viaje ya en curso.
 router.patch('/logistica/viajes/:id/zonas/:zona_id', requireFullAccess, asyncRoute(async (req, res) => {
   await setZonaHabilitada(req.params.id, req.params.zona_id, req.body?.habilitada);
+  const semana = await db.getViajeSemana(req.params.id);
+  res.json({ ok: true, detalle: await conDetallesViajes(await db.getSemanaDetalle(semana)) });
+}));
+
+// Recalcula a mano zonas + ruta real de un viaje - normalmente se dispara
+// solo con un cambio de paradas/orden, pero hay casos que no lo disparan
+// (ej. redibujar una zona DESPUÉS de crear el viaje, o cargarle recién el
+// link de Google Maps a un NV que antes no tenía ubicación resuelta).
+router.post('/logistica/viajes/:id/recalcular-ruta', requireFullAccess, asyncRoute(async (req, res) => {
+  await sincronizarRuta(req.params.id);
   const semana = await db.getViajeSemana(req.params.id);
   res.json({ ok: true, detalle: await conDetallesViajes(await db.getSemanaDetalle(semana)) });
 }));

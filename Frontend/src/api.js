@@ -621,6 +621,10 @@ export async function toggleLogisticaViajeZona(viajeId, zonaId, habilitada) {
   const { data } = await api.patch(`/admin/logistica/viajes/${viajeId}/zonas/${zonaId}`, { habilitada });
   return data;
 }
+export async function recalcularLogisticaRutaViaje(viajeId) {
+  const { data } = await api.post(`/admin/logistica/viajes/${viajeId}/recalcular-ruta`, {});
+  return data;
+}
 // Paradas que no son un portón (ej. alojamiento) - catálogo reutilizable +
 // asignación por viaje. Ver Backend/server/lib/logisticaParadasExtra.js.
 export async function fetchLogisticaPuntosExtra() {

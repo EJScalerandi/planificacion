@@ -17,6 +17,7 @@ import {
   desasignarLogisticaPorton,
   reordenarLogisticaViaje,
   toggleLogisticaViajeZona,
+  recalcularLogisticaRutaViaje,
   fetchLogisticaPuntosExtra,
   createLogisticaPuntoExtra,
   asignarLogisticaParadaExtra,
@@ -297,7 +298,7 @@ function NuevoViajeForm({ semana, config, onCreate, onCancel, busy, initial, sub
   );
 }
 
-function ViajeColumn({ viaje, items, canEdit, cerrada, onDropItem, onReorder, onEditar, onBorrar, onDragStartChip, onDragEndChip, onVerMapa, onMensaje, onToggleZona, puntosExtra, agregandoParada, onAbrirAgregarParada, onCerrarAgregarParada, agregandoParadaBusy, onElegirParada, onCrearParada, onQuitarParada, onMoverParada }) {
+function ViajeColumn({ viaje, items, canEdit, cerrada, onDropItem, onReorder, onEditar, onBorrar, onDragStartChip, onDragEndChip, onVerMapa, onMensaje, onToggleZona, puntosExtra, agregandoParada, onAbrirAgregarParada, onCerrarAgregarParada, agregandoParadaBusy, onElegirParada, onCrearParada, onQuitarParada, onMoverParada, onRecalcularRuta, recalculando }) {
   const [over, setOver] = useState(false);
   const [dragOverIndex, setDragOverIndex] = useState(null);
   const capacidad = Number(viaje.vehiculo_capacidad || 0);
@@ -347,6 +348,18 @@ function ViajeColumn({ viaje, items, canEdit, cerrada, onDropItem, onReorder, on
           >
             📋 Mensaje
           </button>
+          {canEdit ? (
+            <button
+              type="button"
+              className="btn"
+              style={{ padding: '1px 6px', fontSize: 10, marginTop: 4, marginLeft: 4 }}
+              disabled={recalculando === viaje.id}
+              onClick={() => onRecalcularRuta(viaje.id)}
+              title="Recalcular zonas y ruta real - normalmente no hace falta, se recalculan solas al cambiar paradas"
+            >
+              {recalculando === viaje.id ? '⏳…' : '🔄 Recalcular'}
+            </button>
+          ) : null}
         </div>
         {canEdit && !cerrada ? (
           <div style={{ display: 'flex', gap: 4 }}>
@@ -683,6 +696,17 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
     runMutation(() => toggleLogisticaViajeZona(viajeId, zonaId, habilitada));
   };
 
+  // Zonas/ruta real normalmente se recalculan solos con cualquier cambio de
+  // paradas u orden - esto es para los casos que NO disparan eso solos (ej.
+  // redibujar una zona después de crear el viaje, o cargarle recién el link
+  // de Maps a un NV que antes no tenía ubicación resuelta).
+  const [recalculando, setRecalculando] = useState(null); // viajeId en curso, o null
+  const onRecalcularRuta = async (viajeId) => {
+    setRecalculando(viajeId);
+    await runMutation(() => recalcularLogisticaRutaViaje(viajeId));
+    setRecalculando(null);
+  };
+
   // Paradas que no son un portón (ej. alojamiento) - se tratan igual que un
   // portón para la ruta (misma secuencia de `orden`, cuentan para zonas y
   // mensaje) pero se agregan/reordenan distinto: elegir del catálogo o
@@ -872,6 +896,8 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
                     }}
                     onMensaje={(viaje) => setMensajeViaje({ viajeId: viaje.id, titulo: viaje.nombre?.trim() || `Viaje #${viaje.id}` })}
                     onToggleZona={onToggleZona}
+                    onRecalcularRuta={onRecalcularRuta}
+                    recalculando={recalculando}
                     puntosExtra={puntosExtra}
                     agregandoParada={agregandoParadaViajeId === v.id}
                     onAbrirAgregarParada={abrirAgregarParada}
