@@ -88,7 +88,12 @@ export default function LogisticaZonasModal({ open, config, onClose, onChanged }
     };
   }, [open]);
 
-  // Dibuja los polígonos ya guardados de cada zona.
+  // Dibuja los polígonos ya guardados de cada zona. Depende también de
+  // `open`: al cerrar y reabrir el modal, el mapa (y su layerGroup) se
+  // recrean de cero (ver el efecto de arriba) - si `zonas` no cambió de
+  // referencia mientras tanto (mismo config del padre), este efecto no se
+  // volvía a disparar solo y el layer nuevo quedaba vacío - el dibujo
+  // "desaparecía" al reabrir aunque siguiera guardado en la base.
   useEffect(() => {
     const map = mapRef.current;
     const layer = poligonosLayerRef.current;
@@ -109,7 +114,7 @@ export default function LogisticaZonasModal({ open, config, onClose, onChanged }
         interactive: false,
       }).addTo(layer);
     }
-  }, [zonas]);
+  }, [zonas, open]);
 
   // Modo dibujo: click en el mapa agrega un vértice; se dibuja el trazo
   // parcial (línea + puntos) en tiempo real.
