@@ -391,10 +391,24 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
     if (!map || !config?.deposito) return;
     if (depositoMarkerRef.current) { depositoMarkerRef.current.remove(); depositoMarkerRef.current = null; }
     const { lat, lng, nombre } = config.deposito;
+    // SVG en vez de emoji 🏰: el emoji rendereaba distinto según fuente/SO
+    // (se vio como un cuadrito negro irreconocible) - un ícono dibujado a
+    // mano se ve igual en cualquier lado. Silueta simple de castillo
+    // (muralla + almenas + entrada), más grande y con más contraste que la
+    // versión anterior (pedido explícito: "se ve muy chico").
+    const castilloSvg = `<svg width="20" height="20" viewBox="0 0 16 16" style="flex:0 0 auto;">
+      <rect x="1" y="7" width="14" height="8" fill="#fbbf24"/>
+      <rect x="1" y="4" width="2" height="3" fill="#fbbf24"/>
+      <rect x="4" y="2" width="2" height="5" fill="#fbbf24"/>
+      <rect x="7" y="4" width="2" height="3" fill="#fbbf24"/>
+      <rect x="10" y="2" width="2" height="5" fill="#fbbf24"/>
+      <rect x="13" y="4" width="2" height="3" fill="#fbbf24"/>
+      <rect x="6" y="10" width="4" height="5" fill="#1e293b"/>
+    </svg>`;
     const icon = L.divIcon({
       className: '',
-      html: `<div style="display:flex;align-items:center;gap:4px;background:#1e293b;color:#fff;border-radius:6px;padding:3px 7px;font-size:11px;font-weight:900;white-space:nowrap;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);">🏰 ${nombre}</div>`,
-      iconSize: [1, 1], iconAnchor: [-10, 14],
+      html: `<div style="display:flex;align-items:center;gap:6px;background:#1e293b;color:#fff;border-radius:8px;padding:5px 10px;font-size:13px;font-weight:900;white-space:nowrap;border:2px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.45);">${castilloSvg}${nombre}</div>`,
+      iconSize: [1, 1], iconAnchor: [-14, 20],
     });
     const marker = L.marker([lat, lng], { icon, interactive: false, zIndexOffset: 1200 }).addTo(map);
     depositoMarkerRef.current = marker;
