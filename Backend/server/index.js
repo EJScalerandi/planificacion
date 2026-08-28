@@ -133,6 +133,36 @@ const MIGRATIONS = [
         ADD COLUMN IF NOT EXISTS poligono JSONB;
     `,
   },
+  {
+    // Paradas que no son un portón - pedido del usuario, ej. alojamiento de
+    // la cuadrilla en un viaje largo. Catálogo reutilizable (logistica_
+    // puntos_extra: nombre + maps_url + coords ya resueltas, ej. "Hotel San
+    // Vicente") para no volver a pegar la misma URL cada vez - y una tabla
+    // de asignación por viaje (logistica_viaje_paradas_extra) con `orden` en
+    // el MISMO espacio numérico que logistica_viaje_portones.orden, para
+    // poder mezclar portones y paradas extra en una sola secuencia de ruta.
+    name: 'logistica_puntos_extra',
+    sql: `
+      CREATE TABLE IF NOT EXISTS public.logistica_puntos_extra (
+        id SERIAL PRIMARY KEY,
+        nombre TEXT NOT NULL,
+        maps_url TEXT NOT NULL,
+        lat DOUBLE PRECISION,
+        lng DOUBLE PRECISION,
+        activo BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE TABLE IF NOT EXISTS public.logistica_viaje_paradas_extra (
+        id SERIAL PRIMARY KEY,
+        viaje_id INTEGER NOT NULL REFERENCES public.logistica_viajes(id) ON DELETE CASCADE,
+        punto_extra_id INTEGER NOT NULL REFERENCES public.logistica_puntos_extra(id) ON DELETE CASCADE,
+        orden INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        UNIQUE (viaje_id, punto_extra_id)
+      );
+    `,
+  },
 ];
 
 async function runMigrations() {

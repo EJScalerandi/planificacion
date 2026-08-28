@@ -348,11 +348,23 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
     }
     return Array.from(porViaje.entries()).map(([viajeId, rows]) => {
       const viaje = viajesSemana.find((v) => v.id === viajeId) || {};
-      const ordenados = [...rows].sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
-      const seen = new Set();
-      const nvsEnOrden = [];
-      for (const r of ordenados) { if (seen.has(r.nv)) continue; seen.add(r.nv); nvsEnOrden.push(r.nv); }
-      return { viajeId, viaje, nvsEnOrden, color: colorPorVehiculo(viaje.vehiculo_id, config?.vehiculos) };
+      // NV únicos con su orden más chico (despacho e instalación del mismo
+      // NV son el mismo punto, solo hace falta una vez en la ruta).
+      const ordenPorNv = new Map();
+      for (const r of rows) {
+        if (!ordenPorNv.has(r.nv) || (r.orden ?? 0) < ordenPorNv.get(r.nv)) ordenPorNv.set(r.nv, r.orden ?? 0);
+      }
+      const nvsEnOrden = Array.from(ordenPorNv.entries()).sort((a, b) => a[1] - b[1]).map(([nv]) => nv);
+      // Paradas que no son un portón (ej. alojamiento) - viven en
+      // viaje.paradas_extra (logisticaParadasExtra.js), no en rawItems (que
+      // es portón-por-semana). Se combinan acá con los NV, en orden real de
+      // ruta (misma secuencia de `orden`), para dibujar la línea/numeritos
+      // tratándolas "tal cual un portón".
+      const puntosRuta = [
+        ...Array.from(ordenPorNv.entries()).map(([nv, orden]) => ({ tipo: 'nv', nv, orden })),
+        ...(viaje.paradas_extra || []).map((p) => ({ tipo: 'extra', ...p })),
+      ].sort((a, b) => a.orden - b.orden);
+      return { viajeId, viaje, nvsEnOrden, puntosRuta, color: colorPorVehiculo(viaje.vehiculo_id, config?.vehiculos) };
     });
   }, [rawItems, viajesSemana, semanaFiltro, config]);
 
@@ -547,22 +559,26 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
     if (!map || !layer) return;
     layer.clearLayers();
 
-    for (const { nvsEnOrden, color, viaje, viajeId } of rutasPorViaje) {
+    for (const { puntosRuta, color, viaje, viajeId } of rutasPorViaje) {
       // Todo viaje sale del depósito (De Grandis Portones) - lo agregamos
       // como primer punto de la línea, sin numerito (el numerito 1 sigue
       // siendo la primera parada real).
       const puntos = config?.deposito ? [[config.deposito.lat, config.deposito.lng]] : [];
-      nvsEnOrden.forEach((nv, i) => {
-        const it = itemsByNv.get(nv);
+      let numParada = 0;
+      puntosRuta.forEach((p) => {
+        const esExtra = p.tipo === 'extra';
+        const it = esExtra ? p : itemsByNv.get(p.nv);
         if (!it || it.lat == null || it.lng == null) return;
         puntos.push([it.lat, it.lng]);
+        numParada += 1;
         const icon = L.divIcon({
           className: '',
-          html: `<div style="background:${color};color:#fff;border-radius:999px;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4)">${i + 1}</div>`,
+          html: `<div style="background:${esExtra ? '#f59e0b' : color};color:#fff;border-radius:999px;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4)">${esExtra ? '🏨' : numParada}</div>`,
           iconSize: [18, 18], iconAnchor: [9, 9],
         });
         const m = L.marker([it.lat, it.lng], { icon, zIndexOffset: 900 });
-        m.bindTooltip(`${viaje.nombre?.trim() || `Viaje #${viajeId}`} · parada ${i + 1}`, { direction: 'top' });
+        const etiqueta = esExtra ? p.nombre : `parada ${numParada}`;
+        m.bindTooltip(`${viaje.nombre?.trim() || `Viaje #${viajeId}`} · ${etiqueta}`, { direction: 'top' });
         m.addTo(layer);
       });
       if (puntos.length >= 2) {
@@ -838,7 +854,7 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
         {semanaFiltro && rutasPorViaje.length > 0 ? (
           <div style={{ width: 220, flex: '0 0 auto', display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto' }}>
             <div style={{ fontWeight: 900, fontSize: 13 }}>Rutas de la semana</div>
-            {rutasPorViaje.map(({ viajeId, viaje, color, nvsEnOrden }) => (
+            {rutasPorViaje.map(({ viajeId, viaje, color, puntosRuta }) => (
               <div
                 key={viajeId}
                 role="button" tabIndex={0}
@@ -852,7 +868,7 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
                   <span style={{ fontWeight: 800, fontSize: 12 }}>{viaje.nombre?.trim() || `Viaje #${viajeId}`}</span>
                 </div>
                 <div style={{ fontSize: 11, opacity: 0.75 }}>
-                  {viaje.vehiculo_nombre || 'sin vehículo'} · {nvsEnOrden.length} parada{nvsEnOrden.length === 1 ? '' : 's'}
+                  {viaje.vehiculo_nombre || 'sin vehículo'} · {puntosRuta.length} parada{puntosRuta.length === 1 ? '' : 's'}
                 </div>
                 {viaje.zonas?.length > 0 ? (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>

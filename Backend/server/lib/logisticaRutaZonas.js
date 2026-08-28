@@ -84,30 +84,47 @@ async function listZonasViaje(viajeId) {
  */
 async function sincronizarZonasViaje(viajeId) {
   const vId = Number(viajeId);
-  const { rows: items } = await pool.query(
-    `select p.nv, vp.orden
-       from public.logistica_viaje_portones vp
-       join public.portones p on p.id = vp.porton_id
-      where vp.viaje_id = $1
-      order by vp.orden asc, p.nv asc;`,
-    [vId]
-  );
+  const [{ rows: items }, { rows: paradasExtra }] = await Promise.all([
+    pool.query(
+      `select p.nv, vp.orden
+         from public.logistica_viaje_portones vp
+         join public.portones p on p.id = vp.porton_id
+        where vp.viaje_id = $1;`,
+      [vId]
+    ),
+    pool.query(
+      `select vp.orden, pe.lat, pe.lng
+         from public.logistica_viaje_paradas_extra vp
+         join public.logistica_puntos_extra pe on pe.id = vp.punto_extra_id
+        where vp.viaje_id = $1;`,
+      [vId]
+    ),
+  ]);
 
-  const nvsEnOrden = [];
-  const vistos = new Set();
+  // NV únicos con su orden más chico (despacho e instalación del mismo NV
+  // son el mismo punto, solo hace falta una vez en el corredor).
+  const ordenPorNv = new Map();
   for (const r of items) {
-    if (vistos.has(r.nv)) continue;
-    vistos.add(r.nv);
-    nvsEnOrden.push(r.nv);
+    if (!ordenPorNv.has(r.nv) || r.orden < ordenPorNv.get(r.nv)) ordenPorNv.set(r.nv, r.orden);
   }
+  const nvsEnOrden = Array.from(ordenPorNv.keys());
+  const puntosNv = nvsEnOrden.length ? await resolveCoordsForNvs(nvsEnOrden) : [];
+  const puntosByNv = new Map(puntosNv.map((p) => [p.nv, p]));
 
-  const puntos = nvsEnOrden.length ? await resolveCoordsForNvs(nvsEnOrden) : [];
-  const puntosByNv = new Map(puntos.map((p) => [p.nv, p]));
-  const ruta = [{ lat: DEPOSITO.lat, lng: DEPOSITO.lng }];
-  for (const nv of nvsEnOrden) {
+  // Portones + paradas extra (ej. alojamiento) intercalados en UNA sola
+  // secuencia por `orden` - mismo espacio numérico para ambos, ver
+  // logisticaParadasExtra.js.
+  const paradas = [];
+  for (const [nv, orden] of ordenPorNv) {
     const p = puntosByNv.get(nv);
-    if (p && p.lat != null && p.lng != null) ruta.push({ lat: p.lat, lng: p.lng });
+    if (p && p.lat != null && p.lng != null) paradas.push({ orden, lat: p.lat, lng: p.lng });
   }
+  for (const r of paradasExtra) {
+    if (r.lat != null && r.lng != null) paradas.push({ orden: r.orden, lat: r.lat, lng: r.lng });
+  }
+  paradas.sort((a, b) => a.orden - b.orden);
+
+  const ruta = [{ lat: DEPOSITO.lat, lng: DEPOSITO.lng }, ...paradas.map((p) => ({ lat: p.lat, lng: p.lng }))];
 
   // Sin ninguna parada con ubicación resuelta, no hay corredor que detectar
   // (el depósito solo no atraviesa nada) - se limpia lo que hubiera.

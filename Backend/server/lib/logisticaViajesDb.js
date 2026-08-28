@@ -810,14 +810,24 @@ async function reordenarViaje(viajeId, itemsOrdenados) {
   const semana = viajeQ.rows[0].semana;
   await assertSemanaAbierta(semana);
 
+  // Items mixtos: {porton_id, tipo} (como siempre) o {punto_extra_id} (parada
+  // que no es un portón, ej. alojamiento) - conviven en la MISMA secuencia
+  // de `orden`, así se pueden intercalar libremente en la ruta.
   await withTx(async (client) => {
     for (let i = 0; i < itemsOrdenados.length; i++) {
-      const { porton_id, tipo } = itemsOrdenados[i] || {};
-      const tipoNorm = String(tipo || '').trim();
-      if (!porton_id || !['despacho', 'instalacion'].includes(tipoNorm)) continue;
+      const it = itemsOrdenados[i] || {};
+      if (it.punto_extra_id != null) {
+        await client.query(
+          `update public.logistica_viaje_paradas_extra set orden = $1 where viaje_id = $2 and punto_extra_id = $3;`,
+          [i, vId, Number(it.punto_extra_id)]
+        );
+        continue;
+      }
+      const tipoNorm = String(it.tipo || '').trim();
+      if (!it.porton_id || !['despacho', 'instalacion'].includes(tipoNorm)) continue;
       await client.query(
         `update public.logistica_viaje_portones set orden = $1 where viaje_id = $2 and porton_id = $3 and tipo = $4;`,
-        [i, vId, porton_id, tipoNorm]
+        [i, vId, it.porton_id, tipoNorm]
       );
     }
   });

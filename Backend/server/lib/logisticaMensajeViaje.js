@@ -66,6 +66,20 @@ async function fetchItems(viajeId) {
   return rows;
 }
 
+// Paradas que no son un portón (ej. alojamiento de la cuadrilla) - conviven
+// en el mismo `orden` que los portones, ver logisticaParadasExtra.js.
+async function fetchParadasExtra(viajeId) {
+  const { rows } = await pool.query(
+    `select vp.orden, pe.nombre, pe.maps_url
+       from public.logistica_viaje_paradas_extra vp
+       join public.logistica_puntos_extra pe on pe.id = vp.punto_extra_id
+      where vp.viaje_id = $1
+      order by vp.orden asc;`,
+    [Number(viajeId)]
+  );
+  return rows;
+}
+
 // Igual patrón prefijo-agnóstico que ya usan logisticaMapa.js y
 // routes/public/portones.js.
 async function fetchDatosPorNv(nvs) {
@@ -122,11 +136,12 @@ async function buildMensajeViaje(viajeId) {
   const viaje = await fetchViaje(viajeId);
   if (!viaje) throw new Error('Viaje no encontrado');
 
-  const [miembros, items] = await Promise.all([
+  const [miembros, items, paradasExtra] = await Promise.all([
     fetchMiembros(viaje.cuadrilla_id),
     fetchItems(viajeId),
+    fetchParadasExtra(viajeId),
   ]);
-  if (!items.length) throw new Error('El viaje no tiene portones asignados todavía');
+  if (!items.length && !paradasExtra.length) throw new Error('El viaje no tiene portones ni paradas asignadas todavía');
 
   const nvs = Array.from(new Set(items.map((it) => it.nv)));
   const datosPorNv = await fetchDatosPorNv(nvs);
@@ -144,22 +159,38 @@ async function buildMensajeViaje(viajeId) {
   for (const m of miembros) lineas.push(m);
   lineas.push('');
 
-  // Agrupa en una sola "parada" los items consecutivos (en orden de ruta)
-  // que comparten cliente+dirección - ej: dos NV del mismo cliente que se
-  // instalan juntos en una sola visita.
+  // Une portones + paradas extra (ej. alojamiento) en UNA sola secuencia por
+  // `orden` - mismo espacio numérico para ambos (logisticaParadasExtra.js) -
+  // y agrupa en una sola "parada" los PORTONES consecutivos que comparten
+  // cliente+dirección (ej: dos NV del mismo cliente que se instalan
+  // juntos). Una parada extra nunca se agrupa con nada, es su propio bloque.
+  const eventos = [
+    ...items.map((it) => ({ orden: it.orden, porton: it })),
+    ...paradasExtra.map((p) => ({ orden: p.orden, extra: p })),
+  ].sort((a, b) => a.orden - b.orden);
+
   const paradas = [];
-  for (const it of items) {
+  for (const ev of eventos) {
+    if (ev.extra) { paradas.push({ extra: ev.extra }); continue; }
+    const it = ev.porton;
     const d = datosPorNv.get(it.nv) || {};
     // Sin cliente Y sin dirección conocidos, clave = null -> NUNCA agrupa
     // (si no, dos NV totalmente distintos que ambos "no matchean nada"
     // terminaban mezclados en un solo bloque "Cliente sin nombre").
     const clave = (d.nombre_cliente && d.direccion) ? `${d.nombre_cliente}::${d.direccion}` : null;
     const ultima = paradas[paradas.length - 1];
-    if (clave && ultima && ultima.clave === clave) ultima.items.push({ ...it, ...d });
+    if (clave && ultima && !ultima.extra && ultima.clave === clave) ultima.items.push({ ...it, ...d });
     else paradas.push({ clave, datos: d, items: [{ ...it, ...d }] });
   }
 
   for (const parada of paradas) {
+    if (parada.extra) {
+      lineas.push(`#${parada.extra.nombre}`);
+      lineas.push('Ubicación:');
+      lineas.push(parada.extra.maps_url || '(sin link cargado)');
+      lineas.push('');
+      continue;
+    }
     const d = parada.datos;
     lineas.push(`#${d.nombre_cliente || 'Cliente sin nombre'}${d.telefono ? ` ${d.telefono}` : ''}`);
     if (d.distribuidor) lineas.push(`Distribuidor: ${d.distribuidor}`);

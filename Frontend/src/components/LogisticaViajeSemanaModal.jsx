@@ -17,6 +17,10 @@ import {
   desasignarLogisticaPorton,
   reordenarLogisticaViaje,
   toggleLogisticaViajeZona,
+  fetchLogisticaPuntosExtra,
+  createLogisticaPuntoExtra,
+  asignarLogisticaParadaExtra,
+  desasignarLogisticaParadaExtra,
   cerrarLogisticaSemana,
   reabrirLogisticaSemana,
 } from '../api';
@@ -148,6 +152,89 @@ function PortonChip({ item, draggable, onDragStart, onDragEnd, ordenNum }) {
   );
 }
 
+// Parada que no es un portón (ej. alojamiento de la cuadrilla) - se muestra
+// mezclada en la misma lista ordenada, con su propio estilo (ámbar) para
+// distinguirla de un vistazo. Se reordena con flechas en vez de arrastre
+// (más simple que sumarla al mecanismo de drag&drop existente) pero entra
+// en la MISMA secuencia de `orden` que los portones - ver reordenarViaje.
+function ParadaExtraChip({ item, ordenNum, canEdit, onSubir, onBajar, onQuitar, esPrimera, esUltima }) {
+  return (
+    <div
+      style={{
+        border: '1px solid #f59e0b', borderRadius: 10, padding: '8px 10px',
+        background: 'rgba(245,158,11,0.08)', display: 'flex', flexDirection: 'column', gap: 4, position: 'relative',
+      }}
+      title={item.maps_url || ''}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+        <span style={{ fontWeight: 900, fontSize: 13 }}>
+          {ordenNum != null ? (
+            <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, borderRadius: 999, background: '#dc2626', color: '#fff', fontSize: 9, fontWeight: 900, marginRight: 5, verticalAlign: 2 }}>
+              {ordenNum}
+            </span>
+          ) : null}
+          🏨 {item.nombre}
+        </span>
+        {canEdit ? (
+          <div style={{ display: 'flex', gap: 2 }}>
+            <button type="button" className="btn" style={{ padding: '0 5px', fontSize: 10 }} disabled={esPrimera} onClick={onSubir} title="Mover arriba">▲</button>
+            <button type="button" className="btn" style={{ padding: '0 5px', fontSize: 10 }} disabled={esUltima} onClick={onBajar} title="Mover abajo">▼</button>
+            <button type="button" className="btn" style={{ padding: '0 5px', fontSize: 10, borderColor: '#ef4444', color: '#991b1b' }} onClick={onQuitar} title="Quitar del viaje">×</button>
+          </div>
+        ) : null}
+      </div>
+      {item.maps_url ? (
+        <a href={item.maps_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#b45309' }}>Ver ubicación →</a>
+      ) : null}
+    </div>
+  );
+}
+
+// Agregar una parada extra a un viaje: elegir una ya cargada (catálogo
+// reutilizable, ej. "Hotel San Vicente" que se vuelve a usar en otro viaje
+// sin repegar la URL) o cargar una nueva.
+function AgregarParadaExtra({ puntosExtra, busy, onElegir, onCrear, onCancelar }) {
+  const [modo, setModo] = useState(puntosExtra?.length ? 'elegir' : 'nuevo');
+  const [seleccionado, setSeleccionado] = useState('');
+  const [nombre, setNombre] = useState('');
+  const [mapsUrl, setMapsUrl] = useState('');
+
+  return (
+    <div style={{ border: '1px dashed #f59e0b', borderRadius: 10, padding: 8, background: 'rgba(245,158,11,0.06)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {puntosExtra?.length > 0 ? (
+        <div style={{ display: 'flex', gap: 4 }}>
+          <button type="button" className="btn" style={{ fontSize: 10, padding: '2px 6px', ...(modo === 'elegir' ? { background: 'var(--brand)', color: '#fff' } : {}) }} onClick={() => setModo('elegir')}>Elegir existente</button>
+          <button type="button" className="btn" style={{ fontSize: 10, padding: '2px 6px', ...(modo === 'nuevo' ? { background: 'var(--brand)', color: '#fff' } : {}) }} onClick={() => setModo('nuevo')}>+ Nueva</button>
+        </div>
+      ) : null}
+
+      {modo === 'elegir' ? (
+        <>
+          <select className="pp-select" style={{ fontSize: 11 }} value={seleccionado} onChange={(e) => setSeleccionado(e.target.value)}>
+            <option value="">— Elegir —</option>
+            {puntosExtra.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+          </select>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button type="button" className="btn" style={{ fontSize: 11 }} disabled={busy} onClick={onCancelar}>Cancelar</button>
+            <button type="button" className="btn btn--brand" style={{ fontSize: 11 }} disabled={busy || !seleccionado} onClick={() => onElegir(Number(seleccionado))}>Agregar</button>
+          </div>
+        </>
+      ) : (
+        <>
+          <input className="pp-input" style={{ fontSize: 11 }} placeholder="Nombre (ej: Hotel San Vicente)" value={nombre} onChange={(e) => setNombre(e.target.value)} />
+          <input className="pp-input" style={{ fontSize: 11 }} placeholder="Link de Google Maps" value={mapsUrl} onChange={(e) => setMapsUrl(e.target.value)} />
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button type="button" className="btn" style={{ fontSize: 11 }} disabled={busy} onClick={onCancelar}>Cancelar</button>
+            <button type="button" className="btn btn--brand" style={{ fontSize: 11 }} disabled={busy || !nombre.trim() || !mapsUrl.trim()} onClick={() => onCrear(nombre.trim(), mapsUrl.trim())}>
+              {busy ? 'Cargando…' : 'Crear y agregar'}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function NuevoViajeForm({ semana, config, onCreate, onCancel, busy, initial, submitLabel }) {
   const { start, end } = isoWeekStartEndFromLabel(semana);
   const today = todayISO10();
@@ -225,7 +312,7 @@ function NuevoViajeForm({ semana, config, onCreate, onCancel, busy, initial, sub
   );
 }
 
-function ViajeColumn({ viaje, items, canEdit, cerrada, onDropItem, onReorder, onEditar, onBorrar, onDragStartChip, onDragEndChip, onVerMapa, onMensaje, onToggleZona }) {
+function ViajeColumn({ viaje, items, canEdit, cerrada, onDropItem, onReorder, onEditar, onBorrar, onDragStartChip, onDragEndChip, onVerMapa, onMensaje, onToggleZona, puntosExtra, agregandoParada, onAbrirAgregarParada, onCerrarAgregarParada, agregandoParadaBusy, onElegirParada, onCrearParada, onQuitarParada, onMoverParada }) {
   const [over, setOver] = useState(false);
   const [dragOverIndex, setDragOverIndex] = useState(null);
   const capacidad = Number(viaje.vehiculo_capacidad || 0);
@@ -307,15 +394,15 @@ function ViajeColumn({ viaje, items, canEdit, cerrada, onDropItem, onReorder, on
       <ZonaPills zonas={viaje.zonas} canEdit={canEdit} onToggle={(zonaId, habilitada) => onToggleZona(viaje.id, zonaId, habilitada)} />
 
       {puedeReordenar ? (
-        <div style={{ fontSize: 10, opacity: 0.55 }}>Arrastrá para reordenar la ruta (1º arriba = primera parada).</div>
+        <div style={{ fontSize: 10, opacity: 0.55 }}>Arrastrá para reordenar la ruta (1º arriba = primera parada). Las paradas 🏨 se reordenan con las flechas.</div>
       ) : null}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minHeight: 60 }}>
         {items.length === 0 ? (
-          <div style={{ fontSize: 11, opacity: 0.5, padding: 8, textAlign: 'center' }}>Arrastrá portones acá</div>
+          <div style={{ fontSize: 11, opacity: 0.5, padding: 8, textAlign: 'center' }}>Arrastrá portones acá, o agregá una parada abajo</div>
         ) : (
           items.map((it, idx) => (
             <div
-              key={`${it.porton_id}-${it.tipo}`}
+              key={it.punto_extra_id != null ? `extra-${it.punto_extra_id}` : `${it.porton_id}-${it.tipo}`}
               onDragOver={(e) => {
                 if (!canEdit || cerrada) return;
                 e.preventDefault();
@@ -333,17 +420,46 @@ function ViajeColumn({ viaje, items, canEdit, cerrada, onDropItem, onReorder, on
               {dragOverIndex === idx ? (
                 <div style={{ height: 3, background: 'var(--brand)', borderRadius: 2, marginBottom: 4 }} />
               ) : null}
-              <PortonChip
-                item={it}
-                draggable={canEdit && !cerrada}
-                onDragStart={(e) => onDragStartChip(e, it)}
-                onDragEnd={onDragEndChip}
-                ordenNum={items.length > 1 ? idx + 1 : null}
-              />
+              {it.punto_extra_id != null ? (
+                <ParadaExtraChip
+                  item={it}
+                  canEdit={canEdit && !cerrada}
+                  ordenNum={items.length > 1 ? idx + 1 : null}
+                  esPrimera={idx === 0}
+                  esUltima={idx === items.length - 1}
+                  onSubir={() => onMoverParada(viaje.id, it.punto_extra_id, -1)}
+                  onBajar={() => onMoverParada(viaje.id, it.punto_extra_id, 1)}
+                  onQuitar={() => onQuitarParada(viaje.id, it.punto_extra_id)}
+                />
+              ) : (
+                <PortonChip
+                  item={it}
+                  draggable={canEdit && !cerrada}
+                  onDragStart={(e) => onDragStartChip(e, it)}
+                  onDragEnd={onDragEndChip}
+                  ordenNum={items.length > 1 ? idx + 1 : null}
+                />
+              )}
             </div>
           ))
         )}
       </div>
+
+      {canEdit && !cerrada ? (
+        agregandoParada ? (
+          <AgregarParadaExtra
+            puntosExtra={puntosExtra}
+            busy={agregandoParadaBusy}
+            onElegir={(puntoExtraId) => onElegirParada(viaje.id, puntoExtraId)}
+            onCrear={(nombre, mapsUrl) => onCrearParada(viaje.id, nombre, mapsUrl)}
+            onCancelar={onCerrarAgregarParada}
+          />
+        ) : (
+          <button type="button" className="btn" style={{ fontSize: 11 }} onClick={() => onAbrirAgregarParada(viaje.id)}>
+            🏨 + Parada (alojamiento, etc.)
+          </button>
+        )
+      ) : null}
     </div>
   );
 }
@@ -366,14 +482,21 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
   const [mapa, setMapa] = useState(null); // { nvs, titulo } | null
   const [mensajeViaje, setMensajeViaje] = useState(null); // { viajeId, titulo } | null
 
+  // Paradas que no son un portón (ej. alojamiento) - catálogo reutilizable +
+  // qué viaje tiene abierto el picker para agregar una.
+  const [puntosExtra, setPuntosExtra] = useState([]);
+  const [agregandoParadaViajeId, setAgregandoParadaViajeId] = useState(null);
+  const [agregandoParadaBusy, setAgregandoParadaBusy] = useState(false);
+
   const load = useCallback(async () => {
     if (!semana) return;
     setErr('');
     setLoading(true);
     try {
-      const [d, c] = await Promise.all([fetchLogisticaSemanaDetalle(semana), fetchLogisticaViajesConfig()]);
+      const [d, c, pe] = await Promise.all([fetchLogisticaSemanaDetalle(semana), fetchLogisticaViajesConfig(), fetchLogisticaPuntosExtra()]);
       setDetalle(d?.detalle || null);
       setConfig(c?.config || null);
+      setPuntosExtra((pe?.puntos || []).filter((p) => p.activo !== false));
     } catch (e) {
       setErr(e?.response?.data?.error || e.message);
     } finally {
@@ -388,6 +511,7 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
       setEditandoViaje(null);
       setDetalle(null);
       setErr('');
+      setAgregandoParadaViajeId(null);
     }
   }, [open, semana, load]);
 
@@ -413,11 +537,24 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
       if (!map.has(it.viaje_id)) map.set(it.viaje_id, []);
       map.get(it.viaje_id).push(it);
     }
+    // Paradas extra (ej. alojamiento) - viven en detalle.viajes[].paradas_extra
+    // (logisticaParadasExtra.js), no en detalle.items (que es portón-por-
+    // semana) - se mezclan acá con el MISMO shape mínimo para que ViajeColumn
+    // las intercale con los portones en una sola lista ordenada por `orden`.
+    for (const v of detalle?.viajes || []) {
+      for (const p of v.paradas_extra || []) {
+        if (!map.has(v.id)) map.set(v.id, []);
+        map.get(v.id).push({ punto_extra_id: p.punto_extra_id, nombre: p.nombre, maps_url: p.maps_url, lat: p.lat, lng: p.lng, orden: p.orden });
+      }
+    }
     // Orden = orden real de la ruta (primero el que queda arriba en la
     // columna). Portones agregados antes de que existiera esta columna de
-    // orden quedan todos en 0 (empate) - se desempata por porton_id para que
-    // al menos sea estable entre renders, hasta que el usuario los reordene.
-    for (const arr of map.values()) arr.sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0) || String(a.porton_id).localeCompare(String(b.porton_id)));
+    // orden quedan todos en 0 (empate) - se desempata por porton_id/
+    // punto_extra_id para que al menos sea estable entre renders, hasta que
+    // el usuario los reordene.
+    for (const arr of map.values()) {
+      arr.sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0) || String(a.porton_id ?? `x${a.punto_extra_id}`).localeCompare(String(b.porton_id ?? `x${b.punto_extra_id}`)));
+    }
     return map;
   }, [detalle]);
 
@@ -481,7 +618,13 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
     const reordenado = [...sinArrastrado];
     reordenado.splice(destino, 0, { porton_id: payload.porton_id, tipo: payload.tipo });
 
-    runMutation(() => reordenarLogisticaViaje(viajeId, reordenado.map((it) => ({ porton_id: it.porton_id, tipo: it.tipo }))));
+    // sinArrastrado puede traer paradas extra intercaladas (itemsPorViaje las
+    // mezcla con los portones) - hay que preservar su punto_extra_id acá, si
+    // no el reorden las manda todas con {porton_id:undefined, tipo:undefined}
+    // y el backend las ignora (quedan pisadas en su orden viejo).
+    runMutation(() => reordenarLogisticaViaje(viajeId, reordenado.map((it) => (
+      it.punto_extra_id != null ? { punto_extra_id: it.punto_extra_id } : { porton_id: it.porton_id, tipo: it.tipo }
+    ))));
   }, [itemsPorViaje, runMutation]);
 
   // Wrapper para el onDrop de un chip puntual (llega con el DragEvent crudo,
@@ -547,6 +690,54 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
 
   const onToggleZona = (viajeId, zonaId, habilitada) => {
     runMutation(() => toggleLogisticaViajeZona(viajeId, zonaId, habilitada));
+  };
+
+  // Paradas que no son un portón (ej. alojamiento) - se tratan igual que un
+  // portón para la ruta (misma secuencia de `orden`, cuentan para zonas y
+  // mensaje) pero se agregan/reordenan distinto: elegir del catálogo o
+  // cargar una nueva, y flechas en vez de arrastre.
+  const abrirAgregarParada = (viajeId) => setAgregandoParadaViajeId(viajeId);
+  const cerrarAgregarParada = () => setAgregandoParadaViajeId(null);
+
+  const elegirParada = async (viajeId, puntoExtraId) => {
+    setAgregandoParadaBusy(true);
+    const ok = await runMutation(() => asignarLogisticaParadaExtra(viajeId, puntoExtraId));
+    setAgregandoParadaBusy(false);
+    if (ok) setAgregandoParadaViajeId(null);
+  };
+
+  const crearParada = async (viajeId, nombre, mapsUrl) => {
+    setAgregandoParadaBusy(true);
+    setErr('');
+    try {
+      const { punto } = await createLogisticaPuntoExtra({ nombre, maps_url: mapsUrl });
+      setPuntosExtra((prev) => [...prev, punto].sort((a, b) => a.nombre.localeCompare(b.nombre)));
+      const ok = await runMutation(() => asignarLogisticaParadaExtra(viajeId, punto.id));
+      if (ok) setAgregandoParadaViajeId(null);
+    } catch (e) {
+      setErr(e?.response?.data?.error || e.message);
+    } finally {
+      setAgregandoParadaBusy(false);
+    }
+  };
+
+  const quitarParada = (viajeId, puntoExtraId) => {
+    runMutation(() => desasignarLogisticaParadaExtra(viajeId, puntoExtraId));
+  };
+
+  // Sube/baja una parada extra un lugar dentro de la MISMA lista mezclada
+  // (portones + paradas) reenviando el orden completo - reusa el mismo
+  // endpoint que el arrastre de portones (reordenarViaje ya acepta items
+  // mixtos, ver Backend/server/lib/logisticaViajesDb.js).
+  const moverParada = (viajeId, puntoExtraId, direccion) => {
+    const items = itemsPorViaje.get(viajeId) || [];
+    const idx = items.findIndex((it) => it.punto_extra_id === puntoExtraId);
+    const destino = idx + direccion;
+    if (idx === -1 || destino < 0 || destino >= items.length) return;
+    const reordenado = [...items];
+    [reordenado[idx], reordenado[destino]] = [reordenado[destino], reordenado[idx]];
+    const payload = reordenado.map((it) => (it.punto_extra_id != null ? { punto_extra_id: it.punto_extra_id } : { porton_id: it.porton_id, tipo: it.tipo }));
+    runMutation(() => reordenarLogisticaViaje(viajeId, payload));
   };
 
   if (!open) return null;
@@ -666,6 +857,15 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
                     onVerMapa={(viaje, items) => setMapa({ nvs: uniqueNvs(items), rutaNvs: orderedUniqueNvs(items), titulo: `Mapa · ${viaje.nombre?.trim() || `Viaje #${viaje.id}`}` })}
                     onMensaje={(viaje) => setMensajeViaje({ viajeId: viaje.id, titulo: viaje.nombre?.trim() || `Viaje #${viaje.id}` })}
                     onToggleZona={onToggleZona}
+                    puntosExtra={puntosExtra}
+                    agregandoParada={agregandoParadaViajeId === v.id}
+                    onAbrirAgregarParada={abrirAgregarParada}
+                    onCerrarAgregarParada={cerrarAgregarParada}
+                    agregandoParadaBusy={agregandoParadaBusy}
+                    onElegirParada={elegirParada}
+                    onCrearParada={crearParada}
+                    onQuitarParada={quitarParada}
+                    onMoverParada={moverParada}
                   />
                 ))}
                 {(detalle?.viajes || []).length === 0 ? (

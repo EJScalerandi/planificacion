@@ -621,6 +621,32 @@ export async function toggleLogisticaViajeZona(viajeId, zonaId, habilitada) {
   const { data } = await api.patch(`/admin/logistica/viajes/${viajeId}/zonas/${zonaId}`, { habilitada });
   return data;
 }
+// Paradas que no son un portón (ej. alojamiento) - catálogo reutilizable +
+// asignación por viaje. Ver Backend/server/lib/logisticaParadasExtra.js.
+export async function fetchLogisticaPuntosExtra() {
+  const { data } = await api.get('/admin/logistica/puntos-extra');
+  return data;
+}
+export async function createLogisticaPuntoExtra(payload) {
+  const { data } = await api.post('/admin/logistica/puntos-extra', payload);
+  return data;
+}
+export async function updateLogisticaPuntoExtra(id, patch) {
+  const { data } = await api.patch(`/admin/logistica/puntos-extra/${id}`, patch);
+  return data;
+}
+export async function deleteLogisticaPuntoExtra(id) {
+  const { data } = await api.delete(`/admin/logistica/puntos-extra/${id}`);
+  return data;
+}
+export async function asignarLogisticaParadaExtra(viajeId, puntoExtraId) {
+  const { data } = await api.post(`/admin/logistica/viajes/${viajeId}/paradas-extra`, { punto_extra_id: puntoExtraId });
+  return data;
+}
+export async function desasignarLogisticaParadaExtra(viajeId, puntoExtraId) {
+  const { data } = await api.delete(`/admin/logistica/viajes/${viajeId}/paradas-extra/${puntoExtraId}`);
+  return data;
+}
 export async function cerrarLogisticaSemana(semana) {
   const { data } = await api.post(`/admin/logistica/semanas/${encodeURIComponent(semana)}/cerrar`, {});
   return data;
