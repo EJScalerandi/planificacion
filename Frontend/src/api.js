@@ -131,6 +131,32 @@ export async function getWorkflowConditionFields(line) {
   return data;
 }
 
+/* ============ ADMIN SCHEDULING (motor de reglas de tiempo — Fase 0/1, en sombra) ============ */
+export async function getSchedulingStandard(line) {
+  const { data } = await api.get('/admin/scheduling/standard', { params: { line } });
+  return data;
+}
+
+export async function saveSchedulingStandard(line, standards) {
+  const { data } = await api.put('/admin/scheduling/standard', { standards }, { params: { line } });
+  return data;
+}
+
+export async function getSchedulingRules(line) {
+  const { data } = await api.get('/admin/scheduling/rules', { params: { line } });
+  return data;
+}
+
+export async function saveSchedulingRules(line, rules) {
+  const { data } = await api.put('/admin/scheduling/rules', { rules }, { params: { line } });
+  return data;
+}
+
+export async function getSchedulingPreview(line, limit) {
+  const { data } = await api.get('/admin/scheduling/preview', { params: { line, limit } });
+  return data;
+}
+
 /* ============ QC (CALIDAD) ============ */
 export async function qcGetMotives({ line, kind, stage }) {
   const { data } = await api.get('/qc/motives', {

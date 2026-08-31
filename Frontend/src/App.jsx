@@ -25,6 +25,7 @@ import PublicNvStatusPage from '../pages/PublicNvStatusPage';
 import AdminLoginPage from '../pages/admin/AdminLoginPage';
 import AdminHomePage from '../pages/admin/AdminHomePage';
 import WorkflowDesignerPage from '../pages/admin/WorkflowDesignerPage';
+import SchedulingRulesPage from '../pages/admin/SchedulingRulesPage';
 import AdminQcPage from '../pages/admin/AdminQcPage';
 import AdminExcelInfoPage from '../pages/admin/AdminExcelInfoPage';
 import PrefabricadosConfigPage from '../pages/admin/PrefabricadosConfigPage';
@@ -686,6 +687,7 @@ export default function App() {
           <Route path="/admin" element={<AdminHomePage />} />
           <Route path="/admin/qc" element={<AdminQcPage />} />
           <Route path="/admin/workflow" element={<WorkflowDesignerPage />} />
+          <Route path="/admin/scheduling" element={<SchedulingRulesPage />} />
           <Route path="/admin/excel-info" element={<AdminExcelInfoPage />} />
           <Route path="/admin/prefabricados" element={<PrefabricadosConfigPage />} />
           <Route path="/admin/servicio-tecnico" element={<ServicioTecnicoPage />} />

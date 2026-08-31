@@ -19,6 +19,7 @@ const CANONICAL_SCOPES = [
   'prefabricados:admin',
   'servicio_tecnico:admin',
   'compras:admin',
+  'scheduling:admin',
 ];
 
 function normalizeScopes(scopes) {

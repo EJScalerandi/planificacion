@@ -80,6 +80,7 @@ export default function IndexPage({ routes = [] }) {
   const isPrefabAdmin = has('prefabricados:admin');
   const isStAdmin = has('servicio_tecnico:admin');
   const isComprasAdmin = has('compras:admin');
+  const isSchedAdmin = has('scheduling:admin');
 
   const isPreprodOnly = isPreprodAdmin && !isQcAdmin && !isWfAdmin && !canUsers;
 
@@ -102,6 +103,7 @@ export default function IndexPage({ routes = [] }) {
     const out = [];
     if (isQcAdmin) out.push({ path: '/admin/qc', label: 'Admin · Usuarios QC' });
     if (isWfAdmin) out.push({ path: '/admin/workflow', label: 'Admin · Workflow (Designer)' });
+    if (isSchedAdmin) out.push({ path: '/admin/scheduling', label: 'Admin · Motor de Reglas de Tiempo (Beta)' });
     if (canUsers) out.push({ path: '/b', label: 'Admin · Usuarios / Permisos (Dashboard)' });
     if (isQcAdmin || isWfAdmin) out.push({ path: '/admin/excel-info', label: 'Admin · Información Excel' });
     if (isPrefabAdmin) out.push({ path: '/admin/prefabricados', label: 'Admin · Prefabricados' });
@@ -110,7 +112,7 @@ export default function IndexPage({ routes = [] }) {
     if (isComprasAdmin) out.push({ path: '/admin/insumos/entregas', label: 'Admin · Compras · Entregas de Insumos' });
     if (isComprasAdmin) out.push({ path: '/admin/insumos/config', label: 'Admin · Compras · Config Categorías↔Sección' });
     return out;
-  }, [isPreprodOnly, isQcAdmin, isWfAdmin, canUsers, isPrefabAdmin, isStAdmin, isComprasAdmin]);
+  }, [isPreprodOnly, isQcAdmin, isWfAdmin, canUsers, isPrefabAdmin, isStAdmin, isComprasAdmin, isSchedAdmin]);
 
   const opsRoutes = useMemo(() => {
     if (isPreprodOnly) return [];
