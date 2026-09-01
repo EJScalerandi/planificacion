@@ -10,7 +10,7 @@ const { adminAuth } = require('../../middleware/adminAuth');
 const { pool } = require('../../db');
 const { computeEffectiveMinutes } = require('../../lib/scheduling/rulesEngine');
 const { listPortonSchedulingCtxs, listPortonesPendingForRegression, getPortonSchedulingCtx } = require('../../lib/scheduling/portonCtx');
-const { computePortonRegression } = require('../../lib/scheduling/regressionEngine');
+const { computePortonRegression, computeFleetRegression } = require('../../lib/scheduling/regressionEngine');
 
 const router = express.Router();
 
@@ -307,29 +307,44 @@ router.get('/scheduling/regression/preview', async (req, res) => {
 
     const { standardByStage, rulesByStage } = await loadStandardsAndRulesMaps(line);
 
-    const portonId = req.query.porton_id != null ? Number(req.query.porton_id) : null;
+    // portones.id es UUID, no numérico — un solo portón siempre se calcula
+    // aislado (capacidad infinita), es la herramienta de depuración de
+    // ruta/reglas de un portón puntual, sin importar el modo flota/aislado.
+    const portonId = req.query.porton_id != null ? String(req.query.porton_id).trim() : null;
 
-    if (portonId != null) {
-      if (!Number.isInteger(portonId)) return res.status(400).json({ error: 'porton_id inválido' });
+    if (portonId) {
       const ctx = await getPortonSchedulingCtx(pool, portonId);
       if (!ctx) return res.status(404).json({ error: 'Portón no encontrado' });
 
       const result = await computePortonRegression({ line, ctx, standardByStage, rulesByStage, db: pool });
-      return res.json({ ok: true, id: ctx.id, nv: ctx.nv, sistema: ctx.sistema, ...result });
+      return res.json({ ok: true, mode: 'isolated', id: ctx.id, nv: ctx.nv, sistema: ctx.sistema, ...result });
+    }
+
+    const mode = String(req.query.mode || 'fleet').trim();
+    if (!['fleet', 'isolated'].includes(mode)) {
+      return res.status(400).json({ error: 'mode debe ser fleet o isolated' });
     }
 
     const ctxs = await listPortonesPendingForRegression(pool, { limit: req.query.limit });
-    const portones = [];
-    for (const ctx of ctxs) {
-      try {
-        const result = await computePortonRegression({ line, ctx, standardByStage, rulesByStage, db: pool });
-        portones.push({ id: ctx.id, nv: ctx.nv, sistema: ctx.sistema, ...result });
-      } catch (err) {
-        // Un portón con datos raros no debe tumbar el batch entero.
-        portones.push({ id: ctx.id, nv: ctx.nv, ok: false, error: err.message });
+
+    if (mode === 'isolated') {
+      // Cada portón calculado por separado, capacidad infinita — el
+      // comportamiento original de Fase 2a, sin competencia entre portones.
+      // Queda como comparación/depuración frente al modo flota.
+      const portones = [];
+      for (const ctx of ctxs) {
+        try {
+          const result = await computePortonRegression({ line, ctx, standardByStage, rulesByStage, db: pool });
+          portones.push({ id: ctx.id, nv: ctx.nv, sistema: ctx.sistema, ...result });
+        } catch (err) {
+          portones.push({ id: ctx.id, nv: ctx.nv, ok: false, error: err.message });
+        }
       }
+      return res.json({ ok: true, mode: 'isolated', portones });
     }
-    return res.json({ ok: true, portones });
+
+    const fleetResult = await computeFleetRegression({ line, ctxs, standardByStage, rulesByStage, db: pool });
+    return res.json({ ok: true, ...fleetResult });
   } catch (err) {
     console.error('get scheduling regression preview error:', err);
     return res.status(500).json({ error: 'Error calculando la regresión', detail: err.message });

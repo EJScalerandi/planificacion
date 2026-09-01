@@ -96,6 +96,7 @@ export default function SchedulingRulesPage() {
   const [previewErr, setPreviewErr] = useState('');
 
   const [portonIdInput, setPortonIdInput] = useState('');
+  const [fleetMode, setFleetMode] = useState('fleet'); // 'fleet' | 'isolated' — solo aplica sin porton_id
   const [regression, setRegression] = useState(null);
   const [regressionLoading, setRegressionLoading] = useState(false);
   const [regressionErr, setRegressionErr] = useState('');
@@ -217,7 +218,7 @@ export default function SchedulingRulesPage() {
     setRegressionLoading(true);
     try {
       const id = portonIdInput.trim();
-      const data = await getSchedulingRegressionPreview(line, id ? { porton_id: id } : { limit: 20 });
+      const data = await getSchedulingRegressionPreview(line, id ? { porton_id: id } : { limit: 20, mode: fleetMode });
       setRegression(data);
     } catch (e) {
       setRegressionErr(e?.response?.data?.error || e.message);
@@ -455,7 +456,7 @@ export default function SchedulingRulesPage() {
       <section style={{ marginTop: 20, border: '1px solid var(--border)', borderRadius: 12, padding: 12 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
           <div style={{ fontWeight: 900, fontSize: 16 }}>Regresión (calcular hacia atrás desde la fecha de despacho)</div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <input
               className="btn"
               style={{ width: 140 }}
@@ -463,6 +464,12 @@ export default function SchedulingRulesPage() {
               onChange={(e) => setPortonIdInput(e.target.value)}
               placeholder="ID de portón (vacío = últimos 20 con fecha)"
             />
+            {!portonIdInput.trim() && (
+              <select className="btn" value={fleetMode} onChange={(e) => setFleetMode(e.target.value)} title="Cómo se reparte el cupo entre portones">
+                <option value="fleet">Flota (cupo compartido)</option>
+                <option value="isolated">Aislado (capacidad infinita, depuración)</option>
+              </select>
+            )}
             <button className="btn btn--brand" onClick={runRegression} disabled={regressionLoading || line !== 'portones'}>
               {regressionLoading ? 'Calculando…' : 'Calcular'}
             </button>
@@ -472,6 +479,13 @@ export default function SchedulingRulesPage() {
         {line !== 'portones' && (
           <div style={{ fontSize: 12, opacity: 0.7, marginTop: 8 }}>
             La regresión de esta fase solo soporta la línea Portones.
+          </div>
+        )}
+        {regression?.mode === 'fleet' && (
+          <div style={{ fontSize: 12, opacity: 0.7, marginTop: 8 }}>
+            Modo flota: los portones compiten por el cupo diario real de cada recurso. Dos portones pueden mostrar
+            horarios que se superponen dentro del mismo día — lo garantizado es que la suma de minutos por día no
+            supera el cupo, no un orden de cola exacto dentro del día.
           </div>
         )}
         {regressionErr && <div style={{ color: 'crimson', marginTop: 8 }}>{regressionErr}</div>}
@@ -514,7 +528,14 @@ export default function SchedulingRulesPage() {
                             </td>
                             <td style={{ padding: 6 }}>{fmtArDateTime(s.latest_finish)}</td>
                             <td style={{ padding: 6, textAlign: 'right' }}>{s.effective_minutes}</td>
-                            <td style={{ padding: 6 }}>{s.resource_key}</td>
+                            <td style={{ padding: 6 }}>
+                              {s.resource_key}
+                              {s.resource_constrained && (
+                                <span title="Se corrió por falta de cupo compartido con otro portón" style={{ marginLeft: 6, color: '#b45309' }}>
+                                  ⏳
+                                </span>
+                              )}
+                            </td>
                             <td style={{ padding: 6, opacity: 0.7 }}>{(s.predecessors || []).join(', ') || '—'}</td>
                           </tr>
                         );
@@ -526,6 +547,38 @@ export default function SchedulingRulesPage() {
             </div>
           );
         })}
+
+        {!!regression?.ledger_summary?.length && (
+          <details style={{ marginTop: 16 }}>
+            <summary style={{ cursor: 'pointer', fontWeight: 800, fontSize: 13 }}>
+              Cupo por recurso y día ({regression.ledger_summary.length})
+            </summary>
+            <div style={{ overflowX: 'auto', marginTop: 8 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: 'left', padding: 6 }}>Recurso</th>
+                    <th style={{ textAlign: 'left', padding: 6 }}>Fecha</th>
+                    <th style={{ textAlign: 'right', padding: 6 }}>Capacidad</th>
+                    <th style={{ textAlign: 'right', padding: 6 }}>Consumido</th>
+                    <th style={{ textAlign: 'right', padding: 6 }}>Restante</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {regression.ledger_summary.map((row) => (
+                    <tr key={`${row.resource_key}-${row.date_key}`} style={{ borderTop: '1px solid #eee' }}>
+                      <td style={{ padding: 6 }}>{row.resource_key}</td>
+                      <td style={{ padding: 6 }}>{row.date_key}</td>
+                      <td style={{ padding: 6, textAlign: 'right' }}>{row.capacity_minutes}</td>
+                      <td style={{ padding: 6, textAlign: 'right' }}>{row.consumed_minutes}</td>
+                      <td style={{ padding: 6, textAlign: 'right', fontWeight: row.remaining_minutes <= 0 ? 800 : 400 }}>{row.remaining_minutes}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        )}
       </section>
     </div>
   );

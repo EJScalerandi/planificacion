@@ -157,8 +157,14 @@ export async function getSchedulingPreview(line, limit) {
   return data;
 }
 
-export async function getSchedulingRegressionPreview(line, { porton_id, limit } = {}) {
-  const { data } = await api.get('/admin/scheduling/regression/preview', { params: { line, porton_id, limit } });
+export async function getSchedulingRegressionPreview(line, { porton_id, limit, mode } = {}) {
+  // La regresión de flota recorre varios portones — puede tardar más que el
+  // timeout global de 15s (mismo criterio que ya usan las llamadas a IA en
+  // este archivo, ej. recomendarLogisticaViajeIa).
+  const { data } = await api.get('/admin/scheduling/regression/preview', {
+    params: { line, porton_id, limit, mode },
+    timeout: 60000,
+  });
   return data;
 }
 
