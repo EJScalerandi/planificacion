@@ -201,6 +201,33 @@ export async function saveSchedulingStageResource(line, mappings) {
   return data;
 }
 
+// Calendario laboral por recurso (categoría "Tiempo"). Sin cargar nada, un
+// recurso cae al fallback Lun-Vie 08:00-18:00 (ver lib/scheduling/calendar.js).
+export async function getSchedulingCalendar(resourceKey) {
+  const { data } = await api.get('/admin/scheduling/calendar', { params: { resource_key: resourceKey } });
+  return data;
+}
+
+export async function saveSchedulingCalendar(resourceKey, shifts) {
+  const { data } = await api.put('/admin/scheduling/calendar', { shifts }, { params: { resource_key: resourceKey } });
+  return data;
+}
+
+// resourceKey null/undefined = excepciones globales (feriado de planta completa).
+export async function getSchedulingCalendarExceptions(resourceKey) {
+  const { data } = await api.get('/admin/scheduling/calendar/exceptions', {
+    params: resourceKey ? { resource_key: resourceKey } : {},
+  });
+  return data;
+}
+
+export async function saveSchedulingCalendarExceptions(resourceKey, exceptions) {
+  const { data } = await api.put('/admin/scheduling/calendar/exceptions', { exceptions }, {
+    params: resourceKey ? { resource_key: resourceKey } : {},
+  });
+  return data;
+}
+
 /* ============ QC (CALIDAD) ============ */
 export async function qcGetMotives({ line, kind, stage }) {
   const { data } = await api.get('/qc/motives', {

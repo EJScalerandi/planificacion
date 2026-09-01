@@ -23,6 +23,10 @@ import {
   deleteSchedulingResource,
   getSchedulingStageResource,
   saveSchedulingStageResource,
+  getSchedulingCalendar,
+  saveSchedulingCalendar,
+  getSchedulingCalendarExceptions,
+  saveSchedulingCalendarExceptions,
 } from '../../src/api';
 import { Link, useNavigate } from 'react-router-dom';
 
@@ -60,6 +64,22 @@ const COMBINE_MODES = [
   { key: 'independent', label: 'Independiente (contra el estándar)' },
   { key: 'cascade', label: 'Cascada (sobre el resultado anterior)' },
 ];
+// weekday: 0=domingo..6=sábado, mismo criterio que Date.getUTCDay() (ver lib/scheduling/calendar.js).
+const WEEKDAYS = [
+  { key: 1, label: 'Lunes' },
+  { key: 2, label: 'Martes' },
+  { key: 3, label: 'Miércoles' },
+  { key: 4, label: 'Jueves' },
+  { key: 5, label: 'Viernes' },
+  { key: 6, label: 'Sábado' },
+  { key: 0, label: 'Domingo' },
+];
+function newShiftRow() {
+  return { _localId: `new-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, weekday: 1, start_time: '08:00', end_time: '18:00', enabled: true };
+}
+function newExceptionRow() {
+  return { _localId: `new-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, exception_date: '', is_working: false, start_time: '', end_time: '', notes: '' };
+}
 
 function newRuleRow(stageKey) {
   return {
@@ -75,6 +95,46 @@ function newRuleRow(stageKey) {
     sequence_order: null,
     enabled: true,
   };
+}
+
+// Tabla de excepciones (feriados / turnos puntuales) — reusada para las
+// excepciones de un recurso puntual y para los feriados globales de planta
+// (mismo shape, distinto resource_key en el save del caller).
+function ExceptionsTable({ rows, onRemove, onUpdate }) {
+  if (!rows.length) {
+    return <div style={{ fontSize: 13, opacity: 0.7, marginTop: 8 }}>Sin excepciones cargadas.</div>;
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
+      {rows.map((e) => (
+        <div key={e._localId} style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr 1fr 1.5fr auto', gap: 8, alignItems: 'center' }}>
+          <input className="btn" type="date" value={e.exception_date || ''} onChange={(ev) => onUpdate(e._localId, { exception_date: ev.target.value })} />
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, whiteSpace: 'nowrap' }}>
+            <input type="checkbox" checked={!!e.is_working} onChange={(ev) => onUpdate(e._localId, { is_working: ev.target.checked })} />
+            Laborable
+          </label>
+          <input
+            className="btn"
+            type="time"
+            disabled={!e.is_working}
+            value={e.start_time?.slice(0, 5) || ''}
+            onChange={(ev) => onUpdate(e._localId, { start_time: ev.target.value })}
+            placeholder="desde"
+          />
+          <input
+            className="btn"
+            type="time"
+            disabled={!e.is_working}
+            value={e.end_time?.slice(0, 5) || ''}
+            onChange={(ev) => onUpdate(e._localId, { end_time: ev.target.value })}
+            placeholder="hasta"
+          />
+          <input className="btn" value={e.notes || ''} onChange={(ev) => onUpdate(e._localId, { notes: ev.target.value })} placeholder="Notas (ej. Navidad)" />
+          <button className="btn" type="button" onClick={() => onRemove(e._localId)}>Quitar</button>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export default function SchedulingRulesPage() {
@@ -103,6 +163,17 @@ export default function SchedulingRulesPage() {
   const [stageResourceMap, setStageResourceMap] = useState({}); // {stage_key: resource_key} — solo mapeos explícitos de esta línea
   const [savingStageResource, setSavingStageResource] = useState(false);
   const [resourceErr, setResourceErr] = useState('');
+
+  const [calendarResourceKey, setCalendarResourceKey] = useState('');
+  const [calendarShifts, setCalendarShifts] = useState([]);
+  const [calendarLoading, setCalendarLoading] = useState(false);
+  const [savingCalendar, setSavingCalendar] = useState(false);
+  const [calendarExceptions, setCalendarExceptions] = useState([]);
+  const [savingCalendarExceptions, setSavingCalendarExceptions] = useState(false);
+  const [globalExceptions, setGlobalExceptions] = useState([]);
+  const [globalExceptionsLoading, setGlobalExceptionsLoading] = useState(false);
+  const [savingGlobalExceptions, setSavingGlobalExceptions] = useState(false);
+  const [calendarErr, setCalendarErr] = useState('');
 
   const [preview, setPreview] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -164,6 +235,102 @@ export default function SchedulingRulesPage() {
     reload();
     setPreview(null);
   }, [line]);
+
+  // Auto-selecciona el primer recurso del catálogo apenas hay alguno, así la
+  // sub-sección de calendario no arranca vacía si ya existen recursos (ej.
+  // después de cargar Cortadora/Plegadora/Pintura en la sección de arriba).
+  useEffect(() => {
+    if (!calendarResourceKey && resources.length) setCalendarResourceKey(resources[0].resource_key);
+  }, [resources]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const loadCalendarForResource = async (resourceKey) => {
+    if (!resourceKey) { setCalendarShifts([]); setCalendarExceptions([]); return; }
+    setCalendarErr('');
+    setCalendarLoading(true);
+    try {
+      const [cal, exc] = await Promise.all([
+        getSchedulingCalendar(resourceKey),
+        getSchedulingCalendarExceptions(resourceKey),
+      ]);
+      setCalendarShifts((cal.shifts || []).map((s) => ({ ...s, _localId: `db-${s.id}` })));
+      setCalendarExceptions((exc.exceptions || []).map((e) => ({ ...e, _localId: `db-${e.id}` })));
+    } catch (e) {
+      setCalendarErr(e?.response?.data?.error || e.message);
+    } finally {
+      setCalendarLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadCalendarForResource(calendarResourceKey);
+  }, [calendarResourceKey]);
+
+  const loadGlobalExceptions = async () => {
+    setGlobalExceptionsLoading(true);
+    try {
+      const exc = await getSchedulingCalendarExceptions(null);
+      setGlobalExceptions((exc.exceptions || []).map((e) => ({ ...e, _localId: `db-${e.id}` })));
+    } catch (e) {
+      setCalendarErr(e?.response?.data?.error || e.message);
+    } finally {
+      setGlobalExceptionsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadGlobalExceptions();
+  }, []);
+
+  const addShift = () => setCalendarShifts((prev) => [...prev, newShiftRow()]);
+  const removeShift = (localId) => setCalendarShifts((prev) => prev.filter((s) => s._localId !== localId));
+  const updateShift = (localId, patch) => setCalendarShifts((prev) => prev.map((s) => (s._localId === localId ? { ...s, ...patch } : s)));
+  const loadDefaultShifts = () => setCalendarShifts([1, 2, 3, 4, 5].map((weekday) => ({ ...newShiftRow(), weekday })));
+
+  const onSaveCalendar = async () => {
+    if (!calendarResourceKey) return;
+    setCalendarErr('');
+    setSavingCalendar(true);
+    try {
+      await saveSchedulingCalendar(
+        calendarResourceKey,
+        calendarShifts.map((s) => ({ weekday: Number(s.weekday), start_time: s.start_time, end_time: s.end_time, enabled: s.enabled !== false }))
+      );
+      alert('Turnos guardados.');
+    } catch (e) {
+      setCalendarErr(e?.response?.data?.error || e.message);
+    } finally {
+      setSavingCalendar(false);
+    }
+  };
+
+  const addException = (setter) => setter((prev) => [...prev, newExceptionRow()]);
+  const removeException = (setter, localId) => setter((prev) => prev.filter((e) => e._localId !== localId));
+  const updateException = (setter, localId, patch) => setter((prev) => prev.map((e) => (e._localId === localId ? { ...e, ...patch } : e)));
+
+  const saveExceptions = async (resourceKey, exceptions, setSaving) => {
+    setCalendarErr('');
+    setSaving(true);
+    try {
+      for (const e of exceptions) {
+        if (!e.exception_date) throw new Error('Cada excepción necesita una fecha.');
+      }
+      await saveSchedulingCalendarExceptions(
+        resourceKey,
+        exceptions.map((e) => ({
+          exception_date: e.exception_date,
+          is_working: !!e.is_working,
+          start_time: e.is_working ? (e.start_time || null) : null,
+          end_time: e.is_working ? (e.end_time || null) : null,
+          notes: e.notes || null,
+        }))
+      );
+      alert('Excepciones guardadas.');
+    } catch (e) {
+      setCalendarErr(e?.response?.data?.error || e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const updateStandard = (stageKey, patch) => {
     setStandards((prev) => prev.map((s) => (s.stage_key === stageKey ? { ...s, ...patch } : s)));
@@ -643,6 +810,96 @@ export default function SchedulingRulesPage() {
             </tbody>
           </table>
         </div>
+      </section>
+
+      {/* ===== Calendario laboral por recurso (Fase 2a, sin UI hasta ahora) ===== */}
+      <section style={{ marginTop: 20, border: '1px solid var(--border)', borderRadius: 12, padding: 12 }}>
+        <div style={{ fontWeight: 900, fontSize: 16 }}>Calendario laboral por recurso</div>
+        <div style={{ fontSize: 13, opacity: 0.75, marginTop: 4 }}>
+          Sin cargar nada, un recurso usa el default Lunes a Viernes 08:00–18:00. Acá se puede cargar un
+          calendario propio (turnos partidos incluidos) y excepciones puntuales (feriados) por recurso o de
+          planta completa.
+        </div>
+        {calendarErr && <div style={{ color: 'crimson', marginTop: 8 }}>{calendarErr}</div>}
+
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 14, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 13, fontWeight: 700 }}>Recurso:</span>
+          <select className="btn" value={calendarResourceKey} onChange={(e) => setCalendarResourceKey(e.target.value)}>
+            <option value="">— elegir —</option>
+            {resources.map((r) => (
+              <option key={r.resource_key} value={r.resource_key}>{r.label || r.resource_key}</option>
+            ))}
+          </select>
+          {!resources.length && (
+            <span style={{ fontSize: 12, opacity: 0.7 }}>
+              Todavía no hay recursos en el catálogo — cargá uno en "Recursos físicos compartidos" arriba
+              (una etapa cualquiera también sirve como recurso propio, usando su mismo stage_key).
+            </span>
+          )}
+          {calendarLoading && <span style={{ fontSize: 12, opacity: 0.7 }}>Cargando…</span>}
+        </div>
+
+        {!!calendarResourceKey && (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 18 }}>
+              <div style={{ fontWeight: 800, fontSize: 14 }}>Turnos semanales — {calendarResourceKey}</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn" onClick={loadDefaultShifts} title="Reemplaza la tabla por Lun-Vie 08:00-18:00 (sin guardar todavía)">
+                  Cargar Lun-Vie 08–18
+                </button>
+                <button className="btn" onClick={addShift}>+ Agregar turno</button>
+                <button className="btn btn--brand" disabled={savingCalendar} onClick={onSaveCalendar}>
+                  {savingCalendar ? 'Guardando…' : 'Guardar turnos'}
+                </button>
+              </div>
+            </div>
+
+            {calendarShifts.length === 0 && (
+              <div style={{ fontSize: 13, opacity: 0.7, marginTop: 8 }}>
+                Sin turnos cargados — este recurso está usando el default Lun-Vie 08:00–18:00.
+              </div>
+            )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
+              {calendarShifts.map((s) => (
+                <div key={s._localId} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto auto', gap: 8, alignItems: 'center' }}>
+                  <select className="btn" value={s.weekday} onChange={(e) => updateShift(s._localId, { weekday: e.target.value })}>
+                    {WEEKDAYS.map((w) => <option key={w.key} value={w.key}>{w.label}</option>)}
+                  </select>
+                  <input className="btn" type="time" value={s.start_time?.slice(0, 5) || ''} onChange={(e) => updateShift(s._localId, { start_time: e.target.value })} />
+                  <input className="btn" type="time" value={s.end_time?.slice(0, 5) || ''} onChange={(e) => updateShift(s._localId, { end_time: e.target.value })} />
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+                    <input type="checkbox" checked={s.enabled !== false} onChange={(e) => updateShift(s._localId, { enabled: e.target.checked })} />
+                    Activo
+                  </label>
+                  <button className="btn" type="button" onClick={() => removeShift(s._localId)}>Quitar</button>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 22 }}>
+              <div style={{ fontWeight: 800, fontSize: 14 }}>Excepciones de {calendarResourceKey}</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn" onClick={() => addException(setCalendarExceptions)}>+ Agregar excepción</button>
+                <button className="btn btn--brand" disabled={savingCalendarExceptions} onClick={() => saveExceptions(calendarResourceKey, calendarExceptions, setSavingCalendarExceptions)}>
+                  {savingCalendarExceptions ? 'Guardando…' : 'Guardar excepciones'}
+                </button>
+              </div>
+            </div>
+            <ExceptionsTable rows={calendarExceptions} onRemove={(id) => removeException(setCalendarExceptions, id)} onUpdate={(id, patch) => updateException(setCalendarExceptions, id, patch)} />
+          </>
+        )}
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 26, borderTop: '1px dashed #d1d5db', paddingTop: 14 }}>
+          <div style={{ fontWeight: 800, fontSize: 14 }}>Feriados de planta completa (todos los recursos)</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {globalExceptionsLoading && <span style={{ fontSize: 12, opacity: 0.7, alignSelf: 'center' }}>Cargando…</span>}
+            <button className="btn" onClick={() => addException(setGlobalExceptions)}>+ Agregar feriado</button>
+            <button className="btn btn--brand" disabled={savingGlobalExceptions} onClick={() => saveExceptions(null, globalExceptions, setSavingGlobalExceptions)}>
+              {savingGlobalExceptions ? 'Guardando…' : 'Guardar feriados'}
+            </button>
+          </div>
+        </div>
+        <ExceptionsTable rows={globalExceptions} onRemove={(id) => removeException(setGlobalExceptions, id)} onUpdate={(id, patch) => updateException(setGlobalExceptions, id, patch)} />
       </section>
 
       {/* ===== Preview: calculado vs. real ===== */}
