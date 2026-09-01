@@ -157,6 +157,11 @@ export async function getSchedulingPreview(line, limit) {
   return data;
 }
 
+export async function getSchedulingRegressionPreview(line, { porton_id, limit } = {}) {
+  const { data } = await api.get('/admin/scheduling/regression/preview', { params: { line, porton_id, limit } });
+  return data;
+}
+
 /* ============ QC (CALIDAD) ============ */
 export async function qcGetMotives({ line, kind, stage }) {
   const { data } = await api.get('/qc/motives', {

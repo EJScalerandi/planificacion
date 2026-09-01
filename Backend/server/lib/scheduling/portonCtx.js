@@ -107,4 +107,30 @@ async function listPortonSchedulingCtxs(db = pool, { limit } = {}) {
   return attachTiemposYEstado(db, rows.map(attachPreprodData));
 }
 
-module.exports = { getPortonSchedulingCtx, listPortonSchedulingCtxs };
+// Portones con fecha límite real y todavía no despachados, para el preview
+// de regresión (Fase 2a) — ordenados por urgencia (fecha_plan_entrega más
+// próxima primero). A diferencia de listPortonSchedulingCtxs (últimos N por
+// id, para el preview de tiempo efectivo de Fase 1), acá el orden importa
+// porque representa "qué portón mirar primero".
+async function listPortonesPendingForRegression(db = pool, { limit } = {}) {
+  const n = Math.min(Math.max(parseInt(limit, 10) || PREVIEW_DEFAULT_LIMIT, 1), PREVIEW_MAX_LIMIT);
+  const { rows } = await db.query(
+    `
+    select p.*, pv.data as preprod_data
+    from public.portones p
+    left join public.preproduccion_valores pv on pv.nv = p.nv
+    where p.tipo = 'normal'
+      and p.fecha_plan_entrega is not null
+      and not exists (
+        select 1 from public.porton_etapas_estado e
+        where e.porton_id = p.id and e.etapa = 'despacho'::public.porton_etapa and e.estado = 'Finalizado'
+      )
+    order by p.fecha_plan_entrega asc, p.id asc
+    limit $1;
+    `,
+    [n]
+  );
+  return attachTiemposYEstado(db, rows.map(attachPreprodData));
+}
+
+module.exports = { getPortonSchedulingCtx, listPortonSchedulingCtxs, listPortonesPendingForRegression };

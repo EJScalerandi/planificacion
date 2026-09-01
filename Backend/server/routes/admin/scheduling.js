@@ -9,7 +9,8 @@ const express = require('express');
 const { adminAuth } = require('../../middleware/adminAuth');
 const { pool } = require('../../db');
 const { computeEffectiveMinutes } = require('../../lib/scheduling/rulesEngine');
-const { listPortonSchedulingCtxs } = require('../../lib/scheduling/portonCtx');
+const { listPortonSchedulingCtxs, listPortonesPendingForRegression, getPortonSchedulingCtx } = require('../../lib/scheduling/portonCtx');
+const { computePortonRegression } = require('../../lib/scheduling/regressionEngine');
 
 const router = express.Router();
 
@@ -211,6 +212,31 @@ router.put('/scheduling/rules', async (req, res) => {
 // Preview: tiempo_efectivo calculado vs. tiempo real ya registrado
 // ---------------------------------------------------------------------------
 
+// Compartido entre /scheduling/preview y /scheduling/regression/preview.
+async function loadStandardsAndRulesMaps(line) {
+  const [{ rows: standards }, { rows: rules }] = await Promise.all([
+    pool.query(
+      `select stage_key, standard_minutes from public.scheduling_stage_standard where line = $1;`,
+      [line]
+    ),
+    pool.query(
+      `select id, stage_key, category, field, operator, value, effect_type, effect_value,
+              combine_mode, sequence_order, enabled
+       from public.scheduling_time_rule
+       where line = $1 and enabled = true;`,
+      [line]
+    ),
+  ]);
+
+  const standardByStage = new Map(standards.map((s) => [s.stage_key, Number(s.standard_minutes) || 0]));
+  const rulesByStage = new Map();
+  for (const r of rules) {
+    if (!rulesByStage.has(r.stage_key)) rulesByStage.set(r.stage_key, []);
+    rulesByStage.get(r.stage_key).push(r);
+  }
+  return { standardByStage, rulesByStage };
+}
+
 router.get('/scheduling/preview', async (req, res) => {
   try {
     const line = String(req.query.line || '').trim();
@@ -218,26 +244,7 @@ router.get('/scheduling/preview', async (req, res) => {
       return res.status(400).json({ error: 'El preview de Fase 1 solo soporta line=portones por ahora' });
     }
 
-    const [{ rows: standards }, { rows: rules }] = await Promise.all([
-      pool.query(
-        `select stage_key, standard_minutes from public.scheduling_stage_standard where line = $1;`,
-        [line]
-      ),
-      pool.query(
-        `select id, stage_key, category, field, operator, value, effect_type, effect_value,
-                combine_mode, sequence_order, enabled
-         from public.scheduling_time_rule
-         where line = $1 and enabled = true;`,
-        [line]
-      ),
-    ]);
-
-    const standardByStage = new Map(standards.map((s) => [s.stage_key, Number(s.standard_minutes) || 0]));
-    const rulesByStage = new Map();
-    for (const r of rules) {
-      if (!rulesByStage.has(r.stage_key)) rulesByStage.set(r.stage_key, []);
-      rulesByStage.get(r.stage_key).push(r);
-    }
+    const { standardByStage, rulesByStage } = await loadStandardsAndRulesMaps(line);
 
     if (!standardByStage.size) {
       return res.json({ ok: true, portones: [], warning: 'No hay estándares cargados todavía para esta línea.' });
@@ -282,6 +289,167 @@ router.get('/scheduling/preview', async (req, res) => {
   } catch (err) {
     console.error('get scheduling preview error:', err);
     return res.status(500).json({ error: 'Error calculando preview', detail: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Regresión (Fase 2a): backward-pass desde fecha_plan_entrega, capacidad
+// infinita. Solo lectura — no escribe en portones ni en ninguna tabla
+// existente.
+// ---------------------------------------------------------------------------
+
+router.get('/scheduling/regression/preview', async (req, res) => {
+  try {
+    const line = String(req.query.line || '').trim();
+    if (line !== 'portones') {
+      return res.status(400).json({ error: 'La regresión de Fase 2a solo soporta line=portones por ahora' });
+    }
+
+    const { standardByStage, rulesByStage } = await loadStandardsAndRulesMaps(line);
+
+    const portonId = req.query.porton_id != null ? Number(req.query.porton_id) : null;
+
+    if (portonId != null) {
+      if (!Number.isInteger(portonId)) return res.status(400).json({ error: 'porton_id inválido' });
+      const ctx = await getPortonSchedulingCtx(pool, portonId);
+      if (!ctx) return res.status(404).json({ error: 'Portón no encontrado' });
+
+      const result = await computePortonRegression({ line, ctx, standardByStage, rulesByStage, db: pool });
+      return res.json({ ok: true, id: ctx.id, nv: ctx.nv, sistema: ctx.sistema, ...result });
+    }
+
+    const ctxs = await listPortonesPendingForRegression(pool, { limit: req.query.limit });
+    const portones = [];
+    for (const ctx of ctxs) {
+      try {
+        const result = await computePortonRegression({ line, ctx, standardByStage, rulesByStage, db: pool });
+        portones.push({ id: ctx.id, nv: ctx.nv, sistema: ctx.sistema, ...result });
+      } catch (err) {
+        // Un portón con datos raros no debe tumbar el batch entero.
+        portones.push({ id: ctx.id, nv: ctx.nv, ok: false, error: err.message });
+      }
+    }
+    return res.json({ ok: true, portones });
+  } catch (err) {
+    console.error('get scheduling regression preview error:', err);
+    return res.status(500).json({ error: 'Error calculando la regresión', detail: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Calendario laboral por recurso (categoría "Tiempo"). Vacío = usa el
+// fallback Lun-Vie 08:00-18:00 (ver lib/scheduling/calendar.js).
+// ---------------------------------------------------------------------------
+
+router.get('/scheduling/calendar', async (req, res) => {
+  try {
+    const resourceKey = String(req.query.resource_key || '').trim();
+    if (!resourceKey) return res.status(400).json({ error: 'resource_key es requerido' });
+
+    const { rows } = await pool.query(
+      `select id, resource_key, weekday, start_time, end_time, enabled
+       from public.scheduling_resource_calendar
+       where resource_key = $1
+       order by weekday asc, start_time asc;`,
+      [resourceKey]
+    );
+    return res.json({ ok: true, shifts: rows });
+  } catch (err) {
+    console.error('get scheduling calendar error:', err);
+    return res.status(500).json({ error: 'Error leyendo calendario', detail: err.message });
+  }
+});
+
+router.put('/scheduling/calendar', async (req, res) => {
+  const resourceKey = String(req.query.resource_key || '').trim();
+  if (!resourceKey) return res.status(400).json({ error: 'resource_key es requerido' });
+
+  const shifts = Array.isArray(req.body?.shifts) ? req.body.shifts : [];
+  for (const s of shifts) {
+    const weekday = Number(s?.weekday);
+    if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) {
+      return res.status(400).json({ error: `weekday inválido: ${s?.weekday}` });
+    }
+    if (!s?.start_time || !s?.end_time) {
+      return res.status(400).json({ error: 'Cada turno necesita start_time y end_time' });
+    }
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+    await client.query(`delete from public.scheduling_resource_calendar where resource_key = $1;`, [resourceKey]);
+
+    for (const s of shifts) {
+      await client.query(
+        `insert into public.scheduling_resource_calendar (resource_key, weekday, start_time, end_time, enabled)
+         values ($1, $2, $3, $4, $5);`,
+        [resourceKey, Number(s.weekday), s.start_time, s.end_time, s.enabled !== false]
+      );
+    }
+
+    await client.query('commit');
+    return res.json({ ok: true, count: shifts.length });
+  } catch (err) {
+    await client.query('rollback');
+    console.error('save scheduling calendar error:', err);
+    return res.status(500).json({ error: 'Error guardando calendario', detail: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+router.get('/scheduling/calendar/exceptions', async (req, res) => {
+  try {
+    const resourceKey = req.query.resource_key != null ? String(req.query.resource_key).trim() : null;
+    const { rows } = await pool.query(
+      resourceKey
+        ? `select id, resource_key, to_char(exception_date, 'YYYY-MM-DD') as exception_date, is_working, start_time, end_time, notes
+           from public.scheduling_calendar_exception where resource_key = $1 order by exception_date asc;`
+        : `select id, resource_key, to_char(exception_date, 'YYYY-MM-DD') as exception_date, is_working, start_time, end_time, notes
+           from public.scheduling_calendar_exception where resource_key is null order by exception_date asc;`,
+      resourceKey ? [resourceKey] : []
+    );
+    return res.json({ ok: true, exceptions: rows });
+  } catch (err) {
+    console.error('get scheduling calendar exceptions error:', err);
+    return res.status(500).json({ error: 'Error leyendo excepciones', detail: err.message });
+  }
+});
+
+router.put('/scheduling/calendar/exceptions', async (req, res) => {
+  const resourceKey = req.query.resource_key != null ? String(req.query.resource_key).trim() : null;
+  const exceptions = Array.isArray(req.body?.exceptions) ? req.body.exceptions : [];
+  for (const e of exceptions) {
+    if (!e?.exception_date) return res.status(400).json({ error: 'Cada excepción necesita exception_date' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+    await client.query(
+      resourceKey
+        ? `delete from public.scheduling_calendar_exception where resource_key = $1;`
+        : `delete from public.scheduling_calendar_exception where resource_key is null;`,
+      resourceKey ? [resourceKey] : []
+    );
+
+    for (const e of exceptions) {
+      await client.query(
+        `insert into public.scheduling_calendar_exception (resource_key, exception_date, is_working, start_time, end_time, notes)
+         values ($1, $2, $3, $4, $5, $6);`,
+        [resourceKey, e.exception_date, Boolean(e.is_working), e.start_time || null, e.end_time || null, e.notes || null]
+      );
+    }
+
+    await client.query('commit');
+    return res.json({ ok: true, count: exceptions.length });
+  } catch (err) {
+    await client.query('rollback');
+    console.error('save scheduling calendar exceptions error:', err);
+    return res.status(500).json({ error: 'Error guardando excepciones', detail: err.message });
+  } finally {
+    client.release();
   }
 });
 

@@ -16,8 +16,25 @@ import {
   getSchedulingRules,
   saveSchedulingRules,
   getSchedulingPreview,
+  getSchedulingRegressionPreview,
 } from '../../src/api';
 import { Link, useNavigate } from 'react-router-dom';
+
+const AR_TZ = 'America/Argentina/Buenos_Aires';
+function fmtArDateTime(iso) {
+  if (!iso) return '—';
+  try {
+    return new Intl.DateTimeFormat('es-AR', {
+      timeZone: AR_TZ,
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(new Date(iso));
+  } catch {
+    return String(iso);
+  }
+}
 
 const CATEGORIES = [
   { key: 'intrinseca', label: 'Intrínseca' },
@@ -77,6 +94,18 @@ export default function SchedulingRulesPage() {
   const [preview, setPreview] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewErr, setPreviewErr] = useState('');
+
+  const [portonIdInput, setPortonIdInput] = useState('');
+  const [regression, setRegression] = useState(null);
+  const [regressionLoading, setRegressionLoading] = useState(false);
+  const [regressionErr, setRegressionErr] = useState('');
+
+  const regressionPortones = useMemo(() => {
+    if (!regression) return [];
+    if (Array.isArray(regression.portones)) return regression.portones;
+    if (regression.id != null) return [regression];
+    return [];
+  }, [regression]);
 
   const stageOptions = useMemo(
     () => (stages || []).filter((s) => s.enabled !== false).map((s) => ({ key: s.status_col || s.key, label: s.label || s.key })),
@@ -180,6 +209,20 @@ export default function SchedulingRulesPage() {
       setPreviewErr(e?.response?.data?.error || e.message);
     } finally {
       setPreviewLoading(false);
+    }
+  };
+
+  const runRegression = async () => {
+    setRegressionErr('');
+    setRegressionLoading(true);
+    try {
+      const id = portonIdInput.trim();
+      const data = await getSchedulingRegressionPreview(line, id ? { porton_id: id } : { limit: 20 });
+      setRegression(data);
+    } catch (e) {
+      setRegressionErr(e?.response?.data?.error || e.message);
+    } finally {
+      setRegressionLoading(false);
     }
   };
 
@@ -406,6 +449,83 @@ export default function SchedulingRulesPage() {
             </table>
           </div>
         )}
+      </section>
+
+      {/* ===== Regresión: backward-pass desde fecha_plan_entrega (Fase 2a) ===== */}
+      <section style={{ marginTop: 20, border: '1px solid var(--border)', borderRadius: 12, padding: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+          <div style={{ fontWeight: 900, fontSize: 16 }}>Regresión (calcular hacia atrás desde la fecha de despacho)</div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              className="btn"
+              style={{ width: 140 }}
+              value={portonIdInput}
+              onChange={(e) => setPortonIdInput(e.target.value)}
+              placeholder="ID de portón (vacío = últimos 20 con fecha)"
+            />
+            <button className="btn btn--brand" onClick={runRegression} disabled={regressionLoading || line !== 'portones'}>
+              {regressionLoading ? 'Calculando…' : 'Calcular'}
+            </button>
+          </div>
+        </div>
+
+        {line !== 'portones' && (
+          <div style={{ fontSize: 12, opacity: 0.7, marginTop: 8 }}>
+            La regresión de esta fase solo soporta la línea Portones.
+          </div>
+        )}
+        {regressionErr && <div style={{ color: 'crimson', marginTop: 8 }}>{regressionErr}</div>}
+
+        {regressionPortones.map((p) => {
+          const stages = p.stages ? Object.values(p.stages).sort((a, b) => new Date(a.latest_start) - new Date(b.latest_start)) : [];
+          return (
+            <div key={p.id} style={{ marginTop: 16, borderTop: '1px dashed #d1d5db', paddingTop: 12 }}>
+              <div style={{ fontWeight: 800 }}>
+                Portón {p.nv ?? p.id} <span style={{ opacity: 0.7, fontWeight: 400 }}>({p.sistema || 'sin sistema'})</span>
+              </div>
+              {p.warning && <div style={{ opacity: 0.7, fontSize: 13, marginTop: 4 }}>{p.warning}</div>}
+              {p.error && <div style={{ color: 'crimson', fontSize: 13, marginTop: 4 }}>{p.error}</div>}
+              {!!p.warnings?.length && (
+                <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>
+                  {p.warnings.map((w, i) => <div key={i}>⚠ {w}</div>)}
+                </div>
+              )}
+              {!!stages.length && (
+                <div style={{ overflowX: 'auto', marginTop: 8 }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                    <thead>
+                      <tr>
+                        <th style={{ textAlign: 'left', padding: 6 }}>Etapa</th>
+                        <th style={{ textAlign: 'left', padding: 6 }}>Debe entrar</th>
+                        <th style={{ textAlign: 'left', padding: 6 }}>Debe salir</th>
+                        <th style={{ textAlign: 'right', padding: 6 }}>Min.</th>
+                        <th style={{ textAlign: 'left', padding: 6 }}>Recurso</th>
+                        <th style={{ textAlign: 'left', padding: 6 }}>Predecesores</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {stages.map((s) => {
+                        const atRisk = new Date(s.latest_start).getTime() < Date.now();
+                        return (
+                          <tr key={s.stage_key} style={{ borderTop: '1px solid #eee' }}>
+                            <td style={{ padding: 6 }}>{s.stage_key}</td>
+                            <td style={{ padding: 6, fontWeight: atRisk ? 800 : 400, color: atRisk ? 'crimson' : 'inherit' }}>
+                              {fmtArDateTime(s.latest_start)} {atRisk ? '⚠' : ''}
+                            </td>
+                            <td style={{ padding: 6 }}>{fmtArDateTime(s.latest_finish)}</td>
+                            <td style={{ padding: 6, textAlign: 'right' }}>{s.effective_minutes}</td>
+                            <td style={{ padding: 6 }}>{s.resource_key}</td>
+                            <td style={{ padding: 6, opacity: 0.7 }}>{(s.predecessors || []).join(', ') || '—'}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </section>
     </div>
   );
