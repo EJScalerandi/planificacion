@@ -18,6 +18,11 @@ import {
   getSchedulingPreview,
   getSchedulingRegressionPreview,
   setFechaDespachoLogistica,
+  getSchedulingResources,
+  saveSchedulingResource,
+  deleteSchedulingResource,
+  getSchedulingStageResource,
+  saveSchedulingStageResource,
 } from '../../src/api';
 import { Link, useNavigate } from 'react-router-dom';
 
@@ -92,6 +97,13 @@ export default function SchedulingRulesPage() {
   const [standards, setStandards] = useState([]); // [{stage_key, standard_minutes, notes}]
   const [rules, setRules] = useState([]);
 
+  const [resources, setResources] = useState([]); // catálogo global: [{resource_key, label, enabled, parallel_capacity}]
+  const [savingResource, setSavingResource] = useState(false);
+  const [newResource, setNewResource] = useState({ resource_key: '', label: '', parallel_capacity: 1 });
+  const [stageResourceMap, setStageResourceMap] = useState({}); // {stage_key: resource_key} — solo mapeos explícitos de esta línea
+  const [savingStageResource, setSavingStageResource] = useState(false);
+  const [resourceErr, setResourceErr] = useState('');
+
   const [preview, setPreview] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewErr, setPreviewErr] = useState('');
@@ -122,11 +134,13 @@ export default function SchedulingRulesPage() {
     setErr('');
     setLoading(true);
     try {
-      const [wf, std, rl, fields] = await Promise.all([
+      const [wf, std, rl, fields, res, sr] = await Promise.all([
         getWorkflowConfig(line),
         getSchedulingStandard(line),
         getSchedulingRules(line),
         getWorkflowConditionFields(line).catch(() => ({ fields: [] })),
+        getSchedulingResources(),
+        getSchedulingStageResource(line),
       ]);
       setStages(wf.stages || []);
       setConditionFields(Array.isArray(fields?.fields) ? fields.fields : []);
@@ -136,6 +150,9 @@ export default function SchedulingRulesPage() {
       setStandards(stageKeys.map((k) => byKey.get(k) || { stage_key: k, standard_minutes: 0, notes: '' }));
 
       setRules((rl.rules || []).map((r) => ({ ...r, _localId: `db-${r.id}` })));
+
+      setResources(res.resources || []);
+      setStageResourceMap(Object.fromEntries((sr.mappings || []).map((m) => [m.stage_key, m.resource_key])));
     } catch (e) {
       setErr(e?.response?.data?.error || e.message);
     } finally {
@@ -202,6 +219,82 @@ export default function SchedulingRulesPage() {
       setErr(e?.response?.data?.error || e.message);
     } finally {
       setSavingRules(false);
+    }
+  };
+
+  const onCreateResource = async () => {
+    setResourceErr('');
+    const key = newResource.resource_key.trim();
+    if (!key) return;
+    setSavingResource(true);
+    try {
+      await saveSchedulingResource({
+        resource_key: key,
+        label: newResource.label.trim() || null,
+        parallel_capacity: Number(newResource.parallel_capacity) || 1,
+        enabled: true,
+      });
+      setNewResource({ resource_key: '', label: '', parallel_capacity: 1 });
+      const res = await getSchedulingResources();
+      setResources(res.resources || []);
+    } catch (e) {
+      setResourceErr(e?.response?.data?.error || e.message);
+    } finally {
+      setSavingResource(false);
+    }
+  };
+
+  const onUpdateResource = async (resource) => {
+    setResourceErr('');
+    setSavingResource(true);
+    try {
+      await saveSchedulingResource(resource);
+      const res = await getSchedulingResources();
+      setResources(res.resources || []);
+    } catch (e) {
+      setResourceErr(e?.response?.data?.error || e.message);
+    } finally {
+      setSavingResource(false);
+    }
+  };
+
+  const onDeleteResource = async (resourceKey) => {
+    if (!window.confirm(`¿Borrar el recurso "${resourceKey}"? Falla si todavía hay etapas mapeadas a él.`)) return;
+    setResourceErr('');
+    setSavingResource(true);
+    try {
+      await deleteSchedulingResource(resourceKey);
+      const res = await getSchedulingResources();
+      setResources(res.resources || []);
+    } catch (e) {
+      setResourceErr(e?.response?.data?.error || e.message);
+    } finally {
+      setSavingResource(false);
+    }
+  };
+
+  const updateStageResource = (stageKey, resourceKey) => {
+    setStageResourceMap((prev) => {
+      const next = { ...prev };
+      if (resourceKey) next[stageKey] = resourceKey;
+      else delete next[stageKey];
+      return next;
+    });
+  };
+
+  const onSaveStageResourceMap = async () => {
+    setResourceErr('');
+    setSavingStageResource(true);
+    try {
+      const mappings = Object.entries(stageResourceMap)
+        .filter(([, resourceKey]) => resourceKey)
+        .map(([stageKey, resourceKey]) => ({ stage_key: stageKey, resource_key: resourceKey }));
+      await saveSchedulingStageResource(line, mappings);
+      alert('Mapeo etapa → recurso guardado.');
+    } catch (e) {
+      setResourceErr(e?.response?.data?.error || e.message);
+    } finally {
+      setSavingStageResource(false);
     }
   };
 
@@ -418,6 +511,137 @@ export default function SchedulingRulesPage() {
               </div>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* ===== Recursos físicos compartidos (Fase 3) ===== */}
+      <section style={{ marginTop: 20, border: '1px solid var(--border)', borderRadius: 12, padding: 12 }}>
+        <div style={{ fontWeight: 900, fontSize: 16 }}>Recursos físicos compartidos entre etapas</div>
+        <div style={{ fontSize: 13, opacity: 0.75, marginTop: 4 }}>
+          Sin mapeo, cada etapa usa su propio cupo (una máquina por etapa). Agrupar dos etapas bajo el
+          mismo recurso (ej. Cortadora = guillotina + corte_revest) hace que compitan por el mismo cupo
+          diario en la Regresión — incluido dentro de un mismo portón, si sus dos etapas caen el mismo día.
+        </div>
+        {resourceErr && <div style={{ color: 'crimson', marginTop: 8 }}>{resourceErr}</div>}
+
+        <div style={{ marginTop: 14, fontWeight: 800, fontSize: 14 }}>Catálogo de recursos</div>
+        <div style={{ overflowX: 'auto', marginTop: 8 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: 'left', padding: 6 }}>resource_key</th>
+                <th style={{ textAlign: 'left', padding: 6 }}>Label</th>
+                <th style={{ textAlign: 'right', padding: 6 }}>Paralelismo</th>
+                <th style={{ textAlign: 'center', padding: 6 }}>Activo</th>
+                <th style={{ padding: 6 }} />
+              </tr>
+            </thead>
+            <tbody>
+              {resources.map((r) => (
+                <tr key={r.resource_key} style={{ borderTop: '1px solid #eee' }}>
+                  <td style={{ padding: 6 }}><code>{r.resource_key}</code></td>
+                  <td style={{ padding: 6 }}>
+                    <input
+                      className="btn"
+                      value={r.label || ''}
+                      onChange={(e) => setResources((prev) => prev.map((x) => (x.resource_key === r.resource_key ? { ...x, label: e.target.value } : x)))}
+                    />
+                  </td>
+                  <td style={{ padding: 6, textAlign: 'right' }}>
+                    <input
+                      className="btn"
+                      type="number"
+                      min="1"
+                      style={{ width: 70 }}
+                      value={r.parallel_capacity}
+                      onChange={(e) => setResources((prev) => prev.map((x) => (x.resource_key === r.resource_key ? { ...x, parallel_capacity: e.target.value } : x)))}
+                    />
+                  </td>
+                  <td style={{ padding: 6, textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={r.enabled !== false}
+                      onChange={(e) => setResources((prev) => prev.map((x) => (x.resource_key === r.resource_key ? { ...x, enabled: e.target.checked } : x)))}
+                    />
+                  </td>
+                  <td style={{ padding: 6, display: 'flex', gap: 6 }}>
+                    <button className="btn" disabled={savingResource} onClick={() => onUpdateResource(r)}>Guardar</button>
+                    <button className="btn" disabled={savingResource} onClick={() => onDeleteResource(r.resource_key)}>Borrar</button>
+                  </td>
+                </tr>
+              ))}
+              <tr style={{ borderTop: '1px solid #eee' }}>
+                <td style={{ padding: 6 }}>
+                  <input
+                    className="btn"
+                    value={newResource.resource_key}
+                    onChange={(e) => setNewResource((p) => ({ ...p, resource_key: e.target.value }))}
+                    placeholder="ej. cortadora"
+                  />
+                </td>
+                <td style={{ padding: 6 }}>
+                  <input
+                    className="btn"
+                    value={newResource.label}
+                    onChange={(e) => setNewResource((p) => ({ ...p, label: e.target.value }))}
+                    placeholder="ej. Cortadora"
+                  />
+                </td>
+                <td style={{ padding: 6, textAlign: 'right' }}>
+                  <input
+                    className="btn"
+                    type="number"
+                    min="1"
+                    style={{ width: 70 }}
+                    value={newResource.parallel_capacity}
+                    onChange={(e) => setNewResource((p) => ({ ...p, parallel_capacity: e.target.value }))}
+                  />
+                </td>
+                <td />
+                <td style={{ padding: 6 }}>
+                  <button className="btn btn--brand" disabled={savingResource || !newResource.resource_key.trim()} onClick={onCreateResource}>
+                    + Agregar
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 18 }}>
+          <div style={{ fontWeight: 800, fontSize: 14 }}>Mapeo etapa → recurso ({line})</div>
+          <button className="btn btn--brand" disabled={savingStageResource} onClick={onSaveStageResourceMap}>
+            {savingStageResource ? 'Guardando…' : 'Guardar mapeo'}
+          </button>
+        </div>
+        <div style={{ overflowX: 'auto', marginTop: 8 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: 'left', padding: 6 }}>Etapa</th>
+                <th style={{ textAlign: 'left', padding: 6 }}>Recurso</th>
+              </tr>
+            </thead>
+            <tbody>
+              {stageOptions.map((s) => (
+                <tr key={s.key} style={{ borderTop: '1px solid #eee' }}>
+                  <td style={{ padding: 6 }}>{s.label} <span style={{ opacity: 0.6 }}>({s.key})</span></td>
+                  <td style={{ padding: 6 }}>
+                    <select
+                      className="btn"
+                      value={stageResourceMap[s.key] || ''}
+                      onChange={(e) => updateStageResource(s.key, e.target.value)}
+                    >
+                      <option value="">— por defecto ({s.key})</option>
+                      {resources.map((r) => (
+                        <option key={r.resource_key} value={r.resource_key}>{r.label || r.resource_key}</option>
+                      ))}
+                    </select>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </section>
 

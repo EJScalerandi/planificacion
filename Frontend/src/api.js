@@ -173,6 +173,34 @@ export async function getSchedulingRegressionPreview(line, { porton_id, limit, m
   return data;
 }
 
+// Fase 3: recursos físicos compartidos entre etapas (ej. una sola cortadora
+// para guillotina + corte_revest). El catálogo (scheduling_resource) es
+// global, no por línea; el mapeo (scheduling_stage_resource) sí es por línea.
+export async function getSchedulingResources() {
+  const { data } = await api.get('/admin/scheduling/resources');
+  return data;
+}
+
+export async function saveSchedulingResource(resource) {
+  const { data } = await api.post('/admin/scheduling/resources', resource);
+  return data;
+}
+
+export async function deleteSchedulingResource(resourceKey) {
+  const { data } = await api.delete(`/admin/scheduling/resources/${encodeURIComponent(resourceKey)}`);
+  return data;
+}
+
+export async function getSchedulingStageResource(line) {
+  const { data } = await api.get('/admin/scheduling/stage-resource', { params: { line } });
+  return data;
+}
+
+export async function saveSchedulingStageResource(line, mappings) {
+  const { data } = await api.put('/admin/scheduling/stage-resource', { mappings }, { params: { line } });
+  return data;
+}
+
 /* ============ QC (CALIDAD) ============ */
 export async function qcGetMotives({ line, kind, stage }) {
   const { data } = await api.get('/qc/motives', {

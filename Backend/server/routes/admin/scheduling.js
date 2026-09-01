@@ -209,6 +209,137 @@ router.put('/scheduling/rules', async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// Fase 3: recursos físicos compartidos entre etapas.
+//
+// scheduling_resource es el catálogo (global, no por línea) y
+// scheduling_stage_resource es el mapeo etapa->recurso (por línea, ver
+// migration_scheduling_fase2a.sql). Sin fila de mapeo, una etapa sigue
+// cayendo a resource_key = stage_key (getResourceKeyForStage en
+// lib/scheduling/calendar.js) — o sea, agrupar dos etapas bajo un mismo
+// recurso es pura carga de datos, cero cambio de código en el motor de
+// regresión (ya soporta N:1 etapa->recurso desde Fase 2a/2b).
+//
+// El catálogo NO usa el patrón delete-all-then-reinsert que sí usan
+// standard/rules/calendar más arriba: scheduling_stage_resource tiene FK a
+// scheduling_resource(resource_key), así que borrar y recrear el catálogo
+// completo rompería esa referencia apenas hubiera algo mapeado. Se maneja
+// como upsert por fila + borrado individual (que la FK bloquea sola si el
+// recurso todavía está en uso, con un 409 explícito en vez de un 500 crudo).
+// ---------------------------------------------------------------------------
+
+router.get('/scheduling/resources', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `select resource_key, label, enabled, parallel_capacity, created_at, updated_at
+       from public.scheduling_resource
+       order by resource_key asc;`
+    );
+    return res.json({ ok: true, resources: rows });
+  } catch (err) {
+    console.error('get scheduling resources error:', err);
+    return res.status(500).json({ error: 'Error leyendo recursos', detail: err.message });
+  }
+});
+
+router.post('/scheduling/resources', async (req, res) => {
+  const resourceKey = String(req.body?.resource_key || '').trim();
+  if (!resourceKey) return res.status(400).json({ error: 'resource_key es requerido' });
+  const parallelCapacity = Number.isFinite(Number(req.body?.parallel_capacity)) ? Math.max(1, Math.trunc(Number(req.body.parallel_capacity))) : 1;
+
+  try {
+    const { rows } = await pool.query(
+      `
+      insert into public.scheduling_resource (resource_key, label, enabled, parallel_capacity, updated_at)
+      values ($1, $2, $3, $4, now())
+      on conflict (resource_key) do update
+        set label = excluded.label,
+            enabled = excluded.enabled,
+            parallel_capacity = excluded.parallel_capacity,
+            updated_at = now()
+      returning resource_key, label, enabled, parallel_capacity, created_at, updated_at;
+      `,
+      [resourceKey, req.body?.label == null ? null : String(req.body.label), req.body?.enabled !== false, parallelCapacity]
+    );
+    return res.json({ ok: true, resource: rows[0] });
+  } catch (err) {
+    console.error('upsert scheduling resource error:', err);
+    return res.status(500).json({ error: 'Error guardando recurso', detail: err.message });
+  }
+});
+
+router.delete('/scheduling/resources/:resource_key', async (req, res) => {
+  const resourceKey = String(req.params.resource_key || '').trim();
+  if (!resourceKey) return res.status(400).json({ error: 'resource_key es requerido' });
+
+  try {
+    const { rowCount } = await pool.query(`delete from public.scheduling_resource where resource_key = $1;`, [resourceKey]);
+    if (!rowCount) return res.status(404).json({ error: 'Recurso no encontrado' });
+    return res.json({ ok: true });
+  } catch (err) {
+    // FK de scheduling_stage_resource: no se puede borrar un recurso todavía
+    // mapeado desde alguna etapa — hay que desmapear esas etapas primero.
+    if (err.code === '23503') {
+      return res.status(409).json({ error: 'No se puede borrar: todavía hay etapas mapeadas a este recurso.', detail: err.message });
+    }
+    console.error('delete scheduling resource error:', err);
+    return res.status(500).json({ error: 'Error borrando recurso', detail: err.message });
+  }
+});
+
+router.get('/scheduling/stage-resource', async (req, res) => {
+  try {
+    const line = String(req.query.line || '').trim();
+    if (!isValidLine(line)) return res.status(400).json({ error: 'line debe ser portones o ipanel' });
+
+    const { rows } = await pool.query(
+      `select line, stage_key, resource_key from public.scheduling_stage_resource where line = $1 order by stage_key asc;`,
+      [line]
+    );
+    return res.json({ ok: true, mappings: rows });
+  } catch (err) {
+    console.error('get scheduling stage-resource error:', err);
+    return res.status(500).json({ error: 'Error leyendo el mapeo etapa-recurso', detail: err.message });
+  }
+});
+
+router.put('/scheduling/stage-resource', async (req, res) => {
+  const line = String(req.query.line || '').trim();
+  if (!isValidLine(line)) return res.status(400).json({ error: 'line debe ser portones o ipanel' });
+
+  const mappings = Array.isArray(req.body?.mappings) ? req.body.mappings : [];
+  for (const m of mappings) {
+    if (!m?.stage_key || !m?.resource_key) return res.status(400).json({ error: 'Cada mapeo necesita stage_key y resource_key' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+    await client.query(`delete from public.scheduling_stage_resource where line = $1;`, [line]);
+
+    for (const m of mappings) {
+      await client.query(
+        `insert into public.scheduling_stage_resource (line, stage_key, resource_key) values ($1, $2, $3);`,
+        [line, String(m.stage_key).trim(), String(m.resource_key).trim()]
+      );
+    }
+
+    await client.query('commit');
+    return res.json({ ok: true, count: mappings.length });
+  } catch (err) {
+    await client.query('rollback');
+    // FK a scheduling_resource: alguno de los resource_key pedidos no existe
+    // en el catálogo todavía — hay que darlo de alta primero (POST /scheduling/resources).
+    if (err.code === '23503') {
+      return res.status(409).json({ error: 'Alguno de los resource_key no existe en el catálogo de recursos.', detail: err.message });
+    }
+    console.error('save scheduling stage-resource error:', err);
+    return res.status(500).json({ error: 'Error guardando el mapeo etapa-recurso', detail: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Preview: tiempo_efectivo calculado vs. tiempo real ya registrado
 // ---------------------------------------------------------------------------
 
