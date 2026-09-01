@@ -35,7 +35,7 @@ const PORTON_STAGE_KEYS_ORDER = [
 // Eso rompe el workflow porque hace que “aparezca en todos lados”.
 const PORTON_BASE_COLS_SQL = `
   p.id, p.nv, p.nlista, p.partida,
-  p.fecha_plan, p.fecha_prod, p.fecha_nv, p.fecha_med, p.fecha_plan_entrega,
+  p.fecha_plan, p.fecha_prod, p.fecha_nv, p.fecha_med, p.fecha_plan_entrega, p.fecha_despacho_logistica,
   p.observaciones,
   p.sistema,
   p.created_at,
@@ -663,6 +663,12 @@ router.post('/portones/:id/fecha-prod', datePatchHandlerPortones('fecha_prod'));
 router.post('/portones/:id/fecha-nv', datePatchHandlerPortones('fecha_nv'));
 router.post('/portones/:id/fecha-med', datePatchHandlerPortones('fecha_med'));
 router.post('/portones/:id/fecha-plan-entrega', datePatchHandlerPortones('fecha_plan_entrega'));
+// Flujo Logística (Fase 2c del motor de reglas de tiempo): fecha editable
+// por Logística, aparte de fecha_plan_entrega (que llega del Presupuestador
+// y queda de solo lectura). Mientras esta quede null, el cálculo de
+// regresión usa fecha_plan_entrega como fallback — ver
+// lib/scheduling/regressionEngine.js:resolveAnchorDeadline.
+router.post('/portones/:id/fecha-despacho-logistica', datePatchHandlerPortones('fecha_despacho_logistica'));
 router.post('/portones/:id/sistema', textPatchHandlerPortones('sistema'));
 
 // Observaciones

@@ -17,6 +17,7 @@ import {
   saveSchedulingRules,
   getSchedulingPreview,
   getSchedulingRegressionPreview,
+  setFechaDespachoLogistica,
 } from '../../src/api';
 import { Link, useNavigate } from 'react-router-dom';
 
@@ -97,9 +98,13 @@ export default function SchedulingRulesPage() {
 
   const [portonIdInput, setPortonIdInput] = useState('');
   const [fleetMode, setFleetMode] = useState('fleet'); // 'fleet' | 'isolated' — solo aplica sin porton_id
+  const [flow, setFlow] = useState('presupuesto'); // 'presupuesto' | 'logistica'
   const [regression, setRegression] = useState(null);
   const [regressionLoading, setRegressionLoading] = useState(false);
   const [regressionErr, setRegressionErr] = useState('');
+
+  const [logisticaDateInput, setLogisticaDateInput] = useState('');
+  const [savingLogisticaDate, setSavingLogisticaDate] = useState(false);
 
   const regressionPortones = useMemo(() => {
     if (!regression) return [];
@@ -218,12 +223,27 @@ export default function SchedulingRulesPage() {
     setRegressionLoading(true);
     try {
       const id = portonIdInput.trim();
-      const data = await getSchedulingRegressionPreview(line, id ? { porton_id: id } : { limit: 20, mode: fleetMode });
+      const data = await getSchedulingRegressionPreview(line, id ? { porton_id: id, flow } : { limit: 20, mode: fleetMode, flow });
       setRegression(data);
     } catch (e) {
       setRegressionErr(e?.response?.data?.error || e.message);
     } finally {
       setRegressionLoading(false);
+    }
+  };
+
+  const saveLogisticaDate = async () => {
+    const id = portonIdInput.trim();
+    if (!id) return;
+    setSavingLogisticaDate(true);
+    setRegressionErr('');
+    try {
+      await setFechaDespachoLogistica(id, logisticaDateInput.trim() || null);
+      await runRegression();
+    } catch (e) {
+      setRegressionErr(e?.response?.data?.error || e.message);
+    } finally {
+      setSavingLogisticaDate(false);
     }
   };
 
@@ -470,6 +490,10 @@ export default function SchedulingRulesPage() {
                 <option value="isolated">Aislado (capacidad infinita, depuración)</option>
               </select>
             )}
+            <select className="btn" value={flow} onChange={(e) => setFlow(e.target.value)} title="Fecha ancla del cálculo">
+              <option value="presupuesto">Flujo Presupuesto</option>
+              <option value="logistica">Flujo Logística</option>
+            </select>
             <button className="btn btn--brand" onClick={runRegression} disabled={regressionLoading || line !== 'portones'}>
               {regressionLoading ? 'Calculando…' : 'Calcular'}
             </button>
@@ -479,6 +503,22 @@ export default function SchedulingRulesPage() {
         {line !== 'portones' && (
           <div style={{ fontSize: 12, opacity: 0.7, marginTop: 8 }}>
             La regresión de esta fase solo soporta la línea Portones.
+          </div>
+        )}
+        {portonIdInput.trim() && (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 12, opacity: 0.75 }}>Fecha de despacho — Flujo Logística:</span>
+            <input
+              className="btn"
+              type="date"
+              style={{ width: 160 }}
+              value={logisticaDateInput}
+              onChange={(e) => setLogisticaDateInput(e.target.value)}
+            />
+            <button className="btn" onClick={saveLogisticaDate} disabled={savingLogisticaDate}>
+              {savingLogisticaDate ? 'Guardando…' : 'Guardar'}
+            </button>
+            <span style={{ fontSize: 12, opacity: 0.6 }}>Vacío = usa la fecha del Presupuesto.</span>
           </div>
         )}
         {regression?.mode === 'fleet' && (

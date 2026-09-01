@@ -66,6 +66,11 @@ export const setFechaMed = (id, fechaOrNull) => api.post(`/portones/${id}/fecha-
 export const setFechaPlanEntrega = (id, fechaOrNull) =>
   api.post(`/portones/${id}/fecha-plan-entrega`, { fecha_plan_entrega: fechaOrNull });
 
+// Flujo Logística (Fase 2c del motor de reglas de tiempo): fecha editable
+// aparte de fecha_plan_entrega. Null = usa fecha_plan_entrega como fallback.
+export const setFechaDespachoLogistica = (id, fechaOrNull) =>
+  api.post(`/portones/${id}/fecha-despacho-logistica`, { fecha_despacho_logistica: fechaOrNull });
+
 export const setSistemaPorton = (id, sistemaOrNull) =>
   api.post(`/portones/${id}/sistema`, { sistema: sistemaOrNull });
 
@@ -157,12 +162,12 @@ export async function getSchedulingPreview(line, limit) {
   return data;
 }
 
-export async function getSchedulingRegressionPreview(line, { porton_id, limit, mode } = {}) {
+export async function getSchedulingRegressionPreview(line, { porton_id, limit, mode, flow } = {}) {
   // La regresión de flota recorre varios portones — puede tardar más que el
   // timeout global de 15s (mismo criterio que ya usan las llamadas a IA en
   // este archivo, ej. recomendarLogisticaViajeIa).
   const { data } = await api.get('/admin/scheduling/regression/preview', {
-    params: { line, porton_id, limit, mode },
+    params: { line, porton_id, limit, mode, flow },
     timeout: 60000,
   });
   return data;

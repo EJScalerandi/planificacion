@@ -216,6 +216,23 @@ function deadlineFromFechaPlanEntrega(fechaPlanEntrega) {
   return arDateTimeToInstant(dateKey, '23:59:59');
 }
 
+// Fase 2c — dos flujos, misma regresión, distinta fecha ancla:
+//   'presupuesto' -> fecha_plan_entrega (viene del Presupuestador, solo lectura).
+//   'logistica'   -> fecha_despacho_logistica si está cargada; si no, cae a
+//                    fecha_plan_entrega — "arranca igual a la de Presupuesto,
+//                    pero editable en Planta" (ver POST
+//                    /portones/:id/fecha-despacho-logistica).
+const FLOWS = Object.freeze({ PRESUPUESTO: 'presupuesto', LOGISTICA: 'logistica' });
+
+function resolveAnchorValue(ctx, flow) {
+  if (flow === FLOWS.LOGISTICA) return ctx?.fecha_despacho_logistica ?? ctx?.fecha_plan_entrega ?? null;
+  return ctx?.fecha_plan_entrega ?? null;
+}
+
+function deadlineForFlow(ctx, flow) {
+  return deadlineFromFechaPlanEntrega(resolveAnchorValue(ctx, flow));
+}
+
 // Backward-pass (Kahn's algorithm sobre el subgrafo, procesando por
 // out-degree en vez de in-degree: primero los nodos sin sucesores — la
 // raíz —, y de ahí hacia las etapas iniciales). Kahn's cumple dos roles a
@@ -327,14 +344,17 @@ async function computeBackwardPass({ line, subgraph, deadline, standardByStage, 
 //     mapeo etapa->recurso de nuevo por cada portón.
 //   - calendarCache / calendarWindow: ver computeFleetRegression más abajo —
 //     evita releer el calendario de cada recurso una vez por portón.
+//   - flow (Fase 2c, default 'presupuesto'): de qué campo sale la fecha
+//     ancla — ver resolveAnchorValue/FLOWS más arriba.
 async function computePortonRegression({
   line, ctx, standardByStage, rulesByStage, db = pool, capacityLedger,
   rootKey: providedRootKey, requirementRows, calendarCache, calendarWindow,
-  edgeRows, stageResourceMap,
+  edgeRows, stageResourceMap, flow = FLOWS.PRESUPUESTO,
 }) {
-  const deadline = deadlineFromFechaPlanEntrega(ctx?.fecha_plan_entrega);
+  const deadline = deadlineForFlow(ctx, flow);
   if (!deadline) {
-    return { ok: true, warning: 'fecha_plan_entrega no está seteada para este portón — no se puede calcular la regresión.' };
+    const label = flow === FLOWS.LOGISTICA ? 'fecha_despacho_logistica ni fecha_plan_entrega' : 'fecha_plan_entrega';
+    return { ok: true, flow, warning: `${label} no está seteada para este portón — no se puede calcular la regresión.` };
   }
 
   const rootKey = providedRootKey || (await resolveRootStage(line, db));
@@ -345,6 +365,7 @@ async function computePortonRegression({
 
   return {
     ok: pass.ok,
+    flow,
     error: pass.error,
     deadline,
     root_key: rootKey,
@@ -376,7 +397,12 @@ async function computePortonRegression({
 // adelante fija el ancla, la más cercana hacia atrás estira el
 // maxLookbackDays), así que cubre a cualquier portón del lote sin importar
 // en qué orden se procesen.
-async function computeFleetRegression({ line, ctxs, standardByStage, rulesByStage, db = pool }) {
+// `flow` (Fase 2c, default 'presupuesto'): además de elegir el ancla de cada
+// portón, define el ORDEN EDD del lote — 'logistica' puede dar un orden
+// distinto a 'presupuesto' si alguien ya editó fecha_despacho_logistica para
+// algunos portones pero no para otros. Por eso `ctxs` se reordena acá adentro
+// según el flujo, en vez de asumir que ya viene ordenado por el caller.
+async function computeFleetRegression({ line, ctxs, standardByStage, rulesByStage, db = pool, flow = FLOWS.PRESUPUESTO }) {
   const capacityLedger = createCapacityLedger();
   const calendarCache = new Map();
   const portones = [];
@@ -390,9 +416,16 @@ async function computeFleetRegression({ line, ctxs, standardByStage, rulesByStag
   const edgeRows = await fetchWorkflowEdgeRows(line, db);
   const stageResourceMap = await fetchStageResourceMap(line, db);
 
-  const deadlines = (ctxs || [])
-    .map((ctx) => deadlineFromFechaPlanEntrega(ctx?.fecha_plan_entrega))
-    .filter((d) => d instanceof Date);
+  const sortedCtxs = [...(ctxs || [])].sort((a, b) => {
+    const da = deadlineForFlow(a, flow);
+    const dbb = deadlineForFlow(b, flow);
+    if (!da && !dbb) return 0;
+    if (!da) return 1; // sin fecha para este flujo, al final
+    if (!dbb) return -1;
+    return da.getTime() - dbb.getTime();
+  });
+
+  const deadlines = sortedCtxs.map((ctx) => deadlineForFlow(ctx, flow)).filter((d) => d instanceof Date);
   let calendarWindow;
   if (deadlines.length) {
     const maxDeadline = new Date(Math.max(...deadlines.map((d) => d.getTime())));
@@ -401,12 +434,12 @@ async function computeFleetRegression({ line, ctxs, standardByStage, rulesByStag
     calendarWindow = { deadline: maxDeadline, maxLookbackDays: 180 + spreadDays };
   }
 
-  for (const ctx of ctxs || []) {
+  for (const ctx of sortedCtxs) {
     try {
       const result = await computePortonRegression({
         line, ctx, standardByStage, rulesByStage, db, capacityLedger,
         rootKey, requirementRows, calendarCache, calendarWindow,
-        edgeRows, stageResourceMap,
+        edgeRows, stageResourceMap, flow,
       });
       portones.push({ id: ctx.id, nv: ctx.nv, sistema: ctx.sistema, ...result });
     } catch (err) {
@@ -414,7 +447,7 @@ async function computeFleetRegression({ line, ctxs, standardByStage, rulesByStag
     }
   }
 
-  return { ok: true, mode: 'fleet', portones, ledger_summary: summarizeLedger(capacityLedger) };
+  return { ok: true, mode: 'fleet', flow, portones, ledger_summary: summarizeLedger(capacityLedger) };
 }
 
 module.exports = {
@@ -430,4 +463,7 @@ module.exports = {
   computeFleetRegression,
   deadlineFromFechaPlanEntrega,
   fechaPlanEntregaToDateKey,
+  FLOWS,
+  resolveAnchorValue,
+  deadlineForFlow,
 };

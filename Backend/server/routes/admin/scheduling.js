@@ -10,7 +10,7 @@ const { adminAuth } = require('../../middleware/adminAuth');
 const { pool } = require('../../db');
 const { computeEffectiveMinutes } = require('../../lib/scheduling/rulesEngine');
 const { listPortonSchedulingCtxs, listPortonesPendingForRegression, getPortonSchedulingCtx } = require('../../lib/scheduling/portonCtx');
-const { computePortonRegression, computeFleetRegression } = require('../../lib/scheduling/regressionEngine');
+const { computePortonRegression, computeFleetRegression, FLOWS } = require('../../lib/scheduling/regressionEngine');
 
 const router = express.Router();
 
@@ -307,6 +307,14 @@ router.get('/scheduling/regression/preview', async (req, res) => {
 
     const { standardByStage, rulesByStage } = await loadStandardsAndRulesMaps(line);
 
+    // Fase 2c: mismo cálculo, distinta fecha ancla. 'presupuesto'
+    // (fecha_plan_entrega, la que llega del Presupuestador) es el default;
+    // 'logistica' usa fecha_despacho_logistica si está cargada.
+    const flow = String(req.query.flow || FLOWS.PRESUPUESTO).trim();
+    if (!Object.values(FLOWS).includes(flow)) {
+      return res.status(400).json({ error: `flow debe ser ${Object.values(FLOWS).join(' o ')}` });
+    }
+
     // portones.id es UUID, no numérico — un solo portón siempre se calcula
     // aislado (capacidad infinita), es la herramienta de depuración de
     // ruta/reglas de un portón puntual, sin importar el modo flota/aislado.
@@ -316,7 +324,7 @@ router.get('/scheduling/regression/preview', async (req, res) => {
       const ctx = await getPortonSchedulingCtx(pool, portonId);
       if (!ctx) return res.status(404).json({ error: 'Portón no encontrado' });
 
-      const result = await computePortonRegression({ line, ctx, standardByStage, rulesByStage, db: pool });
+      const result = await computePortonRegression({ line, ctx, standardByStage, rulesByStage, db: pool, flow });
       return res.json({ ok: true, mode: 'isolated', id: ctx.id, nv: ctx.nv, sistema: ctx.sistema, ...result });
     }
 
@@ -334,16 +342,16 @@ router.get('/scheduling/regression/preview', async (req, res) => {
       const portones = [];
       for (const ctx of ctxs) {
         try {
-          const result = await computePortonRegression({ line, ctx, standardByStage, rulesByStage, db: pool });
+          const result = await computePortonRegression({ line, ctx, standardByStage, rulesByStage, db: pool, flow });
           portones.push({ id: ctx.id, nv: ctx.nv, sistema: ctx.sistema, ...result });
         } catch (err) {
           portones.push({ id: ctx.id, nv: ctx.nv, ok: false, error: err.message });
         }
       }
-      return res.json({ ok: true, mode: 'isolated', portones });
+      return res.json({ ok: true, mode: 'isolated', flow, portones });
     }
 
-    const fleetResult = await computeFleetRegression({ line, ctxs, standardByStage, rulesByStage, db: pool });
+    const fleetResult = await computeFleetRegression({ line, ctxs, standardByStage, rulesByStage, db: pool, flow });
     return res.json({ ok: true, ...fleetResult });
   } catch (err) {
     console.error('get scheduling regression preview error:', err);
