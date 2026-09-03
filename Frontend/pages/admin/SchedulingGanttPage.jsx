@@ -26,6 +26,7 @@ const DAY_MS = 86400000;
 const PX_PER_DAY = 52;
 const STAGE_ROW_H = 30;
 const PORTON_ROW_H = 40;
+const HEADER_TIER_H = 30; // header de dos pisos: semana arriba, día abajo
 
 function pad2(n) { return String(n).padStart(2, '0'); }
 
@@ -45,6 +46,37 @@ function arMidnightInstant(dateKey) {
   const [y, m, d] = dateKey.split('-').map(Number);
   return new Date(Date.UTC(y, m - 1, d, 0, 0, 0) - AR_OFFSET_MINUTES * 60000);
 }
+// weekday: 0=domingo..6=sábado (Date.getUTCDay() sobre la medianoche AR).
+function weekdayOf(dateKey) { return arMidnightInstant(dateKey).getUTCDay(); }
+function isWeekend(dateKey) { const w = weekdayOf(dateKey); return w === 0 || w === 6; }
+
+// Semana ISO-8601 (lunes a domingo, la semana que contiene el jueves define
+// el número) — solo para el rótulo "Semana N" del header, no afecta ningún
+// cálculo de la regresión.
+function isoWeek(dateKey) {
+  const d = arMidnightInstant(dateKey);
+  const target = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const dayNr = (target.getUTCDay() + 6) % 7; // lunes=0..domingo=6
+  target.setUTCDate(target.getUTCDate() - dayNr + 3); // jueves de esa semana
+  const firstThursday = new Date(Date.UTC(target.getUTCFullYear(), 0, 4));
+  const firstDayNr = (firstThursday.getUTCDay() + 6) % 7;
+  firstThursday.setUTCDate(firstThursday.getUTCDate() - firstDayNr + 3);
+  return 1 + Math.round((target - firstThursday) / (7 * DAY_MS));
+}
+
+// Jornada laboral de referencia (mismo default que lib/scheduling/calendar.js:
+// Lun-Vie 08:00-18:00) — el eje del Gantt usa esta ventana como "un bloque",
+// no las 24hs del día, para que un tramo que ocupa toda la jornada se vea
+// exactamente de ancho completo (y arrancar/terminar fuera de ella se
+// recorta al borde del bloque en vez de desbordarlo).
+const WORK_START_MIN = 8 * 60;
+const WORK_END_MIN = 18 * 60;
+function workHourFraction(date, dateKey) {
+  const minutesIntoDay = (date.getTime() - arMidnightInstant(dateKey).getTime()) / 60000;
+  const frac = (minutesIntoDay - WORK_START_MIN) / (WORK_END_MIN - WORK_START_MIN);
+  return Math.min(1, Math.max(0, frac));
+}
+
 function fmtArDateTime(d) {
   if (!d) return '—';
   try {
@@ -108,22 +140,44 @@ export default function SchedulingGanttPage() {
 
   const portones = useMemo(() => regression?.portones || [], [regression]);
 
-  // ---- Filas por portón: agrega min/max teórico y real sobre sus etapas ----
+  // Portón "empieza" con diseño y "termina" con Armado Final — despacho es un
+  // evento de logística aparte (carga del camión), no producción. 'diseno'
+  // ('Diseño Tubos') es la única etapa de diseño que sale de 'inicio' sin
+  // condición (siempre está), así que sirve de ancla universal de arranque.
+  const PORTON_START_STAGE = 'diseno';
+  const PORTON_END_STAGE = 'armado_final';
+
+  // ---- Filas por portón: agrega teórico y real sobre sus etapas, anclado a
+  // diseño->armado_final (con fallback a min/max de todas si por algún
+  // motivo esas dos etapas puntuales no están en el subgrafo del portón) ----
   const portonRows = useMemo(() => {
     return portones
       .map((p) => {
         if (!p.ok || !p.stages) return { id: p.id, nv: p.nv, sistema: p.sistema, warning: p.warning, error: p.error, stages: [] };
         const stages = Object.values(p.stages).sort((a, b) => new Date(a.latest_start) - new Date(b.latest_start));
+        const byKey = new Map(stages.map((s) => [s.stage_key, s]));
+        const startStage = byKey.get(PORTON_START_STAGE);
+        const endStage = byKey.get(PORTON_END_STAGE);
+
         const theoStarts = stages.map((s) => s.latest_start && new Date(s.latest_start)).filter(Boolean);
         const theoEnds = stages.map((s) => s.latest_finish && new Date(s.latest_finish)).filter(Boolean);
         const realStarts = stages.map((s) => s.real_start && new Date(s.real_start)).filter(Boolean);
         const realEnds = stages.map((s) => s.real_finish && new Date(s.real_finish)).filter(Boolean);
+
+        // Fallback (min/max de todas) solo si diseno/armado_final ni siquiera
+        // están en el subgrafo de este portón — si están pero todavía no
+        // arrancaron/terminaron en la realidad, el campo real_* queda null
+        // tal cual (no hay que inventarle un "real" a partir de otra etapa).
         return {
           id: p.id, nv: p.nv, sistema: p.sistema, warning: p.warning, error: p.error, stages,
-          theoStart: theoStarts.length ? new Date(Math.min(...theoStarts.map((d) => d.getTime()))) : null,
-          theoEnd: theoEnds.length ? new Date(Math.max(...theoEnds.map((d) => d.getTime()))) : null,
-          realStart: realStarts.length ? new Date(Math.min(...realStarts.map((d) => d.getTime()))) : null,
-          realEnd: realEnds.length ? new Date(Math.max(...realEnds.map((d) => d.getTime()))) : null,
+          // Fecha de despacho real (deadline de la regresión) — distinta del
+          // fin visual de la barra (armado_final): es lo que hay que mover
+          // al arrastrar, no el fin de producción.
+          deadline: p.deadline ? new Date(p.deadline) : null,
+          theoStart: startStage ? new Date(startStage.latest_start) : (theoStarts.length ? new Date(Math.min(...theoStarts.map((d) => d.getTime()))) : null),
+          theoEnd: endStage ? new Date(endStage.latest_finish) : (theoEnds.length ? new Date(Math.max(...theoEnds.map((d) => d.getTime()))) : null),
+          realStart: startStage ? (startStage.real_start ? new Date(startStage.real_start) : null) : (realStarts.length ? new Date(Math.min(...realStarts.map((d) => d.getTime()))) : null),
+          realEnd: endStage ? (endStage.real_finish ? new Date(endStage.real_finish) : null) : (realEnds.length ? new Date(Math.max(...realEnds.map((d) => d.getTime()))) : null),
         };
       })
       .sort((a, b) => (a.theoEnd && b.theoEnd ? a.theoEnd - b.theoEnd : a.theoEnd ? -1 : 1));
@@ -180,31 +234,79 @@ export default function SchedulingGanttPage() {
     return { min: arMidnightInstant(addDaysToDateKey(minKey, -1)), max: arMidnightInstant(addDaysToDateKey(maxKey, 2)) };
   }, [portonRowsWithDates]);
 
-  const totalDays = Math.max(1, Math.ceil((timeRange.max - timeRange.min) / DAY_MS));
-  const timelineWidth = totalDays * PX_PER_DAY;
-  const xForDate = (d) => ((d.getTime() - timeRange.min.getTime()) / DAY_MS) * PX_PER_DAY;
-
-  const dayColumns = useMemo(() => {
+  // Eje de días hábiles (Lun-Vie) únicamente — un fin de semana no ocupa
+  // ancho: el viernes queda pegado al lunes siguiente. Cada bloque representa
+  // una jornada 08:00-18:00 (ver workHourFraction), agrupados de a 5 por
+  // semana en el header.
+  const workDayColumns = useMemo(() => {
     const cols = [];
     let key = toArDateKey(timeRange.min);
     const endKey = toArDateKey(timeRange.max);
     let guard = 0;
-    while (key <= endKey && guard < 400) {
-      cols.push(key);
+    while (key <= endKey && guard < 800) {
+      if (!isWeekend(key)) cols.push(key);
       key = addDaysToDateKey(key, 1);
       guard += 1;
     }
+    if (!cols.length) cols.push(toArDateKey(timeRange.min));
     return cols;
   }, [timeRange]);
+
+  const workingDayIndex = useMemo(() => new Map(workDayColumns.map((k, i) => [k, i])), [workDayColumns]);
+  const timelineWidth = workDayColumns.length * PX_PER_DAY;
+
+  // Instante -> posición X. Si cae en fin de semana (dato real cargado un
+  // sábado/domingo, ej.), lo engancha al lunes hábil más próximo hacia
+  // adelante — simplificación deliberada, el eje no tiene dónde ponerlo.
+  const xForDate = (d) => {
+    let key = toArDateKey(d);
+    let guard = 0;
+    while (!workingDayIndex.has(key) && guard < 10) {
+      key = key < workDayColumns[0] ? workDayColumns[0] : addDaysToDateKey(key, 1);
+      guard += 1;
+    }
+    const idx = workingDayIndex.get(key) ?? 0;
+    const frac = isWeekend(toArDateKey(d)) ? 0 : workHourFraction(d, key);
+    return idx * PX_PER_DAY + frac * PX_PER_DAY;
+  };
+
+  // N días hábiles desde dateKey (delta puede ser negativo) — para trasladar
+  // un delta de arrastre (en bloques) a una fecha calendario real.
+  const addWorkingDays = (dateKey, delta) => {
+    let key = dateKey;
+    let remaining = Math.abs(delta);
+    const step = delta >= 0 ? 1 : -1;
+    while (remaining > 0) {
+      key = addDaysToDateKey(key, step);
+      if (!isWeekend(key)) remaining -= 1;
+    }
+    return key;
+  };
+
+  // Agrupa las columnas hábiles en semanas (ISO) para el header de dos pisos:
+  // "Semana N" arriba, abarcando sus (hasta 5) días hábiles abajo.
+  const weekGroups = useMemo(() => {
+    const groups = [];
+    for (const key of workDayColumns) {
+      const wk = isoWeek(key);
+      const last = groups[groups.length - 1];
+      if (last && last.week === wk) last.keys.push(key);
+      else groups.push({ week: wk, keys: [key] });
+    }
+    return groups;
+  }, [workDayColumns]);
 
   const toggleExpanded = (id) => setExpanded((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   // ---- Drag: solo la barra teórica agregada de un portón, solo en flujo logística ----
   const dragRef = useRef(null);
   const onBarMouseDown = (row) => (e) => {
-    if (flow !== 'logistica' || savingIds.has(row.id)) return;
+    if (flow !== 'logistica' || savingIds.has(row.id) || !row.deadline) return;
     e.preventDefault();
-    const state = { portonId: row.id, startX: e.clientX, deltaDays: 0, deadlineKey: toArDateKey(row.theoEnd) };
+    // deadlineKey ancla la FECHA DE DESPACHO real (no armado_final, que es
+    // solo el fin visual de producción) — es el campo que efectivamente se
+    // escribe al soltar.
+    const state = { portonId: row.id, startX: e.clientX, deltaDays: 0, deadlineKey: toArDateKey(row.deadline) };
     dragRef.current = state;
     setDrag({ ...state });
 
@@ -221,7 +323,9 @@ export default function SchedulingGanttPage() {
       setDrag(null);
       dragRef.current = null;
       if (!final || final.deltaDays === 0) return;
-      const newDateKey = addDaysToDateKey(final.deadlineKey, final.deltaDays);
+      // El delta se arrastró en bloques hábiles — se traduce a días hábiles
+      // reales (salta fines de semana), no días de calendario.
+      const newDateKey = addWorkingDays(final.deadlineKey, final.deltaDays);
       setSavingIds((prev) => new Set(prev).add(final.portonId));
       setErr('');
       try {
@@ -290,7 +394,7 @@ export default function SchedulingGanttPage() {
             <div style={{ display: 'flex', minWidth: 260 + timelineWidth }}>
               {/* Columna de etiquetas, fija */}
               <div style={{ width: 260, flex: 'none', borderRight: '1px solid var(--border)' }}>
-                <div style={{ height: 34, borderBottom: '1px solid var(--border)', background: 'var(--surface-muted, #f3f4f6)' }} />
+                <div style={{ height: HEADER_TIER_H * 2, borderBottom: '1px solid var(--border)', background: 'var(--surface-muted, #f3f4f6)' }} />
                 {viewMode === 'porton'
                   ? portonRowsWithDates.map((row) => (
                       <PortonLabel key={row.id} row={row} expanded={expanded.has(row.id)} onToggle={() => toggleExpanded(row.id)} saving={savingIds.has(row.id)} />
@@ -302,20 +406,36 @@ export default function SchedulingGanttPage() {
 
               {/* Timeline */}
               <div style={{ position: 'relative', width: timelineWidth }}>
-                {/* Header de días */}
-                <div style={{ height: 34, position: 'relative', borderBottom: '1px solid var(--border)', background: 'var(--surface-muted, #f3f4f6)' }}>
-                  {dayColumns.map((key) => (
-                    <div key={key} style={{ position: 'absolute', left: xForDate(arMidnightInstant(key)), width: PX_PER_DAY, top: 0, bottom: 0, borderLeft: '1px solid var(--border)', fontSize: 10.5, textAlign: 'center', paddingTop: 3, opacity: 0.75 }}>
+                {/* Header de semana — cada grupo abarca sus (hasta 5) días hábiles */}
+                <div style={{ height: HEADER_TIER_H, position: 'relative', borderBottom: '1px solid var(--border)', background: 'var(--surface-muted, #f3f4f6)' }}>
+                  {weekGroups.map((g) => (
+                    <div
+                      key={g.week + '-' + g.keys[0]}
+                      title={`${g.keys.length}/5 días hábiles con datos en este rango`}
+                      style={{
+                        position: 'absolute', left: xForDate(arMidnightInstant(g.keys[0])), width: g.keys.length * PX_PER_DAY,
+                        top: 0, bottom: 0, borderLeft: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 11, fontWeight: 800, opacity: 0.85,
+                      }}
+                    >
+                      Semana {g.week}
+                    </div>
+                  ))}
+                </div>
+                {/* Header de día hábil, dentro de cada semana */}
+                <div style={{ height: HEADER_TIER_H, position: 'relative', borderBottom: '1px solid var(--border)', background: 'var(--surface-muted, #f3f4f6)' }}>
+                  {workDayColumns.map((key) => (
+                    <div key={key} style={{ position: 'absolute', left: xForDate(arMidnightInstant(key)), width: PX_PER_DAY, top: 0, bottom: 0, borderLeft: '1px solid var(--border)', fontSize: 10, textAlign: 'center', paddingTop: 2, opacity: 0.75 }}>
                       <div style={{ fontWeight: 700 }}>{weekdayShort(key)}</div>
                       <div>{fmtArDateShort(key)}</div>
                     </div>
                   ))}
                 </div>
 
-                {/* Líneas de grilla de fondo, para todas las filas */}
+                {/* Líneas de grilla de fondo, para todas las filas — más marcada al arrancar cada semana */}
                 <div style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, pointerEvents: 'none' }}>
-                  {dayColumns.map((key) => (
-                    <div key={key} style={{ position: 'absolute', left: xForDate(arMidnightInstant(key)), top: 0, bottom: 0, borderLeft: '1px solid var(--border)', opacity: 0.5 }} />
+                  {workDayColumns.map((key) => (
+                    <div key={key} style={{ position: 'absolute', left: xForDate(arMidnightInstant(key)), top: 0, bottom: 0, borderLeft: `1px solid var(--border)`, opacity: weekdayOf(key) === 1 ? 0.9 : 0.35 }} />
                   ))}
                 </div>
 
