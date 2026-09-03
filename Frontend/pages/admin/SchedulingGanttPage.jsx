@@ -344,7 +344,13 @@ export default function SchedulingGanttPage() {
   const logout = () => { clearAdminToken(); nav('/admin/login', { replace: true }); };
 
   return (
-    <div className="container" style={{ maxWidth: 1500 }}>
+    // "Escapa" del `.container` (max-width 1440px) que envuelve esta página
+    // vía NonProductionLayout, compartido con el resto de /admin/* — no se
+    // toca ese layout (lo usan todas las demás pantallas), solo se corre
+    // ESTA página a los bordes reales del viewport con el truco de
+    // full-bleed (100vw + margin negativo la mitad), que no depende de
+    // ningún ancho fijo del padre.
+    <div style={{ width: '100vw', position: 'relative', left: '50%', marginLeft: '-50vw', padding: '16px 20px', boxSizing: 'border-box' }}>
       <div className="header-row" style={{ alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
         <h2 className="h1">Gantt de Producción (Beta)</h2>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
