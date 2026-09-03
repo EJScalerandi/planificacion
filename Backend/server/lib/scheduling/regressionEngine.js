@@ -309,6 +309,11 @@ async function computeBackwardPass({ line, subgraph, deadline, standardByStage, 
       predecessors: edgesByTo.get(stageKey) || [],
       successors,
       matched_rules: calc.matched_rules,
+      // Tiempo real ya registrado (porton_etapas_tiempos), si esa etapa ya
+      // arrancó/terminó — puramente aditivo, para comparar teórico vs. real
+      // en el Gantt (Frontend/pages/admin/SchedulingGanttPage.jsx).
+      real_start: ctx?.[`${stageKey}_inicio`] ?? null,
+      real_finish: ctx?.[`${stageKey}_fin`] ?? null,
     });
 
     for (const pred of edgesByTo.get(stageKey) || []) {
