@@ -3,7 +3,9 @@ import usePortones from '../src/hooks/usePortones';
 
 const STAGES = [
   { key: 'diseno',               label: 'Diseño' },
-  { key: 'laser',                label: 'Laser' },
+  { key: 'laser_dintel',         label: 'Laser tubos Dintel' },
+  { key: 'laser_hojas',          label: 'Laser tubos Hojas' },
+  { key: 'laser_brazos_espada',  label: 'Laser tubos Brazos y Espada' },
 
   // Corte
   { key: 'guillotina',           label: 'Corte (Piernas)' },
@@ -29,7 +31,7 @@ const STAGES = [
 ];
 
 const ABBR = {
-  diseno: 'Di', laser: 'La',
+  diseno: 'Di', laser_dintel: 'LaD', laser_hojas: 'LaH', laser_brazos_espada: 'LaB',
   guillotina: 'COP',           // Corte (Piernas)
   corte_revest: 'COR',         // Corte (Revestimiento)
   plegadora: 'PLP',            // Plegado (Piernas)

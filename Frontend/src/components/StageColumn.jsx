@@ -966,7 +966,7 @@ export default function StageColumn({
   const line = mapModeToLine(mode);
   const keyTrim = String(effKey || '').trim();
   const isDespachoColumn = mode === 'porton' && keyTrim === 'despacho';
-  const isLaserColumn = mode === 'porton' && keyTrim === 'laser';
+  const isLaserColumn = mode === 'porton' && ['laser', 'laser_dintel', 'laser_hojas', 'laser_brazos_espada'].includes(keyTrim);
 
   const eligiblePrefabTipos = useMemo(() => {
     if (mode !== 'porton') return [];

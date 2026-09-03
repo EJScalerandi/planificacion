@@ -31,7 +31,9 @@ const STAGE_DEFS = [
   { key: 'diseno', label: 'Diseño Tubos' },
   { key: 'diseno_piernas', label: 'Diseño Piernas' },
   { key: 'diseno_revestimiento', label: 'Diseño Revestimiento' },
-  { key: 'laser', label: 'Láser' },
+  { key: 'laser_dintel', label: 'Laser Dintel' },
+  { key: 'laser_hojas', label: 'Laser Hojas' },
+  { key: 'laser_brazos_espada', label: 'Laser Brazos/Espada' },
 
   { key: 'guillotina', label: 'Guillotina' },
   { key: 'corte_revest', label: 'Corte Revest.' },

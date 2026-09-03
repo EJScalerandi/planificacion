@@ -560,7 +560,9 @@ const ROUTES = [
       { key: 'diseno_piernas', label: 'Diseño Piernas', mode: 'porton' },
       { key: 'diseno_revestimiento', label: 'Diseño Revestimiento', mode: 'porton' },
       { key: 'diseno', label: 'Diseño (iPanel)', mode: 'ipanel' },
-      { key: 'laser', label: 'Laser', mode: 'porton' },
+      { key: 'laser_dintel', label: 'Laser tubos Dintel', mode: 'porton' },
+      { key: 'laser_hojas', label: 'Laser tubos Hojas', mode: 'porton' },
+      { key: 'laser_brazos_espada', label: 'Laser tubos Brazos y Espada', mode: 'porton' },
       { key: 'guillotina', label: 'Corte piernas', mode: 'porton' },
       { key: 'corte_revest', label: 'Corte revestimiento', mode: 'porton' },
       { key: 'guillotina', label: 'Corte Ipanel', mode: 'ipanel' },
@@ -592,7 +594,15 @@ const ROUTES = [
       { key: 'diseno', label: 'Diseño (iPanel)', mode: 'ipanel' },
     ],
   },
-  { path: '/laser', label: 'Producción · Laser', stages: ONE('laser', 'Laser') },
+  {
+    path: '/laser',
+    label: 'Producción · Laser',
+    stages: [
+      { key: 'laser_dintel', label: 'Laser tubos Dintel', mode: 'porton' },
+      { key: 'laser_hojas', label: 'Laser tubos Hojas', mode: 'porton' },
+      { key: 'laser_brazos_espada', label: 'Laser tubos Brazos y Espada', mode: 'porton' },
+    ],
+  },
   {
     path: '/corte',
     label: 'Producción · Corte',

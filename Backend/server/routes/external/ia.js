@@ -133,6 +133,9 @@ const BASE_SQL = `
         WHEN 'plegadora'             THEN 4
         WHEN 'guillotina'            THEN 3
         WHEN 'laser'                 THEN 2
+        WHEN 'laser_dintel'          THEN 2
+        WHEN 'laser_hojas'           THEN 2
+        WHEN 'laser_brazos_espada'   THEN 2
         WHEN 'diseno'                THEN 1
         ELSE 0
       END DESC
