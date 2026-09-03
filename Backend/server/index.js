@@ -1,7 +1,11 @@
 const path = require('path');
 
+// USE_LOCAL_DB (seteado por dev-local.js, nunca en producción/Render) apunta
+// a .env.local en vez de .env — misma variable SUPABASE_DB_URL, apuntando a
+// la copia local en vez de Supabase real. Sin USE_LOCAL_DB, comportamiento
+// idéntico a siempre.
 require('dotenv').config({
-  path: path.join(__dirname, '..', '.env'),
+  path: path.join(__dirname, '..', process.env.USE_LOCAL_DB ? '.env.local' : '.env'),
 });
 
 const { app } = require('./app');
