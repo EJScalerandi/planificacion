@@ -35,6 +35,7 @@ import LogisticaReglasEnvioModal from './modals/LogisticaReglasEnvioModal';
 import LogisticaIaConfigModal from './modals/LogisticaIaConfigModal';
 import PortonesMapaModal from './modals/PortonesMapaModal';
 import LogisticaMensajeViajeModal from './modals/LogisticaMensajeViajeModal';
+import LogisticaAdjuntosModal from './modals/LogisticaAdjuntosModal';
 
 // NV únicos (despacho e instalación del mismo NV son el mismo domicilio).
 function uniqueNvs(items) {
@@ -157,7 +158,7 @@ function ZonaPills({ zonas, canEdit, onToggle }) {
   );
 }
 
-function PortonChip({ item, draggable, onDragStart, onDragEnd, ordenNum, horaLlegada }) {
+function PortonChip({ item, draggable, onDragStart, onDragEnd, ordenNum, horaLlegada, onAdjuntos }) {
   return (
     <div
       draggable={draggable}
@@ -185,7 +186,19 @@ function PortonChip({ item, draggable, onDragStart, onDragEnd, ordenNum, horaLle
           ) : null}
           NV {item.nv}
         </span>
-        <TipoBadge tipo={item.tipo} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          {onAdjuntos ? (
+            <button
+              type="button" className="btn" style={{ padding: '1px 5px', fontSize: 10 }}
+              onMouseDown={(e) => e.stopPropagation()} // no arrancar un drag del chip al clickear el botón
+              onClick={(e) => { e.stopPropagation(); onAdjuntos(item.nv); }}
+              title="Adjuntos (DNI, certificados, etc.)"
+            >
+              📎
+            </button>
+          ) : null}
+          <TipoBadge tipo={item.tipo} />
+        </div>
       </div>
       <div style={{ fontSize: 12, opacity: 0.85 }}>{item.nombre?.trim() || item.sistema || '—'}</div>
       <div style={{ fontSize: 11, opacity: 0.7, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -409,7 +422,7 @@ function NuevoViajeForm({ semana, config, onCreate, onCancel, busy, initial, sub
   );
 }
 
-function ViajeColumn({ viaje, items, canEdit, cerrada, onDropItem, onReorder, onEditar, onBorrar, onDragStartChip, onDragEndChip, onVerMapa, onMensaje, onToggleZona, puntosExtra, agregandoParada, onAbrirAgregarParada, onCerrarAgregarParada, agregandoParadaBusy, onElegirParada, onCrearParada, onQuitarParada, onMoverParada, onGuardarHorarioParada, onRecalcularRuta, recalculando }) {
+function ViajeColumn({ viaje, items, canEdit, cerrada, onDropItem, onReorder, onEditar, onBorrar, onDragStartChip, onDragEndChip, onVerMapa, onMensaje, onAdjuntosViaje, onAdjuntosNv, onToggleZona, puntosExtra, agregandoParada, onAbrirAgregarParada, onCerrarAgregarParada, agregandoParadaBusy, onElegirParada, onCrearParada, onQuitarParada, onMoverParada, onGuardarHorarioParada, onRecalcularRuta, recalculando }) {
   const [over, setOver] = useState(false);
   const [dragOverIndex, setDragOverIndex] = useState(null);
   const capacidad = Number(viaje.vehiculo_capacidad || 0);
@@ -462,6 +475,15 @@ function ViajeColumn({ viaje, items, canEdit, cerrada, onDropItem, onReorder, on
             onClick={() => onMensaje(viaje)}
           >
             📋 Mensaje
+          </button>
+          <button
+            type="button"
+            className="btn"
+            style={{ padding: '1px 6px', fontSize: 10, marginTop: 4, marginLeft: 4 }}
+            onClick={() => onAdjuntosViaje(viaje)}
+            title="Adjuntos del viaje (manifiesto, etc.)"
+          >
+            📎 Adjuntos
           </button>
           {canEdit ? (
             <button
@@ -560,6 +582,7 @@ function ViajeColumn({ viaje, items, canEdit, cerrada, onDropItem, onReorder, on
                   onDragEnd={onDragEndChip}
                   ordenNum={items.length > 1 ? idx + 1 : null}
                   horaLlegada={horarios.get(`nv-${it.nv}`)}
+                  onAdjuntos={onAdjuntosNv}
                 />
               )}
             </div>
@@ -603,6 +626,7 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
   const [showIaConfig, setShowIaConfig] = useState(false);
   const [mapa, setMapa] = useState(null); // { nvs, titulo } | null
   const [mensajeViaje, setMensajeViaje] = useState(null); // { viajeId, titulo } | null
+  const [adjuntos, setAdjuntos] = useState(null); // { viajeId, titulo } | { nv, titulo } | null
 
   // Paradas que no son un portón (ej. alojamiento) - catálogo reutilizable +
   // qué viaje tiene abierto el picker para agregar una.
@@ -980,6 +1004,7 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
                       draggable={canEdit && !cerrada}
                       onDragStart={(e) => onDragStartChip(e, it)}
                       onDragEnd={onDragEndChip}
+                      onAdjuntos={(nvChip) => setAdjuntos({ nv: nvChip, titulo: `NV ${nvChip}` })}
                     />
                   ))
                 )}
@@ -1021,6 +1046,8 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
                       });
                     }}
                     onMensaje={(viaje) => setMensajeViaje({ viajeId: viaje.id, titulo: viaje.nombre?.trim() || `Viaje #${viaje.id}` })}
+                    onAdjuntosViaje={(viaje) => setAdjuntos({ viajeId: viaje.id, titulo: viaje.nombre?.trim() || `Viaje #${viaje.id}` })}
+                    onAdjuntosNv={(nv) => setAdjuntos({ nv, titulo: `NV ${nv}` })}
                     onToggleZona={onToggleZona}
                     onRecalcularRuta={onRecalcularRuta}
                     recalculando={recalculando}
@@ -1068,6 +1095,7 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
       <LogisticaIaConfigModal open={showIaConfig} onClose={() => setShowIaConfig(false)} />
       <PortonesMapaModal open={!!mapa} nvs={mapa?.nvs} rutaOrden={mapa?.rutaOrden} paradasExtra={mapa?.paradasExtra} rutaReal={mapa?.rutaReal} horaSalida={mapa?.horaSalida} titulo={mapa?.titulo} onClose={() => setMapa(null)} />
       <LogisticaMensajeViajeModal open={!!mensajeViaje} viajeId={mensajeViaje?.viajeId} titulo={mensajeViaje?.titulo} onClose={() => setMensajeViaje(null)} />
+      <LogisticaAdjuntosModal open={!!adjuntos} viajeId={adjuntos?.viajeId} nv={adjuntos?.nv} titulo={adjuntos?.titulo} canEdit={canEdit} onClose={() => setAdjuntos(null)} />
     </div>
   );
 }

@@ -39,6 +39,7 @@ import LogisticaZonasModal from './modals/LogisticaZonasModal';
 import LogisticaIaConfigModal from './modals/LogisticaIaConfigModal';
 import LogisticaPromesaConfigModal from './modals/LogisticaPromesaConfigModal';
 import LogisticaMensajeViajeModal from './modals/LogisticaMensajeViajeModal';
+import LogisticaAdjuntosModal from './modals/LogisticaAdjuntosModal';
 import LogisticaViajeSemanaModal, { AgregarParadaExtra } from './LogisticaViajeSemanaModal';
 
 const ARGENTINA_CENTER = [-38.4, -63.6];
@@ -258,6 +259,7 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
   const [showZonas, setShowZonas] = useState(false);
   const [showIaConfig, setShowIaConfig] = useState(false);
   const [mensajeViaje, setMensajeViaje] = useState(null); // { viajeId, titulo } | null
+  const [adjuntos, setAdjuntos] = useState(null); // { viajeId, titulo } | { nv, titulo } | null
   const [semanaModalAbierta, setSemanaModalAbierta] = useState(false); // abre LogisticaViajeSemanaModal (mismo popup que en Logística de Viajes) - ahora solo para fecha/zona/cuadrilla/vehículo/borrar; reordenar y agregar/quitar paradas ya se hace acá mismo
 
   // Editar la ruta de un viaje directamente en el panel del mapa (sin abrir
@@ -1285,6 +1287,15 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
                                 <div style={{ fontSize: 9, opacity: 0.7, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.nombre}</div>
                               ) : null}
                             </div>
+                            {!esExtra ? (
+                              <button
+                                type="button" className="btn" style={{ padding: '0 4px', fontSize: 10, flex: '0 0 auto' }}
+                                onClick={() => setAdjuntos({ nv: it.nv, titulo: `NV ${it.nv}` })}
+                                title="Adjuntos (DNI, certificados, etc.)"
+                              >
+                                📎
+                              </button>
+                            ) : null}
                             {canEdit ? (
                               <>
                                 <div style={{ display: 'flex', flexDirection: 'column', flex: '0 0 auto' }}>
@@ -1325,12 +1336,21 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
                     )
                   ) : null}
 
-                  <button
-                    type="button" className="btn" style={{ fontSize: 10, padding: '1px 6px', alignSelf: 'flex-start' }}
-                    onClick={() => setMensajeViaje({ viajeId, titulo: viaje.nombre?.trim() || `Viaje #${viajeId}` })}
-                  >
-                    📋 Mensaje
-                  </button>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    <button
+                      type="button" className="btn" style={{ fontSize: 10, padding: '1px 6px' }}
+                      onClick={() => setMensajeViaje({ viajeId, titulo: viaje.nombre?.trim() || `Viaje #${viajeId}` })}
+                    >
+                      📋 Mensaje
+                    </button>
+                    <button
+                      type="button" className="btn" style={{ fontSize: 10, padding: '1px 6px' }}
+                      onClick={() => setAdjuntos({ viajeId, titulo: viaje.nombre?.trim() || `Viaje #${viajeId}` })}
+                      title="Adjuntos del viaje (manifiesto, etc.)"
+                    >
+                      📎 Adjuntos
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -1581,6 +1601,7 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
       <LogisticaIaConfigModal open={showIaConfig} onClose={() => setShowIaConfig(false)} />
       <LogisticaPromesaConfigModal open={showPromesaConfig} onClose={() => setShowPromesaConfig(false)} onChanged={load} />
       <LogisticaMensajeViajeModal open={!!mensajeViaje} viajeId={mensajeViaje?.viajeId} titulo={mensajeViaje?.titulo} onClose={() => setMensajeViaje(null)} />
+      <LogisticaAdjuntosModal open={!!adjuntos} viajeId={adjuntos?.viajeId} nv={adjuntos?.nv} titulo={adjuntos?.titulo} canEdit={canEdit} onClose={() => setAdjuntos(null)} />
       <LogisticaViajeSemanaModal
         semana={semanaFiltro}
         open={semanaModalAbierta}

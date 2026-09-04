@@ -659,6 +659,32 @@ export async function updateLogisticaParadaExtraViaje(viajeId, puntoExtraId, pat
   const { data } = await api.patch(`/admin/logistica/viajes/${viajeId}/paradas-extra/${puntoExtraId}`, patch);
   return data;
 }
+
+// Adjuntos (DNI, certificado de reincidencia que piden algunos countrys,
+// etc.) - de un viaje y/o de un NV puntual. Ver Backend/server/routes/admin/logisticaAdjuntos.js.
+export async function fetchLogisticaAdjuntos({ viajeId, nv } = {}) {
+  const params = {};
+  if (viajeId != null) params.viaje_id = viajeId;
+  if (nv != null) params.nv = nv;
+  const { data } = await api.get('/admin/logistica/adjuntos', { params });
+  return data;
+}
+export async function uploadLogisticaAdjunto({ viajeId, nv, descripcion, archivo }) {
+  const form = new FormData();
+  if (viajeId != null) form.append('viaje_id', String(viajeId));
+  if (nv != null) form.append('nv', String(nv));
+  if (descripcion) form.append('descripcion', descripcion);
+  form.append('archivo', archivo);
+  // Timeout más largo que el default (15s) - una foto de celular puede
+  // pesar varios MB y tardar más en subir, sobre todo desde el celular en
+  // el depósito con mala señal.
+  const { data } = await api.post('/admin/logistica/adjuntos', form, { timeout: 60000 });
+  return data;
+}
+export async function deleteLogisticaAdjunto(id) {
+  const { data } = await api.delete(`/admin/logistica/adjuntos/${id}`);
+  return data;
+}
 export async function cerrarLogisticaSemana(semana) {
   const { data } = await api.post(`/admin/logistica/semanas/${encodeURIComponent(semana)}/cerrar`, {});
   return data;

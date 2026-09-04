@@ -14,6 +14,7 @@ const adminServicioTecnicoViajesRoutes = require('./routes/admin/servicioTecnico
 const adminInsumosRoutes = require('./routes/admin/insumos');
 const adminLogisticaConsultasRoutes = require('./routes/admin/logisticaConsultas');
 const adminLogisticaViajesRoutes = require('./routes/admin/logisticaViajes');
+const adminLogisticaAdjuntosRoutes = require('./routes/admin/logisticaAdjuntos');
 
 const plantaRoutes = require('./routes/public/planta');
 const despacharRoutes = require('./routes/public/despachar');
@@ -87,6 +88,7 @@ app.use('/admin', adminUsersRoutes);
 app.use('/admin', adminInsumosRoutes);
 app.use('/admin', adminLogisticaConsultasRoutes);
 app.use('/admin', adminLogisticaViajesRoutes);
+app.use('/admin', adminLogisticaAdjuntosRoutes);
 app.use('/admin', adminQcRoutes);
 app.use('/admin', adminWorkflowRoutes);
 app.use('/admin', adminPrefabricadosRoutes);

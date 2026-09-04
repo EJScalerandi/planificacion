@@ -203,6 +203,31 @@ const MIGRATIONS = [
         ADD COLUMN IF NOT EXISTS duracion_minutos INTEGER;
     `,
   },
+  {
+    // Adjuntos de Logística (DNI, certificado de reincidencia que piden
+    // algunos countrys, etc.) - pedido del usuario: "a las rutas y/o los
+    // portones". El archivo en sí vive en Supabase Storage (bucket privado
+    // "logistica-adjuntos", ver lib/logisticaAdjuntosStorage.js) - acá solo
+    // la metadata + el path para poder pedirlo/borrarlo.
+    name: 'logistica_adjuntos',
+    sql: `
+      CREATE TABLE IF NOT EXISTS public.logistica_adjuntos (
+        id SERIAL PRIMARY KEY,
+        viaje_id INTEGER REFERENCES public.logistica_viajes(id) ON DELETE CASCADE,
+        nv INTEGER,
+        nombre_archivo TEXT NOT NULL,
+        descripcion TEXT,
+        tipo_mime TEXT NOT NULL,
+        tamano_bytes INTEGER,
+        storage_path TEXT NOT NULL,
+        subido_por TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        CONSTRAINT logistica_adjuntos_viaje_o_nv CHECK (viaje_id IS NOT NULL OR nv IS NOT NULL)
+      );
+      CREATE INDEX IF NOT EXISTS idx_logistica_adjuntos_viaje ON public.logistica_adjuntos(viaje_id);
+      CREATE INDEX IF NOT EXISTS idx_logistica_adjuntos_nv ON public.logistica_adjuntos(nv);
+    `,
+  },
 ];
 
 async function runMigrations() {
