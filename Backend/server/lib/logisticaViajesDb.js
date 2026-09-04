@@ -153,7 +153,7 @@ async function listCuadrillas() {
   const [cQ, mQ] = await Promise.all([
     pool.query(`select id, nombre, activo, created_at, updated_at from public.logistica_cuadrillas order by nombre asc;`),
     pool.query(
-      `select cm.cuadrilla_id, cm.qc_user_id, u.name as qc_user_name
+      `select cm.cuadrilla_id, cm.qc_user_id, cm.rol, u.name as qc_user_name
        from public.logistica_cuadrilla_miembros cm
        join public.qc_users u on u.id = cm.qc_user_id
        order by u.name asc;`
@@ -162,7 +162,7 @@ async function listCuadrillas() {
   const miembrosByCuadrilla = new Map();
   for (const m of mQ.rows) {
     if (!miembrosByCuadrilla.has(m.cuadrilla_id)) miembrosByCuadrilla.set(m.cuadrilla_id, []);
-    miembrosByCuadrilla.get(m.cuadrilla_id).push({ qc_user_id: m.qc_user_id, name: m.qc_user_name });
+    miembrosByCuadrilla.get(m.cuadrilla_id).push({ qc_user_id: m.qc_user_id, name: m.qc_user_name, rol: m.rol });
   }
   return cQ.rows.map((c) => ({ ...c, miembros: miembrosByCuadrilla.get(c.id) || [] }));
 }
@@ -198,18 +198,27 @@ async function deleteCuadrilla(id) {
   await pool.query(`delete from public.logistica_cuadrillas where id = $1;`, [Number(id)]);
 }
 
-async function setCuadrillaMiembros(id, qcUserIds) {
+// miembros: acepta tanto [id, id, ...] (formato viejo, rol queda null) como
+// [{qc_user_id, rol}, ...] (formato nuevo, con "calidad" - ej. "Chofer" -
+// pedido del usuario para el mensaje de WhatsApp de /despacho_v2).
+async function setCuadrillaMiembros(id, miembros) {
   const cuadrillaId = Number(id);
-  const ids = Array.from(new Set((Array.isArray(qcUserIds) ? qcUserIds : []).map((v) => Number(v)).filter(Number.isFinite)));
+  const normalizados = new Map(); // qc_user_id -> rol
+  for (const m of Array.isArray(miembros) ? miembros : []) {
+    const uid = Number(typeof m === 'object' && m !== null ? m.qc_user_id : m);
+    if (!Number.isFinite(uid)) continue;
+    const rol = typeof m === 'object' && m !== null ? (String(m.rol || '').trim() || null) : null;
+    normalizados.set(uid, rol);
+  }
   await withTx(async (client) => {
     const exists = await client.query(`select id from public.logistica_cuadrillas where id = $1;`, [cuadrillaId]);
     if (!exists.rowCount) throw new Error('Cuadrilla no encontrada');
     await client.query(`delete from public.logistica_cuadrilla_miembros where cuadrilla_id = $1;`, [cuadrillaId]);
-    for (const uid of ids) {
+    for (const [uid, rol] of normalizados) {
       await client.query(
-        `insert into public.logistica_cuadrilla_miembros (cuadrilla_id, qc_user_id) values ($1, $2)
+        `insert into public.logistica_cuadrilla_miembros (cuadrilla_id, qc_user_id, rol) values ($1, $2, $3)
          on conflict do nothing;`,
-        [cuadrillaId, uid]
+        [cuadrillaId, uid, rol]
       );
     }
   });

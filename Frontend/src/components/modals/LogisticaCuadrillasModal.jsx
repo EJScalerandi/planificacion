@@ -14,19 +14,26 @@ import {
 const th = { textAlign: 'left', padding: 10, borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' };
 const td = { padding: 10, borderBottom: '1px solid var(--border)', verticalAlign: 'top' };
 
+// miembros: Map<qc_user_id, rol|null> en vez de un Set - "rol" (ej.
+// "Chofer") es la "calidad" que pidió el usuario para el mensaje de
+// WhatsApp automático de /despacho_v2 ("La cuadrilla... Nombre / Calidad:
+// Chofer"). Solo tiene sentido cargarlo para quien está seleccionado, así
+// que el input de texto aparece al lado del checkbox, no antes.
 function MiembrosEditor({ cuadrilla, qcUsers, busy, onSave }) {
   const [open, setOpen] = useState(false);
-  const [selected, setSelected] = useState(() => new Set((cuadrilla.miembros || []).map((m) => Number(m.qc_user_id))));
+  const [seleccion, setSeleccion] = useState(() => new Map((cuadrilla.miembros || []).map((m) => [Number(m.qc_user_id), m.rol || ''])));
 
   useEffect(() => {
-    setSelected(new Set((cuadrilla.miembros || []).map((m) => Number(m.qc_user_id))));
+    setSeleccion(new Map((cuadrilla.miembros || []).map((m) => [Number(m.qc_user_id), m.rol || ''])));
   }, [cuadrilla]);
 
   if (!open) {
     return (
       <div>
         <div style={{ marginBottom: 4 }}>
-          {(cuadrilla.miembros || []).length ? cuadrilla.miembros.map((m) => m.name).join(', ') : <span style={{ color: '#9ca3af' }}>(sin miembros)</span>}
+          {(cuadrilla.miembros || []).length
+            ? cuadrilla.miembros.map((m) => `${m.name}${m.rol ? ` (${m.rol})` : ''}`).join(', ')
+            : <span style={{ color: '#9ca3af' }}>(sin miembros)</span>}
         </div>
         <button className="btn" disabled={busy} onClick={() => setOpen(true)}>Editar miembros</button>
       </div>
@@ -34,36 +41,56 @@ function MiembrosEditor({ cuadrilla, qcUsers, busy, onSave }) {
   }
 
   const toggle = (id) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+    setSeleccion((prev) => {
+      const next = new Map(prev);
+      if (next.has(id)) next.delete(id); else next.set(id, '');
       return next;
     });
+  };
+  const setRol = (id, rol) => {
+    setSeleccion((prev) => new Map(prev).set(id, rol));
   };
 
   return (
     <div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxWidth: 340, marginBottom: 8 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxWidth: 340, marginBottom: 8 }}>
         {(qcUsers || []).map((u) => {
           const id = Number(u.id);
-          const active = selected.has(id);
+          const active = seleccion.has(id);
           return (
-            <label
-              key={id}
-              className="btn"
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 11, padding: '4px 8px',
-                background: active ? 'var(--brand)' : undefined, color: active ? '#fff' : undefined,
-              }}
-            >
-              <input type="checkbox" checked={active} onChange={() => toggle(id)} style={{ margin: 0 }} />
-              {u.name}
-            </label>
+            <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <label
+                className="btn"
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 11, padding: '4px 8px',
+                  background: active ? 'var(--brand)' : undefined, color: active ? '#fff' : undefined, flex: '0 0 auto',
+                }}
+              >
+                <input type="checkbox" checked={active} onChange={() => toggle(id)} style={{ margin: 0 }} />
+                {u.name}
+              </label>
+              {active ? (
+                <input
+                  className="pp-input" style={{ fontSize: 11, padding: '3px 6px', maxWidth: 130 }}
+                  placeholder="Calidad (ej: Chofer)"
+                  value={seleccion.get(id) || ''}
+                  onChange={(e) => setRol(id, e.target.value)}
+                />
+              ) : null}
+            </div>
           );
         })}
       </div>
       <div style={{ display: 'flex', gap: 8 }}>
-        <button className="btn btn--brand" disabled={busy} onClick={() => { onSave(Array.from(selected)); setOpen(false); }}>Guardar miembros</button>
+        <button
+          className="btn btn--brand" disabled={busy}
+          onClick={() => {
+            onSave(Array.from(seleccion.entries()).map(([qc_user_id, rol]) => ({ qc_user_id, rol: rol.trim() || null })));
+            setOpen(false);
+          }}
+        >
+          Guardar miembros
+        </button>
         <button className="btn" disabled={busy} onClick={() => setOpen(false)}>Cancelar</button>
       </div>
     </div>

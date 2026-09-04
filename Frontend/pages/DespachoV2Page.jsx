@@ -29,11 +29,39 @@ function tamanoLegible(bytes) {
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
-function waLink(telefono) {
+function waLink(telefono, texto) {
   const digitos = String(telefono || '').replace(/\D/g, '');
   if (!digitos) return null;
   const conCodigo = digitos.startsWith('54') ? digitos : `54${digitos.replace(/^0/, '')}`;
-  return `https://wa.me/${conCodigo}`;
+  return `https://wa.me/${conCodigo}${texto ? `?text=${encodeURIComponent(texto)}` : ''}`;
+}
+// "en aproximadamente X horas" - horas_tramo viene de ruta_real.segmentos_horas
+// (duración REAL de ORS para ese tramo puntual, no un acumulado desde la
+// salida del viaje - el botón se toca justo al arrancar hacia esa parada).
+function formatearDuracion(horas) {
+  if (horas == null) return 'poco tiempo';
+  if (horas < 1) return `${Math.max(1, Math.round(horas * 60))} minutos`;
+  const h = Math.floor(horas);
+  const min = Math.round((horas - h) * 60);
+  const horaTxt = `${h} hora${h === 1 ? '' : 's'}`;
+  return min > 0 ? `${horaTxt} y ${min} minutos` : horaTxt;
+}
+// Pedido explícito del usuario, texto tal cual lo escribió (ajustado a los
+// datos reales disponibles). No incluye fotos - wa.me solo prellena texto,
+// ver nota en el commit/memoria: para adjuntar fotos automáticamente hace
+// falta la API de WhatsApp Business (evaluar después, confirmado con el
+// usuario).
+function construirMensajeEnCamino({ nombreCliente, horasTramo, cuadrillaMiembros, vehiculoNombre }) {
+  const lineas = [
+    `Buenos días${nombreCliente ? ` ${nombreCliente}` : ''}, este es un mensaje automático enviado por el sistema de De Grandis Portones.`,
+    `Le comunicamos que su portón estará llegando en aproximadamente ${formatearDuracion(horasTramo)}.`,
+    '',
+    'La cuadrilla que le realizará la entrega / instalación está conformada por:',
+    ...(cuadrillaMiembros?.length ? cuadrillaMiembros.map((m) => `- ${m.name}${m.rol ? ` (${m.rol})` : ''}`) : ['- (sin cargar)']),
+    '',
+    `El vehículo que le está llevando el producto es ${vehiculoNombre || 'un camión'}.`,
+  ];
+  return lineas.join('\n');
 }
 function horaLegible(iso) {
   if (!iso) return '';
@@ -149,7 +177,7 @@ function LoginScreen({ onLogueado }) {
 // ===========================================================================
 // Detalle de un NV (al tocar una parada-portón)
 // ===========================================================================
-function NvDetailSheet({ nv, onClose }) {
+function NvDetailSheet({ nv, viaje, parada, onClose }) {
   const [detalle, setDetalle] = useState(null);
   const [adjuntos, setAdjuntos] = useState([]);
   const [remitos, setRemitos] = useState([]);
@@ -174,7 +202,16 @@ function NvDetailSheet({ nv, onClose }) {
       .finally(() => setLoading(false));
   }, [nv]);
 
-  const wa = waLink(detalle?.telefono);
+  const waPerfil = waLink(detalle?.telefono);
+  const waEnCamino = waLink(
+    detalle?.telefono,
+    construirMensajeEnCamino({
+      nombreCliente: detalle?.nombre_cliente,
+      horasTramo: parada?.horas_tramo,
+      cuadrillaMiembros: viaje?.cuadrilla_miembros,
+      vehiculoNombre: viaje?.vehiculo_nombre,
+    })
+  );
 
   return (
     <div style={s.overlay} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -195,9 +232,14 @@ function NvDetailSheet({ nv, onClose }) {
               <Campo label="Distribuidor" valor={detalle?.distribuidor} />
               <Campo label="Localidad" valor={detalle?.localidad} />
               <Campo label="Dirección" valor={detalle?.direccion} />
-              {wa ? (
-                <a href={wa} target="_blank" rel="noopener noreferrer" style={{ ...s.botonBloque, background: '#25D366', color: '#fff', border: 'none' }}>
+              {waPerfil ? (
+                <a href={waPerfil} target="_blank" rel="noopener noreferrer" style={{ ...s.botonBloque, background: '#25D366', color: '#fff', border: 'none' }}>
                   💬 WhatsApp al cliente
+                </a>
+              ) : null}
+              {waEnCamino ? (
+                <a href={waEnCamino} target="_blank" rel="noopener noreferrer" style={{ ...s.botonBloque, background: '#128C7E', color: '#fff', border: 'none' }} title="Abre WhatsApp con el mensaje ya escrito - falta que lo confirmes/mandes vos">
+                  🚚 Avisar que está en camino
                 </a>
               ) : null}
               {detalle?.maps_url ? (
@@ -385,7 +427,7 @@ function GastosSheet({ onClose }) {
 // ===========================================================================
 // Fila de una parada dentro de la lista desplegable de un viaje
 // ===========================================================================
-function ParadaRow({ parada, onAbrirNv, onAbrirExtra }) {
+function ParadaRow({ parada, viaje, onAbrirNv, onAbrirExtra }) {
   if (parada.tipo === 'extra') {
     return (
       <div
@@ -400,7 +442,7 @@ function ParadaRow({ parada, onAbrirNv, onAbrirExtra }) {
   const label = parada.tipos_pendientes.length === 2 ? 'Desp. + Inst.' : parada.tipos_pendientes[0] === 'despacho' ? 'Despacho' : 'Instalación';
   return (
     <div
-      onClick={() => onAbrirNv(parada.nv)}
+      onClick={() => onAbrirNv({ nv: parada.nv, viaje, parada })}
       style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '10px 8px', borderBottom: '1px solid #f0f0f0', cursor: 'pointer' }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
@@ -488,7 +530,7 @@ function ViajeCard({ viaje, onCambio, onAbrirNv, onAbrirExtra }) {
       </div>
 
       <div style={{ fontSize: 12, opacity: 0.75, marginTop: 8 }}>
-        👥 {viaje.cuadrilla_nombre}{viaje.cuadrilla_miembros?.length ? `: ${viaje.cuadrilla_miembros.join(', ')}` : ''}
+        👥 {viaje.cuadrilla_nombre}{viaje.cuadrilla_miembros?.length ? `: ${viaje.cuadrilla_miembros.map((m) => `${m.name}${m.rol ? ` (${m.rol})` : ''}`).join(', ')}` : ''}
       </div>
 
       <button type="button" style={{ ...s.botonBloque, marginTop: 10, padding: '10px', fontSize: 13 }} onClick={() => setMostrarGastos(true)}>
@@ -503,7 +545,7 @@ function ViajeCard({ viaje, onCambio, onAbrirNv, onAbrirExtra }) {
             <div style={{ fontSize: 13, opacity: 0.6, padding: 8 }}>Todavía no tiene paradas cargadas.</div>
           ) : (
             paradas.map((p, i) => (
-              <ParadaRow key={p.tipo === 'extra' ? `extra-${i}` : `nv-${p.nv}`} parada={p} onAbrirNv={onAbrirNv} onAbrirExtra={onAbrirExtra} />
+              <ParadaRow key={p.tipo === 'extra' ? `extra-${i}` : `nv-${p.nv}`} parada={p} viaje={viaje} onAbrirNv={onAbrirNv} onAbrirExtra={onAbrirExtra} />
             ))
           )}
         </div>
@@ -526,7 +568,7 @@ function ViajesScreen({ qcUser, onSalir }) {
   const [viajes, setViajes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
-  const [nvAbierto, setNvAbierto] = useState(null);
+  const [nvAbierto, setNvAbierto] = useState(null); // { nv, viaje, parada } | null
   const [extraAbierta, setExtraAbierta] = useState(null);
 
   const cargar = () => {
@@ -580,7 +622,9 @@ function ViajesScreen({ qcUser, onSalir }) {
         )}
       </div>
 
-      {nvAbierto != null ? <NvDetailSheet nv={nvAbierto} onClose={() => setNvAbierto(null)} /> : null}
+      {nvAbierto != null ? (
+        <NvDetailSheet nv={nvAbierto.nv} viaje={nvAbierto.viaje} parada={nvAbierto.parada} onClose={() => setNvAbierto(null)} />
+      ) : null}
       {extraAbierta ? <ParadaExtraSheet parada={extraAbierta} onClose={() => setExtraAbierta(null)} /> : null}
     </div>
   );

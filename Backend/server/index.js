@@ -238,6 +238,17 @@ const MIGRATIONS = [
         ADD COLUMN IF NOT EXISTS hora_salida_real TIMESTAMPTZ;
     `,
   },
+  {
+    // "Calidad"/rol por integrante de cuadrilla (ej. "Chofer") - pedido del
+    // usuario para el mensaje de WhatsApp automático de /despacho_v2 ("La
+    // cuadrilla... Nombre / Calidad: Chofer"). Configurable en el ABM de
+    // cuadrillas (LogisticaCuadrillasModal.jsx).
+    name: 'logistica_cuadrilla_miembros_rol',
+    sql: `
+      ALTER TABLE public.logistica_cuadrilla_miembros
+        ADD COLUMN IF NOT EXISTS rol TEXT;
+    `,
+  },
 ];
 
 async function runMigrations() {

@@ -89,7 +89,7 @@ async function listViajesDeCuadrillas(cuadrillaIds, { soloProximos10 } = {}) {
   const miembrosPorCuadrilla = new Map();
   if (cuadrillaIdsEnResultado.length) {
     const { rows: miembros } = await pool.query(
-      `select cm.cuadrilla_id, u.name
+      `select cm.cuadrilla_id, cm.rol, u.name
          from public.logistica_cuadrilla_miembros cm
          join public.qc_users u on u.id = cm.qc_user_id and u.is_active
         where cm.cuadrilla_id = any($1::int[])
@@ -98,7 +98,7 @@ async function listViajesDeCuadrillas(cuadrillaIds, { soloProximos10 } = {}) {
     );
     for (const m of miembros) {
       if (!miembrosPorCuadrilla.has(m.cuadrilla_id)) miembrosPorCuadrilla.set(m.cuadrilla_id, []);
-      miembrosPorCuadrilla.get(m.cuadrilla_id).push(m.name);
+      miembrosPorCuadrilla.get(m.cuadrilla_id).push({ name: m.name, rol: m.rol });
     }
   }
 
@@ -143,10 +143,19 @@ async function marcarSalidaReal(viajeId) {
 // Localidad (pedido explícito); parada extra: nombre + link de mapa. Mismas
 // fuentes de datos ya usadas por el mensaje a la cuadrilla
 // (logisticaMensajeViaje.js) - un solo query de datos por NV para todo el
-// viaje, no uno por parada.
+// viaje, no uno por parada. Cada parada trae además horas_tramo (duración
+// REAL del tramo hasta ESA parada, de ruta_real.segmentos_horas) - lo usa el
+// botón "avisar que está en camino" (WhatsApp) para el ETA: al arrancar
+// hacia una parada, "en aproximadamente X horas" es justo ese tramo, no
+// hace falta acumular desde la salida del viaje.
 async function listParadasDeViaje(viajeId) {
   const vId = Number(viajeId);
-  const [items, paradasExtra] = await Promise.all([fetchItems(vId), fetchParadasExtra(vId)]);
+  const [items, paradasExtra, viajeRow] = await Promise.all([
+    fetchItems(vId),
+    fetchParadasExtra(vId),
+    pool.query(`select ruta_real from public.logistica_viajes where id = $1;`, [vId]).then((r) => r.rows[0]),
+  ]);
+  const segmentosHoras = viajeRow?.ruta_real?.segmentos_horas || null;
 
   const nvsUnicos = Array.from(new Set(items.map((it) => it.nv)));
   const datosPorNv = await fetchDatosPorNv(nvsUnicos);
@@ -163,28 +172,33 @@ async function listParadasDeViaje(viajeId) {
     tiposPorNv.get(it.nv).add(it.tipo);
   }
 
-  const paradasPortones = Array.from(ordenPorNv.entries()).map(([nv, orden]) => {
-    const d = datosPorNv.get(nv) || {};
-    const tipos = Array.from(tiposPorNv.get(nv) || []);
+  const paradasPortones = Array.from(ordenPorNv.entries()).map(([nv, orden]) => ({
+    tipo: 'porton', nv, orden, esExtra: false,
+  }));
+  const paradasExtraOut = paradasExtra.map((p) => ({
+    tipo: 'extra', orden: p.orden, nombre: p.nombre, maps_url: p.maps_url, esExtra: true,
+  }));
+
+  // Todas juntas, en el MISMO orden que usó construirRutaViaje al calcular
+  // ruta_real - así el índice de esta lista alinea 1 a 1 con segmentos_horas.
+  const todas = [...paradasPortones, ...paradasExtraOut].sort((a, b) => a.orden - b.orden);
+
+  return todas.map((p, i) => {
+    const horas_tramo = segmentosHoras?.[i] ?? null;
+    if (p.esExtra) return { tipo: 'extra', orden: p.orden, nombre: p.nombre, maps_url: p.maps_url, horas_tramo };
+    const d = datosPorNv.get(p.nv) || {};
+    const tipos = Array.from(tiposPorNv.get(p.nv) || []);
     return {
       tipo: 'porton',
-      nv,
-      orden,
+      nv: p.nv,
+      orden: p.orden,
       tipos_pendientes: tipos, // ['despacho'] | ['instalacion'] | ['despacho','instalacion']
       nombre_cliente: d.nombre_cliente || null,
       distribuidor: d.distribuidor || null,
       localidad: d.localidad || null,
+      horas_tramo,
     };
   });
-
-  const paradasExtraOut = paradasExtra.map((p) => ({
-    tipo: 'extra',
-    orden: p.orden,
-    nombre: p.nombre,
-    maps_url: p.maps_url,
-  }));
-
-  return [...paradasPortones, ...paradasExtraOut].sort((a, b) => a.orden - b.orden);
 }
 
 // Detalle completo de un NV (al tocar una parada-portón) - misma fuente de
