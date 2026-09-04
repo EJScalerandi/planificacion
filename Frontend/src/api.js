@@ -759,6 +759,32 @@ export async function deleteLogisticaAdjunto(id) {
   const { data } = await api.delete(`/admin/logistica/adjuntos/${id}`);
   return data;
 }
+// Catálogo de adjuntos por integrante de cuadrilla (ej. DNI) - se sube una
+// vez y de ahí se "habilita" (sin volver a subirlo) para un viaje y/o NV.
+export async function fetchLogisticaAdjuntosMiembro(qcUserId) {
+  const { data } = await api.get(`/admin/logistica/adjuntos-miembro/${qcUserId}`);
+  return data;
+}
+export async function fetchLogisticaAdjuntosMiembroPorCuadrilla(cuadrillaId) {
+  const { data } = await api.get(`/admin/logistica/adjuntos-miembro/por-cuadrilla/${cuadrillaId}`);
+  return data;
+}
+export async function uploadLogisticaAdjuntoMiembro({ qc_user_id, descripcion, archivo }) {
+  const form = new FormData();
+  form.append('qc_user_id', String(qc_user_id));
+  if (descripcion) form.append('descripcion', descripcion);
+  form.append('archivo', archivo);
+  const { data } = await api.post('/admin/logistica/adjuntos-miembro', form, { timeout: 60000 });
+  return data;
+}
+export async function deleteLogisticaAdjuntoMiembro(id) {
+  const { data } = await api.delete(`/admin/logistica/adjuntos-miembro/${id}`);
+  return data;
+}
+export async function habilitarLogisticaAdjuntoMiembro({ origen_miembro_id, viaje_id, nv }) {
+  const { data } = await api.post('/admin/logistica/adjuntos/habilitar-miembro', { origen_miembro_id, viaje_id, nv });
+  return data;
+}
 export async function cerrarLogisticaSemana(semana) {
   const { data } = await api.post(`/admin/logistica/semanas/${encodeURIComponent(semana)}/cerrar`, {});
   return data;

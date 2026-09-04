@@ -113,6 +113,58 @@ router.delete('/logistica/adjuntos/:id', requireFullAccess, asyncRoute(async (re
   res.json({ ok: true });
 }));
 
+// ===========================================================================
+// Catálogo de adjuntos por integrante de cuadrilla (ej. DNI) - se sube una
+// vez, se "habilita" para viajes/NV sin volver a subirlo.
+// ===========================================================================
+
+router.get('/logistica/adjuntos-miembro/por-cuadrilla/:cuadrillaId', asyncRoute(async (req, res) => {
+  res.json({ ok: true, miembros: await db.listAdjuntosMiembroPorCuadrilla(req.params.cuadrillaId) });
+}));
+
+router.get('/logistica/adjuntos-miembro/:qcUserId', asyncRoute(async (req, res) => {
+  const rows = await db.listAdjuntosMiembro(req.params.qcUserId);
+  const conUrl = await Promise.all(rows.map(async (r) => ({ ...r, url: await storage.urlFirmada(r.storage_path) })));
+  res.json({ ok: true, adjuntos: conUrl });
+}));
+
+router.post('/logistica/adjuntos-miembro', requireFullAccess, upload.single('archivo'), asyncRoute(async (req, res) => {
+  if (!req.file) throw new Error('Falta el archivo');
+  const qcUserId = Number(req.body?.qc_user_id);
+  if (!Number.isInteger(qcUserId)) throw new Error('Falta qc_user_id');
+
+  const path = `miembro-${qcUserId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${extensionDe(req.file.originalname, req.file.mimetype)}`;
+  await storage.subirArchivo(path, req.file.buffer, req.file.mimetype);
+
+  const adjunto = await db.crearAdjuntoMiembro({
+    qc_user_id: qcUserId,
+    nombre_archivo: req.file.originalname,
+    descripcion: req.body?.descripcion || null,
+    tipo_mime: req.file.mimetype,
+    tamano_bytes: req.file.size,
+    storage_path: path,
+    subido_por: req?.admin?.username || req?.admin?.name || null,
+  });
+  res.json({ ok: true, adjunto: { ...adjunto, url: await storage.urlFirmada(path) } });
+}));
+
+router.delete('/logistica/adjuntos-miembro/:id', requireFullAccess, asyncRoute(async (req, res) => {
+  const path = await db.borrarAdjuntoMiembro(req.params.id);
+  if (path) await storage.borrarArchivo(path);
+  res.json({ ok: true });
+}));
+
+// "Habilitar" (sin re-subir) un DNI ya cargado para un viaje y/o NV.
+router.post('/logistica/adjuntos/habilitar-miembro', requireFullAccess, asyncRoute(async (req, res) => {
+  const adjunto = await db.habilitarAdjuntoMiembro({
+    origen_miembro_id: req.body?.origen_miembro_id,
+    viaje_id: req.body?.viaje_id ? Number(req.body.viaje_id) : null,
+    nv: req.body?.nv ? Number(req.body.nv) : null,
+    habilitado_por: req?.admin?.username || req?.admin?.name || null,
+  });
+  res.json({ ok: true, adjunto: { ...adjunto, url: await storage.urlFirmada(adjunto.storage_path) } });
+}));
+
 // Multer manda sus propios errores (tamaño/tipo) antes de llegar a
 // asyncRoute (los tira en el middleware de upload, no en un handler async) -
 // sin esto quedaban como error 500 genérico en vez del mensaje claro.

@@ -7,7 +7,10 @@
 // ej. el DNI de quien recibe) - nunca los dos a la vez desde donde se llama
 // hoy, pero el backend soporta cualquiera de los dos.
 import React, { useEffect, useRef, useState } from 'react';
-import { fetchLogisticaAdjuntos, uploadLogisticaAdjunto, deleteLogisticaAdjunto } from '../../api';
+import {
+  fetchLogisticaAdjuntos, uploadLogisticaAdjunto, deleteLogisticaAdjunto,
+  fetchLogisticaAdjuntosMiembroPorCuadrilla, habilitarLogisticaAdjuntoMiembro,
+} from '../../api';
 
 const ACCEPT = 'image/jpeg,image/png,image/webp,image/heic,application/pdf';
 
@@ -28,7 +31,7 @@ function esImagen(mime) {
   return String(mime || '').startsWith('image/');
 }
 
-export default function LogisticaAdjuntosModal({ open, onClose, viajeId, nv, titulo, canEdit }) {
+export default function LogisticaAdjuntosModal({ open, onClose, viajeId, nv, titulo, canEdit, cuadrillaId }) {
   const [adjuntos, setAdjuntos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
@@ -36,6 +39,12 @@ export default function LogisticaAdjuntosModal({ open, onClose, viajeId, nv, tit
   const [descripcion, setDescripcion] = useState('');
   const [borrandoId, setBorrandoId] = useState(null);
   const fileInputRef = useRef(null);
+
+  // DNI ya cargados en el catálogo de la cuadrilla (LogisticaCuadrillasModal)
+  // - se pueden "habilitar" acá sin volver a subirlos. Solo tiene sentido si
+  // sabemos de qué cuadrilla es (viene del viaje que abrió este modal).
+  const [miembros, setMiembros] = useState(null);
+  const [habilitandoId, setHabilitandoId] = useState(null);
 
   const load = () => {
     if (!open || (viajeId == null && nv == null)) return;
@@ -51,6 +60,14 @@ export default function LogisticaAdjuntosModal({ open, onClose, viajeId, nv, tit
     if (open) { load(); setDescripcion(''); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, viajeId, nv]);
+
+  useEffect(() => {
+    if (open && cuadrillaId != null) {
+      fetchLogisticaAdjuntosMiembroPorCuadrilla(cuadrillaId).then((d) => setMiembros(d?.miembros || [])).catch(() => setMiembros([]));
+    } else {
+      setMiembros(null);
+    }
+  }, [open, cuadrillaId]);
 
   if (!open) return null;
 
@@ -70,6 +87,19 @@ export default function LogisticaAdjuntosModal({ open, onClose, viajeId, nv, tit
       setErr(e2?.response?.data?.error || e2.message);
     } finally {
       setSubiendo(false);
+    }
+  };
+
+  const habilitar = async (origenMiembroId) => {
+    setHabilitandoId(origenMiembroId);
+    setErr('');
+    try {
+      await habilitarLogisticaAdjuntoMiembro({ origen_miembro_id: origenMiembroId, viaje_id: viajeId, nv });
+      load();
+    } catch (e) {
+      setErr(e?.response?.data?.error || e.message);
+    } finally {
+      setHabilitandoId(null);
     }
   };
 
@@ -141,6 +171,33 @@ export default function LogisticaAdjuntosModal({ open, onClose, viajeId, nv, tit
             ))
           )}
         </div>
+
+        {canEdit && miembros?.some((m) => m.adjuntos?.length) ? (
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10, marginBottom: 10 }}>
+            <div style={{ fontWeight: 800, fontSize: 12, marginBottom: 6 }}>📇 DNI de la cuadrilla</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {miembros.filter((m) => m.adjuntos?.length).map((m) => (
+                <div key={m.qc_user_id} style={{ fontSize: 11 }}>
+                  <div style={{ fontWeight: 700, marginBottom: 2 }}>{m.qc_user_name}</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                    {m.adjuntos.map((a) => {
+                      const yaHabilitado = adjuntos.some((x) => x.origen_miembro_id === a.id);
+                      return (
+                        <button
+                          key={a.id} type="button" className="btn" disabled={yaHabilitado || habilitandoId === a.id}
+                          style={{ fontSize: 10, padding: '3px 8px', ...(yaHabilitado ? { opacity: 0.6 } : {}) }}
+                          onClick={() => habilitar(a.id)}
+                        >
+                          {yaHabilitado ? '✓ ' : '+ '}{a.nombre_archivo}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         {canEdit ? (
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>

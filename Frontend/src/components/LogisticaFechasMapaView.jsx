@@ -259,7 +259,7 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
   const [showZonas, setShowZonas] = useState(false);
   const [showIaConfig, setShowIaConfig] = useState(false);
   const [mensajeViaje, setMensajeViaje] = useState(null); // { viajeId, titulo } | null
-  const [adjuntos, setAdjuntos] = useState(null); // { viajeId, titulo } | { nv, titulo } | null
+  const [adjuntos, setAdjuntos] = useState(null); // { viajeId, titulo, cuadrillaId } | { nv, titulo, cuadrillaId } | null
   const [semanaModalAbierta, setSemanaModalAbierta] = useState(false); // abre LogisticaViajeSemanaModal (mismo popup que en Logística de Viajes) - ahora solo para fecha/zona/cuadrilla/vehículo/borrar; reordenar y agregar/quitar paradas ya se hace acá mismo
 
   // Editar la ruta de un viaje directamente en el panel del mapa (sin abrir
@@ -1290,7 +1290,7 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
                             {!esExtra ? (
                               <button
                                 type="button" className="btn" style={{ padding: '0 4px', fontSize: 10, flex: '0 0 auto' }}
-                                onClick={() => setAdjuntos({ nv: it.nv, titulo: `NV ${it.nv}` })}
+                                onClick={() => setAdjuntos({ nv: it.nv, titulo: `NV ${it.nv}`, cuadrillaId: viaje.cuadrilla_id })}
                                 title="Adjuntos (DNI, certificados, etc.)"
                               >
                                 📎
@@ -1345,7 +1345,7 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
                     </button>
                     <button
                       type="button" className="btn" style={{ fontSize: 10, padding: '1px 6px' }}
-                      onClick={() => setAdjuntos({ viajeId, titulo: viaje.nombre?.trim() || `Viaje #${viajeId}` })}
+                      onClick={() => setAdjuntos({ viajeId, titulo: viaje.nombre?.trim() || `Viaje #${viajeId}`, cuadrillaId: viaje.cuadrilla_id })}
                       title="Adjuntos del viaje (manifiesto, etc.)"
                     >
                       📎 Adjuntos
@@ -1601,7 +1601,7 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
       <LogisticaIaConfigModal open={showIaConfig} onClose={() => setShowIaConfig(false)} />
       <LogisticaPromesaConfigModal open={showPromesaConfig} onClose={() => setShowPromesaConfig(false)} onChanged={load} />
       <LogisticaMensajeViajeModal open={!!mensajeViaje} viajeId={mensajeViaje?.viajeId} titulo={mensajeViaje?.titulo} onClose={() => setMensajeViaje(null)} />
-      <LogisticaAdjuntosModal open={!!adjuntos} viajeId={adjuntos?.viajeId} nv={adjuntos?.nv} titulo={adjuntos?.titulo} canEdit={canEdit} onClose={() => setAdjuntos(null)} />
+      <LogisticaAdjuntosModal open={!!adjuntos} viajeId={adjuntos?.viajeId} nv={adjuntos?.nv} titulo={adjuntos?.titulo} canEdit={canEdit} cuadrillaId={adjuntos?.cuadrillaId} onClose={() => setAdjuntos(null)} />
       <LogisticaViajeSemanaModal
         semana={semanaFiltro}
         open={semanaModalAbierta}

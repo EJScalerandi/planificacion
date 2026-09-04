@@ -9,10 +9,93 @@ import {
   updateLogisticaCuadrilla,
   deleteLogisticaCuadrilla,
   setLogisticaCuadrillaMiembros,
+  fetchLogisticaAdjuntosMiembro,
+  uploadLogisticaAdjuntoMiembro,
+  deleteLogisticaAdjuntoMiembro,
 } from '../../api';
 
 const th = { textAlign: 'left', padding: 10, borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' };
 const td = { padding: 10, borderBottom: '1px solid var(--border)', verticalAlign: 'top' };
+
+// Catálogo de DNI de un integrante (persona, no de esta cuadrilla puntual -
+// si cambia de cuadrilla el DNI lo sigue) - se carga UNA vez acá y de ahí se
+// "habilita" (sin volver a subirlo) para un viaje y/o NV puntual desde
+// LogisticaAdjuntosModal.jsx. Admite más de un archivo (ej. frente y dorso).
+function DniMiembroControl({ qcUserId, qcUserName }) {
+  const [abierto, setAbierto] = useState(false);
+  const [adjuntos, setAdjuntos] = useState(null);
+  const [subiendo, setSubiendo] = useState(false);
+  const [err, setErr] = useState('');
+
+  const cargar = () => {
+    fetchLogisticaAdjuntosMiembro(qcUserId).then((d) => setAdjuntos(d?.adjuntos || [])).catch(() => setAdjuntos([]));
+  };
+  // Se carga una sola vez al montar (no solo al abrir) para que el badge
+  // "DNI (N)" ya muestre la cantidad sin tener que desplegar primero.
+  useEffect(cargar, [qcUserId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const onArchivo = async (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f) return;
+    setSubiendo(true);
+    setErr('');
+    try {
+      await uploadLogisticaAdjuntoMiembro({ qc_user_id: qcUserId, descripcion: `DNI de ${qcUserName}`, archivo: f });
+      cargar();
+    } catch (e2) {
+      setErr(e2?.response?.data?.error || e2.message);
+    } finally {
+      setSubiendo(false);
+    }
+  };
+
+  const borrar = async (id) => {
+    if (!window.confirm('¿Borrar este archivo del DNI?')) return;
+    try {
+      await deleteLogisticaAdjuntoMiembro(id);
+      cargar();
+    } catch (e) {
+      setErr(e?.response?.data?.error || e.message);
+    }
+  };
+
+  if (!abierto) {
+    return (
+      <button type="button" className="btn" style={{ fontSize: 10, padding: '2px 6px' }} onClick={() => setAbierto(true)}>
+        📎 DNI{adjuntos?.length ? ` (${adjuntos.length})` : ''}
+      </button>
+    );
+  }
+
+  return (
+    <div style={{ border: '1px dashed var(--border)', borderRadius: 8, padding: 6, fontSize: 10, display: 'flex', flexDirection: 'column', gap: 4, minWidth: 160 }}>
+      <div style={{ display: 'flex', alignItems: 'center' }}>
+        <b>DNI de {qcUserName}</b>
+        <button type="button" onClick={() => setAbierto(false)} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
+      </div>
+      {err ? <div style={{ color: 'crimson', fontWeight: 700 }}>{err}</div> : null}
+      {adjuntos == null ? (
+        <div style={{ opacity: 0.6 }}>Cargando…</div>
+      ) : adjuntos.length === 0 ? (
+        <div style={{ opacity: 0.6 }}>Sin archivos todavía.</div>
+      ) : (
+        adjuntos.map((a) => (
+          <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <a href={a.url} target="_blank" rel="noopener noreferrer" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+              {String(a.tipo_mime || '').startsWith('image/') ? '🖼️' : '📄'} {a.nombre_archivo}
+            </a>
+            <button type="button" onClick={() => borrar(a.id)} style={{ background: 'none', border: 'none', color: '#991b1b', cursor: 'pointer' }}>🗑️</button>
+          </div>
+        ))
+      )}
+      <label className="btn" style={{ fontSize: 10, padding: '2px 6px', textAlign: 'center' }}>
+        {subiendo ? 'Subiendo…' : '+ Agregar (frente/dorso)'}
+        <input type="file" accept="image/jpeg,image/png,image/webp,image/heic,application/pdf" style={{ display: 'none' }} disabled={subiendo} onChange={onArchivo} />
+      </label>
+    </div>
+  );
+}
 
 // miembros: Map<qc_user_id, rol|null> en vez de un Set - "rol" (ej.
 // "Chofer") es la "calidad" que pidió el usuario para el mensaje de
@@ -70,12 +153,15 @@ function MiembrosEditor({ cuadrilla, qcUsers, busy, onSave }) {
                 {u.name}
               </label>
               {active ? (
-                <input
-                  className="pp-input" style={{ fontSize: 11, padding: '3px 6px', maxWidth: 130 }}
-                  placeholder="Calidad (ej: Chofer)"
-                  value={seleccion.get(id) || ''}
-                  onChange={(e) => setRol(id, e.target.value)}
-                />
+                <>
+                  <input
+                    className="pp-input" style={{ fontSize: 11, padding: '3px 6px', maxWidth: 130 }}
+                    placeholder="Calidad (ej: Chofer)"
+                    value={seleccion.get(id) || ''}
+                    onChange={(e) => setRol(id, e.target.value)}
+                  />
+                  <DniMiembroControl qcUserId={id} qcUserName={u.name} />
+                </>
               ) : null}
             </div>
           );

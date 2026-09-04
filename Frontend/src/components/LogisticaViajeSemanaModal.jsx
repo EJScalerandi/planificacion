@@ -626,7 +626,7 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
   const [showIaConfig, setShowIaConfig] = useState(false);
   const [mapa, setMapa] = useState(null); // { nvs, titulo } | null
   const [mensajeViaje, setMensajeViaje] = useState(null); // { viajeId, titulo } | null
-  const [adjuntos, setAdjuntos] = useState(null); // { viajeId, titulo } | { nv, titulo } | null
+  const [adjuntos, setAdjuntos] = useState(null); // { viajeId, titulo, cuadrillaId } | { nv, titulo, cuadrillaId } | null
 
   // Paradas que no son un portón (ej. alojamiento) - catálogo reutilizable +
   // qué viaje tiene abierto el picker para agregar una.
@@ -1046,8 +1046,8 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
                       });
                     }}
                     onMensaje={(viaje) => setMensajeViaje({ viajeId: viaje.id, titulo: viaje.nombre?.trim() || `Viaje #${viaje.id}` })}
-                    onAdjuntosViaje={(viaje) => setAdjuntos({ viajeId: viaje.id, titulo: viaje.nombre?.trim() || `Viaje #${viaje.id}` })}
-                    onAdjuntosNv={(nv) => setAdjuntos({ nv, titulo: `NV ${nv}` })}
+                    onAdjuntosViaje={(viaje) => setAdjuntos({ viajeId: viaje.id, titulo: viaje.nombre?.trim() || `Viaje #${viaje.id}`, cuadrillaId: viaje.cuadrilla_id })}
+                    onAdjuntosNv={(nv) => setAdjuntos({ nv, titulo: `NV ${nv}`, cuadrillaId: v.cuadrilla_id })}
                     onToggleZona={onToggleZona}
                     onRecalcularRuta={onRecalcularRuta}
                     recalculando={recalculando}
@@ -1095,7 +1095,7 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
       <LogisticaIaConfigModal open={showIaConfig} onClose={() => setShowIaConfig(false)} />
       <PortonesMapaModal open={!!mapa} nvs={mapa?.nvs} rutaOrden={mapa?.rutaOrden} paradasExtra={mapa?.paradasExtra} rutaReal={mapa?.rutaReal} horaSalida={mapa?.horaSalida} titulo={mapa?.titulo} onClose={() => setMapa(null)} />
       <LogisticaMensajeViajeModal open={!!mensajeViaje} viajeId={mensajeViaje?.viajeId} titulo={mensajeViaje?.titulo} onClose={() => setMensajeViaje(null)} />
-      <LogisticaAdjuntosModal open={!!adjuntos} viajeId={adjuntos?.viajeId} nv={adjuntos?.nv} titulo={adjuntos?.titulo} canEdit={canEdit} onClose={() => setAdjuntos(null)} />
+      <LogisticaAdjuntosModal open={!!adjuntos} viajeId={adjuntos?.viajeId} nv={adjuntos?.nv} titulo={adjuntos?.titulo} canEdit={canEdit} cuadrillaId={adjuntos?.cuadrillaId} onClose={() => setAdjuntos(null)} />
     </div>
   );
 }

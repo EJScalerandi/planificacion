@@ -249,6 +249,32 @@ const MIGRATIONS = [
         ADD COLUMN IF NOT EXISTS rol TEXT;
     `,
   },
+  {
+    // Catálogo de adjuntos POR INTEGRANTE de cuadrilla (ej. el DNI) - pedido
+    // del usuario: se sube UNA vez en la cuadrilla, y de ahí se puede
+    // "habilitar" (sin volver a subirlo) para un viaje y/o un NV puntual.
+    // origen_miembro_id en logistica_adjuntos marca esas filas "habilitadas"
+    // - comparten storage_path con el catálogo, así que al borrar una fila
+    // habilitada NO se borra el archivo real (solo cuando se borra el
+    // catálogo en sí, que se lleva puestas en cascada las habilitaciones).
+    name: 'logistica_adjuntos_miembro',
+    sql: `
+      CREATE TABLE IF NOT EXISTS public.logistica_adjuntos_miembro (
+        id SERIAL PRIMARY KEY,
+        qc_user_id INTEGER NOT NULL REFERENCES public.qc_users(id) ON DELETE CASCADE,
+        nombre_archivo TEXT NOT NULL,
+        descripcion TEXT,
+        tipo_mime TEXT NOT NULL,
+        tamano_bytes INTEGER,
+        storage_path TEXT NOT NULL,
+        subido_por TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_logistica_adjuntos_miembro_qc_user ON public.logistica_adjuntos_miembro(qc_user_id);
+      ALTER TABLE public.logistica_adjuntos
+        ADD COLUMN IF NOT EXISTS origen_miembro_id INTEGER REFERENCES public.logistica_adjuntos_miembro(id) ON DELETE CASCADE;
+    `,
+  },
 ];
 
 async function runMigrations() {
