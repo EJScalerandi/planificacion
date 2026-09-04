@@ -204,13 +204,26 @@ async function listParadasDeViaje(viajeId) {
 // Detalle completo de un NV (al tocar una parada-portón) - misma fuente de
 // datos que el mensaje a la cuadrilla, más el maps_url (no viaja en
 // listParadasDeViaje para no pesar la lista, se pide al abrir el detalle).
+// MOTOR_Condicion viene con valores libres/sucios ('Automátizado',
+// 'Manual (sin automatizar)', 'MANUAL   ', 'AUTOMATICO   ', etc.) -
+// normaliza a una sola etiqueta prolija; si no matchea ninguno de los dos,
+// devuelve el texto tal cual vino (mejor mostrar algo raro que nada).
+function normalizaAutomaticoManual(raw) {
+  if (!raw) return null;
+  // "auto" alcanza (no "automat"): valores reales incluyen "Automátizado",
+  // con tilde - "automat" sin tilde no matchea esa palabra.
+  if (/^auto/i.test(raw)) return 'Automático';
+  if (/manual/i.test(raw)) return 'Manual';
+  return raw;
+}
+
 async function getNvDetalle(nv) {
   const nNv = Number(nv);
   if (!Number.isInteger(nNv)) return null;
   const datos = await fetchDatosPorNv([nNv]);
   const d = datos.get(nNv);
   if (!d) return { nv: nNv, nombre_cliente: null, distribuidor: null, direccion: null, localidad: null, telefono: null, maps_url: null };
-  return { nv: nNv, ...d };
+  return { nv: nNv, ...d, automatico_manual: normalizaAutomaticoManual(d.motor_condicion) };
 }
 
 // Botón "ST/PV" - crea una solicitud de Servicio Técnico (Fase 0, mismo

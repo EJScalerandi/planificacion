@@ -106,7 +106,18 @@ async function fetchDatosPorNv(nvs) {
       nullif(trim(both ' ' from coalesce(nullif(sq.telefono,''), b.pv_data->>'cliente_telefono', '')), '') as telefono,
       nullif(trim(both ' ' from coalesce(nullif(sq.direccion,''), b.pv_data->>'cliente_direccion', b.pv_data->>'Direccion', b.pv_data->>'Dirección', '')), '') as direccion,
       nullif(trim(both ' ' from coalesce(nullif(sq.localidad,''), b.pv_data->>'cliente_localidad', '')), '') as localidad,
-      nullif(trim(both ' ' from coalesce(nullif(sq.maps_url,''), b.pv_data->>'cliente_maps_url', b.pv_data->>'logistica_maps_url', b.pv_data->>'pp_direccion_url', '')), '') as maps_url
+      nullif(trim(both ' ' from coalesce(nullif(sq.maps_url,''), b.pv_data->>'cliente_maps_url', b.pv_data->>'logistica_maps_url', b.pv_data->>'pp_direccion_url', '')), '') as maps_url,
+      -- Datos técnicos del portón (pedido puntual de /despacho_v2, para el
+      -- detalle del NV) - mismas claves que ya usa PreproduccionValoresTable.jsx
+      -- ("Revestimiento" ahí en realidad muestra Sistema, no la clave literal
+      -- "Revestimiento" que suele venir vacía) más MOTOR_Condicion
+      -- (Automático/Manual, confirmado contra datos reales - no existía
+      -- ningún campo así hasta ahora en el resto de la app).
+      nullif(trim(both ' ' from coalesce(b.pv_data->>'Alto', '')), '') as alto,
+      nullif(trim(both ' ' from coalesce(b.pv_data->>'Ancho', '')), '') as ancho,
+      nullif(trim(both ' ' from b.pv_data->>'Sistema'), '') as revestimiento,
+      nullif(trim(both ' ' from b.pv_data->>'Color_Sistema'), '') as color_revestimiento,
+      nullif(trim(both ' ' from b.pv_data->>'MOTOR_Condicion'), '') as motor_condicion
     from base b
     left join lateral (
       select

@@ -87,8 +87,14 @@ const s = {
   botonPrimario: { display: 'block', width: '100%', padding: '14px', borderRadius: 12, border: 'none', background: BRAND, color: '#fff', fontSize: 16, fontWeight: 900, textAlign: 'center', cursor: 'pointer' },
   input: { width: '100%', padding: '12px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 16, boxSizing: 'border-box' },
   card: { background: '#fff', borderRadius: 14, border: '1px solid #e5e7eb', padding: 14, boxShadow: '0 1px 3px rgba(0,0,0,.06)' },
-  overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 9999, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' },
-  hoja: { width: '100%', maxWidth: 520, maxHeight: '92dvh', overflowY: 'auto', background: '#fff', borderRadius: '18px 18px 0 0', padding: 18, boxSizing: 'border-box' },
+  // Centrado (no pegado abajo con alignItems:'flex-end' como antes) - en
+  // pantallas de escritorio altas ese anclaje al fondo lo dejaba fuera de
+  // vista/sin poder interactuar (reportado por el usuario). Centrado +
+  // altura tope + scroll interno funciona en cualquier tamaño de pantalla,
+  // mismo criterio que el resto de los modales de la app (ej.
+  // LogisticaAdjuntosModal.jsx).
+  overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, boxSizing: 'border-box' },
+  hoja: { width: '100%', maxWidth: 520, maxHeight: '85vh', overflowY: 'auto', background: '#fff', borderRadius: 18, padding: 18, boxSizing: 'border-box' },
 };
 
 // ===========================================================================
@@ -232,6 +238,10 @@ function NvDetailSheet({ nv, viaje, parada, onClose }) {
               <Campo label="Distribuidor" valor={detalle?.distribuidor} />
               <Campo label="Localidad" valor={detalle?.localidad} />
               <Campo label="Dirección" valor={detalle?.direccion} />
+              <Campo label="Ancho x Alto" valor={detalle?.ancho && detalle?.alto ? `${detalle.ancho} x ${detalle.alto}` : null} />
+              <Campo label="Revestimiento" valor={detalle?.revestimiento} />
+              <Campo label="Color del revestimiento" valor={detalle?.color_revestimiento} />
+              <Campo label="Apertura" valor={detalle?.automatico_manual} />
               {waPerfil ? (
                 <a href={waPerfil} target="_blank" rel="noopener noreferrer" style={{ ...s.botonBloque, background: '#25D366', color: '#fff', border: 'none' }}>
                   💬 WhatsApp al cliente

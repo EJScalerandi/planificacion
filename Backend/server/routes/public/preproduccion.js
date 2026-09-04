@@ -1,46 +1,16 @@
 const express = require('express');
-const axios = require('axios');
 const { pool } = require('../../db');
 
 const router = express.Router();
 
-const REMITOS_BASE = 'https://remitos.onrender.com/api';
-
-// GET /remitos-proxy/search-by-nv?nv=X
-router.get('/remitos-proxy/search-by-nv', async (req, res) => {
-  const { nv } = req.query;
-  if (!nv) return res.status(400).json({ error: 'Falta parámetro nv' });
-  try {
-    const { data, status } = await axios.get(`${REMITOS_BASE}/remitos/search-by-nv`, {
-      params: { nv },
-      timeout: 30000,
-    });
-    return res.status(status).json(data);
-  } catch (err) {
-    const status = err.response?.status || 502;
-    const data = err.response?.data || { error: 'Error contactando Remitos', detail: err.message };
-    return res.status(status).json(data);
-  }
-});
-
-// GET /remitos-proxy/:tipo/:sucursal/:numero/pdf
-router.get('/remitos-proxy/:tipo/:sucursal/:numero/pdf', async (req, res) => {
-  const { tipo, sucursal, numero } = req.params;
-  try {
-    const response = await axios.get(
-      `${REMITOS_BASE}/remitos/${tipo}/${sucursal}/${numero}/pdf`,
-      { responseType: 'arraybuffer', timeout: 30000 }
-    );
-    res.status(200)
-      .set('Content-Type', 'application/pdf')
-      .set('Content-Disposition', `inline; filename="remito-${tipo}-${sucursal}-${numero}.pdf"`)
-      .send(Buffer.from(response.data));
-  } catch (err) {
-    const status = err.response?.status || 502;
-    const msg = err.response?.data ? Buffer.from(err.response.data).toString() : err.message;
-    return res.status(status).json({ error: 'Error generando PDF', detail: msg });
-  }
-});
+// Las rutas /remitos-proxy/* vivían acá también (con REMITOS_BASE apuntando
+// a un dominio de Render que ya no existe: remitos.onrender.com en vez de
+// remitos-c77t.onrender.com) - al montarse ANTES que routes/public/remitosProxy.js
+// en app.js, esta versión vieja/rota siempre ganaba y la buena nunca se
+// llegaba a ejecutar (bug real encontrado 2026-09-04: /a nunca lo notó
+// porque llama directo al dominio correcto desde el navegador, sin pasar
+// por el backend). Se borran de acá - la única implementación queda en
+// remitosProxy.js.
 
 // GET /preproduccion-valores
 router.get('/preproduccion-valores', async (_req, res) => {
