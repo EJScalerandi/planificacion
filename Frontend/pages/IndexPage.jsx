@@ -104,6 +104,7 @@ export default function IndexPage({ routes = [] }) {
     if (isQcAdmin) out.push({ path: '/admin/qc', label: 'Admin · Usuarios QC' });
     if (isWfAdmin) out.push({ path: '/admin/workflow', label: 'Admin · Workflow (Designer)' });
     if (isSchedAdmin) out.push({ path: '/admin/scheduling', label: 'Admin · Motor de Reglas de Tiempo (Beta)' });
+    if (isSchedAdmin) out.push({ path: '/admin/scheduling/reglas', label: 'Admin · Reglas de Desvío (Beta)' });
     if (isSchedAdmin) out.push({ path: '/admin/scheduling/gantt', label: 'Admin · Gantt de Producción (Beta)' });
     if (canUsers) out.push({ path: '/b', label: 'Admin · Usuarios / Permisos (Dashboard)' });
     if (isQcAdmin || isWfAdmin) out.push({ path: '/admin/excel-info', label: 'Admin · Información Excel' });

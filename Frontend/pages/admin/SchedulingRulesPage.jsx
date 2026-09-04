@@ -10,11 +10,9 @@ import {
   clearAdminToken,
   getAdminToken,
   getWorkflowConfig,
-  getWorkflowConditionFields,
   getSchedulingStandard,
   saveSchedulingStandard,
   getSchedulingRules,
-  saveSchedulingRules,
   getSchedulingPreview,
   getSchedulingRegressionPreview,
   setFechaDespachoLogistica,
@@ -46,24 +44,6 @@ function fmtArDateTime(iso) {
   }
 }
 
-const CATEGORIES = [
-  { key: 'intrinseca', label: 'Intrínseca' },
-  { key: 'material', label: 'Material' },
-  { key: 'humana', label: 'Humana' },
-  { key: 'rotativa', label: 'Rotativa' },
-  { key: 'tiempo', label: 'Tiempo' },
-];
-const OPERATORS = ['=', '!=', '>', '>=', '<', '<=', 'in', 'contains'];
-const EFFECT_TYPES = [
-  { key: 'percent', label: '% del punto de partida' },
-  { key: 'fixed_minutes', label: 'Minutos fijos' },
-  { key: 'multiplier', label: 'Multiplicador (x)' },
-  { key: 'override', label: 'Override (fija el valor)' },
-];
-const COMBINE_MODES = [
-  { key: 'independent', label: 'Independiente (contra el estándar)' },
-  { key: 'cascade', label: 'Cascada (sobre el resultado anterior)' },
-];
 // weekday: 0=domingo..6=sábado, mismo criterio que Date.getUTCDay() (ver lib/scheduling/calendar.js).
 const WEEKDAYS = [
   { key: 1, label: 'Lunes' },
@@ -79,22 +59,6 @@ function newShiftRow() {
 }
 function newExceptionRow() {
   return { _localId: `new-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, exception_date: '', is_working: false, start_time: '', end_time: '', notes: '' };
-}
-
-function newRuleRow(stageKey) {
-  return {
-    _localId: `new-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-    stage_key: stageKey || '',
-    category: 'intrinseca',
-    field: '',
-    operator: '=',
-    value: '',
-    effect_type: 'percent',
-    effect_value: 0,
-    combine_mode: 'independent',
-    sequence_order: null,
-    enabled: true,
-  };
 }
 
 // Tabla de excepciones (feriados / turnos puntuales) — reusada para las
@@ -149,11 +113,9 @@ export default function SchedulingRulesPage() {
   const [line, setLine] = useState('portones');
   const [loading, setLoading] = useState(true);
   const [savingStandards, setSavingStandards] = useState(false);
-  const [savingRules, setSavingRules] = useState(false);
   const [err, setErr] = useState('');
 
   const [stages, setStages] = useState([]);
-  const [conditionFields, setConditionFields] = useState([]);
   const [standards, setStandards] = useState([]); // [{stage_key, standard_minutes, notes}]
   const [rules, setRules] = useState([]);
 
@@ -205,16 +167,14 @@ export default function SchedulingRulesPage() {
     setErr('');
     setLoading(true);
     try {
-      const [wf, std, rl, fields, res, sr] = await Promise.all([
+      const [wf, std, rl, res, sr] = await Promise.all([
         getWorkflowConfig(line),
         getSchedulingStandard(line),
         getSchedulingRules(line),
-        getWorkflowConditionFields(line).catch(() => ({ fields: [] })),
         getSchedulingResources(),
         getSchedulingStageResource(line),
       ]);
       setStages(wf.stages || []);
-      setConditionFields(Array.isArray(fields?.fields) ? fields.fields : []);
 
       const stageKeys = (wf.stages || []).filter((s) => s.enabled !== false).map((s) => s.status_col || s.key);
       const byKey = new Map((std.standards || []).map((s) => [s.stage_key, s]));
@@ -353,39 +313,6 @@ export default function SchedulingRulesPage() {
       setErr(e?.response?.data?.error || e.message);
     } finally {
       setSavingStandards(false);
-    }
-  };
-
-  const addRule = () => setRules((prev) => [...prev, newRuleRow(stageOptions[0]?.key)]);
-  const removeRule = (localId) => setRules((prev) => prev.filter((r) => r._localId !== localId));
-  const updateRule = (localId, patch) =>
-    setRules((prev) => prev.map((r) => (r._localId === localId ? { ...r, ...patch } : r)));
-
-  const onSaveRules = async () => {
-    setErr('');
-    try {
-      setSavingRules(true);
-      await saveSchedulingRules(
-        line,
-        rules.map((r) => ({
-          stage_key: r.stage_key,
-          category: r.category,
-          field: r.field,
-          operator: r.operator,
-          value: r.operator === 'in' ? String(r.value || '').split(',').map((v) => v.trim()).filter(Boolean) : r.value,
-          effect_type: r.effect_type,
-          effect_value: Number(r.effect_value) || 0,
-          combine_mode: r.combine_mode,
-          sequence_order: r.combine_mode === 'cascade' ? Number(r.sequence_order) || 0 : null,
-          enabled: r.enabled !== false,
-        }))
-      );
-      await reload();
-      alert('Reglas guardadas.');
-    } catch (e) {
-      setErr(e?.response?.data?.error || e.message);
-    } finally {
-      setSavingRules(false);
     }
   };
 
@@ -579,106 +506,15 @@ export default function SchedulingRulesPage() {
         </div>
       </section>
 
-      {/* ===== Reglas de desvío ===== */}
-      <section style={{ marginTop: 20, border: '1px solid var(--border)', borderRadius: 12, padding: 12 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+      {/* ===== Reglas de desvío — navegación dedicada (por sección / por tipo de variante) ===== */}
+      <section style={{ marginTop: 20, border: '1px solid var(--border)', borderRadius: 12, padding: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+        <div>
           <div style={{ fontWeight: 900, fontSize: 16 }}>Reglas de desvío</div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn" onClick={addRule}>+ Agregar regla</button>
-            <button className="btn btn--brand" onClick={onSaveRules} disabled={savingRules}>
-              {savingRules ? 'Guardando…' : 'Guardar reglas'}
-            </button>
+          <div style={{ fontSize: 13, opacity: 0.75, marginTop: 2 }}>
+            {rules.length} regla{rules.length === 1 ? '' : 's'} cargada{rules.length === 1 ? '' : 's'} — navegable por sección o por tipo de variante.
           </div>
         </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
-          {rules.length === 0 && <div style={{ fontSize: 13, opacity: 0.7 }}>Sin reglas todavía.</div>}
-
-          {rules.map((r) => (
-            <div key={r._localId} style={{ border: '1px dashed #d1d5db', borderRadius: 12, padding: 10 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr auto', gap: 8, alignItems: 'center' }}>
-                <select className="btn" value={r.stage_key} onChange={(e) => updateRule(r._localId, { stage_key: e.target.value })}>
-                  <option value="">(etapa)</option>
-                  {stageOptions.map((s) => (
-                    <option key={s.key} value={s.key}>{s.label} ({s.key})</option>
-                  ))}
-                </select>
-
-                <select className="btn" value={r.category} onChange={(e) => updateRule(r._localId, { category: e.target.value })}>
-                  {CATEGORIES.map((c) => (
-                    <option key={c.key} value={c.key}>{c.label}</option>
-                  ))}
-                </select>
-
-                <select className="btn" value={r.combine_mode} onChange={(e) => updateRule(r._localId, { combine_mode: e.target.value })}>
-                  {COMBINE_MODES.map((c) => (
-                    <option key={c.key} value={c.key}>{c.label}</option>
-                  ))}
-                </select>
-
-                {r.combine_mode === 'cascade' ? (
-                  <input
-                    className="btn"
-                    type="number"
-                    value={r.sequence_order ?? ''}
-                    onChange={(e) => updateRule(r._localId, { sequence_order: e.target.value })}
-                    placeholder="orden"
-                    title="Orden dentro de la cascada"
-                  />
-                ) : (
-                  <div style={{ fontSize: 12, opacity: 0.6, alignSelf: 'center' }}>sin orden (independiente)</div>
-                )}
-
-                <button className="btn" type="button" onClick={() => removeRule(r._localId)}>Quitar</button>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1.3fr .7fr 1fr 1fr 1fr auto', gap: 8, alignItems: 'center', marginTop: 8 }}>
-                <select className="btn" value={r.field} onChange={(e) => updateRule(r._localId, { field: e.target.value })}>
-                  <option value="">(campo)</option>
-                  {conditionFields.map((f) => (
-                    <option key={f.key} value={f.key}>{f.label} ({f.key})</option>
-                  ))}
-                </select>
-
-                <select className="btn" value={r.operator} onChange={(e) => updateRule(r._localId, { operator: e.target.value })}>
-                  {OPERATORS.map((op) => (
-                    <option key={op} value={op}>{op}</option>
-                  ))}
-                </select>
-
-                <input
-                  className="btn"
-                  value={r.value ?? ''}
-                  onChange={(e) => updateRule(r._localId, { value: e.target.value })}
-                  placeholder={r.operator === 'in' ? 'valor1, valor2' : 'valor'}
-                />
-
-                <select className="btn" value={r.effect_type} onChange={(e) => updateRule(r._localId, { effect_type: e.target.value })}>
-                  {EFFECT_TYPES.map((t) => (
-                    <option key={t.key} value={t.key}>{t.label}</option>
-                  ))}
-                </select>
-
-                <input
-                  className="btn"
-                  type="number"
-                  value={r.effect_value}
-                  onChange={(e) => updateRule(r._localId, { effect_value: e.target.value })}
-                  placeholder="efecto"
-                />
-
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <input
-                    type="checkbox"
-                    checked={r.enabled !== false}
-                    onChange={(e) => updateRule(r._localId, { enabled: e.target.checked })}
-                  />
-                  Activa
-                </label>
-              </div>
-            </div>
-          ))}
-        </div>
+        <Link className="btn btn--brand" to="/admin/scheduling/reglas">Abrir Reglas de Desvío</Link>
       </section>
 
       {/* ===== Recursos físicos compartidos (Fase 3) ===== */}
