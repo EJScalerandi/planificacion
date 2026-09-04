@@ -23,6 +23,7 @@ const { computeEffectiveMinutes } = require('./rulesEngine');
 const { rollBackForStage, arDateTimeToInstant, loadResourceCalendars, fetchStageResourceMap } = require('./calendar');
 const { createCapacityLedger, commitConsumption, summarizeLedger } = require('./capacityLedger');
 const { fetchResourceVariables } = require('./resourceVariables');
+const { buildRotativaFields } = require('./rotativaFields');
 
 const MAX_SUBGRAPH_NODES = 500;
 
@@ -240,7 +241,7 @@ function deadlineForFlow(ctx, flow) {
 // la vez: da el orden de cálculo correcto (sucesores resueltos antes que
 // predecesores) y sirve de guard contra ciclos — si al final quedan nodos
 // sin procesar, hay un ciclo real en las condiciones cargadas.
-async function computeBackwardPass({ line, subgraph, deadline, standardByStage, rulesByStage, ctx, db = pool, calendarCache, capacityLedger, calendarWindow, stageResourceMap, resourceVariables }) {
+async function computeBackwardPass({ line, subgraph, deadline, standardByStage, rulesByStage, ctx, db = pool, calendarCache, capacityLedger, calendarWindow, stageResourceMap, resourceVariables, previousPortonByResource }) {
   const { nodes, edgesByTo, edgesByFrom } = subgraph;
 
   const outDegreeRemaining = new Map();
@@ -293,7 +294,13 @@ async function computeBackwardPass({ line, subgraph, deadline, standardByStage, 
     // rollBackForStage más abajo lo vuelve a resolver por su cuenta.
     const resourceKeyForRules = stageResourceMap?.get(stageKey) || stageKey;
     const resourceVars = resourceVariables?.get(resourceKeyForRules);
-    const stageCtx = resourceVars ? { ...ctx, ...resourceVars } : ctx;
+    // Rotativa (Fase 3c): campos derivados de comparar contra el portón
+    // anterior que usó este mismo recurso (ver rotativaFields.js) — solo
+    // aporta algo en modo flota; fuera de ahí, previousPortonByResource no
+    // llega y estos campos simplemente no se setean (regla Rotativa no
+    // matchea, no rompe nada).
+    const rotativaFields = buildRotativaFields(ctx, previousPortonByResource?.get(resourceKeyForRules));
+    const stageCtx = resourceVars || Object.keys(rotativaFields).length ? { ...ctx, ...resourceVars, ...rotativaFields } : ctx;
     const calc = computeEffectiveMinutes({ standardMinutes, rules, ctx: stageCtx });
     const minutes = Math.max(0, calc.effective_minutes);
 
@@ -363,7 +370,7 @@ async function computeBackwardPass({ line, subgraph, deadline, standardByStage, 
 async function computePortonRegression({
   line, ctx, standardByStage, rulesByStage, db = pool, capacityLedger,
   rootKey: providedRootKey, requirementRows, calendarCache, calendarWindow,
-  edgeRows, stageResourceMap, resourceVariables, flow = FLOWS.PRESUPUESTO,
+  edgeRows, stageResourceMap, resourceVariables, previousPortonByResource, flow = FLOWS.PRESUPUESTO,
 }) {
   const deadline = deadlineForFlow(ctx, flow);
   if (!deadline) {
@@ -375,7 +382,7 @@ async function computePortonRegression({
   const resolvedStageResourceMap = stageResourceMap || (await fetchStageResourceMap(line, db));
   const resolvedResourceVariables = resourceVariables || (await fetchResourceVariables(db));
   const subgraph = await resolvePortonSubgraph(line, rootKey, ctx, db, edgeRows);
-  const pass = await computeBackwardPass({ line, subgraph, deadline, standardByStage, rulesByStage, ctx, db, capacityLedger, calendarCache, calendarWindow, stageResourceMap: resolvedStageResourceMap, resourceVariables: resolvedResourceVariables });
+  const pass = await computeBackwardPass({ line, subgraph, deadline, standardByStage, rulesByStage, ctx, db, capacityLedger, calendarCache, calendarWindow, stageResourceMap: resolvedStageResourceMap, resourceVariables: resolvedResourceVariables, previousPortonByResource });
   const consistencyWarnings = await checkRequirementConsistency(line, subgraph, db, requirementRows).catch(() => []);
 
   return {
@@ -450,14 +457,28 @@ async function computeFleetRegression({ line, ctxs, standardByStage, rulesByStag
     calendarWindow = { deadline: maxDeadline, maxLookbackDays: 180 + spreadDays };
   }
 
+  // Rotativa (Fase 3c): "portón anterior en la cola de este recurso" —
+  // aproximado con el orden EDD en que se procesa la flota (no una segunda
+  // pasada que recalcule el orden cronológico real por recurso; ver
+  // rotativaFields.js para el porqué). Se actualiza DESPUÉS de terminar
+  // cada portón entero (todas sus etapas), nunca a mitad de uno — así dos
+  // etapas del MISMO portón que comparten recurso (ej. guillotina y
+  // corte_revest -> cortadora) no se toman como "anterior" una de la otra.
+  const previousPortonByResource = new Map();
+
   for (const ctx of sortedCtxs) {
     try {
       const result = await computePortonRegression({
         line, ctx, standardByStage, rulesByStage, db, capacityLedger,
         rootKey, requirementRows, calendarCache, calendarWindow,
-        edgeRows, stageResourceMap, resourceVariables, flow,
+        edgeRows, stageResourceMap, resourceVariables, previousPortonByResource, flow,
       });
       portones.push({ id: ctx.id, nv: ctx.nv, sistema: ctx.sistema, ...result });
+      if (result.ok && result.stages) {
+        for (const stage of Object.values(result.stages)) {
+          previousPortonByResource.set(stage.resource_key, ctx);
+        }
+      }
     } catch (err) {
       portones.push({ id: ctx.id, nv: ctx.nv, ok: false, error: err.message });
     }

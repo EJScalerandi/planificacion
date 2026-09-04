@@ -47,6 +47,16 @@ const CATEGORIES = [
     tooltip: 'No ajusta minutos como las demás — es el calendario de trabajo del recurso (turnos, feriados). Se carga aparte, en la sección "Calendario laboral por recurso".',
   },
 ];
+// Campos derivados para reglas Rotativa (Fase 3c) — fijos, no vienen de una
+// tabla (a diferencia de las Variables de recurso): se calculan comparando
+// contra el portón anterior que usó el mismo recurso, ver rotativaFields.js
+// en el backend. Solo aportan algo en modo Flota — en un porton_id puntual
+// no hay "anterior" con quién comparar.
+const ROTATIVA_FIELDS = [
+  { key: 'sistema_changed', label: 'Cambió el Sistema respecto al anterior (true/false)' },
+  { key: 'prev_sistema', label: 'Sistema del portón anterior en este recurso' },
+  { key: 'prev_nv', label: 'NV del portón anterior en este recurso' },
+];
 const OPERATORS = ['=', '!=', '>', '>=', '<', '<=', 'in', 'contains'];
 const EFFECT_TYPES = [
   { key: 'percent', label: '% del punto de partida' },
@@ -406,10 +416,20 @@ function HelpSection() {
         </div>
 
         <div style={{ borderLeft: `4px solid ${CATEGORIES[3].color}`, paddingLeft: 12 }}>
-          <b>Rotativa</b> — todavía no se puede configurar de verdad. La idea original era comparar contra
-          el portón anterior/siguiente en la cola (ej. cambio de rollo de material o de color entre uno y
-          otro), pero hoy ningún campo guarda esa comparación — ninguna regla Rotativa va a matchear todavía.
-          Queda pendiente de una pieza de backend que calcule el orden de la cola.
+          <b>Rotativa</b> — compara contra el portón <b>anterior</b> que usó el mismo recurso físico (ej.
+          cambio de color/material en la Cortadora). Solo funciona en modo <b>Flota</b> de la Regresión — un
+          <code>porton_id</code> puntual no tiene "anterior" con quién comparar. Ejemplo ya probado, Corte
+          piernas:
+          {example('Combinación', 'Independiente')}
+          {example('Campo', 'sistema_changed (grupo "Comparación con portón anterior")')}
+          {example('Operador / Valor', '= / true')}
+          {example('Efecto', 'Minutos fijos / 25')}
+          <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>
+            "Si el Sistema de este portón es distinto al del portón anterior que pasó por la Cortadora,
+            sumale 25 min fijos (costo de cambio de rollo/color)." El orden de "anterior" usado es el orden
+            de urgencia (EDD) con el que se procesa la flota — una aproximación simple, no el orden
+            cronológico final exacto de cada recurso.
+          </div>
         </div>
 
         <div style={{ borderLeft: `4px solid ${CATEGORIES[4].color}`, paddingLeft: 12 }}>
@@ -469,6 +489,9 @@ function RuleRow({ rule: r, stages, conditionFields, resourceVariableFields, onU
               {resourceVariableFields.map((f) => <option key={f.key} value={f.key}>{f.key} — {f.resources.join(', ')}</option>)}
             </optgroup>
           )}
+          <optgroup label="Comparación con portón anterior (solo Rotativa, modo Flota)">
+            {ROTATIVA_FIELDS.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
+          </optgroup>
         </select>
         <select className="btn" value={r.operator} onChange={(e) => onUpdate({ operator: e.target.value })}>
           {OPERATORS.map((op) => <option key={op} value={op}>{op}</option>)}
