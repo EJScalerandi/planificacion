@@ -20,7 +20,7 @@ const { sincronizarZonasViaje, listZonasViaje, setZonaHabilitada } = require('..
 const { sincronizarRutaReal } = require('../../lib/logisticaRuteo');
 const {
   listPuntosExtra, crearPuntoExtra, updatePuntoExtra, deletePuntoExtra,
-  listParadasExtraViaje, asignarParadaExtra, desasignarParadaExtra,
+  listParadasExtraViaje, asignarParadaExtra, desasignarParadaExtra, updateParadaExtraViaje,
 } = require('../../lib/logisticaParadasExtra');
 
 // Zonas del corredor + ruta real por calle comparten el mismo trigger
@@ -344,6 +344,17 @@ router.post('/logistica/viajes/:id/paradas-extra', requireFullAccess, asyncRoute
 router.delete('/logistica/viajes/:id/paradas-extra/:punto_extra_id', requireFullAccess, asyncRoute(async (req, res) => {
   await desasignarParadaExtra(req.params.id, req.params.punto_extra_id);
   await sincronizarRuta(req.params.id);
+  const semana = await db.getViajeSemana(req.params.id);
+  res.json({ ok: true, detalle: await conDetallesViajes(await db.getSemanaDetalle(semana)) });
+}));
+
+// Horario propio de una parada extra ya asignada - duracion_minutos (una
+// parada normal, ej. "retirar un cobro" = 15 min) y/o hora_salida_siguiente
+// (solo paradas de descanso/hospedaje - la ruta retoma desde ese horario al
+// día siguiente). No dispara sincronizarRuta: no cambia geometría/zonas,
+// solo el horario estimado que calcula el frontend.
+router.patch('/logistica/viajes/:id/paradas-extra/:punto_extra_id', requireFullAccess, asyncRoute(async (req, res) => {
+  await updateParadaExtraViaje(req.params.id, req.params.punto_extra_id, req.body || {});
   const semana = await db.getViajeSemana(req.params.id);
   res.json({ ok: true, detalle: await conDetallesViajes(await db.getSemanaDetalle(semana)) });
 }));

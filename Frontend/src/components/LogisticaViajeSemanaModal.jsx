@@ -22,6 +22,7 @@ import {
   createLogisticaPuntoExtra,
   asignarLogisticaParadaExtra,
   desasignarLogisticaParadaExtra,
+  updateLogisticaParadaExtraViaje,
   cerrarLogisticaSemana,
   reabrirLogisticaSemana,
 } from '../api';
@@ -40,41 +41,61 @@ function uniqueNvs(items) {
   return Array.from(new Set((items || []).map((it) => Number(it.nv)).filter(Number.isInteger)));
 }
 
-// Horario estimado de llegada a cada tramo, acumulando desde hora_salida -
-// segmentosHoras viene de ruta_real (uno por tramo real entre paradas
-// consecutivas, calculado con OpenRouteService). +Nd si el acumulado cruza
-// medianoche (viajes largos, ej. 27hs totales, son reales en esta app).
-function calcularHorariosLlegada(horaSalida, segmentosHoras) {
-  if (!horaSalida || !segmentosHoras?.length) return [];
-  const [h, m] = horaSalida.split(':').map(Number);
-  let minutosAcumulados = h * 60 + m;
-  return segmentosHoras.map((horas) => {
-    minutosAcumulados += horas * 60;
-    const totalMin = Math.round(minutosAcumulados);
-    const dias = Math.floor(totalMin / 1440);
-    const minDia = totalMin % 1440;
-    const hora = `${String(Math.floor(minDia / 60)).padStart(2, '0')}:${String(minDia % 60).padStart(2, '0')}`;
-    return dias > 0 ? `${hora} (+${dias}d)` : hora;
-  });
+function formatearHorario(totalMin) {
+  const dias = Math.floor(totalMin / 1440);
+  const minDia = totalMin % 1440;
+  const hora = `${String(Math.floor(minDia / 60)).padStart(2, '0')}:${String(minDia % 60).padStart(2, '0')}`;
+  return dias > 0 ? `${hora} (+${dias}d)` : hora;
 }
 
-// Une el horario calculado por tramo con la parada real que le corresponde -
-// dedupeando por NV (despacho+instalación del mismo NV = mismo domicilio,
-// mismo horario de llegada) igual que construirRutaViaje en el backend, así
-// coinciden en orden con segmentosHoras.
+// Horario estimado de llegada a cada parada, acumulando desde hora_salida -
+// segmentosHoras viene de ruta_real (uno por tramo real entre paradas
+// consecutivas, calculado con OpenRouteService), dedupeado por NV
+// (despacho+instalación del mismo NV = mismo domicilio = mismo horario)
+// igual que construirRutaViaje en el backend, así coinciden en orden con
+// segmentosHoras. +Nd si el acumulado cruza medianoche (viajes largos, ej.
+// 27hs totales, son reales en esta app).
+//
+// Una parada extra puede "comer" tiempo antes de seguir a la siguiente, de
+// dos formas (independientes, se puede cargar una, otra, las dos o
+// ninguna):
+// - duracion_minutos: se SUMA al horario de llegada (ej. "retirar un cobro"
+//   = 15 min) - sigue acumulando normal desde ahí, sin saltar de día.
+// - hora_salida_siguiente: solo paradas de descanso/hospedaje - el reloj
+//   SALTA (reemplaza, no suma) a ese horario al DÍA SIGUIENTE de la
+//   llegada. Si está cargada, gana por sobre duracion_minutos para esa
+//   parada.
 function horariosPorParada(items, horaSalida, segmentosHoras) {
-  const horarios = calcularHorariosLlegada(horaSalida, segmentosHoras);
   const map = new Map();
-  if (!horarios.length) return map;
+  if (!horaSalida || !segmentosHoras?.length) return map;
+  const [h, m] = horaSalida.split(':').map(Number);
+  let minutosClock = h * 60 + m;
+
   const vistos = new Set();
-  let i = 0;
+  const deduped = [];
   for (const it of items || []) {
     const key = it.punto_extra_id != null ? `extra-${it.punto_extra_id}` : `nv-${it.nv}`;
     if (vistos.has(key)) continue;
     vistos.add(key);
-    if (horarios[i] != null) map.set(key, horarios[i]);
-    i += 1;
+    deduped.push({ key, it });
   }
+
+  segmentosHoras.forEach((horasTramo, i) => {
+    const entry = deduped[i];
+    if (!entry) return;
+    minutosClock += horasTramo * 60;
+    const totalMin = Math.round(minutosClock);
+    map.set(entry.key, formatearHorario(totalMin));
+    const it = entry.it;
+    if (it?.hora_salida_siguiente) {
+      const dia = Math.floor(totalMin / 1440);
+      const [hs, ms] = it.hora_salida_siguiente.split(':').map(Number);
+      minutosClock = (dia + 1) * 1440 + hs * 60 + ms;
+    } else if (it?.duracion_minutos) {
+      minutosClock += Number(it.duracion_minutos);
+    }
+  });
+
   return map;
 }
 
@@ -184,7 +205,16 @@ function PortonChip({ item, draggable, onDragStart, onDragEnd, ordenNum, horaLle
 // distinguirla de un vistazo. Se reordena con flechas en vez de arrastre
 // (más simple que sumarla al mecanismo de drag&drop existente) pero entra
 // en la MISMA secuencia de `orden` que los portones - ver reordenarViaje.
-function ParadaExtraChip({ item, ordenNum, canEdit, onSubir, onBajar, onQuitar, esPrimera, esUltima, horaLlegada }) {
+function ParadaExtraChip({ item, ordenNum, canEdit, onSubir, onBajar, onQuitar, onGuardarHorario, esPrimera, esUltima, horaLlegada }) {
+  // Estado local (no controlado directo por `item`) para no perder lo que
+  // el usuario está tipeando entre renders - se confirma con onBlur (no en
+  // cada tecla) y se resincroniza si el dato del server cambia por otro
+  // lado (ej. otra pestaña, o el reload tras guardar).
+  const [duracion, setDuracion] = useState(item.duracion_minutos ?? '');
+  const [horaSalidaSig, setHoraSalidaSig] = useState(item.hora_salida_siguiente ?? '');
+  useEffect(() => { setDuracion(item.duracion_minutos ?? ''); }, [item.duracion_minutos]);
+  useEffect(() => { setHoraSalidaSig(item.hora_salida_siguiente ?? ''); }, [item.hora_salida_siguiente]);
+
   return (
     <div
       style={{
@@ -213,6 +243,35 @@ function ParadaExtraChip({ item, ordenNum, canEdit, onSubir, onBajar, onQuitar, 
       {item.maps_url ? (
         <a href={item.maps_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#b45309' }}>Ver ubicación →</a>
       ) : null}
+
+      {canEdit ? (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: 10 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 3 }} title="Cuánto tarda hacer esta parada (ej. retirar un cobro = 15 min) - se suma al horario de llegada">
+            Dura (min)
+            <input
+              type="number" min="0" step="1" className="pp-input" style={{ width: 52, fontSize: 10, padding: '1px 4px' }}
+              value={duracion}
+              onChange={(e) => setDuracion(e.target.value)}
+              onBlur={() => onGuardarHorario({ duracion_minutos: duracion === '' ? null : Number(duracion) })}
+            />
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 3 }} title="Solo para descanso/hospedaje: la ruta retoma desde este horario AL DÍA SIGUIENTE de llegar acá">
+            Sale día sig.
+            <input
+              type="time" className="pp-input" style={{ fontSize: 10, padding: '1px 4px' }}
+              value={horaSalidaSig}
+              onChange={(e) => setHoraSalidaSig(e.target.value)}
+              onBlur={() => onGuardarHorario({ hora_salida_siguiente: horaSalidaSig || null })}
+            />
+          </label>
+        </div>
+      ) : (duracion || horaSalidaSig) ? (
+        <div style={{ fontSize: 10, opacity: 0.75 }}>
+          {duracion ? `⏱️ ${duracion} min en la parada` : ''}
+          {horaSalidaSig ? `${duracion ? ' · ' : ''}🌅 sale ${horaSalidaSig} (día sig.)` : ''}
+        </div>
+      ) : null}
+
       {horaLlegada ? (
         <div style={{ fontSize: 11, fontWeight: 800, color: '#0a6a33' }}>🕒 Llegada estimada: {horaLlegada}</div>
       ) : null}
@@ -350,7 +409,7 @@ function NuevoViajeForm({ semana, config, onCreate, onCancel, busy, initial, sub
   );
 }
 
-function ViajeColumn({ viaje, items, canEdit, cerrada, onDropItem, onReorder, onEditar, onBorrar, onDragStartChip, onDragEndChip, onVerMapa, onMensaje, onToggleZona, puntosExtra, agregandoParada, onAbrirAgregarParada, onCerrarAgregarParada, agregandoParadaBusy, onElegirParada, onCrearParada, onQuitarParada, onMoverParada, onRecalcularRuta, recalculando }) {
+function ViajeColumn({ viaje, items, canEdit, cerrada, onDropItem, onReorder, onEditar, onBorrar, onDragStartChip, onDragEndChip, onVerMapa, onMensaje, onToggleZona, puntosExtra, agregandoParada, onAbrirAgregarParada, onCerrarAgregarParada, agregandoParadaBusy, onElegirParada, onCrearParada, onQuitarParada, onMoverParada, onGuardarHorarioParada, onRecalcularRuta, recalculando }) {
   const [over, setOver] = useState(false);
   const [dragOverIndex, setDragOverIndex] = useState(null);
   const capacidad = Number(viaje.vehiculo_capacidad || 0);
@@ -490,6 +549,7 @@ function ViajeColumn({ viaje, items, canEdit, cerrada, onDropItem, onReorder, on
                   onSubir={() => onMoverParada(viaje.id, it.punto_extra_id, -1)}
                   onBajar={() => onMoverParada(viaje.id, it.punto_extra_id, 1)}
                   onQuitar={() => onQuitarParada(viaje.id, it.punto_extra_id)}
+                  onGuardarHorario={(patch) => onGuardarHorarioParada(viaje.id, it.punto_extra_id, patch)}
                   horaLlegada={horarios.get(`extra-${it.punto_extra_id}`)}
                 />
               ) : (
@@ -606,7 +666,7 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
     for (const v of detalle?.viajes || []) {
       for (const p of v.paradas_extra || []) {
         if (!map.has(v.id)) map.set(v.id, []);
-        map.get(v.id).push({ punto_extra_id: p.punto_extra_id, nombre: p.nombre, maps_url: p.maps_url, lat: p.lat, lng: p.lng, orden: p.orden });
+        map.get(v.id).push({ punto_extra_id: p.punto_extra_id, nombre: p.nombre, maps_url: p.maps_url, lat: p.lat, lng: p.lng, orden: p.orden, duracion_minutos: p.duracion_minutos, hora_salida_siguiente: p.hora_salida_siguiente });
       }
     }
     // Orden = orden real de la ruta (primero el que queda arriba en la
@@ -798,6 +858,13 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
     runMutation(() => desasignarLogisticaParadaExtra(viajeId, puntoExtraId));
   };
 
+  // Horario propio de una parada extra - duracion_minutos (cualquier
+  // parada, ej. "retirar un cobro" = 15 min) y/o hora_salida_siguiente
+  // (solo descanso/hospedaje, la ruta retoma desde ahí al día siguiente).
+  const guardarHorarioParada = (viajeId, puntoExtraId, patch) => {
+    runMutation(() => updateLogisticaParadaExtraViaje(viajeId, puntoExtraId, patch));
+  };
+
   // Sube/baja una parada extra un lugar dentro de la MISMA lista mezclada
   // (portones + paradas) reenviando el orden completo - reusa el mismo
   // endpoint que el arrastre de portones (reordenarViaje ya acepta items
@@ -966,6 +1033,7 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
                     onCrearParada={crearParada}
                     onQuitarParada={quitarParada}
                     onMoverParada={moverParada}
+                    onGuardarHorarioParada={guardarHorarioParada}
                   />
                 ))}
                 {(detalle?.viajes || []).length === 0 ? (

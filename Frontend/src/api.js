@@ -651,6 +651,14 @@ export async function desasignarLogisticaParadaExtra(viajeId, puntoExtraId) {
   const { data } = await api.delete(`/admin/logistica/viajes/${viajeId}/paradas-extra/${puntoExtraId}`);
   return data;
 }
+// patch: { duracion_minutos?, hora_salida_siguiente? } - duracion_minutos es
+// para cualquier parada (ej. "retirar un cobro" = 15 min); hora_salida_siguiente
+// es solo para paradas de descanso/hospedaje (la ruta retoma desde ese
+// horario al día siguiente). Cualquiera de los dos acepta null para borrarlo.
+export async function updateLogisticaParadaExtraViaje(viajeId, puntoExtraId, patch) {
+  const { data } = await api.patch(`/admin/logistica/viajes/${viajeId}/paradas-extra/${puntoExtraId}`, patch);
+  return data;
+}
 export async function cerrarLogisticaSemana(semana) {
   const { data } = await api.post(`/admin/logistica/semanas/${encodeURIComponent(semana)}/cerrar`, {});
   return data;

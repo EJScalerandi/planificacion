@@ -32,6 +32,7 @@ import {
   createLogisticaPuntoExtra,
   asignarLogisticaParadaExtra,
   desasignarLogisticaParadaExtra,
+  updateLogisticaParadaExtraViaje,
 } from '../api';
 import { isoWeekStartEndFromLabel, weekNumberFromLabel, weekTitleFromSelection, todayISO10, buildWeekRange, isoWeekLabelFromDate } from '../utils/isoWeek';
 import LogisticaZonasModal from './modals/LogisticaZonasModal';
@@ -123,23 +124,50 @@ function agruparPorSemana(nvsSeleccionados, itemsByNv) {
   return { semana, incluidos, excluidos };
 }
 
-// Horario estimado de llegada a cada tramo, acumulando desde hora_salida -
-// mismo cálculo que LogisticaViajeSemanaModal.jsx / PortonesMapaModal.jsx
-// (segmentos_horas viene de ruta_real, duración real por tramo entre
-// paradas consecutivas, calculada con OpenRouteService). +Nd si el
-// acumulado cruza medianoche (hay viajes reales de más de 24hs).
-function calcularHorariosLlegada(horaSalida, segmentosHoras) {
-  if (!horaSalida || !segmentosHoras?.length) return [];
-  const [h, m] = horaSalida.split(':').map(Number);
-  let minutosAcumulados = h * 60 + m;
-  return segmentosHoras.map((horas) => {
-    minutosAcumulados += horas * 60;
-    const totalMin = Math.round(minutosAcumulados);
-    const dias = Math.floor(totalMin / 1440);
-    const minDia = totalMin % 1440;
-    const hora = `${String(Math.floor(minDia / 60)).padStart(2, '0')}:${String(minDia % 60).padStart(2, '0')}`;
-    return dias > 0 ? `${hora} (+${dias}d)` : hora;
-  });
+// Horario propio de una parada extra, editable inline en la fila de la ruta
+// (mismos dos campos que ParadaExtraChip en LogisticaViajeSemanaModal.jsx):
+// duracion_minutos (cualquier parada, ej. "retirar un cobro" = 15 min, se
+// SUMA al horario de llegada) y hora_salida_siguiente (solo descanso/
+// hospedaje, la ruta SALTA a ese horario al día siguiente). Estado local
+// para no perder lo que se está tipeando entre renders - se confirma con
+// onBlur, no en cada tecla.
+function ParadaHorarioInputs({ item, onGuardar }) {
+  const [duracion, setDuracion] = useState(item.duracion_minutos ?? '');
+  const [horaSalidaSig, setHoraSalidaSig] = useState(item.hora_salida_siguiente ?? '');
+  useEffect(() => { setDuracion(item.duracion_minutos ?? ''); }, [item.duracion_minutos]);
+  useEffect(() => { setHoraSalidaSig(item.hora_salida_siguiente ?? ''); }, [item.hora_salida_siguiente]);
+
+  return (
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', fontSize: 9, alignItems: 'center', paddingLeft: 18 }}>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 2 }} title="Cuánto tarda hacer esta parada (ej. retirar un cobro = 15 min) - se suma al horario de llegada">
+        Dura (min)
+        <input
+          type="number" min="0" step="1" className="pp-input" style={{ width: 44, fontSize: 9, padding: '0 3px' }}
+          value={duracion}
+          onChange={(e) => setDuracion(e.target.value)}
+          onBlur={() => onGuardar({ duracion_minutos: duracion === '' ? null : Number(duracion) })}
+        />
+      </label>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 2 }} title="Solo para descanso/hospedaje: la ruta retoma desde este horario AL DÍA SIGUIENTE de llegar acá">
+        Sale día sig.
+        <input
+          type="time" className="pp-input" style={{ fontSize: 9, padding: '0 3px' }}
+          value={horaSalidaSig}
+          onChange={(e) => setHoraSalidaSig(e.target.value)}
+          onBlur={() => onGuardar({ hora_salida_siguiente: horaSalidaSig || null })}
+        />
+      </label>
+    </div>
+  );
+}
+
+// Formato "HH:MM" con "(+Nd)" si el acumulado de minutos cruza medianoche
+// (viajes largos, ej. 27hs totales, son reales en esta app).
+function formatearHorario(totalMin) {
+  const dias = Math.floor(totalMin / 1440);
+  const minDia = totalMin % 1440;
+  const hora = `${String(Math.floor(minDia / 60)).padStart(2, '0')}:${String(minDia % 60).padStart(2, '0')}`;
+  return dias > 0 ? `${hora} (+${dias}d)` : hora;
 }
 
 function nvsEnOrdenSugerido(nvsList, ordenParadas) {
@@ -440,7 +468,7 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
     for (const v of viajesSemana) {
       for (const p of v.paradas_extra || []) {
         if (!map.has(v.id)) map.set(v.id, []);
-        map.get(v.id).push({ punto_extra_id: p.punto_extra_id, nombre: p.nombre, maps_url: p.maps_url, orden: p.orden });
+        map.get(v.id).push({ punto_extra_id: p.punto_extra_id, nombre: p.nombre, maps_url: p.maps_url, orden: p.orden, duracion_minutos: p.duracion_minutos, hora_salida_siguiente: p.hora_salida_siguiente });
       }
     }
     for (const arr of map.values()) {
@@ -711,11 +739,22 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
     layer.clearLayers();
 
     for (const { puntosRuta, color, viaje, viajeId } of rutasPorViaje) {
-      // Un horario por tramo real (uno por parada, en el mismo orden que
-      // puntosRuta - construirRutaViaje en el backend dedupea/ordena con el
-      // mismo criterio) - null si el viaje no tiene hora_salida u ruta_real
-      // todavía, ahí simplemente no se agrega el horario al tooltip.
-      const horarios = calcularHorariosLlegada(viaje.hora_salida, viaje.ruta_real?.segmentos_horas);
+      // Reloj de llegada tramo a tramo (en el mismo orden que puntosRuta -
+      // construirRutaViaje en el backend dedupea/ordena con el mismo
+      // criterio) - null si el viaje no tiene hora_salida u ruta_real
+      // todavía, ahí simplemente no se agrega el horario al tooltip. Una
+      // parada extra puede correr el reloj: duracion_minutos lo SUMA
+      // (cualquier parada, ej. "retirar un cobro" = 15 min);
+      // hora_salida_siguiente lo hace SALTAR (reemplaza, no suma) al día
+      // siguiente - solo descanso/hospedaje, gana por sobre
+      // duracion_minutos si están las dos cargadas.
+      const segmentosHoras = viaje.ruta_real?.segmentos_horas;
+      let minutosClock = null;
+      if (viaje.hora_salida && segmentosHoras?.length) {
+        const [h, m] = viaje.hora_salida.split(':').map(Number);
+        minutosClock = h * 60 + m;
+      }
+      let segIdx = 0;
       // Todo viaje sale del depósito (De Grandis Portones) - lo agregamos
       // como primer punto de la línea, sin numerito (el numerito 1 sigue
       // siendo la primera parada real).
@@ -727,7 +766,22 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
         if (!it || it.lat == null || it.lng == null) return;
         puntos.push([it.lat, it.lng]);
         numParada += 1;
-        const horaLlegada = horarios[numParada - 1];
+
+        let horaLlegada = null;
+        if (minutosClock != null && segmentosHoras[segIdx] != null) {
+          minutosClock += segmentosHoras[segIdx] * 60;
+          const totalMin = Math.round(minutosClock);
+          horaLlegada = formatearHorario(totalMin);
+          if (esExtra && p.hora_salida_siguiente) {
+            const dia = Math.floor(totalMin / 1440);
+            const [hs, ms] = p.hora_salida_siguiente.split(':').map(Number);
+            minutosClock = (dia + 1) * 1440 + hs * 60 + ms;
+          } else if (esExtra && p.duracion_minutos) {
+            minutosClock += Number(p.duracion_minutos);
+          }
+          segIdx += 1;
+        }
+
         const icon = L.divIcon({
           className: '',
           html: `<div style="background:${esExtra ? '#f59e0b' : color};color:#fff;border-radius:999px;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4)">${esExtra ? '🏨' : numParada}</div>`,
@@ -939,6 +993,18 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
   const quitarParadaExtraRuta = async (viajeId, puntoExtraId) => {
     try {
       await desasignarLogisticaParadaExtra(viajeId, puntoExtraId);
+      load();
+    } catch (e) {
+      setErr(e?.response?.data?.error || e.message);
+    }
+  };
+
+  // Horario propio de una parada extra - duracion_minutos (cualquier
+  // parada, ej. "retirar un cobro" = 15 min) y/o hora_salida_siguiente
+  // (solo descanso/hospedaje, la ruta retoma desde ahí al día siguiente).
+  const guardarHorarioParadaRuta = async (viajeId, puntoExtraId, patch) => {
+    try {
+      await updateLogisticaParadaExtraViaje(viajeId, puntoExtraId, patch);
       load();
     } catch (e) {
       setErr(e?.response?.data?.error || e.message);
@@ -1235,6 +1301,9 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
                               </>
                             ) : null}
                           </div>
+                          {esExtra && canEdit ? (
+                            <ParadaHorarioInputs item={it} onGuardar={(patch) => guardarHorarioParadaRuta(viajeId, it.punto_extra_id, patch)} />
+                          ) : null}
                         </div>
                       );
                     })}

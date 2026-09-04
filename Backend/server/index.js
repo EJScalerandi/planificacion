@@ -189,6 +189,20 @@ const MIGRATIONS = [
         ADD COLUMN IF NOT EXISTS hora_salida TIME;
     `,
   },
+  {
+    // Pedido del usuario: una parada extra de descanso (hotel) puede tener
+    // su PROPIO horario de salida, que se aplica al DÍA SIGUIENTE de llegar
+    // ahí - la ruta "retoma" desde ese horario en vez de seguir acumulando
+    // desde la hora_salida original del viaje. Vive en la asignación
+    // viaje<->parada (no en el catálogo logistica_puntos_extra): el mismo
+    // hotel puede usarse en otro viaje con un horario de salida distinto.
+    name: 'logistica_viaje_paradas_extra_hora_salida_siguiente',
+    sql: `
+      ALTER TABLE public.logistica_viaje_paradas_extra
+        ADD COLUMN IF NOT EXISTS hora_salida_siguiente TIME,
+        ADD COLUMN IF NOT EXISTS duracion_minutos INTEGER;
+    `,
+  },
 ];
 
 async function runMigrations() {
