@@ -21,11 +21,31 @@ import {
 } from '../../src/api';
 
 const CATEGORIES = [
-  { key: 'intrinseca', label: 'Intrínseca', hint: 'Propia del portón (medidas, sistema, doble inyección).' },
-  { key: 'material', label: 'Material', hint: 'El insumo usado (símil madera vs. aluminio, cambio de rollo).' },
-  { key: 'humana', label: 'Humana', hint: 'Disponibilidad o cantidad de personal en el sector.' },
-  { key: 'rotativa', label: 'Rotativa', hint: 'Compara contra el portón anterior/siguiente en la cola.' },
-  { key: 'tiempo', label: 'Tiempo', hint: 'Calendario de trabajo del recurso.' },
+  {
+    key: 'intrinseca', label: 'Intrínseca', color: '#e0e7ff',
+    hint: 'Propia del portón (medidas, sistema, doble inyección).',
+    tooltip: 'Ajusta el tiempo según una propiedad del portón mismo (Sistema, medidas, etc.). Se configura eligiendo un campo del portón como condición y el efecto que tiene sobre el tiempo estándar.',
+  },
+  {
+    key: 'material', label: 'Material', color: '#fde68a',
+    hint: 'El insumo usado (símil madera vs. aluminio, cambio de rollo).',
+    tooltip: 'Ajusta el tiempo según el insumo o material usado (ej. símil madera tarda más que aluminio, cambio de rollo). Se configura igual que Intrínseca, comparando un campo del portón.',
+  },
+  {
+    key: 'humana', label: 'Humana', color: '#bbf7d0',
+    hint: 'Nivel de personal, máquina usada — de la sección, no del portón.',
+    tooltip: 'Ajusta el tiempo según un atributo de la sección/máquina que hace la etapa (nivel de personal, tipo de máquina) — no del portón. Primero se carga la variable en "Variables de recurso" (arriba en Motor de Reglas de Tiempo), y después se arma la regla usando ese campo.',
+  },
+  {
+    key: 'rotativa', label: 'Rotativa', color: '#fbcfe8',
+    hint: 'Compara contra el portón anterior/siguiente en la cola.',
+    tooltip: 'Compara contra el portón anterior o siguiente en la cola de producción (ej. cambio de color/material entre uno y otro). El campo de condición se arma igual que las demás categorías.',
+  },
+  {
+    key: 'tiempo', label: 'Tiempo', color: '#bae6fd',
+    hint: 'Calendario de trabajo del recurso.',
+    tooltip: 'No ajusta minutos como las demás — es el calendario de trabajo del recurso (turnos, feriados). Se carga aparte, en la sección "Calendario laboral por recurso".',
+  },
 ];
 const OPERATORS = ['=', '!=', '>', '>=', '<', '<=', 'in', 'contains'];
 const EFFECT_TYPES = [
@@ -154,7 +174,12 @@ export default function SchedulingRulesNavPage() {
   if (loading) return <div className="container">Cargando reglas…</div>;
 
   return (
-    <div className="container" style={{ maxWidth: 1200 }}>
+    // "Escapa" del `.container` (max-width 1440px) que envuelve esta página
+    // vía NonProductionLayout — pero el contenido acá es formularios en
+    // grilla (RuleRow), así que se centra con un tope generoso (1700px) en
+    // vez de ir a los bordes reales del viewport (a diferencia del Gantt).
+    <div style={{ width: '100vw', position: 'relative', left: '50%', marginLeft: '-50vw', boxSizing: 'border-box' }}>
+    <div style={{ maxWidth: 1700, margin: '0 auto', padding: '16px 20px', boxSizing: 'border-box' }}>
       <div className="header-row" style={{ alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
         <h2 className="h1">Reglas de Desvío</h2>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -214,10 +239,12 @@ export default function SchedulingRulesNavPage() {
           {CATEGORIES.map((cat) => {
             const rowsHere = (rulesByStage.get(activeStageKey) || []).filter((r) => r.category === cat.key);
             return (
-              <section key={cat.key} style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 12 }}>
+              <section key={cat.key} style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 12, background: cat.color }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
                   <div>
-                    <div style={{ fontWeight: 900, fontSize: 15 }}>{cat.label}</div>
+                    <div style={{ fontWeight: 900, fontSize: 15, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {cat.label} <HelpIcon text={cat.tooltip} />
+                    </div>
                     <div style={{ fontSize: 12, opacity: 0.7 }}>{cat.hint}</div>
                   </div>
                   <button className="btn" onClick={() => addRule({ stageKey: activeStageKey, category: cat.key })}>+ Agregar regla</button>
@@ -238,16 +265,18 @@ export default function SchedulingRulesNavPage() {
       {view === 'categories' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12, marginTop: 20 }}>
           {CATEGORIES.map((c) => (
-            <ListCard key={c.key} title={c.label} sub={c.hint} count={(rulesByCategory.get(c.key) || []).length} onClick={() => { setActiveCategory(c.key); setView('category'); }} />
+            <ListCard key={c.key} title={c.label} sub={c.hint} count={(rulesByCategory.get(c.key) || []).length} bg={c.color} tooltip={c.tooltip} onClick={() => { setActiveCategory(c.key); setView('category'); }} />
           ))}
         </div>
       )}
 
       {/* ---- Detalle de un tipo de variante: todas sus reglas, identificadas por sección ---- */}
       {view === 'category' && (
-        <section style={{ marginTop: 20, border: '1px solid var(--border)', borderRadius: 12, padding: 12 }}>
+        <section style={{ marginTop: 20, border: '1px solid var(--border)', borderRadius: 12, padding: 12, background: CATEGORIES.find((c) => c.key === activeCategory)?.color }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-            <div style={{ fontWeight: 900, fontSize: 16 }}>{categoryLabel(activeCategory)} — todas las secciones</div>
+            <div style={{ fontWeight: 900, fontSize: 16, display: 'flex', alignItems: 'center', gap: 6 }}>
+              {categoryLabel(activeCategory)} — todas las secciones <HelpIcon text={CATEGORIES.find((c) => c.key === activeCategory)?.tooltip} />
+            </div>
             <button className="btn" onClick={() => addRule({ stageKey: stages[0]?.key, category: activeCategory })}>+ Agregar regla</button>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
@@ -258,6 +287,7 @@ export default function SchedulingRulesNavPage() {
           </div>
         </section>
       )}
+    </div>
     </div>
   );
 }
@@ -277,21 +307,41 @@ function NavCard({ title, desc, onClick }) {
   );
 }
 
-function ListCard({ title, sub, count, onClick }) {
+function ListCard({ title, sub, count, bg, tooltip, onClick }) {
   return (
     <button
       type="button" onClick={onClick}
       style={{
-        textAlign: 'left', cursor: 'pointer', border: '1px solid var(--border)', background: 'var(--surface)',
+        textAlign: 'left', cursor: 'pointer', border: '1px solid var(--border)', background: bg || 'var(--surface)',
         borderRadius: 12, padding: 14, display: 'flex', flexDirection: 'column', gap: 4,
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
-        <div style={{ fontWeight: 800, fontSize: 14.5 }}>{title}</div>
+        <div style={{ fontWeight: 800, fontSize: 14.5, display: 'flex', alignItems: 'center', gap: 6 }}>
+          {title} {tooltip && <HelpIcon text={tooltip} />}
+        </div>
         <span style={{ fontSize: 11.5, opacity: 0.6, whiteSpace: 'nowrap' }}>{count} regla{count === 1 ? '' : 's'}</span>
       </div>
       <div style={{ fontSize: 12, opacity: 0.65, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub}</div>
     </button>
+  );
+}
+
+// Ícono "?" con explicación al pasar el mouse (title nativo — simple y
+// consistente con el resto de la app, ej. el badge ⏳ del Gantt).
+function HelpIcon({ text }) {
+  if (!text) return null;
+  return (
+    <span
+      title={text}
+      style={{
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        width: 15, height: 15, borderRadius: '50%', border: '1px solid currentColor',
+        fontSize: 10, fontWeight: 700, opacity: 0.55, cursor: 'help', flex: 'none',
+      }}
+    >
+      ?
+    </span>
   );
 }
 

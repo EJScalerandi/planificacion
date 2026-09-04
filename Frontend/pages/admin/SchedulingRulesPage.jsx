@@ -511,7 +511,15 @@ export default function SchedulingRulesPage() {
   if (loading) return <div className="container">Cargando motor de reglas de tiempo…</div>;
 
   return (
-    <div className="container" style={{ maxWidth: 1200 }}>
+    // "Escapa" del `.container` (max-width 1440px) que envuelve esta página
+    // vía NonProductionLayout, compartido con el resto de /admin/* — no se
+    // toca ese layout. A diferencia del Gantt (que sí quiere el viewport
+    // completo para la línea de tiempo), acá el contenido es formularios en
+    // grilla: un ancho infinito los deja demasiado espaciados/desalineados,
+    // así que se centra con un tope generoso (1700px) en vez de ir a los
+    // bordes reales.
+    <div style={{ width: '100vw', position: 'relative', left: '50%', marginLeft: '-50vw', boxSizing: 'border-box' }}>
+    <div style={{ maxWidth: 1700, margin: '0 auto', padding: '16px 20px', boxSizing: 'border-box' }}>
       <div className="header-row" style={{ alignItems: 'center' }}>
         <h2 className="h1">Motor de Reglas de Tiempo (Beta)</h2>
 
@@ -1055,6 +1063,7 @@ export default function SchedulingRulesPage() {
           </details>
         )}
       </section>
+    </div>
     </div>
   );
 }
