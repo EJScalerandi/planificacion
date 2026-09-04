@@ -193,6 +193,8 @@ export default function SchedulingRulesNavPage() {
 
       {err && <div style={{ color: 'crimson', fontWeight: 700, marginTop: 10 }}>{err}</div>}
 
+      <HelpSection />
+
       {/* ---- Breadcrumb ---- */}
       {view !== 'home' && (
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, marginTop: 14, opacity: 0.8 }}>
@@ -342,6 +344,81 @@ function HelpIcon({ text }) {
     >
       ?
     </span>
+  );
+}
+
+// Ejemplos reales (ya cargados/probados en la base) de cómo configurar cada
+// tipo de variante — plegado a propósito, para no ensuciar la pantalla a
+// quien ya lo sabe, pero siempre a mano sin tener que preguntar.
+function HelpSection() {
+  const example = (label, value) => (
+    <div style={{ display: 'flex', gap: 6, fontSize: 12.5 }}>
+      <span style={{ opacity: 0.6, minWidth: 110, flex: 'none' }}>{label}:</span>
+      <code style={{ fontSize: 12 }}>{value}</code>
+    </div>
+  );
+
+  return (
+    <details style={{ marginTop: 14, border: '1px solid var(--border)', borderRadius: 12, background: 'var(--surface)' }}>
+      <summary style={{ cursor: 'pointer', padding: 12, fontWeight: 800, fontSize: 14 }}>
+        ❓ Ayuda: cómo configurar cada tipo de variante (con ejemplos reales)
+      </summary>
+      <div style={{ padding: '0 14px 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ fontSize: 12.5, opacity: 0.75 }}>
+          Todas las reglas se combinan en dos pasos: primero se suman TODAS las <b>independientes</b> que
+          matcheen, cada una contra el estándar puro (el orden entre ellas no importa); ese resultado es el
+          punto de partida para aplicar, una por una en su <code>orden</code>, las de <b>cascada</b> — cada
+          una sobre el resultado que dejó la anterior (por eso ahí sí importa el orden, sobre todo con %).
+        </div>
+
+        <div style={{ borderLeft: `4px solid ${CATEGORIES[0].color}`, paddingLeft: 12 }}>
+          <b>Intrínseca</b> — algo del portón mismo (Sistema, medidas). Ejemplo ya cargado, Pintura Sistemas:
+          {example('Combinación', 'Independiente')}
+          {example('Campo', 'Sistema')}
+          {example('Operador / Valor', 'in / ACERO SIMIL ALUMINIO DOBLE INY, COPLANAR ACERO SIMIL ALUMINIO DOBLE INY, CORREDIZO SIMIL ALUMINIO DOBLE')}
+          {example('Efecto', 'Minutos fijos / 20')}
+          <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>"Si el Sistema es uno de los doble inyección, sumale 20 min fijos."</div>
+        </div>
+
+        <div style={{ borderLeft: `4px solid ${CATEGORIES[1].color}`, paddingLeft: 12 }}>
+          <b>Material</b> — el insumo usado. Ejemplo ya cargado, Corte piernas:
+          {example('Combinación', 'Independiente')}
+          {example('Campo', 'Sistema')}
+          {example('Operador / Valor', 'contains / MADERA')}
+          {example('Efecto', '% del punto de partida / 15')}
+          <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>"Si el Sistema contiene MADERA, el corte tarda 15% más."</div>
+        </div>
+
+        <div style={{ borderLeft: `4px solid ${CATEGORIES[2].color}`, paddingLeft: 12 }}>
+          <b>Humana</b> — de la sección/máquina, NO del portón. Se configura en dos pasos:
+          <div style={{ fontSize: 12.5, marginTop: 4 }}>
+            1) En "Variables de recurso" (Motor de Reglas de Tiempo): recurso <code>plegadora</code>, key{' '}
+            <code>nivel_personal</code>, valor <code>junior</code>.
+          </div>
+          <div style={{ fontSize: 12.5, marginTop: 2 }}>2) Acá, en Plegado piernas:</div>
+          {example('Campo', 'nivel_personal (grupo "Variable del recurso")')}
+          {example('Operador / Valor', '= / junior')}
+          {example('Efecto', '% del punto de partida / 30')}
+          <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>
+            "Si el recurso mapeado a esta etapa tiene nivel_personal=junior, sumale 30%." Cambiando el valor
+            en Variables de recurso (sin tocar la regla) deja de aplicar.
+          </div>
+        </div>
+
+        <div style={{ borderLeft: `4px solid ${CATEGORIES[3].color}`, paddingLeft: 12 }}>
+          <b>Rotativa</b> — todavía no se puede configurar de verdad. La idea original era comparar contra
+          el portón anterior/siguiente en la cola (ej. cambio de rollo de material o de color entre uno y
+          otro), pero hoy ningún campo guarda esa comparación — ninguna regla Rotativa va a matchear todavía.
+          Queda pendiente de una pieza de backend que calcule el orden de la cola.
+        </div>
+
+        <div style={{ borderLeft: `4px solid ${CATEGORIES[4].color}`, paddingLeft: 12 }}>
+          <b>Tiempo</b> — no se arma acá con campo/valor: es el calendario de turnos/feriados del recurso.
+          Se carga en "Calendario laboral por recurso" (Motor de Reglas de Tiempo). Dejarla vacía en esta
+          pantalla es lo esperado.
+        </div>
+      </div>
+    </details>
   );
 }
 
