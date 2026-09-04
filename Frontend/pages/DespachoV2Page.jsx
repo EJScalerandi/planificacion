@@ -12,6 +12,7 @@ import {
   fetchDespachoV2QcUsers, despachoV2Login, fetchDespachoV2Viajes, marcarSalidaDespachoV2,
   fetchParadasDespachoV2, fetchNvDespachoV2, fetchNvAdjuntosDespachoV2, crearSolicitudStDespachoV2,
   fetchRemitosPorNv, getDespachoV2Token, getDespachoV2User, setDespachoV2Session, clearDespachoV2Session,
+  API_BASE_URL,
 } from '../src/api';
 
 const BRAND = '#0a6a33';
@@ -266,7 +267,7 @@ function NvDetailSheet({ nv, viaje, parada, onClose }) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
                 {remitos.map((r, i) => (
                   <a
-                    key={i} href={`/remitos-proxy/${r.tipo}/${r.sucursal}/${r.numero}/pdf`}
+                    key={i} href={`${API_BASE_URL}/remitos-proxy/${r.tipo}/${r.sucursal}/${r.numero}/pdf`}
                     target="_blank" rel="noopener noreferrer" style={s.botonBloque}
                   >
                     {r.tipo} {r.sucursal}-{r.numero} · {fechaLegible(r.fecha)}

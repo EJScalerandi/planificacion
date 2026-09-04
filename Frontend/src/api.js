@@ -6,6 +6,12 @@ const API_BASE =
   import.meta.env.VITE_API_BASE ||
   'http://localhost:4000';
 
+// Exportado para armar a mano un link ABSOLUTO al backend (ej. el PDF del
+// remito en despacho_v2: un <a href="/remitos-proxy/...">  relativo apunta
+// al propio dominio del FRONTEND -Vercel-, no al backend -Render-, y ahí
+// no hay ninguna ruta así, cae al router de React y termina en el login).
+export const API_BASE_URL = String(API_BASE).replace(/\/+$/, '');
+
 const api = axios.create({
   baseURL: String(API_BASE).replace(/\/+$/, ''), // sin trailing slash
   timeout: 15000,
