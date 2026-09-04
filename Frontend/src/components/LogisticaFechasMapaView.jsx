@@ -123,6 +123,25 @@ function agruparPorSemana(nvsSeleccionados, itemsByNv) {
   return { semana, incluidos, excluidos };
 }
 
+// Horario estimado de llegada a cada tramo, acumulando desde hora_salida -
+// mismo cálculo que LogisticaViajeSemanaModal.jsx / PortonesMapaModal.jsx
+// (segmentos_horas viene de ruta_real, duración real por tramo entre
+// paradas consecutivas, calculada con OpenRouteService). +Nd si el
+// acumulado cruza medianoche (hay viajes reales de más de 24hs).
+function calcularHorariosLlegada(horaSalida, segmentosHoras) {
+  if (!horaSalida || !segmentosHoras?.length) return [];
+  const [h, m] = horaSalida.split(':').map(Number);
+  let minutosAcumulados = h * 60 + m;
+  return segmentosHoras.map((horas) => {
+    minutosAcumulados += horas * 60;
+    const totalMin = Math.round(minutosAcumulados);
+    const dias = Math.floor(totalMin / 1440);
+    const minDia = totalMin % 1440;
+    const hora = `${String(Math.floor(minDia / 60)).padStart(2, '0')}:${String(minDia % 60).padStart(2, '0')}`;
+    return dias > 0 ? `${hora} (+${dias}d)` : hora;
+  });
+}
+
 function nvsEnOrdenSugerido(nvsList, ordenParadas) {
   if (!ordenParadas?.length) return nvsList;
   const ordenPorNv = new Map(ordenParadas.map((p) => [p.nv, p.orden]));
@@ -692,6 +711,11 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
     layer.clearLayers();
 
     for (const { puntosRuta, color, viaje, viajeId } of rutasPorViaje) {
+      // Un horario por tramo real (uno por parada, en el mismo orden que
+      // puntosRuta - construirRutaViaje en el backend dedupea/ordena con el
+      // mismo criterio) - null si el viaje no tiene hora_salida u ruta_real
+      // todavía, ahí simplemente no se agrega el horario al tooltip.
+      const horarios = calcularHorariosLlegada(viaje.hora_salida, viaje.ruta_real?.segmentos_horas);
       // Todo viaje sale del depósito (De Grandis Portones) - lo agregamos
       // como primer punto de la línea, sin numerito (el numerito 1 sigue
       // siendo la primera parada real).
@@ -703,6 +727,7 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
         if (!it || it.lat == null || it.lng == null) return;
         puntos.push([it.lat, it.lng]);
         numParada += 1;
+        const horaLlegada = horarios[numParada - 1];
         const icon = L.divIcon({
           className: '',
           html: `<div style="background:${esExtra ? '#f59e0b' : color};color:#fff;border-radius:999px;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4)">${esExtra ? '🏨' : numParada}</div>`,
@@ -710,7 +735,7 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
         });
         const m = L.marker([it.lat, it.lng], { icon, zIndexOffset: 900 });
         const etiqueta = esExtra ? p.nombre : `parada ${numParada}`;
-        m.bindTooltip(`${viaje.nombre?.trim() || `Viaje #${viajeId}`} · ${etiqueta}`, { direction: 'top' });
+        m.bindTooltip(`${viaje.nombre?.trim() || `Viaje #${viajeId}`} · ${etiqueta}${horaLlegada ? ` · 🕒 ${horaLlegada}` : ''}`, { direction: 'top' });
         m.addTo(layer);
       });
       // Ruta real por calle (OpenRouteService, perfil camión), si ya se
