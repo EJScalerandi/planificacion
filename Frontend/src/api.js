@@ -228,6 +228,21 @@ export async function saveSchedulingCalendarExceptions(resourceKey, exceptions) 
   return data;
 }
 
+// Variables de recurso (Fase 3b): atributos de sección/máquina (no del
+// portón) que se suman al contexto de evaluación de las etapas mapeadas a
+// ese resource_key. resourceKey null/undefined = todas (todas las secciones).
+export async function getSchedulingResourceVariables(resourceKey) {
+  const { data } = await api.get('/admin/scheduling/resource-variables', {
+    params: resourceKey ? { resource_key: resourceKey } : {},
+  });
+  return data;
+}
+
+export async function saveSchedulingResourceVariables(resourceKey, variables) {
+  const { data } = await api.put('/admin/scheduling/resource-variables', { variables }, { params: { resource_key: resourceKey } });
+  return data;
+}
+
 /* ============ QC (CALIDAD) ============ */
 export async function qcGetMotives({ line, kind, stage }) {
   const { data } = await api.get('/qc/motives', {

@@ -11,6 +11,8 @@ const { pool } = require('../../db');
 const { computeEffectiveMinutes } = require('../../lib/scheduling/rulesEngine');
 const { listPortonSchedulingCtxs, listPortonesPendingForRegression, getPortonSchedulingCtx } = require('../../lib/scheduling/portonCtx');
 const { computePortonRegression, computeFleetRegression, FLOWS } = require('../../lib/scheduling/regressionEngine');
+const { fetchStageResourceMap } = require('../../lib/scheduling/calendar');
+const { fetchResourceVariables } = require('../../lib/scheduling/resourceVariables');
 
 const router = express.Router();
 
@@ -340,6 +342,65 @@ router.put('/scheduling/stage-resource', async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// Fase 3b: variables de recurso — atributos más o menos permanentes de una
+// sección/máquina (ej. plegadora.nivel_personal="junior"), no del portón ni
+// de un día puntual (para eso ya existe /scheduling/calendar/exceptions).
+// Se mezclan al ctx de evaluación de cada etapa según a qué resource_key
+// esté mapeada — ver computeBackwardPass en regressionEngine.js. resource_key
+// no tiene FK a propósito (puede ser uno "implícito" = stage_key, igual que
+// el calendario), así que no hace falta darlo de alta en el catálogo antes.
+// ---------------------------------------------------------------------------
+
+router.get('/scheduling/resource-variables', async (req, res) => {
+  try {
+    const resourceKey = req.query.resource_key != null ? String(req.query.resource_key).trim() : null;
+    const { rows } = await pool.query(
+      resourceKey
+        ? `select resource_key, key, value, label, notes, updated_at from public.scheduling_resource_variable where resource_key = $1 order by key asc;`
+        : `select resource_key, key, value, label, notes, updated_at from public.scheduling_resource_variable order by resource_key asc, key asc;`,
+      resourceKey ? [resourceKey] : []
+    );
+    return res.json({ ok: true, variables: rows });
+  } catch (err) {
+    console.error('get scheduling resource-variables error:', err);
+    return res.status(500).json({ error: 'Error leyendo variables de recurso', detail: err.message });
+  }
+});
+
+router.put('/scheduling/resource-variables', async (req, res) => {
+  const resourceKey = String(req.query.resource_key || '').trim();
+  if (!resourceKey) return res.status(400).json({ error: 'resource_key es requerido' });
+
+  const variables = Array.isArray(req.body?.variables) ? req.body.variables : [];
+  for (const v of variables) {
+    if (!v?.key) return res.status(400).json({ error: 'Cada variable necesita key' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+    await client.query(`delete from public.scheduling_resource_variable where resource_key = $1;`, [resourceKey]);
+
+    for (const v of variables) {
+      await client.query(
+        `insert into public.scheduling_resource_variable (resource_key, key, value, label, notes, updated_at)
+         values ($1, $2, $3::jsonb, $4, $5, now());`,
+        [resourceKey, String(v.key).trim(), JSON.stringify(v.value ?? null), v.label || null, v.notes || null]
+      );
+    }
+
+    await client.query('commit');
+    return res.json({ ok: true, count: variables.length });
+  } catch (err) {
+    await client.query('rollback');
+    console.error('save scheduling resource-variables error:', err);
+    return res.status(500).json({ error: 'Error guardando variables de recurso', detail: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Preview: tiempo_efectivo calculado vs. tiempo real ya registrado
 // ---------------------------------------------------------------------------
 
@@ -382,14 +443,23 @@ router.get('/scheduling/preview', async (req, res) => {
     }
 
     const ctxs = await listPortonSchedulingCtxs(pool, { limit: req.query.limit });
+    // Variables de recurso (Fase 3b): mismo criterio que computeBackwardPass
+    // — se mezclan al ctx solo para evaluar las reglas de la etapa mapeada a
+    // ese resource_key, no a todo el portón.
+    const [stageResourceMap, resourceVariables] = await Promise.all([
+      fetchStageResourceMap(line, pool),
+      fetchResourceVariables(pool),
+    ]);
 
     const portones = ctxs.map((ctx) => {
       const stages = [];
       for (const [stageKey, standardMinutes] of standardByStage.entries()) {
+        const resourceKey = stageResourceMap.get(stageKey) || stageKey;
+        const resourceVars = resourceVariables.get(resourceKey);
         const result = computeEffectiveMinutes({
           standardMinutes,
           rules: rulesByStage.get(stageKey) || [],
-          ctx,
+          ctx: resourceVars ? { ...ctx, ...resourceVars } : ctx,
         });
 
         const inicio = ctx[`${stageKey}_inicio`] ?? null;

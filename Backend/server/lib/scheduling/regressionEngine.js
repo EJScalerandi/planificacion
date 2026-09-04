@@ -22,6 +22,7 @@ const { evalConditionJson } = require('../workflow');
 const { computeEffectiveMinutes } = require('./rulesEngine');
 const { rollBackForStage, arDateTimeToInstant, loadResourceCalendars, fetchStageResourceMap } = require('./calendar');
 const { createCapacityLedger, commitConsumption, summarizeLedger } = require('./capacityLedger');
+const { fetchResourceVariables } = require('./resourceVariables');
 
 const MAX_SUBGRAPH_NODES = 500;
 
@@ -239,7 +240,7 @@ function deadlineForFlow(ctx, flow) {
 // la vez: da el orden de cálculo correcto (sucesores resueltos antes que
 // predecesores) y sirve de guard contra ciclos — si al final quedan nodos
 // sin procesar, hay un ciclo real en las condiciones cargadas.
-async function computeBackwardPass({ line, subgraph, deadline, standardByStage, rulesByStage, ctx, db = pool, calendarCache, capacityLedger, calendarWindow, stageResourceMap }) {
+async function computeBackwardPass({ line, subgraph, deadline, standardByStage, rulesByStage, ctx, db = pool, calendarCache, capacityLedger, calendarWindow, stageResourceMap, resourceVariables }) {
   const { nodes, edgesByTo, edgesByFrom } = subgraph;
 
   const outDegreeRemaining = new Map();
@@ -285,7 +286,15 @@ async function computeBackwardPass({ line, subgraph, deadline, standardByStage, 
 
     const standardMinutes = standardByStage.get(stageKey) ?? 0;
     const rules = rulesByStage.get(stageKey) || [];
-    const calc = computeEffectiveMinutes({ standardMinutes, rules, ctx });
+    // Variables de recurso (Fase 3b): propias de la MÁQUINA/sección a la que
+    // esta etapa está mapeada, no del portón — se mezclan al ctx solo para
+    // evaluar las reglas de ESTA etapa (una etapa mapeada a otro recurso no
+    // las ve). resourceKey se resuelve acá temprano a propósito, ya que
+    // rollBackForStage más abajo lo vuelve a resolver por su cuenta.
+    const resourceKeyForRules = stageResourceMap?.get(stageKey) || stageKey;
+    const resourceVars = resourceVariables?.get(resourceKeyForRules);
+    const stageCtx = resourceVars ? { ...ctx, ...resourceVars } : ctx;
+    const calc = computeEffectiveMinutes({ standardMinutes, rules, ctx: stageCtx });
     const minutes = Math.max(0, calc.effective_minutes);
 
     const rollback = await rollBackForStage({ line, stageKey, deadline: latestFinish, minutes, db, cache, capacityLedger, calendarWindow, stageResourceMap });
@@ -354,7 +363,7 @@ async function computeBackwardPass({ line, subgraph, deadline, standardByStage, 
 async function computePortonRegression({
   line, ctx, standardByStage, rulesByStage, db = pool, capacityLedger,
   rootKey: providedRootKey, requirementRows, calendarCache, calendarWindow,
-  edgeRows, stageResourceMap, flow = FLOWS.PRESUPUESTO,
+  edgeRows, stageResourceMap, resourceVariables, flow = FLOWS.PRESUPUESTO,
 }) {
   const deadline = deadlineForFlow(ctx, flow);
   if (!deadline) {
@@ -364,8 +373,9 @@ async function computePortonRegression({
 
   const rootKey = providedRootKey || (await resolveRootStage(line, db));
   const resolvedStageResourceMap = stageResourceMap || (await fetchStageResourceMap(line, db));
+  const resolvedResourceVariables = resourceVariables || (await fetchResourceVariables(db));
   const subgraph = await resolvePortonSubgraph(line, rootKey, ctx, db, edgeRows);
-  const pass = await computeBackwardPass({ line, subgraph, deadline, standardByStage, rulesByStage, ctx, db, capacityLedger, calendarCache, calendarWindow, stageResourceMap: resolvedStageResourceMap });
+  const pass = await computeBackwardPass({ line, subgraph, deadline, standardByStage, rulesByStage, ctx, db, capacityLedger, calendarCache, calendarWindow, stageResourceMap: resolvedStageResourceMap, resourceVariables: resolvedResourceVariables });
   const consistencyWarnings = await checkRequirementConsistency(line, subgraph, db, requirementRows).catch(() => []);
 
   return {
@@ -412,14 +422,15 @@ async function computeFleetRegression({ line, ctxs, standardByStage, rulesByStag
   const calendarCache = new Map();
   const portones = [];
 
-  // Las 4 líneas siguientes son el grueso del ahorro de esta función: sin
-  // ellas, cada portón del lote repetiría estas mismas 4 consultas (datos
-  // de la LÍNEA, no del portón) — con esto, se piden una sola vez para todo
-  // el lote entero, sin importar cuántos portones sean.
+  // Las 5 líneas siguientes son el grueso del ahorro de esta función: sin
+  // ellas, cada portón del lote repetiría estas mismas 5 consultas (datos
+  // de la LÍNEA/globales, no del portón) — con esto, se piden una sola vez
+  // para todo el lote entero, sin importar cuántos portones sean.
   const rootKey = await resolveRootStage(line, db);
   const requirementRows = await fetchWorkflowRequirementRows(line, db);
   const edgeRows = await fetchWorkflowEdgeRows(line, db);
   const stageResourceMap = await fetchStageResourceMap(line, db);
+  const resourceVariables = await fetchResourceVariables(db);
 
   const sortedCtxs = [...(ctxs || [])].sort((a, b) => {
     const da = deadlineForFlow(a, flow);
@@ -444,7 +455,7 @@ async function computeFleetRegression({ line, ctxs, standardByStage, rulesByStag
       const result = await computePortonRegression({
         line, ctx, standardByStage, rulesByStage, db, capacityLedger,
         rootKey, requirementRows, calendarCache, calendarWindow,
-        edgeRows, stageResourceMap, flow,
+        edgeRows, stageResourceMap, resourceVariables, flow,
       });
       portones.push({ id: ctx.id, nv: ctx.nv, sistema: ctx.sistema, ...result });
     } catch (err) {

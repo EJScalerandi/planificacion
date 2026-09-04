@@ -25,6 +25,8 @@ import {
   saveSchedulingCalendar,
   getSchedulingCalendarExceptions,
   saveSchedulingCalendarExceptions,
+  getSchedulingResourceVariables,
+  saveSchedulingResourceVariables,
 } from '../../src/api';
 import { Link, useNavigate } from 'react-router-dom';
 
@@ -126,6 +128,12 @@ export default function SchedulingRulesPage() {
   const [savingStageResource, setSavingStageResource] = useState(false);
   const [resourceErr, setResourceErr] = useState('');
 
+  const [variablesResourceKey, setVariablesResourceKey] = useState('');
+  const [resourceVariables, setResourceVariables] = useState([]);
+  const [variablesLoading, setVariablesLoading] = useState(false);
+  const [savingVariables, setSavingVariables] = useState(false);
+  const [variablesErr, setVariablesErr] = useState('');
+
   const [calendarResourceKey, setCalendarResourceKey] = useState('');
   const [calendarShifts, setCalendarShifts] = useState([]);
   const [calendarLoading, setCalendarLoading] = useState(false);
@@ -196,12 +204,73 @@ export default function SchedulingRulesPage() {
     setPreview(null);
   }, [line]);
 
-  // Auto-selecciona el primer recurso del catálogo apenas hay alguno, así la
-  // sub-sección de calendario no arranca vacía si ya existen recursos (ej.
-  // después de cargar Cortadora/Plegadora/Pintura en la sección de arriba).
+  // Auto-selecciona el primer recurso del catálogo apenas hay alguno, así las
+  // sub-secciones de variables/calendario no arrancan vacías si ya existen
+  // recursos (ej. después de cargar Cortadora/Plegadora/Pintura arriba).
   useEffect(() => {
+    if (!variablesResourceKey && resources.length) setVariablesResourceKey(resources[0].resource_key);
     if (!calendarResourceKey && resources.length) setCalendarResourceKey(resources[0].resource_key);
   }, [resources]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const loadVariablesForResource = async (resourceKey) => {
+    if (!resourceKey) { setResourceVariables([]); return; }
+    setVariablesErr('');
+    setVariablesLoading(true);
+    try {
+      const data = await getSchedulingResourceVariables(resourceKey);
+      setResourceVariables((data.variables || []).map((v) => ({
+        _localId: `db-${v.resource_key}-${v.key}`,
+        key: v.key,
+        // El valor viaja como jsonb — si es un string JSON ("junior") lo
+        // desenvuelve para el input de texto; cualquier otro tipo (número,
+        // bool, objeto) se muestra tal cual serializado.
+        value: typeof v.value === 'string' ? v.value : JSON.stringify(v.value),
+        label: v.label || '',
+        notes: v.notes || '',
+      })));
+    } catch (e) {
+      setVariablesErr(e?.response?.data?.error || e.message);
+    } finally {
+      setVariablesLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadVariablesForResource(variablesResourceKey);
+  }, [variablesResourceKey]);
+
+  const addVariable = () => setResourceVariables((prev) => [...prev, { _localId: `new-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, key: '', value: '', label: '', notes: '' }]);
+  const removeVariable = (localId) => setResourceVariables((prev) => prev.filter((v) => v._localId !== localId));
+  const updateVariable = (localId, patch) => setResourceVariables((prev) => prev.map((v) => (v._localId === localId ? { ...v, ...patch } : v)));
+
+  const onSaveVariables = async () => {
+    if (!variablesResourceKey) return;
+    setVariablesErr('');
+    setSavingVariables(true);
+    try {
+      for (const v of resourceVariables) {
+        if (!v.key.trim()) throw new Error('Cada variable necesita un nombre (key).');
+      }
+      await saveSchedulingResourceVariables(
+        variablesResourceKey,
+        resourceVariables.map((v) => {
+          // Intenta interpretar el valor tipado (número/true/false); si no,
+          // lo guarda como string — mismo criterio simple que ya usan las
+          // reglas para su campo "value".
+          let value = v.value;
+          if (value !== '' && !Number.isNaN(Number(value))) value = Number(value);
+          else if (value === 'true') value = true;
+          else if (value === 'false') value = false;
+          return { key: v.key.trim(), value, label: v.label || null, notes: v.notes || null };
+        })
+      );
+      alert('Variables de recurso guardadas.');
+    } catch (e) {
+      setVariablesErr(e?.response?.data?.error || e.message);
+    } finally {
+      setSavingVariables(false);
+    }
+  };
 
   const loadCalendarForResource = async (resourceKey) => {
     if (!resourceKey) { setCalendarShifts([]); setCalendarExceptions([]); return; }
@@ -646,6 +715,55 @@ export default function SchedulingRulesPage() {
             </tbody>
           </table>
         </div>
+      </section>
+
+      {/* ===== Variables de recurso (Fase 3b) ===== */}
+      <section style={{ marginTop: 20, border: '1px solid var(--border)', borderRadius: 12, padding: 12 }}>
+        <div style={{ fontWeight: 900, fontSize: 16 }}>Variables de recurso</div>
+        <div style={{ fontSize: 13, opacity: 0.75, marginTop: 4 }}>
+          Atributos más o menos permanentes de una sección/máquina (ej. "nivel de personal", "máquina") —
+          no del portón, y no de un día puntual (para eso está el Calendario, más abajo). Se suman al
+          contexto de las etapas mapeadas a este recurso, y quedan disponibles como "campo" al armar una
+          regla en <Link to="/admin/scheduling/reglas">Reglas de Desvío</Link>.
+        </div>
+        {variablesErr && <div style={{ color: 'crimson', marginTop: 8 }}>{variablesErr}</div>}
+
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 14, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 13, fontWeight: 700 }}>Recurso:</span>
+          <select className="btn" value={variablesResourceKey} onChange={(e) => setVariablesResourceKey(e.target.value)}>
+            <option value="">— elegir —</option>
+            {resources.map((r) => (
+              <option key={r.resource_key} value={r.resource_key}>{r.label || r.resource_key}</option>
+            ))}
+          </select>
+          {!resources.length && <span style={{ fontSize: 12, opacity: 0.7 }}>Cargá un recurso en "Recursos físicos compartidos" arriba primero.</span>}
+          {variablesLoading && <span style={{ fontSize: 12, opacity: 0.7 }}>Cargando…</span>}
+        </div>
+
+        {!!variablesResourceKey && (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
+              <button className="btn" onClick={addVariable}>+ Agregar variable</button>
+              <button className="btn btn--brand" disabled={savingVariables} onClick={onSaveVariables}>
+                {savingVariables ? 'Guardando…' : 'Guardar variables'}
+              </button>
+            </div>
+            {!resourceVariables.length && (
+              <div style={{ fontSize: 13, opacity: 0.7, marginTop: 8 }}>Sin variables cargadas para {variablesResourceKey} todavía.</div>
+            )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
+              {resourceVariables.map((v) => (
+                <div key={v._localId} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.2fr 1.2fr auto', gap: 8, alignItems: 'center' }}>
+                  <input className="btn" value={v.key} onChange={(e) => updateVariable(v._localId, { key: e.target.value })} placeholder="key (ej. nivel_personal)" />
+                  <input className="btn" value={v.value} onChange={(e) => updateVariable(v._localId, { value: e.target.value })} placeholder="valor (ej. junior)" />
+                  <input className="btn" value={v.label} onChange={(e) => updateVariable(v._localId, { label: e.target.value })} placeholder="Etiqueta (ej. Nivel de personal)" />
+                  <input className="btn" value={v.notes} onChange={(e) => updateVariable(v._localId, { notes: e.target.value })} placeholder="Notas" />
+                  <button className="btn" type="button" onClick={() => removeVariable(v._localId)}>Quitar</button>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </section>
 
       {/* ===== Calendario laboral por recurso (Fase 2a, sin UI hasta ahora) ===== */}

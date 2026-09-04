@@ -17,6 +17,7 @@ import {
   clearAdminToken, getAdminToken,
   getWorkflowConfig, getWorkflowConditionFields,
   getSchedulingRules, saveSchedulingRules,
+  getSchedulingResourceVariables,
 } from '../../src/api';
 
 const CATEGORIES = [
@@ -61,6 +62,7 @@ export default function SchedulingRulesNavPage() {
   const [saving, setSaving] = useState(false);
   const [stages, setStages] = useState([]);
   const [conditionFields, setConditionFields] = useState([]);
+  const [resourceVariableFields, setResourceVariableFields] = useState([]); // [{key, resources: [resource_key,...]}]
   const [rules, setRules] = useState([]);
 
   // view: 'home' | 'sections' | 'section' | 'categories' | 'category'
@@ -72,14 +74,25 @@ export default function SchedulingRulesNavPage() {
     setErr('');
     setLoading(true);
     try {
-      const [wf, fields, rl] = await Promise.all([
+      const [wf, fields, rl, resVars] = await Promise.all([
         getWorkflowConfig(line),
         getWorkflowConditionFields(line).catch(() => ({ fields: [] })),
         getSchedulingRules(line),
+        getSchedulingResourceVariables().catch(() => ({ variables: [] })),
       ]);
       setStages((wf.stages || []).filter((s) => s.enabled !== false).map((s) => ({ key: s.status_col || s.key, label: s.label || s.key })));
       setConditionFields(Array.isArray(fields?.fields) ? fields.fields : []);
       setRules((rl.rules || []).map((r) => ({ ...r, _localId: `db-${r.id}` })));
+
+      // Une variables con el mismo key de distintos recursos en una sola
+      // opción del selector (ej. "nivel_personal" puede existir en varios
+      // recursos) — solo importa que el key exista en ALGÚN recurso.
+      const byKey = new Map();
+      for (const v of resVars.variables || []) {
+        if (!byKey.has(v.key)) byKey.set(v.key, new Set());
+        byKey.get(v.key).add(v.resource_key);
+      }
+      setResourceVariableFields([...byKey.entries()].map(([key, resources]) => ({ key, resources: [...resources] })).sort((a, b) => a.key.localeCompare(b.key)));
     } catch (e) {
       setErr(e?.response?.data?.error || e.message);
     } finally {
@@ -212,7 +225,7 @@ export default function SchedulingRulesNavPage() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
                   {!rowsHere.length && <div style={{ fontSize: 13, opacity: 0.6 }}>Sin reglas {cat.label.toLowerCase()} para esta sección.</div>}
                   {rowsHere.map((r) => (
-                    <RuleRow key={r._localId} rule={r} stages={stages} conditionFields={conditionFields} onUpdate={(patch) => updateRule(r._localId, patch)} onRemove={() => removeRule(r._localId)} lockCategory lockStage />
+                    <RuleRow key={r._localId} rule={r} stages={stages} conditionFields={conditionFields} resourceVariableFields={resourceVariableFields} onUpdate={(patch) => updateRule(r._localId, patch)} onRemove={() => removeRule(r._localId)} lockCategory lockStage />
                   ))}
                 </div>
               </section>
@@ -240,7 +253,7 @@ export default function SchedulingRulesNavPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
             {!(rulesByCategory.get(activeCategory) || []).length && <div style={{ fontSize: 13, opacity: 0.7 }}>Sin reglas de este tipo todavía.</div>}
             {(rulesByCategory.get(activeCategory) || []).map((r) => (
-              <RuleRow key={r._localId} rule={r} stages={stages} conditionFields={conditionFields} onUpdate={(patch) => updateRule(r._localId, patch)} onRemove={() => removeRule(r._localId)} lockCategory />
+              <RuleRow key={r._localId} rule={r} stages={stages} conditionFields={conditionFields} resourceVariableFields={resourceVariableFields} onUpdate={(patch) => updateRule(r._localId, patch)} onRemove={() => removeRule(r._localId)} lockCategory />
             ))}
           </div>
         </section>
@@ -285,7 +298,7 @@ function ListCard({ title, sub, count, onClick }) {
 // Fila de edición de una regla — misma forma de siempre (SchedulingRulesPage),
 // con lockStage/lockCategory para ocultar el selector correspondiente cuando
 // el contexto de navegación ya lo fija (sección o categoría activa).
-function RuleRow({ rule: r, stages, conditionFields, onUpdate, onRemove, lockStage, lockCategory }) {
+function RuleRow({ rule: r, stages, conditionFields, resourceVariableFields, onUpdate, onRemove, lockStage, lockCategory }) {
   return (
     <div style={{ border: '1px dashed #d1d5db', borderRadius: 12, padding: 10 }}>
       <div style={{ display: 'grid', gridTemplateColumns: `${lockStage ? '' : '1fr '}${lockCategory ? '' : '1fr '}1fr 1fr auto`, gap: 8, alignItems: 'center' }}>
@@ -321,7 +334,14 @@ function RuleRow({ rule: r, stages, conditionFields, onUpdate, onRemove, lockSta
       <div style={{ display: 'grid', gridTemplateColumns: '1.3fr .7fr 1fr 1fr 1fr auto', gap: 8, alignItems: 'center', marginTop: 8 }}>
         <select className="btn" value={r.field} onChange={(e) => onUpdate({ field: e.target.value })}>
           <option value="">(campo)</option>
-          {conditionFields.map((f) => <option key={f.key} value={f.key}>{f.label} ({f.key})</option>)}
+          <optgroup label="Propiedad del portón">
+            {conditionFields.map((f) => <option key={f.key} value={f.key}>{f.label} ({f.key})</option>)}
+          </optgroup>
+          {!!resourceVariableFields?.length && (
+            <optgroup label="Variable del recurso">
+              {resourceVariableFields.map((f) => <option key={f.key} value={f.key}>{f.key} — {f.resources.join(', ')}</option>)}
+            </optgroup>
+          )}
         </select>
         <select className="btn" value={r.operator} onChange={(e) => onUpdate({ operator: e.target.value })}>
           {OPERATORS.map((op) => <option key={op} value={op}>{op}</option>)}
