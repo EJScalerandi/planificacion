@@ -426,9 +426,17 @@ function HelpSection() {
           {example('Efecto', 'Minutos fijos / 25')}
           <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>
             "Si el Sistema de este portón es distinto al del portón anterior que pasó por la Cortadora,
-            sumale 25 min fijos (costo de cambio de rollo/color)." El orden de "anterior" usado es el orden
-            de urgencia (EDD) con el que se procesa la flota — una aproximación simple, no el orden
-            cronológico final exacto de cada recurso.
+            sumale 25 min fijos (costo de cambio de rollo/color)."
+          </div>
+          <div style={{ fontSize: 12, opacity: 0.7, marginTop: 6 }}>
+            <b>Sobre el orden de "anterior":</b> el diseño original pedía una segunda pasada — calcular todo
+            una vez sin Rotativas, usar esos resultados para saber el orden real de cada recurso, y recién
+            ahí recalcular con eso. Se implementó en cambio algo más simple: usa el mismo orden de urgencia
+            (EDD) con el que ya se procesa toda la flota como si fuera el orden de cola. Es más rápido (no
+            duplica el cálculo) y en la práctica coincide con el orden real casi siempre — solo puede
+            desviarse si la capacidad compartida obliga a correr un portón menos urgente antes que uno más
+            urgente en ese recurso puntual. Si en el uso real eso pasa seguido y la precisión exacta importa,
+            se puede migrar a la versión de dos pasadas más adelante.
           </div>
         </div>
 
