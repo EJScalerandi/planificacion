@@ -30,6 +30,7 @@ const priceCategoriesRoutes = require('./routes/public/priceCategories');
 const prefabricadosRoutes = require('./routes/public/prefabricados');
 const servicioTecnicoRoutes = require('./routes/public/servicioTecnico');
 const insumosRoutes = require('./routes/public/insumos');
+const despachoV2Routes = require('./routes/public/despachoV2');
 const iaRoutes = require('./routes/external/ia');
 
 const { errorHandler } = require('./middleware/errorHandler');
@@ -117,6 +118,7 @@ app.use('/', priceCategoriesRoutes);
 app.use('/', prefabricadosRoutes);
 app.use('/', servicioTecnicoRoutes);
 app.use('/', insumosRoutes);
+app.use('/', despachoV2Routes);
 app.use('/', iaRoutes);
 
 app.use(errorHandler);

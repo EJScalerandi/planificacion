@@ -228,6 +228,16 @@ const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_logistica_adjuntos_nv ON public.logistica_adjuntos(nv);
     `,
   },
+  {
+    // /despacho_v2 (mobile, login de cuadrilla): botón "Play" para marcar la
+    // hora REAL de salida (distinto de hora_salida, que es la planificada) -
+    // pedido del usuario: "que quede asentado a qué hora se salió realmente".
+    name: 'logistica_viajes_hora_salida_real',
+    sql: `
+      ALTER TABLE public.logistica_viajes
+        ADD COLUMN IF NOT EXISTS hora_salida_real TIMESTAMPTZ;
+    `,
+  },
 ];
 
 async function runMigrations() {

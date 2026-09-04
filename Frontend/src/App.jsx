@@ -44,6 +44,7 @@ import UserAdminDashboard from './components/UserAdminDashboard';
 
 import IndexPage from '../pages/IndexPage';
 import RefabricacionPage from '../pages/RefabricacionPage';
+import DespachoV2Page from '../pages/DespachoV2Page';
 import NonProductionLayout from './components/NonProductionLayout';
 
 const color = 'var(--brand)';
@@ -762,6 +763,7 @@ export default function App() {
         <Route path="/statusIpanels" element={<StatusIpanelsPage />} />
         <Route path="/stats/portones" element={<PortonesStatsPage />} />
         <Route path="/refabricacion" element={<RefabricacionPage />} />
+        <Route path="/despacho_v2" element={<DespachoV2Page />} />
 
         <Route path="*" element={<Navigate to="/admin/login" replace />} />
       </Routes>

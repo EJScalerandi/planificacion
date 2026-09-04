@@ -208,4 +208,4 @@ async function buildMensajeViaje(viajeId) {
   return lineas.join('\n').trimEnd();
 }
 
-module.exports = { buildMensajeViaje };
+module.exports = { buildMensajeViaje, fetchViaje, fetchMiembros, fetchItems, fetchParadasExtra, fetchDatosPorNv };

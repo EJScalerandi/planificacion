@@ -52,6 +52,80 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// ====== /despacho_v2 (login de cuadrilla: nombre QC + PIN) ======
+// Instancia de axios PROPIA, separada de `api` - no debe mezclarse con el
+// token de admin (ni pisarlo ni ser pisada por él): quien entra acá nunca
+// tiene ni necesita un login de admin.
+const apiDespachoV2 = axios.create({
+  baseURL: String(API_BASE).replace(/\/+$/, ''),
+  timeout: 15000,
+});
+const LS_DESPACHO_V2_TOKEN = 'despacho_v2_token';
+const LS_DESPACHO_V2_USER = 'despacho_v2_user'; // { id, name } - para mostrar sin depender de un request
+
+export function getDespachoV2Token() {
+  try { return localStorage.getItem(LS_DESPACHO_V2_TOKEN) || ''; } catch { return ''; }
+}
+export function setDespachoV2Session(token, qcUser) {
+  try {
+    localStorage.setItem(LS_DESPACHO_V2_TOKEN, token || '');
+    localStorage.setItem(LS_DESPACHO_V2_USER, JSON.stringify(qcUser || null));
+  } catch {}
+}
+export function getDespachoV2User() {
+  try { return JSON.parse(localStorage.getItem(LS_DESPACHO_V2_USER) || 'null'); } catch { return null; }
+}
+export function clearDespachoV2Session() {
+  try {
+    localStorage.removeItem(LS_DESPACHO_V2_TOKEN);
+    localStorage.removeItem(LS_DESPACHO_V2_USER);
+  } catch {}
+}
+
+apiDespachoV2.interceptors.request.use((config) => {
+  const t = getDespachoV2Token();
+  if (t) config.headers.Authorization = `Bearer ${t}`;
+  return config;
+});
+
+export async function fetchDespachoV2QcUsers() {
+  const { data } = await apiDespachoV2.get('/despacho-v2/qc-users');
+  return data;
+}
+export async function despachoV2Login({ qc_user_id, pin }) {
+  const { data } = await apiDespachoV2.post('/despacho-v2/login', { qc_user_id, pin });
+  return data;
+}
+export async function fetchDespachoV2Viajes(rango) {
+  const { data } = await apiDespachoV2.get('/despacho-v2/viajes', { params: { rango } });
+  return data;
+}
+export async function marcarSalidaDespachoV2(viajeId) {
+  const { data } = await apiDespachoV2.post(`/despacho-v2/viajes/${viajeId}/marcar-salida`);
+  return data;
+}
+export async function fetchParadasDespachoV2(viajeId) {
+  const { data } = await apiDespachoV2.get(`/despacho-v2/viajes/${viajeId}/paradas`);
+  return data;
+}
+export async function fetchNvDespachoV2(nv) {
+  const { data } = await apiDespachoV2.get(`/despacho-v2/nv/${nv}`);
+  return data;
+}
+export async function fetchNvAdjuntosDespachoV2(nv) {
+  const { data } = await apiDespachoV2.get(`/despacho-v2/nv/${nv}/adjuntos`);
+  return data;
+}
+export async function crearSolicitudStDespachoV2(nv, { descripcion, attachment }) {
+  const { data } = await apiDespachoV2.post(`/despacho-v2/nv/${nv}/st`, { descripcion, attachment }, { timeout: 30000 });
+  return data;
+}
+// Remito por NV - endpoint ya público, sin login de despacho_v2 (routes/public/remitosProxy.js).
+export async function fetchRemitosPorNv(nv) {
+  const { data } = await apiDespachoV2.get('/remitos-proxy/search-by-nv', { params: { nv } });
+  return data;
+}
+
 /* ========= Portones ========= */
 export const fetchPortones = () => api.get('/portones');
 export const createPorton = (payload) => api.post('/portones', payload);
