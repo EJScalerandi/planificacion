@@ -32,7 +32,10 @@ const BASE_SQL = `
       sq.cliente_nombre
     )                                                                      AS nombre_cliente,
 
-    COALESCE(pv.data->>'Distribuidor', pv.data->>'distribuidor')           AS distribuidor,
+    -- 'Distribuidor'/'distribuidor' nunca existen como claves reales en los
+    -- datos de preproducción (verificado: 0 de 1596) - el campo real es
+    -- 'distribuidor_nombre'.
+    COALESCE(pv.data->>'distribuidor_nombre', pv.data->>'Distribuidor', pv.data->>'distribuidor') AS distribuidor,
 
     -- Etapa actual: la más avanzada en el workflow con cualquier estado
     cur.etapa                                                              AS etapa_actual_repo,
@@ -49,7 +52,10 @@ const BASE_SQL = `
     to_char(p.fecha_med,           'YYYY-MM-DD')  AS fecha_medicion,
     to_char(p.fecha_prod,          'YYYY-MM-DD')  AS fecha_produccion,
     to_char(p.fecha_plan,          'YYYY-MM-DD')  AS fecha_despacho_plan,
-    to_char(p.fecha_plan_entrega,  'YYYY-MM-DD')  AS fecha_plan_entrega,
+    -- portones.fecha_plan_entrega no lo carga ningún flujo (siempre NULL,
+    -- verificado: 0 de 470) - la fecha estimada real es fecha_plan (Fecha
+    -- Salida/Plan), que sí se completa cuando el portón se envía a producción.
+    to_char(p.fecha_plan,          'YYYY-MM-DD')  AS fecha_plan_entrega,
 
     -- Datos del portón
     p.sistema,
@@ -59,19 +65,45 @@ const BASE_SQL = `
       pv.data->>'TipoPorton',
       p.tipo
     )                                                                      AS tipo_porton,
-    COALESCE(pv.data->>'Color',          pv.data->>'color')               AS color,
+    -- 'Color'/'color' cubren la mayoría (formularios nuevos), pero los
+    -- formularios viejos guardan el color por partes (Color_Sistema =
+    -- estructura, Color_Hoja = hoja) o dentro de las secciones dinámicas.
+    COALESCE(
+      pv.data->>'Color',
+      pv.data->>'color',
+      pv.data->>'Color_Sistema',
+      pv.data->>'Color_Hoja',
+      pv.data->>'section__color_de_estructura_marco',
+      pv.data->>'section__color_del_sistema_estructura'
+    )                                                                      AS color,
     COALESCE(pv.data->>'Ancho',          pv.data->>'ancho_mm')            AS ancho_mm,
     COALESCE(pv.data->>'Alto',           pv.data->>'alto_mm')             AS alto_mm,
-    COALESCE(pv.data->>'Revestimiento',  pv.data->>'revestimiento')       AS revestimiento,
+    -- 'Revestimiento'/'revestimiento' sólo cubren ~37% de los NV; el resto
+    -- lo guarda en las secciones dinámicas del formulario de medición.
     COALESCE(
+      pv.data->>'Revestimiento',
+      pv.data->>'revestimiento',
+      pv.data->>'section__tipo_de_revestimiento',
+      pv.data->>'section__tipo_de_revestimiento_a_colocar',
+      pv.data->>'section__tipo_de_revestimiento_exterior',
+      pv.data->>'section__tipo_de_revestimiento_interno'
+    )                                                                      AS revestimiento,
+    -- 'Vendedor'/'vendedor'/'NombreVendedor'/'nombre_vendedor' nunca existen
+    -- como claves reales (verificado: 0 de 1596) - los campos reales son
+    -- 'vendido_por_nombre' (quien cargó la venta, cubre distribuidores y
+    -- vendedores directos) y, más raro, 'vendedor_nombre'.
+    COALESCE(
+      pv.data->>'vendido_por_nombre',
+      pv.data->>'vendedor_nombre',
       pv.data->>'Vendedor',
       pv.data->>'vendedor',
       pv.data->>'NombreVendedor',
-      pv.data->>'nombre_vendedor'
+      pv.data->>'nombre_vendedor',
+      pv.data->>'vendido_por_username'
     )                                                                      AS nombre_vendedor,
 
     -- Semanas estimadas en formato ISO (YYYY-Www)
-    to_char(p.fecha_plan_entrega, 'IYYY-"W"IW')  AS semana_entrega_estimada,
+    to_char(p.fecha_plan,         'IYYY-"W"IW')  AS semana_entrega_estimada,
     to_char(p.fecha_prod,         'IYYY-"W"IW')  AS semana_produccion_estimada,
 
     -- Contacto y ubicación
@@ -181,6 +213,7 @@ router.get('/api/ia/portones/buscar', async (req, res) => {
       OR coalesce(pv.data->>'nombre',       '') ilike $${pi}
       OR coalesce(pv.data->>'nombre_cliente','') ilike $${pi}
       OR coalesce(pv.data->>'NombreCliente', '') ilike $${pi}
+      OR coalesce(pv.data->>'distribuidor_nombre', '') ilike $${pi}
       OR coalesce(pv.data->>'Distribuidor',  '') ilike $${pi}
       OR coalesce(pv.data->>'distribuidor',  '') ilike $${pi}
       OR coalesce(sq.cliente_nombre,         '') ilike $${pi}
