@@ -8,10 +8,11 @@ import useServicioTecnico from './hooks/useServicioTecnico';
 import {
   startStage, stopStage, startIpanelStage, stopIpanelStage, qcSummary,
   fetchPrefabricadoTipos, createPrefabricadoOrden, startPrefabricadoStage, stopPrefabricadoStage,
-  startStStage, stopStStage,
+  startStStage, stopStStage, createPruebaLaserOrden,
 } from './api';
 import StageColumn from './components/StageColumn';
 import InsumosCartButton from './components/InsumosCartButton';
+import PruebaLaserModal from './components/modals/PruebaLaserModal';
 
 import StatusGatePage from '../src/components/StatusGatePage';
 import CreateGatePage from '../pages/CreateGatePage';
@@ -151,6 +152,8 @@ function Board({ stages, seccion }) {
   const [qcSumSt, setQcSumSt] = useState({});
   const [qcSumOe, setQcSumOe] = useState({});
   const [qcSumRefab, setQcSumRefab] = useState({});
+  const [qcSumPrueba, setQcSumPrueba] = useState({});
+  const [pruebaLaserOpen, setPruebaLaserOpen] = useState(false);
   const [qcSummaryReady, setQcSummaryReady] = useState(false);
 
   const [wfReady, setWfReady] = useState(false);
@@ -331,6 +334,17 @@ function Board({ stages, seccion }) {
     await refreshPrefab();
   };
 
+  const nextPruebaNumero = useMemo(() => {
+    const existentes = (Array.isArray(stOrdenes) ? stOrdenes : []).filter((o) => o?.tipo === 'PRUEBA');
+    const maxNumero = existentes.reduce((max, o) => Math.max(max, Number(o?.numero) || 0), 0);
+    return maxNumero + 1;
+  }, [stOrdenes]);
+
+  const handleCreatePruebaLaser = async (detalle) => {
+    await createPruebaLaserOrden(detalle);
+    await refreshSt();
+  };
+
   const handleStartSt = async (id, stage) => {
     try {
       setBusyId(id);
@@ -372,7 +386,7 @@ function Board({ stages, seccion }) {
         .filter((n) => Number.isInteger(n));
 
       const stIds = (Array.isArray(stOrdenes) ? stOrdenes : [])
-        .filter((p) => p?.tipo !== 'OE' && p?.tipo !== 'REFAB')
+        .filter((p) => p?.tipo !== 'OE' && p?.tipo !== 'REFAB' && p?.tipo !== 'PRUEBA')
         .map((p) => Number(p?.nv))
         .filter((n) => Number.isInteger(n));
 
@@ -386,12 +400,18 @@ function Board({ stages, seccion }) {
         .map((p) => Number(p?.nv))
         .filter((n) => Number.isInteger(n));
 
+      const pruebaIds = (Array.isArray(stOrdenes) ? stOrdenes : [])
+        .filter((p) => p?.tipo === 'PRUEBA')
+        .map((p) => Number(p?.numero))
+        .filter((n) => Number.isInteger(n));
+
       if (!pIds.length) setQcSumPortones({});
       if (!iIds.length) setQcSumIpanel({});
       if (!prefIds.length) setQcSumPrefab({});
       if (!stIds.length) setQcSumSt({});
       if (!oeIds.length) setQcSumOe({});
       if (!refabIds.length) setQcSumRefab({});
+      if (!pruebaIds.length) setQcSumPrueba({});
 
       async function loadLine(line, ids) {
         const out = {};
@@ -404,13 +424,14 @@ function Board({ stages, seccion }) {
         return out;
       }
 
-      const [pMap, iMap, prefMap, stMap, oeMap, refabMap] = await Promise.all([
+      const [pMap, iMap, prefMap, stMap, oeMap, refabMap, pruebaMap] = await Promise.all([
         pIds.length ? loadLine('portones', pIds) : Promise.resolve({}),
         iIds.length ? loadLine('ipanel', iIds) : Promise.resolve({}),
         prefIds.length ? loadLine('prefabricados', prefIds) : Promise.resolve({}),
         stIds.length ? loadLine('servicio_tecnico', stIds) : Promise.resolve({}),
         oeIds.length ? loadLine('orden_externa', oeIds) : Promise.resolve({}),
         refabIds.length ? loadLine('refabricado', refabIds) : Promise.resolve({}),
+        pruebaIds.length ? loadLine('prueba', pruebaIds) : Promise.resolve({}),
       ]);
 
       setQcSumPortones(pMap);
@@ -419,6 +440,7 @@ function Board({ stages, seccion }) {
       setQcSumSt(stMap);
       setQcSumOe(oeMap);
       setQcSumRefab(refabMap);
+      setQcSumPrueba(pruebaMap);
     } catch (e) {
       console.warn('No se pudo cargar qcSummary:', e?.message || e);
     } finally {
@@ -452,6 +474,11 @@ function Board({ stages, seccion }) {
         <h2 className="h1" style={{ borderColor: color }}>DE GRANDIS PORTONES</h2>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {seccion ? <InsumosCartButton seccion={seccion} /> : null}
+          {seccion === 'diseno' ? (
+            <button className="btn" onClick={() => setPruebaLaserOpen(true)}>
+              Generar Prueba Laser Plano
+            </button>
+          ) : null}
           <button
             className="btn btn--brand"
             onClick={() => { refresh(); refreshIpanel(); refreshQcSummary(); refreshPrefab(); refreshSt(); }}
@@ -461,6 +488,13 @@ function Board({ stages, seccion }) {
           </button>
         </div>
       </div>
+
+      <PruebaLaserModal
+        open={pruebaLaserOpen}
+        onClose={() => setPruebaLaserOpen(false)}
+        nextNumero={nextPruebaNumero}
+        onCreate={handleCreatePruebaLaser}
+      />
 
       <form
         onSubmit={(e) => { e.preventDefault(); setFilter(q.trim()); }}
@@ -535,6 +569,7 @@ function Board({ stages, seccion }) {
               qcSummaryMapSt={qcSumSt}
               qcSummaryMapOe={qcSumOe}
               qcSummaryMapRefab={qcSumRefab}
+              qcSummaryMapPrueba={qcSumPrueba}
               onQcSaved={refreshQcSummary}
               prefabTipos={prefabTipos}
               onCreatePrefabOrden={handleCreatePrefabOrden}

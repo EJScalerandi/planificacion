@@ -7,6 +7,10 @@ const bordo = '#008241ff';
 const cardBorder = '#1d4ed8';
 const cardBg = '#e0f2fe';
 
+// Ordenes de Servicio Técnico sin NV propio (numeración correlativa en vez
+// de atadas a un portón): Orden Externa y Prueba Laser Plano.
+const NO_NV_TIPOS = ['OE', 'PRUEBA'];
+
 function low(v) {
   return String(v ?? '').toLowerCase();
 }
@@ -47,7 +51,7 @@ function isTruthySi(v) {
 }
 
 function getQcItemId(item, line) {
-  if (line === 'prefabricados' || line === 'orden_externa') {
+  if (line === 'prefabricados' || line === 'orden_externa' || line === 'prueba') {
     const num = Number(item?.numero);
     return Number.isInteger(num) ? num : null;
   }
@@ -72,6 +76,7 @@ function getItemQcLine(item) {
   if (item?.__kind === 'servicio_tecnico') {
     if (item?.tipo === 'OE') return 'orden_externa';
     if (item?.tipo === 'REFAB') return 'refabricado';
+    if (item?.tipo === 'PRUEBA') return 'prueba';
     return 'servicio_tecnico';
   }
   return null;
@@ -198,10 +203,11 @@ function getSalidaWeekLabel(item) {
 
 // ST y Refabricado no tienen fecha propia de producción/despacho (son
 // ordenes ligadas a un NV, no portones): para mostrarles la semana hay que
-// resolver el portón real con ese mismo NV y usar SU fecha. Prefabricados y
-// Orden Externa no tienen NV asociado (numero propio), así que no aplica.
+// resolver el portón real con ese mismo NV y usar SU fecha. Prefabricados,
+// Orden Externa y Prueba Laser Plano no tienen NV asociado (numero propio),
+// así que no aplica.
 function resolveWeekSourceItem(p, portonByNv) {
-  if (p?.__kind === 'servicio_tecnico' && p?.tipo !== 'OE') {
+  if (p?.__kind === 'servicio_tecnico' && !NO_NV_TIPOS.includes(p?.tipo)) {
     const nvNum = Number(p?.nv);
     const matched = Number.isInteger(nvNum) ? portonByNv?.get(nvNum) : null;
     if (matched) return matched;
@@ -632,11 +638,12 @@ function ObservacionesModal({ open, onClose, title, item, line, despacho = false
   if (!open || !item) return null;
   const pref = item?.__kind === 'prefabricado' && item?.numero != null ? `Pref ${item.numero}` : '';
   const oe = item?.__kind === 'servicio_tecnico' && item?.tipo === 'OE' && item?.numero != null ? `OE ${item.numero}` : '';
+  const prueba = item?.__kind === 'servicio_tecnico' && item?.tipo === 'PRUEBA' && item?.numero != null ? `PRUEBA ${item.numero}` : '';
   const nv = item?.nv != null ? (item?.__kind === 'servicio_tecnico' ? `ST ${item.nv}` : `NV ${item.nv}`) : '';
   const nlista = item?.nlista != null ? `Portón ${item.nlista}` : '';
   const weekSource = resolveWeekSourceItem(item, portonByNv);
   const semana = despacho ? `Despacho: ${getSalidaWeekLabel(weekSource)}` : `Producción: ${getProdWeekLabel(weekSource)}`;
-  const head = [title, pref, oe, nv, nlista, semana].filter(Boolean).join(' · ');
+  const head = [title, pref, oe, prueba, nv, nlista, semana].filter(Boolean).join(' · ');
   const rows = (observations || []).map((o) => ({
     sector: o?.stage_key || o?.sector || o?.stage || '-',
     fecha: o?.created_at || o?.timestamp || null,
@@ -800,6 +807,7 @@ function getOrderLabel(p, kind) {
   if (kind === 'servicio_tecnico') {
     if (p?.tipo === 'OE') return `OE ${p?.numero ?? '-'}`;
     if (p?.tipo === 'REFAB') return `REFAB ${p?.nv ?? '-'}`;
+    if (p?.tipo === 'PRUEBA') return `PRUEBA ${p?.numero ?? '-'}`;
     return `ST ${p?.nv ?? '-'}`;
   }
   return getNvLabel(p);
@@ -939,6 +947,7 @@ export default function StageColumn({
   qcSummaryMapSt = {},
   qcSummaryMapOe = {},
   qcSummaryMapRefab = {},
+  qcSummaryMapPrueba = {},
   onQcSaved,
   prefabTipos = [],
   onCreatePrefabOrden,
@@ -1018,6 +1027,7 @@ export default function StageColumn({
     if (itemLine === 'prefabricados') return qcSummaryMapPrefab;
     if (itemLine === 'orden_externa') return qcSummaryMapOe;
     if (itemLine === 'refabricado') return qcSummaryMapRefab;
+    if (itemLine === 'prueba') return qcSummaryMapPrueba;
     if (itemLine === 'servicio_tecnico') return qcSummaryMapSt;
     return qcSummaryMap;
   }
@@ -1099,7 +1109,7 @@ export default function StageColumn({
     });
     return done.slice(0, 10).map((p) => {
       const qcLatest = up(qcInfoFor(p)?.latest_by_stage?.[key] || '');
-      const isOe = p?.__kind === 'servicio_tecnico' && p?.tipo === 'OE';
+      const isNoNv = p?.__kind === 'servicio_tecnico' && NO_NV_TIPOS.includes(p?.tipo);
       const label = p?.__kind === 'prefabricado'
         ? `Pref ${p?.numero ?? '-'}${p?.tipo_nombre ? ` · ${p.tipo_nombre}` : ''}`
         : p?.__kind === 'servicio_tecnico'
@@ -1107,8 +1117,8 @@ export default function StageColumn({
           : mode === 'ipanel'
             ? `iPanel NV ${p?.nv ?? '-'}`
             : `Portón ${p?.nlista ?? '-'} · NV ${p?.nv ?? '-'}`;
-      // Prefabricados y Orden Externa no tienen NV propio -> sin semana.
-      const semana = mode === 'ipanel' || p?.__kind === 'prefabricado' || isOe
+      // Prefabricados, Orden Externa y Prueba Laser Plano no tienen NV propio -> sin semana.
+      const semana = mode === 'ipanel' || p?.__kind === 'prefabricado' || isNoNv
         ? ''
         : (() => {
             const src = resolveWeekSourceItem(p, portonByNv);
@@ -1122,7 +1132,7 @@ export default function StageColumn({
         qcLatest,
       };
     });
-  }, [mode, keyTrim, allItems, qcSummaryMap, qcSummaryMapPrefab, qcSummaryMapSt, qcSummaryMapOe, qcSummaryMapRefab, portonByNv, isDespachoColumn]);
+  }, [mode, keyTrim, allItems, qcSummaryMap, qcSummaryMapPrefab, qcSummaryMapSt, qcSummaryMapOe, qcSummaryMapRefab, qcSummaryMapPrueba, portonByNv, isDespachoColumn]);
 
   return (
     <div style={{ border: `2px solid ${bordo}`, borderRadius: 12, overflow: 'hidden', background: 'var(--surface)', display: 'flex', flexDirection: 'column', minHeight: 320 }}>
@@ -1184,7 +1194,7 @@ export default function StageColumn({
                       Cant.: <b>{p?.cantidad ?? '-'}</b>{p?.descripcion ? <> · {p.descripcion}</> : null}
                     </div>
                   ) : null}
-                  {kind === 'servicio_tecnico' && p?.tipo !== 'OE' ? (
+                  {kind === 'servicio_tecnico' && !NO_NV_TIPOS.includes(p?.tipo) ? (
                     <div style={{ fontSize: 12, opacity: 0.85, marginTop: 2 }}>
                       {(() => {
                         const src = resolveWeekSourceItem(p, portonByNv);

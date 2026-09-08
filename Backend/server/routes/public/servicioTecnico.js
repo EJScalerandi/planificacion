@@ -68,6 +68,45 @@ router.get('/servicio-tecnico', async (_req, res) => {
   }
 });
 
+// POST /servicio-tecnico/prueba-laser
+// Botón "Generar Prueba Laser Plano" en /diseno: crea una orden de un solo
+// paso (workflow_stages = ['guillotina']), sin NV, con numeración propia
+// (prueba_seq, prefijo "PRUEBA" agregado solo en el frontend). Público
+// porque /diseno es una tablet de planta sin login, igual que prefabricados.
+router.post('/servicio-tecnico/prueba-laser', async (req, res) => {
+  const descripcionStr = String(req.body?.descripcion || '').trim() || 'Prueba Laser Plano';
+
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+
+    const ins = await client.query(
+      `
+      insert into public.st_ordenes(nv, cantidad, descripcion, workflow_stages, created_by, tipo, numero)
+      values (null, 1, $1, array['guillotina']::text[], null, 'PRUEBA', nextval('public.prueba_seq'))
+      returning id;
+      `,
+      [descripcionStr]
+    );
+    const id = ins.rows[0].id;
+
+    await client.query(
+      `insert into public.st_orden_etapas_estado(orden_id, etapa, estado) values ($1, 'guillotina', $2);`,
+      [id, STATUS.PENDIENTE]
+    );
+
+    await client.query('commit');
+    const [shaped] = await loadOrders(pool, 'where id = $1', [id]);
+    return res.status(201).json(shaped || { id });
+  } catch (err) {
+    await client.query('rollback');
+    console.error('create prueba laser error:', err);
+    return res.status(500).json({ error: 'Error creando la prueba de laser', detail: err.message });
+  } finally {
+    client.release();
+  }
+});
+
 // POST /servicio-tecnico/:id/stage
 router.post('/servicio-tecnico/:id/stage', async (req, res) => {
   const { id } = req.params;

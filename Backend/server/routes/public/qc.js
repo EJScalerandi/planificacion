@@ -44,7 +44,7 @@ const IPANEL_TO_PORTON_STAGE_CANDIDATES = {
 // secciones físicas que portones (comparten stage_key), así que un scope de
 // QC ya otorgado para portones en una sección alcanza también para estas
 // líneas en esa misma sección, sin tener que duplicar el alta.
-const SHARED_SECTION_LINES = new Set(['servicio_tecnico', 'orden_externa', 'prefabricados', 'refabricado']);
+const SHARED_SECTION_LINES = new Set(['servicio_tecnico', 'orden_externa', 'prefabricados', 'refabricado', 'prueba']);
 
 function stageCandidatesForScope(line, stageKey) {
   if (line === 'ipanel') {
@@ -169,6 +169,17 @@ async function getOrdenExternaByNumero(db, numero) {
   return rows[0] || null;
 }
 
+// Prueba Laser: mismo criterio que OE (item_id = numero, sin NV), pero línea
+// propia para no colisionar con OE si algún día comparten numero (ver
+// migration_st_ordenes_tipo_prueba.sql).
+async function getPruebaOrdenByNumero(db, numero) {
+  const { rows } = await db.query(
+    `select id, workflow_stages from public.st_ordenes where numero = $1 and tipo = 'PRUEBA' limit 1;`,
+    [numero]
+  );
+  return rows[0] || null;
+}
+
 const QC_PIN_SALT = process.env.QC_PIN_SALT || 'dev_change_me_pin_salt';
 
 function hashPin(pin) {
@@ -176,7 +187,7 @@ function hashPin(pin) {
 }
 
 function isValidLine(line) {
-  return ['portones', 'ipanel', 'prefabricados', 'servicio_tecnico', 'orden_externa', 'refabricado'].includes(line);
+  return ['portones', 'ipanel', 'prefabricados', 'servicio_tecnico', 'orden_externa', 'refabricado', 'prueba'].includes(line);
 }
 function isValidQcStatus(s) {
   return ['APROBADO', 'OBSERVADO', 'RECHAZADO'].includes(s);
@@ -536,6 +547,34 @@ router.post('/qc/authorize', async (req, res) => {
         if (!orden) {
           await client.query('rollback');
           return res.status(404).json({ error: 'Orden externa no encontrada para ese número' });
+        }
+
+        const estQ = await client.query(
+          `select estado from public.st_orden_etapas_estado where orden_id = $1 and etapa = $2;`,
+          [orden.id, statusCol]
+        );
+        if (low(estQ.rows[0]?.estado) !== low(STATUS.FINALIZADO)) {
+          await client.query('rollback');
+          return res.status(409).json({ error: `La etapa ${statusCol} debe estar FINALIZADO antes de completar QC` });
+        }
+
+        const stages = Array.isArray(orden.workflow_stages) ? orden.workflow_stages : [];
+        const nextStage = stages[stages.indexOf(statusCol) + 1];
+        if (nextStage) {
+          await client.query(
+            `
+            insert into public.st_orden_etapas_estado(orden_id, etapa, estado)
+            values ($1, $2, $3)
+            on conflict (orden_id, etapa) do nothing;
+            `,
+            [orden.id, nextStage, STATUS.PENDIENTE]
+          );
+        }
+      } else if (lineStr === 'prueba') {
+        const orden = await getPruebaOrdenByNumero(client, nItemId);
+        if (!orden) {
+          await client.query('rollback');
+          return res.status(404).json({ error: 'Prueba de Laser no encontrada para ese número' });
         }
 
         const estQ = await client.query(
