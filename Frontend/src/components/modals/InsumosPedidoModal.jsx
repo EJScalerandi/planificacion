@@ -222,6 +222,9 @@ export default function InsumosPedidoModal({ open, onClose, seccion }) {
                                   {item.is_carryover ? 'Pendiente de entrega anterior' : 'Entrega parcial anterior'}
                                 </div>
                               ) : null}
+                              {pendiente && item.no_disponible_note ? (
+                                <div style={{ fontSize: 11, color: '#b91c1c', fontStyle: 'italic' }}>Motivo: "{item.no_disponible_note}"</div>
+                              ) : null}
                               {producto.producto_codigo ? <div style={{ fontSize: 11, opacity: 0.7 }}>{producto.producto_codigo}</div> : null}
                             </div>
                             <input
@@ -274,6 +277,9 @@ export default function InsumosPedidoModal({ open, onClose, seccion }) {
                                 ? 'Pendiente de entrega anterior — no se entregó la última vez'
                                 : `Entrega parcial — todavía faltan ${formatQty(cantidadMostrada)} ${item.unidad || ''}`}
                             </div>
+                          ) : null}
+                          {pendiente && item.no_disponible_note ? (
+                            <div style={{ fontSize: 12, color: '#b91c1c', fontStyle: 'italic' }}>Motivo: "{item.no_disponible_note}"</div>
                           ) : null}
                           {item.producto_codigo ? <div style={{ fontSize: 12, opacity: 0.7 }}>{item.producto_codigo}</div> : null}
                         </div>
