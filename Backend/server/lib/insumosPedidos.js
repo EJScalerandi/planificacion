@@ -52,12 +52,13 @@ async function carryOverPendientes(client, seccion, fecha, nuevoPedidoId) {
     await client.query(
       `insert into public.insumos_pedido_items
          (pedido_id, producto_odoo_id, producto_nombre, producto_codigo, unidad, categoria_odoo_id,
-          cantidad_pedida, is_carryover, carried_over_from_item_id)
-       values ($1,$2,$3,$4,$5,$6,$7,true,$8)
+          cantidad_pedida, is_carryover, carried_over_from_item_id, no_disponible_note)
+       values ($1,$2,$3,$4,$5,$6,$7,true,$8,$9)
        on conflict (pedido_id, producto_odoo_id) do update set
          cantidad_pedida = public.insumos_pedido_items.cantidad_pedida + excluded.cantidad_pedida,
          is_carryover = true,
-         carried_over_from_item_id = excluded.carried_over_from_item_id`,
+         carried_over_from_item_id = excluded.carried_over_from_item_id,
+         no_disponible_note = coalesce(excluded.no_disponible_note, public.insumos_pedido_items.no_disponible_note)`,
       [
         nuevoPedidoId,
         item.producto_odoo_id,
@@ -67,6 +68,7 @@ async function carryOverPendientes(client, seccion, fecha, nuevoPedidoId) {
         item.categoria_odoo_id,
         pendienteQty,
         item.id,
+        item.no_disponible_note || null,
       ]
     );
     await client.query(`update public.insumos_pedido_items set carryover_consumed = true where id = $1`, [item.id]);

@@ -37,8 +37,8 @@ export default function InsumosEntregasPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [entregando, setEntregando] = useState(false);
-  // drafts[producto_odoo_id] = { qty: string, sinStock: boolean } - global, sin
-  // distinguir seccion (para eso esta el filtro de arriba). Se arma de nuevo
+  // drafts[producto_odoo_id] = { qty: string, sinStock: boolean, nota: string } - global,
+  // sin distinguir seccion (para eso esta el filtro de arriba). Se arma de nuevo
   // solo para productos nuevos que aparecen, sin pisar lo que ya se esta
   // editando en pantalla.
   const [drafts, setDrafts] = useState({});
@@ -104,7 +104,7 @@ export default function InsumosEntregasPage() {
       const next = { ...prev };
       for (const r of resumen) {
         if (next[r.producto_odoo_id] !== undefined) continue;
-        next[r.producto_odoo_id] = { qty: formatQty(r.totalPedido), sinStock: false };
+        next[r.producto_odoo_id] = { qty: formatQty(r.totalPedido), sinStock: false, nota: '' };
       }
       for (const id of Object.keys(next)) {
         if (!resumen.some((r) => String(r.producto_odoo_id) === id)) delete next[id];
@@ -120,8 +120,28 @@ export default function InsumosEntregasPage() {
   function toggleSinStock(row, checked) {
     setDrafts((prev) => ({
       ...prev,
-      [row.producto_odoo_id]: { sinStock: checked, qty: checked ? '0' : formatQty(row.totalPedido) },
+      [row.producto_odoo_id]: {
+        ...prev[row.producto_odoo_id],
+        sinStock: checked,
+        qty: checked ? '0' : formatQty(row.totalPedido),
+      },
     }));
+  }
+
+  function setDraftNota(productoId, value) {
+    setDrafts((prev) => ({ ...prev, [productoId]: { ...prev[productoId], nota: value } }));
+  }
+
+  const MOTIVO_MIN_LEN = 10;
+
+  // Es "faltante" (y por lo tanto exige motivo) si tildaron "Sin stock" a mano,
+  // o si la cantidad a preparar quedo por debajo de lo pedido - mismo criterio
+  // que se usa despues al guardar para decidir no_disponible.
+  function esFaltante(row, draft) {
+    if (!draft) return false;
+    if (draft.sinStock) return true;
+    const qty = draft.qty === '' ? NaN : Number(draft.qty);
+    return Number.isFinite(qty) && qty < row.totalPedido;
   }
 
   async function entregarTodo() {
@@ -133,12 +153,21 @@ export default function InsumosEntregasPage() {
       setErr('Hay cantidades a preparar inválidas o vacías.');
       return;
     }
+    const sinMotivo = resumen.find((r) => {
+      const draft = drafts[r.producto_odoo_id];
+      if (!esFaltante(r, draft)) return false;
+      return (draft?.nota?.trim() || '').length < MOTIVO_MIN_LEN;
+    });
+    if (sinMotivo) {
+      setErr(`Completá el motivo de faltante de "${sinMotivo.producto_nombre}" (mínimo ${MOTIVO_MIN_LEN} caracteres).`);
+      return;
+    }
     try {
       setEntregando(true);
       setErr('');
       const calls = [];
       for (const r of resumen) {
-        const draft = drafts[r.producto_odoo_id] || { qty: formatQty(r.totalPedido), sinStock: false };
+        const draft = drafts[r.producto_odoo_id] || { qty: formatQty(r.totalPedido), sinStock: false, nota: '' };
         const totalAEntregar = Math.min(Number(draft.qty), r.totalPedido);
         // Proporcion sobre el total pedido de este producto (entre todas las
         // secciones que entren en el filtro actual) - si hay una sola sección
@@ -150,6 +179,7 @@ export default function InsumosEntregasPage() {
             adminUpdateInsumosPedidoItem(it.pedido_id, it.id, {
               cantidad_entregada: entregadoItem,
               no_disponible: draft.sinStock || ratio < 1,
+              no_disponible_note: draft.nota?.trim() ? draft.nota.trim() : null,
             })
           );
         }
@@ -231,43 +261,65 @@ export default function InsumosEntregasPage() {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {resumen.map((r) => {
-                  const draft = drafts[r.producto_odoo_id] || { qty: '', sinStock: false };
+                  const draft = drafts[r.producto_odoo_id] || { qty: '', sinStock: false, nota: '' };
+                  const faltante = esFaltante(r, draft);
                   return (
                     <div
                       key={r.producto_odoo_id}
                       style={{
-                        display: 'grid', gridTemplateColumns: '1fr auto auto auto', alignItems: 'center', gap: 12,
+                        display: 'flex', flexDirection: 'column', gap: 8,
                         padding: '8px 10px',
-                        border: `1px solid ${draft.sinStock ? '#fecaca' : 'var(--border)'}`,
-                        background: draft.sinStock ? '#fef2f2' : 'var(--surface)',
+                        border: `1px solid ${faltante ? '#fecaca' : 'var(--border)'}`,
+                        background: faltante ? '#fef2f2' : 'var(--surface)',
                         borderRadius: 10,
                       }}
                     >
-                      <div style={{ fontWeight: 800 }}>{r.producto_nombre}</div>
-                      <div style={{ fontSize: 13, textAlign: 'right' }}>
-                        <div style={{ opacity: 0.7, fontSize: 11 }}>Cant. pedida</div>
-                        <div style={{ fontWeight: 800 }}>{formatQty(r.totalPedido)} {r.unidad || ''}</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', alignItems: 'center', gap: 12 }}>
+                        <div style={{ fontWeight: 800 }}>{r.producto_nombre}</div>
+                        <div style={{ fontSize: 13, textAlign: 'right' }}>
+                          <div style={{ opacity: 0.7, fontSize: 11 }}>Cant. pedida</div>
+                          <div style={{ fontWeight: 800 }}>{formatQty(r.totalPedido)} {r.unidad || ''}</div>
+                        </div>
+                        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11 }}>
+                          <span style={{ opacity: 0.7 }}>Cant. a preparar</span>
+                          <input
+                            className="btn"
+                            type="number" min={0} step="any"
+                            value={draft.qty}
+                            disabled={draft.sinStock || entregando}
+                            onChange={(e) => setDraftQty(r.producto_odoo_id, e.target.value)}
+                            style={{ width: 90, textAlign: 'right' }}
+                          />
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700 }}>
+                          <input
+                            type="checkbox"
+                            checked={draft.sinStock}
+                            disabled={entregando}
+                            onChange={(e) => toggleSinStock(r, e.target.checked)}
+                          />
+                          Sin stock
+                        </label>
                       </div>
-                      <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11 }}>
-                        <span style={{ opacity: 0.7 }}>Cant. a preparar</span>
-                        <input
-                          className="btn"
-                          type="number" min={0} step="any"
-                          value={draft.qty}
-                          disabled={draft.sinStock || entregando}
-                          onChange={(e) => setDraftQty(r.producto_odoo_id, e.target.value)}
-                          style={{ width: 90, textAlign: 'right' }}
-                        />
-                      </label>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700 }}>
-                        <input
-                          type="checkbox"
-                          checked={draft.sinStock}
-                          disabled={entregando}
-                          onChange={(e) => toggleSinStock(r, e.target.checked)}
-                        />
-                        Sin stock
-                      </label>
+
+                      {faltante ? (
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>
+                            Motivo de Faltante <span style={{ color: '#dc2626', fontWeight: 700 }}>(obligatorio, mínimo {MOTIVO_MIN_LEN} caracteres)</span>
+                          </div>
+                          <textarea
+                            className="btn"
+                            value={draft.nota}
+                            disabled={entregando}
+                            onChange={(e) => setDraftNota(r.producto_odoo_id, e.target.value)}
+                            placeholder="Ej: no llegó el pedido al proveedor, rotura en depósito, etc."
+                            style={{
+                              width: '100%', minHeight: 64, resize: 'vertical', fontFamily: 'inherit', fontWeight: 400,
+                              borderColor: (draft.nota?.trim() || '').length >= MOTIVO_MIN_LEN ? undefined : '#dc2626',
+                            }}
+                          />
+                        </div>
+                      ) : null}
                     </div>
                   );
                 })}
