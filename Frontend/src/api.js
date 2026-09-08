@@ -58,6 +58,22 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Si el token vencido/inválido - avisa (evento global, lo escucha
+// SessionExpiredOverlay) en vez de dejar que cada pantalla muestre su propio
+// error crudo (ej. "Network Error"). Se excluye /admin/login: ahí un 401 es
+// "usuario o contraseña incorrectos", no una sesión vencida.
+api.interceptors.response.use(
+  (res) => res,
+  (error) => {
+    const status = error?.response?.status;
+    const url = error?.config?.url || '';
+    if (status === 401 && !url.includes('/admin/login')) {
+      window.dispatchEvent(new CustomEvent('admin-session-expired'));
+    }
+    return Promise.reject(error);
+  }
+);
+
 // ====== /despacho_v2 (login de cuadrilla: nombre QC + PIN) ======
 // Instancia de axios PROPIA, separada de `api` - no debe mezclarse con el
 // token de admin (ni pisarlo ni ser pisada por él): quien entra acá nunca
@@ -93,6 +109,20 @@ apiDespachoV2.interceptors.request.use((config) => {
   if (t) config.headers.Authorization = `Bearer ${t}`;
   return config;
 });
+
+// Mismo aviso de sesión vencida que en `api`, pero para la cuadrilla de
+// /despacho_v2 (excluye /despacho-v2/login: ahí un 401 es PIN incorrecto).
+apiDespachoV2.interceptors.response.use(
+  (res) => res,
+  (error) => {
+    const status = error?.response?.status;
+    const url = error?.config?.url || '';
+    if (status === 401 && !url.includes('/despacho-v2/login')) {
+      window.dispatchEvent(new CustomEvent('despacho-session-expired'));
+    }
+    return Promise.reject(error);
+  }
+);
 
 export async function fetchDespachoV2QcUsers() {
   const { data } = await apiDespachoV2.get('/despacho-v2/qc-users');

@@ -13,6 +13,7 @@ import {
 import StageColumn from './components/StageColumn';
 import InsumosCartButton from './components/InsumosCartButton';
 import PruebaLaserModal from './components/modals/PruebaLaserModal';
+import SessionExpiredOverlay from './components/SessionExpiredOverlay';
 
 import StatusGatePage from '../src/components/StatusGatePage';
 import CreateGatePage from '../pages/CreateGatePage';
@@ -722,6 +723,7 @@ const ROUTES = [
 export default function App() {
   return (
     <BrowserRouter>
+      <SessionExpiredOverlay />
       <Routes>
         <Route path="/" element={<Navigate to="/admin/login" replace />} />
         <Route path="/admin/login" element={<AdminLoginPage />} />
