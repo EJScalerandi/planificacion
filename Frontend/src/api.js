@@ -374,7 +374,8 @@ export const adminUpdatePrefabricadoTipo = (id, payload) => api.put(`/admin/pref
 export const fetchServicioTecnico = () => api.get('/servicio-tecnico');
 export const startStStage = (id, stage) => api.post(`/servicio-tecnico/${id}/stage`, { stage, action: 'start' });
 export const stopStStage = (id, stage) => api.post(`/servicio-tecnico/${id}/stage`, { stage, action: 'stop' });
-export const createPruebaLaserOrden = (descripcion) => api.post('/servicio-tecnico/prueba-laser', { descripcion });
+export const createPruebaLaserOrden = (descripcion, pasoPorPlegadora) =>
+  api.post('/servicio-tecnico/prueba-laser', { descripcion, paso_por_plegadora: Boolean(pasoPorPlegadora) });
 
 export const adminListStOrdenes = () => api.get('/admin/servicio-tecnico/ordenes');
 export const adminCreateStOrden = (payload) => api.post('/admin/servicio-tecnico/ordenes', payload);

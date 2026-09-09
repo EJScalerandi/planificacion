@@ -341,8 +341,8 @@ function Board({ stages, seccion }) {
     return maxNumero + 1;
   }, [stOrdenes]);
 
-  const handleCreatePruebaLaser = async (detalle) => {
-    await createPruebaLaserOrden(detalle);
+  const handleCreatePruebaLaser = async (detalle, pasoPorPlegadora) => {
+    await createPruebaLaserOrden(detalle, pasoPorPlegadora);
     await refreshSt();
   };
 
