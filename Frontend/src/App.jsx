@@ -330,8 +330,8 @@ function Board({ stages, seccion }) {
     }
   };
 
-  const handleCreatePrefabOrden = async (tipoId, seccion, cantidad) => {
-    await createPrefabricadoOrden({ tipo_id: tipoId, seccion, cantidad });
+  const handleCreatePrefabOrden = async (tipoId, seccion, cantidad, referencia) => {
+    await createPrefabricadoOrden({ tipo_id: tipoId, seccion, cantidad, referencia });
     await refreshPrefab();
   };
 
