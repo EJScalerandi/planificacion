@@ -12,8 +12,16 @@ import {
   fetchDespachoV2QcUsers, despachoV2Login, fetchDespachoV2Viajes, marcarSalidaDespachoV2,
   fetchParadasDespachoV2, fetchNvDespachoV2, fetchNvAdjuntosDespachoV2, crearSolicitudStDespachoV2,
   fetchRemitosPorNv, getDespachoV2Token, getDespachoV2User, setDespachoV2Session, clearDespachoV2Session,
+  marcarEntregadoDespachoV2, avisarSiguienteDespachoV2,
+  fetchGastosDespachoV2, crearGastoDespachoV2, deleteGastoDespachoV2,
   API_BASE_URL,
 } from '../src/api';
+
+// Motivos de gasto - catálogo simple hoy, "después vamos a agregar más
+// motivos" (pedido explícito del usuario): alcanza con extender este array,
+// sin backend/migración de por medio (el backend acepta cualquier texto no
+// vacío como motivo).
+const MOTIVOS_GASTO = ['Refrigerio', 'Hospedaje', 'Otros'];
 
 const BRAND = '#0a6a33';
 
@@ -182,9 +190,181 @@ function LoginScreen({ onLogueado }) {
 }
 
 // ===========================================================================
+// PIN de calidad (solo para el cierre de despacho - reusa el mismo QC/PIN
+// que ya usa /despacho, ver Backend lib/despachoV2Db.js marcarDespachoOficial).
+// ===========================================================================
+function PinSheet({ busy, error, onCancelar, onConfirmar }) {
+  const [pin, setPin] = useState('');
+  return (
+    <div style={{ ...s.overlay, zIndex: 10000 }} onMouseDown={(e) => { if (e.target === e.currentTarget) onCancelar(); }}>
+      <div style={{ ...s.hoja, maxWidth: 360 }}>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 10 }}>
+          <div style={{ fontWeight: 900, fontSize: 18 }}>Confirmá tu PIN</div>
+          <button type="button" onClick={onCancelar} style={{ marginLeft: 'auto', background: 'none', border: 'none', fontSize: 22, lineHeight: 1, padding: 4 }}>✕</button>
+        </div>
+        <div style={{ fontSize: 13, opacity: 0.75, marginBottom: 10 }}>
+          Es el mismo PIN de calidad que ya usás para autorizar el despacho.
+        </div>
+        <input
+          type="password" inputMode="numeric" autoFocus value={pin}
+          onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 10))}
+          onKeyDown={(e) => e.key === 'Enter' && pin.length >= 3 && onConfirmar(pin)}
+          style={{ ...s.input, textAlign: 'center', fontSize: 26, letterSpacing: 6, padding: '14px', marginBottom: 10 }}
+          placeholder="••••"
+        />
+        {error ? <div style={{ color: 'crimson', fontWeight: 700, fontSize: 13, marginBottom: 10 }}>{error}</div> : null}
+        <button type="button" style={s.botonPrimario} disabled={busy || pin.length < 3} onClick={() => onConfirmar(pin)}>
+          {busy ? 'Confirmando…' : 'Confirmar despacho'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ===========================================================================
+// "¿La ruta sigue como estaba?" - se pregunta SIEMPRE antes de avisar por
+// WhatsApp a la siguiente parada (pedido explícito del usuario: a veces se
+// altera en el viaje y no hay que avisarle a quien ya no sigue).
+// ===========================================================================
+function ConfirmarRutaSheet({ siguienteParada, busy, resultado, onSi, onNo, onCerrar }) {
+  return (
+    <div style={{ ...s.overlay, zIndex: 10000 }} onMouseDown={(e) => { if (e.target === e.currentTarget) onCerrar(); }}>
+      <div style={{ ...s.hoja, maxWidth: 400 }}>
+        {resultado ? (
+          <>
+            <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 14, textAlign: 'center' }}>
+              {resultado.ok ? '✅ Aviso enviado' : '⚠️ No se pudo avisar'}
+            </div>
+            <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 16, textAlign: 'center' }}>
+              {resultado.ok
+                ? `Le avisamos a ${resultado.nombreCliente || 'el próximo cliente'} por WhatsApp.`
+                : (resultado.error || 'Error desconocido')}
+            </div>
+            <button type="button" style={s.botonPrimario} onClick={onCerrar}>Listo</button>
+          </>
+        ) : siguienteParada ? (
+          <>
+            <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 10, textAlign: 'center' }}>¿La ruta sigue como estaba?</div>
+            <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 14, textAlign: 'center' }}>
+              A veces se altera en el viaje - si cambió, no confirmes acá: avisale manualmente desde el NV que corresponda.
+            </div>
+            <div style={{ background: '#f3f4f6', borderRadius: 10, padding: 12, marginBottom: 16 }}>
+              <div style={{ fontSize: 11, opacity: 0.6, fontWeight: 700, textTransform: 'uppercase' }}>Próxima parada</div>
+              <div style={{ fontSize: 16, fontWeight: 900 }}>NV {siguienteParada.nv} · {siguienteParada.nombre_cliente || 'Cliente sin nombre'}</div>
+              <div style={{ fontSize: 13, opacity: 0.75 }}>Llegando en aproximadamente {formatearDuracion(siguienteParada.horas_tramo)}</div>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <button type="button" style={s.botonPrimario} disabled={busy} onClick={onSi}>
+                {busy ? 'Avisando…' : 'Sí, avisarle por WhatsApp'}
+              </button>
+              <button type="button" style={s.botonBloque} disabled={busy} onClick={onNo}>
+                No, la ruta cambió
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 14, textAlign: 'center' }}>✅ Listo</div>
+            <div style={{ fontSize: 13, opacity: 0.75, marginBottom: 16, textAlign: 'center' }}>Era la última parada de esta ruta.</div>
+            <button type="button" style={s.botonPrimario} onClick={onCerrar}>Listo</button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ===========================================================================
+// "Marcar entregado/instalado" - cierre OFICIAL real: despacho pide PIN
+// (mismo mecanismo que /despacho), instalación no (no existe ese mecanismo
+// hoy para ese campo, ver Backend lib/despachoV2Db.js). Al terminar, ofrece
+// avisar por WhatsApp a la siguiente parada de la ruta - pero antes SIEMPRE
+// pregunta si la ruta sigue igual.
+// ===========================================================================
+function MarcarEntregadoSection({ nv, viaje, parada, onParadaCambiada }) {
+  const [tiposPendientes, setTiposPendientes] = useState(() => parada?.tipos_pendientes || []);
+  const [pinAbierto, setPinAbierto] = useState(false);
+  const [marcando, setMarcando] = useState(false);
+  const [err, setErr] = useState('');
+  const [confirmarRuta, setConfirmarRuta] = useState(null); // { siguienteParada } | null
+  const [resultadoAviso, setResultadoAviso] = useState(null);
+
+  if (!parada) return null;
+
+  const cerrarTodo = () => { setConfirmarRuta(null); setResultadoAviso(null); };
+
+  const confirmarMarcado = async (tipo, pin) => {
+    setMarcando(true);
+    setErr('');
+    try {
+      const r = await marcarEntregadoDespachoV2(viaje.id, nv, { tipo, pin });
+      setTiposPendientes((prev) => prev.filter((t) => t !== tipo));
+      setPinAbierto(false);
+      onParadaCambiada?.();
+      setConfirmarRuta({ siguienteParada: r?.siguienteParada || null });
+    } catch (e) {
+      setErr(e?.response?.data?.error || e.message);
+    } finally {
+      setMarcando(false);
+    }
+  };
+
+  const avisar = async () => {
+    setMarcando(true);
+    try {
+      const r = await avisarSiguienteDespachoV2(viaje.id, nv);
+      setResultadoAviso(r);
+    } catch (e) {
+      setResultadoAviso({ ok: false, error: e?.response?.data?.error || e.message });
+    } finally {
+      setMarcando(false);
+    }
+  };
+
+  if (!tiposPendientes.length) return null;
+
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {tiposPendientes.includes('despacho') ? (
+          <button type="button" style={s.botonPrimario} disabled={marcando} onClick={() => { setErr(''); setPinAbierto(true); }}>
+            ✅ Marcar despacho entregado
+          </button>
+        ) : null}
+        {tiposPendientes.includes('instalacion') ? (
+          <button type="button" style={s.botonPrimario} disabled={marcando} onClick={() => confirmarMarcado('instalacion', null)}>
+            {marcando ? 'Marcando…' : '✅ Marcar instalación terminada'}
+          </button>
+        ) : null}
+      </div>
+      {err ? <div style={{ color: 'crimson', fontWeight: 700, fontSize: 13, marginTop: 8 }}>{err}</div> : null}
+
+      {pinAbierto ? (
+        <PinSheet
+          busy={marcando} error={err}
+          onCancelar={() => { setPinAbierto(false); setErr(''); }}
+          onConfirmar={(pin) => confirmarMarcado('despacho', pin)}
+        />
+      ) : null}
+
+      {confirmarRuta ? (
+        <ConfirmarRutaSheet
+          siguienteParada={confirmarRuta.siguienteParada}
+          busy={marcando}
+          resultado={resultadoAviso}
+          onSi={avisar}
+          onNo={cerrarTodo}
+          onCerrar={cerrarTodo}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+// ===========================================================================
 // Detalle de un NV (al tocar una parada-portón)
 // ===========================================================================
-function NvDetailSheet({ nv, viaje, parada, onClose }) {
+function NvDetailSheet({ nv, viaje, parada, onParadaCambiada, onClose }) {
   const [detalle, setDetalle] = useState(null);
   const [adjuntos, setAdjuntos] = useState([]);
   const [remitos, setRemitos] = useState([]);
@@ -234,6 +414,8 @@ function NvDetailSheet({ nv, viaje, parada, onClose }) {
           <div style={{ color: 'crimson', fontWeight: 700 }}>{err}</div>
         ) : (
           <>
+            <MarcarEntregadoSection nv={nv} viaje={viaje} parada={parada} onParadaCambiada={onParadaCambiada} />
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
               <Campo label="Cliente" valor={detalle?.nombre_cliente} />
               <Campo label="Distribuidor" valor={detalle?.distribuidor} />
@@ -417,9 +599,67 @@ function ParadaExtraSheet({ parada, onClose }) {
 }
 
 // ===========================================================================
-// Placeholder de Gastos (pedido explícito: "esto lo vemos después")
+// Gastos del viaje ("rendición de gastos") - pedido explícito del usuario:
+// fecha (seteada hoy) + motivo + monto + foto/PDF del ticket. Se comparte
+// entre toda la cuadrilla del viaje (cualquier integrante ve/carga/borra los
+// mismos gastos, no hay un dueño individual).
 // ===========================================================================
-function GastosSheet({ onClose }) {
+function montoLegible(n) {
+  return Number(n || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 });
+}
+
+function GastosSheet({ viaje, onClose }) {
+  const [gastos, setGastos] = useState(null);
+  const [err, setErr] = useState('');
+  const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10));
+  const [motivo, setMotivo] = useState(MOTIVOS_GASTO[0]);
+  const [monto, setMonto] = useState('');
+  const [archivo, setArchivo] = useState(null);
+  const [subiendo, setSubiendo] = useState(false);
+
+  const cargar = () => {
+    fetchGastosDespachoV2(viaje.id).then((d) => setGastos(d?.gastos || [])).catch((e) => setErr(e?.response?.data?.error || e.message));
+  };
+  useEffect(cargar, [viaje.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const total = (gastos || []).reduce((acc, g) => acc + Number(g.monto), 0);
+
+  const onArchivoElegido = (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (f) setArchivo(f);
+  };
+
+  const agregar = async () => {
+    if (!fecha) { setErr('Falta la fecha.'); return; }
+    if (!motivo) { setErr('Falta el motivo.'); return; }
+    const montoNum = Number(monto);
+    if (!Number.isFinite(montoNum) || montoNum <= 0) { setErr('Ingresá un monto válido.'); return; }
+    if (!archivo) { setErr('Adjuntá una foto o PDF del ticket.'); return; }
+    setSubiendo(true);
+    setErr('');
+    try {
+      await crearGastoDespachoV2(viaje.id, { fecha, motivo, monto: montoNum, archivo });
+      setMonto('');
+      setArchivo(null);
+      cargar();
+    } catch (e) {
+      setErr(e?.response?.data?.error || e.message);
+    } finally {
+      setSubiendo(false);
+    }
+  };
+
+  const borrar = async (gastoId) => {
+    if (!window.confirm('¿Borrar este gasto?')) return;
+    try {
+      await deleteGastoDespachoV2(viaje.id, gastoId);
+      cargar();
+    } catch (e) {
+      setErr(e?.response?.data?.error || e.message);
+    }
+  };
+
   return (
     <div style={s.overlay} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div style={s.hoja}>
@@ -427,9 +667,58 @@ function GastosSheet({ onClose }) {
           <div style={{ fontWeight: 900, fontSize: 18 }}>💰 Gastos del viaje</div>
           <button type="button" onClick={onClose} style={{ marginLeft: 'auto', background: 'none', border: 'none', fontSize: 22, lineHeight: 1, padding: 4 }}>✕</button>
         </div>
-        <div style={{ opacity: 0.7, fontSize: 14, textAlign: 'center', padding: '20px 0' }}>
-          🚧 Todavía no está listo — se comparte entre toda la cuadrilla, lo armamos en el próximo paso.
+
+        <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 12 }}>
+          Se comparte entre toda la cuadrilla - cargá cada ticket con su foto o PDF.
         </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16, border: '1px solid #e5e7eb', borderRadius: 12, padding: 12 }}>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input type="date" style={{ ...s.input, flex: 1 }} value={fecha} onChange={(e) => setFecha(e.target.value)} />
+            <select style={{ ...s.input, flex: 1 }} value={motivo} onChange={(e) => setMotivo(e.target.value)}>
+              {MOTIVOS_GASTO.map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
+          <input
+            type="number" inputMode="decimal" min="0" step="0.01" placeholder="Monto ($)"
+            style={s.input} value={monto} onChange={(e) => setMonto(e.target.value)}
+          />
+          <label style={{ ...s.botonBloque, textAlign: 'center' }}>
+            {archivo ? `✅ ${archivo.name}` : '📷 Foto o PDF del ticket'}
+            <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={onArchivoElegido} />
+          </label>
+          {err ? <div style={{ color: 'crimson', fontWeight: 700, fontSize: 13 }}>{err}</div> : null}
+          <button type="button" style={s.botonPrimario} disabled={subiendo} onClick={agregar}>
+            {subiendo ? 'Guardando…' : '+ Agregar gasto'}
+          </button>
+        </div>
+
+        <div style={{ fontWeight: 900, fontSize: 14, marginBottom: 6 }}>Gastos cargados</div>
+        {gastos == null ? (
+          <div style={{ opacity: 0.6, fontSize: 13 }}>Cargando…</div>
+        ) : gastos.length === 0 ? (
+          <div style={{ opacity: 0.6, fontSize: 13 }}>Todavía no hay gastos cargados.</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+            {gastos.map((g) => (
+              <div key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1px solid #f0f0f0', borderRadius: 10, padding: 8 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 800, fontSize: 13 }}>{g.motivo} · ${montoLegible(g.monto)}</div>
+                  <div style={{ fontSize: 11, opacity: 0.6 }}>{fechaLegible(g.fecha)} · {g.cargado_por || '—'}</div>
+                </div>
+                <a href={g.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 18, textDecoration: 'none' }} title="Ver ticket">
+                  {String(g.tipo_mime || '').startsWith('image/') ? '🖼️' : '📄'}
+                </a>
+                <button type="button" onClick={() => borrar(g.id)} style={{ background: 'none', border: 'none', color: '#991b1b', fontSize: 16, cursor: 'pointer', padding: 4 }}>🗑️</button>
+              </div>
+            ))}
+          </div>
+        )}
+        {gastos?.length ? (
+          <div style={{ textAlign: 'right', fontWeight: 900, fontSize: 16, borderTop: '1px solid #e5e7eb', paddingTop: 8 }}>
+            Total: ${montoLegible(total)}
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -491,6 +780,17 @@ function ViajeCard({ viaje, onCambio, onAbrirNv, onAbrirExtra }) {
       }
     }
     setExpandido((v) => !v);
+  };
+
+  // Refresca la lista de paradas de ESTE viaje (ej. después de marcar un
+  // portón entregado/instalado) - la lista ya cargada queda cacheada en
+  // `paradas`, así que sin esto seguiría mostrando "Desp. + Inst." aunque ya
+  // se haya cerrado uno de los dos.
+  const recargarParadas = async () => {
+    try {
+      const d = await fetchParadasDespachoV2(viaje.id);
+      setParadas(d?.paradas || []);
+    } catch {}
   };
 
   const marcarSalida = async () => {
@@ -556,13 +856,17 @@ function ViajeCard({ viaje, onCambio, onAbrirNv, onAbrirExtra }) {
             <div style={{ fontSize: 13, opacity: 0.6, padding: 8 }}>Todavía no tiene paradas cargadas.</div>
           ) : (
             paradas.map((p, i) => (
-              <ParadaRow key={p.tipo === 'extra' ? `extra-${i}` : `nv-${p.nv}`} parada={p} viaje={viaje} onAbrirNv={onAbrirNv} onAbrirExtra={onAbrirExtra} />
+              <ParadaRow
+                key={p.tipo === 'extra' ? `extra-${i}` : `nv-${p.nv}`} parada={p} viaje={viaje}
+                onAbrirNv={(payload) => onAbrirNv({ ...payload, onParadaCambiada: recargarParadas })}
+                onAbrirExtra={onAbrirExtra}
+              />
             ))
           )}
         </div>
       ) : null}
 
-      {mostrarGastos ? <GastosSheet onClose={() => setMostrarGastos(false)} /> : null}
+      {mostrarGastos ? <GastosSheet viaje={viaje} onClose={() => setMostrarGastos(false)} /> : null}
     </div>
   );
 }
@@ -634,7 +938,11 @@ function ViajesScreen({ qcUser, onSalir }) {
       </div>
 
       {nvAbierto != null ? (
-        <NvDetailSheet nv={nvAbierto.nv} viaje={nvAbierto.viaje} parada={nvAbierto.parada} onClose={() => setNvAbierto(null)} />
+        <NvDetailSheet
+          nv={nvAbierto.nv} viaje={nvAbierto.viaje} parada={nvAbierto.parada}
+          onParadaCambiada={nvAbierto.onParadaCambiada}
+          onClose={() => setNvAbierto(null)}
+        />
       ) : null}
       {extraAbierta ? <ParadaExtraSheet parada={extraAbierta} onClose={() => setExtraAbierta(null)} /> : null}
     </div>

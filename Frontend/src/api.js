@@ -161,6 +161,37 @@ export async function fetchRemitosPorNv(nv) {
   const { data } = await apiDespachoV2.get('/remitos-proxy/search-by-nv', { params: { nv } });
   return data;
 }
+// "Marcar entregado/instalado" - cierre OFICIAL (despacho: pin; instalación:
+// sin pin). Devuelve la siguiente parada-portón de la ruta (o null si esta
+// era la última) para preguntarle al usuario antes de avisar por WhatsApp.
+export async function marcarEntregadoDespachoV2(viajeId, nv, { tipo, pin } = {}) {
+  const { data } = await apiDespachoV2.post(`/despacho-v2/viajes/${viajeId}/nv/${nv}/marcar-entregado`, { tipo, pin });
+  return data;
+}
+// Se llama SOLO después de que el usuario confirmó "sí, la ruta sigue así".
+export async function avisarSiguienteDespachoV2(viajeId, nv) {
+  const { data } = await apiDespachoV2.post(`/despacho-v2/viajes/${viajeId}/nv/${nv}/avisar-siguiente`);
+  return data;
+}
+// Gastos del viaje ("rendición de gastos") - se comparte entre toda la
+// cuadrilla del viaje, no solo quien los subió.
+export async function fetchGastosDespachoV2(viajeId) {
+  const { data } = await apiDespachoV2.get(`/despacho-v2/viajes/${viajeId}/gastos`);
+  return data;
+}
+export async function crearGastoDespachoV2(viajeId, { fecha, motivo, monto, archivo }) {
+  const form = new FormData();
+  form.append('fecha', fecha);
+  form.append('motivo', motivo);
+  form.append('monto', String(monto));
+  form.append('archivo', archivo);
+  const { data } = await apiDespachoV2.post(`/despacho-v2/viajes/${viajeId}/gastos`, form, { timeout: 60000 });
+  return data;
+}
+export async function deleteGastoDespachoV2(viajeId, gastoId) {
+  const { data } = await apiDespachoV2.delete(`/despacho-v2/viajes/${viajeId}/gastos/${gastoId}`);
+  return data;
+}
 
 /* ========= Portones ========= */
 export const fetchPortones = () => api.get('/portones');
@@ -823,6 +854,36 @@ export async function habilitarLogisticaAdjuntoMiembro({ origen_miembro_id, viaj
   const { data } = await api.post('/admin/logistica/adjuntos/habilitar-miembro', { origen_miembro_id, viaje_id, nv });
   return data;
 }
+// Foto de perfil (integrante) y foto de vehículo - una sola cada uno, para
+// el collage del mensaje automático de WhatsApp "en camino".
+export async function fetchLogisticaFotoQcUser(qcUserId) {
+  const { data } = await api.get(`/admin/logistica/qc-users/${qcUserId}/foto`);
+  return data;
+}
+export async function uploadLogisticaFotoQcUser(qcUserId, archivo) {
+  const form = new FormData();
+  form.append('archivo', archivo);
+  const { data } = await api.post(`/admin/logistica/qc-users/${qcUserId}/foto`, form, { timeout: 60000 });
+  return data;
+}
+export async function deleteLogisticaFotoQcUser(qcUserId) {
+  const { data } = await api.delete(`/admin/logistica/qc-users/${qcUserId}/foto`);
+  return data;
+}
+export async function fetchLogisticaFotoVehiculo(vehiculoId) {
+  const { data } = await api.get(`/admin/logistica/vehiculos/${vehiculoId}/foto`);
+  return data;
+}
+export async function uploadLogisticaFotoVehiculo(vehiculoId, archivo) {
+  const form = new FormData();
+  form.append('archivo', archivo);
+  const { data } = await api.post(`/admin/logistica/vehiculos/${vehiculoId}/foto`, form, { timeout: 60000 });
+  return data;
+}
+export async function deleteLogisticaFotoVehiculo(vehiculoId) {
+  const { data } = await api.delete(`/admin/logistica/vehiculos/${vehiculoId}/foto`);
+  return data;
+}
 export async function cerrarLogisticaSemana(semana) {
   const { data } = await api.post(`/admin/logistica/semanas/${encodeURIComponent(semana)}/cerrar`, {});
   return data;
@@ -863,6 +924,17 @@ export async function fetchLogisticaSemanaPromesaMapa(semana) {
 // Mensaje de texto (borrador) para mandarle a la cuadrilla de un viaje.
 export async function fetchLogisticaMensajeViaje(viajeId) {
   const { data } = await api.get(`/admin/logistica/viajes/${viajeId}/mensaje`);
+  return data;
+}
+
+// Rendiciones de gastos (consulta) - una fila por viaje con gastos
+// cargados desde /despacho_v2, con su detalle (gastos + ticket adjunto) y total.
+export async function fetchLogisticaRendiciones() {
+  const { data } = await api.get('/admin/logistica/rendiciones');
+  return data;
+}
+export async function fetchLogisticaRendicionDetalle(viajeId) {
+  const { data } = await api.get(`/admin/logistica/rendiciones/${viajeId}`);
   return data;
 }
 

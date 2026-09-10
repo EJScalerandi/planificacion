@@ -156,8 +156,32 @@ async function habilitarAdjuntoMiembro({ origen_miembro_id, viaje_id, nv, habili
   return rows[0];
 }
 
+// ===========================================================================
+// Foto de perfil (persona) y foto de vehículo - una sola cada uno (no un
+// catálogo como el DNI), para el collage del mensaje automático de
+// WhatsApp "en camino" (logisticaWhatsapp.js). Reemplazar sube la nueva y
+// borra la vieja de Storage (no queda basura acumulada).
+// ===========================================================================
+
+async function getFotoQcUser(qcUserId) {
+  const { rows } = await pool.query(`select foto_storage_path from public.qc_users where id = $1;`, [Number(qcUserId)]);
+  return rows[0]?.foto_storage_path || null;
+}
+async function setFotoQcUser(qcUserId, path) {
+  await pool.query(`update public.qc_users set foto_storage_path = $2 where id = $1;`, [Number(qcUserId), path]);
+}
+
+async function getFotoVehiculo(vehiculoId) {
+  const { rows } = await pool.query(`select foto_storage_path from public.logistica_vehiculos where id = $1;`, [Number(vehiculoId)]);
+  return rows[0]?.foto_storage_path || null;
+}
+async function setFotoVehiculo(vehiculoId, path) {
+  await pool.query(`update public.logistica_vehiculos set foto_storage_path = $2 where id = $1;`, [Number(vehiculoId), path]);
+}
+
 module.exports = {
   listAdjuntos, crearAdjunto, borrarAdjunto,
   listAdjuntosMiembro, listAdjuntosMiembroPorCuadrilla, crearAdjuntoMiembro, borrarAdjuntoMiembro, getAdjuntoMiembro,
   habilitarAdjuntoMiembro,
+  getFotoQcUser, setFotoQcUser, getFotoVehiculo, setFotoVehiculo,
 };

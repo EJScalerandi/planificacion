@@ -22,6 +22,8 @@ const {
   listPuntosExtra, crearPuntoExtra, updatePuntoExtra, deletePuntoExtra,
   listParadasExtraViaje, asignarParadaExtra, desasignarParadaExtra, updateParadaExtraViaje,
 } = require('../../lib/logisticaParadasExtra');
+const gastosDb = require('../../lib/logisticaGastosDb');
+const adjuntosStorage = require('../../lib/logisticaAdjuntosStorage');
 
 // Zonas del corredor + ruta real por calle comparten el mismo trigger
 // (cualquier cambio de paradas/orden de un viaje) - se disparan juntas.
@@ -392,6 +394,26 @@ router.post('/logistica/semanas/:semana/cerrar', requireFullAccess, asyncRoute(a
 
 router.post('/logistica/semanas/:semana/reabrir', requireFullAccess, asyncRoute(async (req, res) => {
   res.json({ ok: true, detalle: await db.reabrirSemana(req.params.semana) });
+}));
+
+// ===========================================================================
+// Rendiciones de gastos (consulta) - pedido explícito del usuario: una fila
+// por viaje con gastos cargados (ver GastosSheet en DespachoV2Page.jsx),
+// entrar a cada una para ver el detalle con sus tickets adjuntos y el
+// total. Solo lectura, alcanza con cualquiera de los 3 scopes de
+// Preproducción. La auditoría ("ya fue controlada") queda para una vuelta
+// futura, pedido explícito del usuario.
+router.get('/logistica/rendiciones', asyncRoute(async (_req, res) => {
+  res.json({ ok: true, rendiciones: await gastosDb.listRendiciones() });
+}));
+
+router.get('/logistica/rendiciones/:viajeId', asyncRoute(async (req, res) => {
+  const detalle = await gastosDb.getRendicionDetalle(req.params.viajeId);
+  if (!detalle) return res.status(404).json({ error: 'Viaje no encontrado' });
+  const gastosConUrl = await Promise.all(
+    detalle.gastos.map(async (g) => ({ ...g, url: await adjuntosStorage.urlFirmada(g.storage_path) }))
+  );
+  res.json({ ok: true, detalle: { ...detalle, gastos: gastosConUrl } });
 }));
 
 module.exports = router;

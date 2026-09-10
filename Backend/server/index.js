@@ -275,6 +275,70 @@ const MIGRATIONS = [
         ADD COLUMN IF NOT EXISTS origen_miembro_id INTEGER REFERENCES public.logistica_adjuntos_miembro(id) ON DELETE CASCADE;
     `,
   },
+  {
+    // Foto de perfil por integrante (qc_users - es genérico a la persona,
+    // no solo a logística) y foto del vehículo - pedido del usuario: van en
+    // el collage del mensaje automático de WhatsApp ("en camino"). Una sola
+    // foto cada uno (no un catálogo como el DNI) - alcanza para el collage.
+    name: 'logistica_fotos_perfil_vehiculo',
+    sql: `
+      ALTER TABLE public.qc_users
+        ADD COLUMN IF NOT EXISTS foto_storage_path TEXT;
+      ALTER TABLE public.logistica_vehiculos
+        ADD COLUMN IF NOT EXISTS foto_storage_path TEXT;
+    `,
+  },
+  {
+    // Botón "Marcar entregado/instalado" de /despacho_v2 (cierre OFICIAL de
+    // esa etapa, mismo mecanismo de PIN que /qc/authorize) + aviso automático
+    // de WhatsApp Business a la siguiente parada de la ruta, con collage de
+    // fotos (cuadrilla + vehículo) armado al momento de mandar - pedido
+    // explícito del usuario. Log de qué se mandó y cuándo, para no volver a
+    // mandarlo dos veces sin querer y para poder auditar/depurar envíos.
+    name: 'logistica_whatsapp_avisos',
+    sql: `
+      CREATE TABLE IF NOT EXISTS public.logistica_whatsapp_avisos (
+        id SERIAL PRIMARY KEY,
+        viaje_id INTEGER NOT NULL REFERENCES public.logistica_viajes(id) ON DELETE CASCADE,
+        nv_origen INTEGER NOT NULL,
+        nv_destino INTEGER NOT NULL,
+        telefono_destino TEXT,
+        estado TEXT NOT NULL DEFAULT 'enviado',
+        detalle_error TEXT,
+        wa_message_id TEXT,
+        enviado_por TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_logistica_whatsapp_avisos_viaje ON public.logistica_whatsapp_avisos(viaje_id);
+    `,
+  },
+  {
+    // Gastos de viaje ("rendición de gastos") cargados por la cuadrilla
+    // desde /despacho_v2 - pedido explícito del usuario: fecha + motivo
+    // (Refrigerio/Hospedaje/Otros por ahora, catálogo simple en el frontend
+    // - "después vamos a agregar más motivos") + monto + el ticket adjunto
+    // (foto o PDF). Una "rendición" no tiene tabla propia: es, ni más ni
+    // menos, el conjunto de gastos de UN viaje (se arma agregando por
+    // viaje_id en logisticaGastosDb.listRendiciones). El campo de auditoría
+    // ("ya fue controlada") queda para una vuelta futura, pedido explícito
+    // del usuario.
+    name: 'logistica_gastos',
+    sql: `
+      CREATE TABLE IF NOT EXISTS public.logistica_gastos (
+        id SERIAL PRIMARY KEY,
+        viaje_id INTEGER NOT NULL REFERENCES public.logistica_viajes(id) ON DELETE CASCADE,
+        fecha DATE NOT NULL,
+        motivo TEXT NOT NULL,
+        monto NUMERIC(12,2) NOT NULL,
+        storage_path TEXT NOT NULL,
+        nombre_archivo TEXT,
+        tipo_mime TEXT,
+        cargado_por TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_logistica_gastos_viaje ON public.logistica_gastos(viaje_id);
+    `,
+  },
 ];
 
 async function runMigrations() {
