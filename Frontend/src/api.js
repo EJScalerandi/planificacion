@@ -589,6 +589,9 @@ export const adminUpdateInsumosPedidoItem = (pedidoId, itemId, patch) => api.put
 export const adminAddInsumosPedidoItem = (pedidoId, payload) => api.post(`/admin/insumos/pedidos/${pedidoId}/items`, payload);
 export const adminSetInsumoProductoNombre = (productoId, nombreDisplay) =>
   api.put(`/admin/insumos/productos/${productoId}/nombre`, { nombre_display: nombreDisplay });
+
+export const adminGetNotaNodo = (nodoId) => api.get(`/admin/notas-nodo/${nodoId}`);
+export const adminSetNotaNodo = (nodoId, nota) => api.put(`/admin/notas-nodo/${nodoId}`, { nota });
 export const adminFetchInsumosSeccionesCierre = () => api.get('/admin/insumos/secciones-cierre');
 export const adminSaveInsumosSeccionesCierre = (entries) => api.put('/admin/insumos/secciones-cierre', { entries });
 

@@ -35,6 +35,7 @@ import ServicioTecnicoSolicitudesPage from '../pages/admin/ServicioTecnicoSolici
 import InsumosComprasPage from '../pages/admin/InsumosComprasPage';
 import InsumosConfigPage from '../pages/admin/InsumosConfigPage';
 import InsumosEntregasPage from '../pages/admin/InsumosEntregasPage';
+import IndiceProgramacionPage from '../pages/admin/IndiceProgramacionPage';
 import LogisticaViajesPage from '../pages/admin/LogisticaViajesPage';
 import LogisticaFechasPage from '../pages/admin/LogisticaFechasPage';
 import ServicioTecnicoViajesPage from '../pages/admin/ServicioTecnicoViajesPage';
@@ -741,6 +742,7 @@ export default function App() {
           <Route path="/admin/insumos" element={<InsumosComprasPage />} />
           <Route path="/admin/insumos/config" element={<InsumosConfigPage />} />
           <Route path="/admin/insumos/entregas" element={<InsumosEntregasPage />} />
+          <Route path="/admin/indice-programacion" element={<IndiceProgramacionPage />} />
           <Route path="/admin/logistica-viajes" element={<LogisticaViajesPage />} />
           <Route
             path="/admin/logistica-fechas"
