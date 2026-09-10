@@ -1,28 +1,112 @@
 // pages/admin/IndiceProgramacionPage.jsx
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getAdminToken, adminGetNotaNodo, adminSetNotaNodo } from '../../src/api';
+import {
+  getAdminToken,
+  adminGetNotaNodo,
+  adminSetNotaNodo,
+  adminListUsuariosPrueba,
+  adminAddUsuarioPrueba,
+  adminDeleteUsuarioPrueba,
+} from '../../src/api';
 
 const nodeBoxStyle = {
-  position: 'relative',
-  zIndex: 1,
+  position: 'absolute',
+  zIndex: 2,
   background: 'var(--surface)',
   border: '1px solid var(--border)',
   borderRadius: 12,
   boxShadow: 'var(--shadow)',
   padding: '14px 18px',
   minHeight: 56,
+  width: 170,
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
   textAlign: 'center',
   fontWeight: 900,
   color: 'var(--text)',
-  cursor: 'pointer',
+  userSelect: 'none',
+  touchAction: 'none',
 };
 
-// Contenido que se muestra al hacer click en cada cuadro. Todavía sin
-// definir salvo Planificador (en construcción) - el resto queda pendiente.
+// Posiciones y conexiones de fábrica del diagrama. Cada usuario puede mover
+// las cajas y crear/borrar líneas desde el navegador; esos cambios se
+// guardan solo en su localStorage (ver LS_KEY), nunca en el servidor - así
+// cada uno puede reordenar el diagrama a su gusto sin pisar lo de otro.
+// Tres columnas y cinco filas bien alineadas: las cajas conectadas por una
+// línea recta (vertical u horizontal) comparten exactamente la misma x o y,
+// para que esa línea salga perfectamente derecha en vez de en diagonal.
+const COL_LEFT = 15;
+const COL_CENTER = 50;
+const COL_RIGHT = 85;
+const ROW_1 = 10;
+const ROW_2 = 30;
+const ROW_3 = 50;
+const ROW_4 = 70;
+const ROW_5 = 90;
+
+const DEFAULT_NODES = [
+  { id: 'fidelitytools', label: 'FidelityTools', x: COL_LEFT, y: ROW_2, special: 'fidelitytools' },
+  { id: 'precios', label: 'Actualización de precios', x: COL_CENTER, y: ROW_1 },
+  { id: 'top', label: 'Integrador', x: COL_CENTER, y: ROW_2 },
+  { id: 'planificador', label: 'Planificador', x: COL_RIGHT, y: ROW_2, brand: true },
+  { id: 'left', label: 'Presupuestador', x: COL_LEFT, y: ROW_3 },
+  { id: 'center', label: 'Odoo', x: COL_CENTER, y: ROW_3, special: 'odoo' },
+  { id: 'right', label: 'Remitos', x: COL_RIGHT, y: ROW_3 },
+  { id: 'sisAntiguo', label: 'Sistema antiguo', x: COL_LEFT, y: ROW_4 },
+  { id: 'bottom', label: 'Información de venta', x: COL_CENTER, y: ROW_4 },
+  { id: 'importador', label: 'Importador', x: COL_CENTER, y: ROW_5 },
+  // Arriba de Planificador, misma columna - así la línea a Planificador sale derecha.
+  { id: 'supabase', label: 'Base de Datos Supabase', x: COL_RIGHT, y: ROW_1 },
+];
+
+const DEFAULT_EDGES = [
+  { id: 'fidelitytools__left', from: 'fidelitytools', to: 'left' },
+  { id: 'precios__top', from: 'precios', to: 'top' },
+  { id: 'left__center', from: 'left', to: 'center' },
+  { id: 'center__right', from: 'center', to: 'right' },
+  { id: 'center__bottom', from: 'center', to: 'bottom' },
+  { id: 'bottom__importador', from: 'bottom', to: 'importador' },
+  { id: 'top__center', from: 'top', to: 'center' },
+  { id: 'left__top', from: 'left', to: 'top' },
+  { id: 'center__planificador', from: 'center', to: 'planificador' },
+  { id: 'bottom__right', from: 'bottom', to: 'right' },
+  { id: 'sisAntiguo__top', from: 'sisAntiguo', to: 'top' },
+  { id: 'top__supabase', from: 'top', to: 'supabase' },
+  { id: 'supabase__planificador', from: 'supabase', to: 'planificador' },
+  { id: 'planificador__precios', from: 'planificador', to: 'precios' },
+  { id: 'right__planificador', from: 'right', to: 'planificador' },
+  { id: 'sisAntiguo__right', from: 'sisAntiguo', to: 'right' },
+];
+
+const LS_KEY = 'ip_diagram_layout_v1';
+
+function defaultPositions() {
+  const base = {};
+  DEFAULT_NODES.forEach((n) => { base[n.id] = { x: n.x, y: n.y }; });
+  return base;
+}
+
+function loadStoredLayout() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistLayout(positions, edges) {
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify({ positions, edges }));
+  } catch {}
+}
+
+// Contenido que se muestra al hacer click en cada cuadro. Faltan definir
+// los que no son Integrador/Planificador/Presupuestador/Remitos.
 const NODE_CONTENT = {
   planificador: {
     label: 'Planificador',
@@ -43,59 +127,194 @@ const NODE_CONTENT = {
     ],
     adminUser: 'admin',
     adminPassword: 'admin123',
+    url: '/index',
+    database: [
+      'SQL Server "WebApp" (legado): dbo.Pre_Produccion — se sincroniza fecha_prod/fecha_plan_entrega cuando se edita un iPanel que ya está en producción',
+      'Supabase (propia): public.admin_users, public.preproduccion_valores / preproduccion_valores_ipanels (mismas tablas que llena Integrador, acá se editan por etapa), logística, servicio técnico, insumos, QC y las notas de este mismo diagrama',
+      'Mismo proyecto Supabase que Integrador y Presupuestador — no son bases separadas',
+    ],
+  },
+  top: {
+    label: 'Integrador',
+    description:
+      'Es el puente entre el sistema viejo de ventas (SQL Server, tablas NTASVTAS / INTASVTAS / ' +
+      'PRODUCTOS) y Odoo/Supabase: sincroniza los valores de Portones e iPanels para que ' +
+      'Planificador los pueda cargar en el tablero de producción. Además incluye una segunda ' +
+      'mini-herramienta (ARCA Comprobantes) que importa CSV de comprobantes recibidos y los carga ' +
+      'como facturas de compra en Odoo, ya conciliadas.',
+    items: [
+      'Sync principal (dflex-sync): trae NV de Portones/iPanels desde SQL Server y Odoo, permite revisar y editar valores antes de mandarlos a producción',
+      'Bloqueo de iPanels: partidas que nunca deben entrar a preproducción (lista en base + hardcodeada como respaldo)',
+      'Fórmulas: asignación de propiedades desde Nota de Venta, con comparación integrador vs. presupuestador',
+      'ARCA Comprobantes: importa CSV de comprobantes recibidos y crea facturas de compra + pago conciliado en Odoo',
+    ],
+    adminUser: 'dflex-sync: login con usuario real de Supabase Auth (sin cuenta fija) · ARCA Comprobantes: admin',
+    adminPassword: 'dflex-sync: la del usuario (rol admin/formula_editor/viewer según app_users) · ARCA Comprobantes: ver ARCA_AUTH_PASSWORD en el .env',
+    database: [
+      'SQL Server "Paneles" (solo lectura): dbo.NTASVTAS (cabecera NV), dbo.INTASVTAS (línea/producto), dbo.PRODUCTOS (descripción)',
+      'Supabase: escribe/lee public.preproduccion_valores_ipanels y public.ipanel_sync_blocklist; login/roles de dflex-sync en public.app_users',
+      'Mismo SQL Server y mismo proyecto Supabase que usan Planificador y Presupuestador',
+    ],
+  },
+  left: {
+    label: 'Presupuestador',
+    description:
+      'Es la herramienta central de ventas: cotiza portones, puertas e iPanels contra los precios y ' +
+      'listas de Odoo, y de ahí en más maneja mediciones, aprobación comercial y técnica, ' +
+      'planificación de producción y comisiones de vendedores. Los roles (superusuario, ' +
+      'distribuidor, vendedor, encargado comercial, revisión técnica, medidor, logística, ' +
+      'administración) viven todos en una sola tabla de usuarios.',
+    items: [
+      'Cotizador: arma presupuestos de portones/puertas/iPanels contra el catálogo y precios de Odoo',
+      'Mediciones: carga y seguimiento de medidas a campo antes de aprobar',
+      'Aprobación comercial / técnica: circuito de revisión antes de pasar a producción',
+      'Planificación de producción: asigna fechas y orden de fabricación',
+      'Comisiones: cada vendedor ve lo que lleva comisionado (consulta la API externa de Informe)',
+      'Panel superusuario: catálogo de puertas, reglas técnicas, usuarios y permisos',
+    ],
+    adminUser: 'no hay un usuario fijo de sistema',
+    adminPassword: 'pedir un usuario real, o crear uno con is_superuser = true en presupuestador_users',
+    database: [
+      'Supabase (propia): public.presupuestador_users (login/roles), public.presupuestador_quotes (esto es justo lo que lee Remitos si el NV todavía no llegó a producción), catálogo de puertas, reglas técnicas, mediciones',
+      'No usa SQL Server directo — todo lo de ventas/precios/stock sale de Odoo',
+      'Mismo proyecto Supabase que Integrador y Planificador',
+    ],
+  },
+  right: {
+    label: 'Remitos',
+    description:
+      'Genera el remito en PDF y las etiquetas de despacho (.lbx para Brother P-touch) de un Portón ' +
+      'o iPanel a partir del número de NV. Primero busca lo que ya sincronizó el Integrador o cargó ' +
+      'Planificador; si el pedido todavía no llegó a producción, usa directamente lo que cotizó ' +
+      'Presupuestador.',
+    items: [
+      'Remito por NV: busca cliente, dirección y detalle de ítems, arma el PDF',
+      'Etiquetas LBX: etiqueta grande + 4 chicas para imprimir en Brother P-touch',
+      'Fallback automático: si el NV no tiene datos cargados en ninguna tabla, arma un ítem resumen con los campos del sistema viejo para no dejar el remito sin ítems',
+    ],
+    adminUser: '—',
+    adminPassword: 'sin login, uso interno directo',
+    database: [
+      'SQL Server "Portones" (propia) + lee "Paneles" (NTASVTAS/INTASVTAS/PRODUCTOS) y "WebApp.dbo.Pre_Produccion" (fecha de venta) — mismo server que el resto',
+      'Supabase (solo lectura): primero public.preproduccion_valores / preproduccion_valores_ipanels; si no hay nada, cae a public.presupuestador_quotes',
+      'No tiene tablas propias en Supabase, solo lee de las otras apps',
+    ],
+  },
+  bottom: {
+    label: 'Información de venta',
+    description:
+      'No es un programa: es la tabla legado WebApp.dbo.Pre_Produccion, en el mismo SQL Server ' +
+      'viejo que usa Planificador. Ahí queda cargada la info de la venta (cliente, dirección, ' +
+      'localidad, fecha, NV) que después consumen Integrador, Planificador y Remitos. Revisé los ' +
+      '4 repos clonados y ninguno escribe ahí (no hay ningún INSERT/UPDATE a esa tabla) — quien la ' +
+      'llena corre por fuera de este workspace, probablemente el "Importador" de al lado.',
+    items: [
+      'La lee Integrador (dflex-sync): consulta interna a WebApp.dbo.Pre_Produccion por NV, para el listado de portones legado',
+      'La lee Remitos: Fecha/fecha/Fecha_NV para imprimir "FECHA DE VENTA" en la etiqueta grande de iPanels',
+      'La lee Planificador: fechas de producción/despacho de iPanels ya sincronizados a producción',
+    ],
+    adminUser: 'no aplica — es una tabla de SQL Server, no un programa con login propio',
+    adminPassword: 'se accede con el mismo SQL_USER/SQL_PASSWORD que ya usan Integrador, Planificador y Remitos',
+    database: [
+      'SQL Server "WebApp": tabla dbo.Pre_Produccion (mismo server que el resto de la infraestructura)',
+      'Ningún repo de los 4 clonados escribe acá — solo lectura desde Integrador, Planificador y Remitos',
+    ],
+  },
+  precios: {
+    label: 'Actualización de precios',
+    description:
+      'No es un repo aparte: es una página HTML suelta (Frontend/public/listas-precios.html de ' +
+      'Planificador) para tocar precios de Odoo sin entrar a Odoo. Habla con dos backends distintos ' +
+      'al mismo tiempo: le pide a Presupuestador (cotizador-back) las empresas/listas/productos y ' +
+      'aplica los aumentos, y le pide al Backend de Planificador la categoría de cada producto ' +
+      '(por tag de Odoo) para poder aumentar solo Portones, Ipanels, Puertas, Plegados u Otros.',
+    items: [
+      'Empresas y listas: GET /api/price-lists/companies y /api/price-lists/lists (cotizador-back) — trae las pricelists de Odoo por compañía',
+      'Regla de edición: Vert puede editar todas sus listas; Dflex solo la lista "Predeterminada" (las demás son de solo consulta y se acomodan solas cuando se actualiza la Predeterminada)',
+      'Editar un producto suelto: PATCH /api/price-lists/items/:id (fixed_price)',
+      'Aumento masivo: POST /api/price-lists/increase — por lista actual, por todas las editables, por selección manual (checkboxes) o por categoría filtrada',
+      'Categorías: GET/PUT /price-categories/map (Backend de Planificador) — asigna cada tag de producto de Odoo a una categoría',
+      'La página guarda en localStorage qué backend de Presupuestador usar (por defecto Render, no Vercel) — si algo no carga, revisar esa URL primero',
+    ],
+    adminUser: 'no es login de usuario — el llamado a /price-categories/* va con una API key fija en el header x-api-key',
+    adminPassword: 'misma variable IA_API_KEY del Backend de Planificador (la que protege /api/ia/portones/...); ojo que esa key ya queda expuesta en el HTML público, no la traten como secreta',
+    url: '/listas-precios.html',
+    database: [
+      'Sin base propia para precios: lee y escribe directo sobre Odoo — product.pricelist y product.pricelist.item (vía cotizador-back)',
+      'Una sola tabla propia en el Supabase compartido: public.price_category_map (qué tag de Odoo corresponde a qué categoría), manejada por el Backend de Planificador',
+    ],
+  },
+  supabase: {
+    label: 'Base de Datos Supabase',
+    description:
+      'Es el Postgres compartido (proyecto único en Supabase) que usan Integrador, Planificador y ' +
+      'Presupuestador para guardar sus propias tablas, y que Remitos consulta en solo lectura. No ' +
+      'es una base por app: varias tablas se escriben desde un repo y se leen desde otro, así que ' +
+      'un cambio de esquema en una puede romper otro repo sin que se note en el que lo cambió.',
+    items: [
+      'app_users — roles de login de Integrador (dflex-sync: admin/formula_editor/viewer)',
+      'admin_users — login del panel admin de Planificador',
+      'preproduccion_valores / preproduccion_valores_ipanels — las llena Integrador al sincronizar, las edita Planificador por etapa, las lee Remitos para armar el remito',
+      'ipanel_sync_blocklist — partidas de iPanel que Integrador nunca debe sincronizar',
+      'presupuestador_users — login y roles (superusuario, vendedor, distribuidor, etc.) de Presupuestador',
+      'presupuestador_quotes — cotizaciones de Presupuestador; Remitos las usa como fallback si el NV todavía no llegó a producción',
+      'catálogo de puertas, reglas técnicas, mediciones — propias de Presupuestador',
+      'logística, servicio técnico, insumos, QC, notas de nodo (las de este mismo diagrama) — propias de Planificador',
+    ],
+    adminUser: 'no es login de ninguna app — es acceso al dashboard de Supabase (SQL editor, tablas, auth)',
+    adminPassword: 'pedir invitación al proyecto a quien administre la cuenta de Supabase',
+    database: [
+      'Un solo proyecto para Integrador, Planificador (prod) y Presupuestador — connection string en DATABASE_URL / SUPABASE_DB_URL de cada .env',
+      'Remitos se conecta aparte con SUPABASE_DATABASE_URL, pero apunta al mismo proyecto (solo lectura)',
+      'Pooler en aws-1-us-east-2.pooler.supabase.com — revisar PGSSLMODE/SSL de cada repo, no todos lo configuran igual',
+    ],
   },
 };
 
-function Node({ id, gridArea, label, extraStyle, onOpen }) {
+const innerBoxStyle = {
+  flex: 1,
+  border: '1px solid var(--border)',
+  borderRadius: 8,
+  padding: '8px 6px',
+  fontSize: 12,
+  fontWeight: 800,
+  background: 'var(--bg, rgba(0,0,0,.03))',
+  textAlign: 'center',
+};
+
+function DiagramNode({ node, pos, connectMode, selected, onPointerDown }) {
+  const isOdoo = node.special === 'odoo';
+  const isFidelityTools = node.special === 'fidelitytools';
   return (
     <div
       className="ip-node"
-      style={{ ...nodeBoxStyle, ...extraStyle, gridArea }}
-      onClick={() => onOpen(id, label)}
+      onPointerDown={(e) => onPointerDown(e, node.id)}
+      style={{
+        ...(isOdoo ? { position: 'absolute', zIndex: 2, touchAction: 'none', userSelect: 'none' } : nodeBoxStyle),
+        ...(node.brand ? { border: '2px solid var(--brand)' } : {}),
+        ...(isFidelityTools ? { width: 230, minHeight: 96, flexDirection: 'column', gap: 8 } : {}),
+        left: `${pos.x}%`,
+        top: `${pos.y}%`,
+        transform: 'translate(-50%, -50%)',
+        cursor: connectMode ? 'crosshair' : 'grab',
+        outline: selected ? '3px solid var(--brand)' : 'none',
+        outlineOffset: 2,
+      }}
     >
-      {label}
+      {isOdoo ? (
+        <div style={{ background: '#714B67', borderRadius: 32, padding: '28px 40px', display: 'flex', justifyContent: 'center' }}>
+          <img src="/logos/odoo.png" alt="Odoo" draggable={false} style={{ maxWidth: 220, width: '100%', height: 'auto', pointerEvents: 'none' }} />
+        </div>
+      ) : isFidelityTools ? (
+        <>
+          <div>FidelityTools</div>
+          <div style={{ display: 'flex', gap: 8, width: '100%' }}>
+            <div style={innerBoxStyle}>CRM</div>
+            <div style={innerBoxStyle}>Chatbot+</div>
+          </div>
+        </>
+      ) : node.label}
     </div>
-  );
-}
-
-const vLineStyle = {
-  justifySelf: 'center',
-  width: 2,
-  height: '100%',
-  background: 'var(--border)',
-};
-
-const hLineStyle = {
-  alignSelf: 'center',
-  height: 2,
-  width: '100%',
-  background: 'var(--border)',
-};
-
-// Color de "línea p": más oscuro que las líneas rectas del cruce (var(--border)).
-const LINEA_P_COLOR = 'var(--text)';
-
-const hLineaPStyle = {
-  alignSelf: 'center',
-  width: '100%',
-  height: 0,
-  borderTop: `2px dashed ${LINEA_P_COLOR}`,
-};
-
-// Conector curvo libre (no atado a filas/columnas del grid), dibujado con un
-// path SVG en coordenadas porcentuales sobre todo el diagrama. "línea p" es
-// la primera: Presupuestador -> Integrador, curvada para no pasar por encima
-// del logo de Odoo. A rayas, más oscura que las líneas rectas del cruce.
-function ConnectorPath({ d, color = LINEA_P_COLOR }) {
-  return (
-    <path
-      d={d}
-      fill="none"
-      stroke={color}
-      strokeWidth={2.5}
-      strokeDasharray="6 4"
-      vectorEffect="non-scaling-stroke"
-    />
   );
 }
 
@@ -103,10 +322,164 @@ export default function IndiceProgramacionPage() {
   const nav = useNavigate();
   const [openNode, setOpenNode] = useState(null);
   const [openNodeLabel, setOpenNodeLabel] = useState('');
+  const [fidelityChoiceOpen, setFidelityChoiceOpen] = useState(false);
+  // Nota + usuario/contraseña editables: se guardan juntos por nodo en
+  // public.notas_nodo, así que lo que carga uno lo ve el resto del equipo.
   const [nota, setNota] = useState('');
+  // adminUserInput/adminPasswordInput: lo que se está tipeando (borrador).
+  // savedAdminUser/savedAdminPassword: lo último realmente guardado - es lo
+  // que se muestra como texto fijo hasta que alguien aprieta "Editar".
+  const [adminUserInput, setAdminUserInput] = useState('');
+  const [adminPasswordInput, setAdminPasswordInput] = useState('');
+  const [savedAdminUser, setSavedAdminUser] = useState('');
+  const [savedAdminPassword, setSavedAdminPassword] = useState('');
+  const [editingAccess, setEditingAccess] = useState(false);
   const [notaMeta, setNotaMeta] = useState(null);
   const [notaLoading, setNotaLoading] = useState(false);
   const [notaSaving, setNotaSaving] = useState(false);
+  const [accessError, setAccessError] = useState('');
+
+  // Usuarios de prueba: varios por nodo, en tabla aparte (notas_nodo_usuarios_prueba).
+  const [testUsers, setTestUsers] = useState([]);
+  const [testUsersLoading, setTestUsersLoading] = useState(false);
+  const [newTestUser, setNewTestUser] = useState({ etiqueta: '', usuario: '', password: '' });
+  const [testUserSaving, setTestUserSaving] = useState(false);
+  const [testUserError, setTestUserError] = useState('');
+
+  // Mensaje de error legible desde una respuesta de axios (o "sin conexión"
+  // si ni siquiera hubo respuesta del servidor - típico de backend caído o
+  // apuntando a otra URL).
+  const describeApiError = (err) =>
+    err?.response?.data?.error || err?.response?.statusText || err?.message || 'Error desconocido';
+
+  const [positions, setPositions] = useState(() => {
+    const stored = loadStoredLayout();
+    const base = defaultPositions();
+    if (stored?.positions) {
+      Object.keys(base).forEach((id) => {
+        if (stored.positions[id]) base[id] = stored.positions[id];
+      });
+    }
+    return base;
+  });
+  const [edges, setEdges] = useState(() => {
+    const stored = loadStoredLayout();
+    return Array.isArray(stored?.edges) ? stored.edges : DEFAULT_EDGES;
+  });
+  const [connectMode, setConnectMode] = useState(false);
+  const [connectFrom, setConnectFrom] = useState(null);
+  // Notas temporales: solo en memoria (nunca se guardan), para anotar algo
+  // mientras se explica el diagrama - desaparecen solas al recargar la página.
+  const [tempNotes, setTempNotes] = useState([]);
+  const canvasRef = useRef(null);
+  const dragRef = useRef(null);
+
+  const resetLayout = () => {
+    try { localStorage.removeItem(LS_KEY); } catch {}
+    setPositions(defaultPositions());
+    setEdges(DEFAULT_EDGES);
+    setConnectFrom(null);
+  };
+
+  const toggleEdge = (a, b) => {
+    setEdges((prev) => {
+      const existing = prev.find((e) => (e.from === a && e.to === b) || (e.from === b && e.to === a));
+      const next = existing ? prev.filter((e) => e.id !== existing.id) : [...prev, { id: `${a}__${b}__${Date.now()}`, from: a, to: b }];
+      persistLayout(positions, next);
+      return next;
+    });
+  };
+
+  const removeEdge = (edgeId) => {
+    setEdges((prev) => {
+      const next = prev.filter((e) => e.id !== edgeId);
+      persistLayout(positions, next);
+      return next;
+    });
+  };
+
+  const addTempNote = () => {
+    const id = `temp-${Date.now()}`;
+    setTempNotes((prev) => [...prev, { id, x: 78 + (prev.length % 4) * 3, y: 8 + (prev.length % 4) * 6, text: '' }]);
+  };
+
+  const removeTempNote = (id) => setTempNotes((prev) => prev.filter((n) => n.id !== id));
+
+  const updateTempNoteText = (id, text) => setTempNotes((prev) => prev.map((n) => (n.id === id ? { ...n, text } : n)));
+
+  // Rutas internas (empiezan con "/") navegan con el router, salvo que sean
+  // páginas estáticas (.html en /public, ej. listas-precios.html): esas no
+  // son una ruta de React Router, necesitan recarga completa del navegador
+  // (mismo criterio que ya usa IndexPage con isStaticPage). Todo lo demás
+  // (otro dominio: Vercel/Render/Odoo/Supabase) se abre en pestaña nueva.
+  const isStaticPage = (path) => /\.html(?:$|[?#])/.test(String(path || ''));
+  const goToProgram = (url) => {
+    if (!url) return;
+    if (url.startsWith('/')) {
+      if (isStaticPage(url)) window.location.href = url;
+      else nav(url);
+    } else {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  const handleNodeClick = (id, label) => {
+    if (connectMode) {
+      if (!connectFrom) { setConnectFrom(id); return; }
+      if (connectFrom === id) { setConnectFrom(null); return; }
+      toggleEdge(connectFrom, id);
+      setConnectFrom(null);
+      return;
+    }
+    if (id === 'fidelitytools') { setFidelityChoiceOpen(true); return; }
+    openNodeModal(id, label);
+  };
+
+  const handlePointerMove = (e) => {
+    const st = dragRef.current;
+    if (!st || !canvasRef.current) return;
+    const dx = e.clientX - st.startClientX;
+    const dy = e.clientY - st.startClientY;
+    if (!st.moved && Math.hypot(dx, dy) < 4) return;
+    st.moved = true;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const xPct = Math.min(97, Math.max(3, ((e.clientX - rect.left) / rect.width) * 100));
+    const yPct = Math.min(97, Math.max(3, ((e.clientY - rect.top) / rect.height) * 100));
+    if (st.kind === 'temp') {
+      setTempNotes((prev) => prev.map((n) => (n.id === st.id ? { ...n, x: xPct, y: yPct } : n)));
+    } else {
+      setPositions((prev) => ({ ...prev, [st.id]: { x: xPct, y: yPct } }));
+    }
+  };
+
+  const handlePointerUp = () => {
+    window.removeEventListener('pointermove', handlePointerMove);
+    window.removeEventListener('pointerup', handlePointerUp);
+    const st = dragRef.current;
+    dragRef.current = null;
+    if (!st) return;
+    if (st.kind === 'temp') return; // las notas temporales nunca se guardan
+    if (st.moved) {
+      setPositions((prev) => { persistLayout(prev, edges); return prev; });
+    } else {
+      handleNodeClick(st.id, st.label);
+    }
+  };
+
+  const handlePointerDown = (e, id) => {
+    e.stopPropagation();
+    const node = DEFAULT_NODES.find((n) => n.id === id);
+    dragRef.current = { kind: 'node', id, label: node?.label, startClientX: e.clientX, startClientY: e.clientY, moved: false };
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+  };
+
+  const handleTempPointerDown = (e, id) => {
+    e.stopPropagation();
+    dragRef.current = { kind: 'temp', id, startClientX: e.clientX, startClientY: e.clientY, moved: false };
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+  };
 
   useEffect(() => {
     const t = getAdminToken();
@@ -116,24 +489,121 @@ export default function IndiceProgramacionPage() {
   useEffect(() => {
     if (!openNode) return;
     setNota('');
+    setAdminUserInput('');
+    setAdminPasswordInput('');
+    setSavedAdminUser('');
+    setSavedAdminPassword('');
+    setEditingAccess(false);
     setNotaMeta(null);
+    setAccessError('');
     setNotaLoading(true);
     adminGetNotaNodo(openNode)
       .then(({ data }) => {
+        const u = data?.admin_user || '';
+        const p = data?.admin_password || '';
         setNota(data?.nota || '');
+        setAdminUserInput(u);
+        setAdminPasswordInput(p);
+        setSavedAdminUser(u);
+        setSavedAdminPassword(p);
+        // Si todavía no hay nada guardado, arranca directo en modo edición.
+        setEditingAccess(!(u && p));
         setNotaMeta(data?.updated_by ? { updatedBy: data.updated_by, updatedAt: data.updated_at } : null);
       })
-      .catch(() => {})
+      .catch((err) => setAccessError(`No se pudo cargar: ${describeApiError(err)}`))
       .finally(() => setNotaLoading(false));
   }, [openNode]);
 
-  const saveNota = () => {
+  useEffect(() => {
+    if (!openNode) return;
+    setTestUsers([]);
+    setNewTestUser({ etiqueta: '', usuario: '', password: '' });
+    setTestUserError('');
+    setTestUsersLoading(true);
+    adminListUsuariosPrueba(openNode)
+      .then(({ data }) => setTestUsers(Array.isArray(data?.usuarios) ? data.usuarios : []))
+      .catch((err) => setTestUserError(`No se pudo cargar la lista: ${describeApiError(err)}`))
+      .finally(() => setTestUsersLoading(false));
+  }, [openNode]);
+
+  const saveField = (payload) => {
     if (!openNode) return;
     setNotaSaving(true);
-    adminSetNotaNodo(openNode, nota)
+    adminSetNotaNodo(openNode, payload)
       .then(({ data }) => setNotaMeta(data?.updated_by ? { updatedBy: data.updated_by, updatedAt: data.updated_at } : null))
       .catch(() => {})
       .finally(() => setNotaSaving(false));
+  };
+
+  // La nota se sigue guardando sola al salir del campo (no manda usuario ni
+  // contraseña, así nunca los toca sin querer).
+  const saveNota = () => saveField({ nota });
+
+  // El acceso (usuario/contraseña) SOLO se guarda con el botón "Guardar".
+  // Una vez guardado, queda fijo como texto (savedAdminUser/Password) y sale
+  // del modo edición - no se pierde ni "se va" al tocar otra cosa.
+  const saveAccess = () => {
+    if (!openNode) return;
+    const usuario = adminUserInput.trim();
+    const password = adminPasswordInput.trim();
+    if (!usuario || !password) return;
+    setNotaSaving(true);
+    setAccessError('');
+    adminSetNotaNodo(openNode, { nota, admin_user: usuario, admin_password: password })
+      .then(({ data }) => {
+        // Si el backend no devolvió lo que mandamos (ej. porque es una
+        // versión vieja del servidor que todavía no conoce admin_user/
+        // admin_password), avisamos en vez de festejar un guardado que en
+        // realidad no pasó.
+        if ((data?.admin_user || '') !== usuario || (data?.admin_password || '') !== password) {
+          setAccessError('El servidor respondió pero no guardó usuario/contraseña — puede que el backend que estás usando todavía no tenga este cambio.');
+          return;
+        }
+        setNotaMeta(data?.updated_by ? { updatedBy: data.updated_by, updatedAt: data.updated_at } : null);
+        setSavedAdminUser(usuario);
+        setSavedAdminPassword(password);
+        setEditingAccess(false);
+      })
+      .catch((err) => setAccessError(`No se pudo guardar: ${describeApiError(err)}`))
+      .finally(() => setNotaSaving(false));
+  };
+
+  const startEditAccess = () => {
+    setAdminUserInput(savedAdminUser);
+    setAdminPasswordInput(savedAdminPassword);
+    setEditingAccess(true);
+  };
+
+  const cancelEditAccess = () => {
+    setAdminUserInput(savedAdminUser);
+    setAdminPasswordInput(savedAdminPassword);
+    setEditingAccess(false);
+  };
+
+  const addTestUser = () => {
+    if (!openNode) return;
+    const usuario = newTestUser.usuario.trim();
+    const password = newTestUser.password.trim();
+    if (!usuario || !password) return; // los dos campos son obligatorios para guardar
+    setTestUserSaving(true);
+    setTestUserError('');
+    adminAddUsuarioPrueba(openNode, { etiqueta: newTestUser.etiqueta.trim(), usuario, password })
+      .then(({ data }) => {
+        if (!data?.id) {
+          setTestUserError('El servidor respondió pero no devolvió el usuario guardado — revisá si el backend tiene este cambio.');
+          return;
+        }
+        setTestUsers((prev) => [...prev, data]);
+        setNewTestUser({ etiqueta: '', usuario: '', password: '' });
+      })
+      .catch((err) => setTestUserError(`No se pudo guardar: ${describeApiError(err)}`))
+      .finally(() => setTestUserSaving(false));
+  };
+
+  const removeTestUser = (id) => {
+    if (!openNode) return;
+    setTestUsers((prev) => prev.filter((u) => u.id !== id));
+    adminDeleteUsuarioPrueba(openNode, id).catch((err) => setTestUserError(`No se pudo borrar: ${describeApiError(err)}`));
   };
 
   const openContent = openNode ? NODE_CONTENT[openNode] : null;
@@ -148,6 +618,84 @@ export default function IndiceProgramacionPage() {
       <style>{`
         .ip-node { transition: transform .15s ease, box-shadow .15s ease; }
         .ip-node:hover { transform: scale(1.06); box-shadow: 0 8px 20px rgba(0,0,0,.18); }
+
+        .ip-section-label {
+          font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+          color: var(--brand-700); margin: 0 0 8px;
+        }
+        .ip-lead { font-size: 15px; line-height: 1.6; color: var(--text); margin: 0; }
+        .ip-divider { height: 1px; border: none; background: var(--border); margin: 16px 0; }
+
+        .ip-access-box {
+          border: 1px solid color-mix(in srgb, var(--brand) 35%, var(--border));
+          background: var(--brand-100);
+          border-radius: 10px;
+          padding: 10px 14px;
+          margin-top: 10px;
+        }
+        .ip-access-row { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text); line-height: 1.5; }
+        .ip-access-row + .ip-access-row { margin-top: 5px; }
+        .ip-access-key { font-weight: 800; color: var(--brand-700); min-width: 82px; flex: none; }
+        .ip-access-input {
+          flex: 1; min-width: 0; border: none; background: transparent;
+          border-bottom: 1px dashed color-mix(in srgb, var(--brand) 45%, var(--border));
+          font: inherit; font-size: 12.5px; color: var(--text); padding: 2px 0;
+        }
+        .ip-access-input:focus { outline: none; border-bottom-style: solid; }
+        .ip-access-input::placeholder { color: var(--muted); }
+        .ip-access-value { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; color: var(--text); }
+
+        .ip-modal-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+        .ip-modal-list li { position: relative; padding-left: 18px; color: var(--text); line-height: 1.5; font-size: 13.5px; }
+        .ip-modal-list li::before {
+          content: ''; position: absolute; left: 0; top: 7px; width: 6px; height: 6px;
+          border-radius: 50%; background: var(--brand);
+        }
+
+        .ip-db-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 7px; }
+        .ip-db-row {
+          font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          font-size: 12px; line-height: 1.55; color: var(--text);
+          background: color-mix(in srgb, var(--brand) 6%, var(--surface));
+          border: 1px solid var(--border); border-left: 3px solid var(--brand);
+          border-radius: 6px; padding: 8px 11px;
+        }
+
+        .ip-testusers-grid {
+          display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+          gap: 10px; margin-bottom: 10px;
+        }
+        .ip-testuser-card {
+          position: relative;
+          border: 1px solid color-mix(in srgb, var(--brand) 30%, var(--border));
+          background: linear-gradient(180deg, color-mix(in srgb, var(--brand) 9%, var(--surface)), var(--surface));
+          border-radius: 10px;
+          padding: 10px 30px 10px 12px;
+          box-shadow: 0 2px 6px rgba(0,0,0,.05);
+        }
+        .ip-testuser-label {
+          font-weight: 800; color: var(--brand-700); font-size: 12px; margin-bottom: 4px;
+        }
+        .ip-testuser-row {
+          font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          font-size: 11.5px; color: var(--text); line-height: 1.55; word-break: break-all;
+        }
+        .ip-testuser-del {
+          position: absolute; top: 6px; right: 8px; border: none; background: transparent;
+          color: var(--muted); cursor: pointer; font-weight: 900; font-size: 15px; line-height: 1;
+          padding: 2px 4px; border-radius: 6px;
+        }
+        .ip-testuser-del:hover { color: #fff; background: var(--brand); }
+        .ip-testuser-empty { font-size: 12.5px; color: var(--muted); margin-bottom: 10px; }
+
+        .ip-testuser-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+        .ip-testuser-form input {
+          border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px;
+          font: inherit; font-size: 12.5px; background: var(--surface); color: var(--text);
+          min-width: 130px; flex: 1;
+        }
+        .ip-testuser-form input:focus { outline: none; border-color: var(--brand); }
+        .ip-testuser-form .btn { flex: none; }
       `}</style>
 
       <div className="header-row" style={{ marginBottom: 12 }}>
@@ -157,93 +705,176 @@ export default function IndiceProgramacionPage() {
         </div>
       </div>
 
-      <div style={{ overflowX: 'auto', padding: '24px 0' }}>
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'minmax(160px,1fr) 90px minmax(200px,auto) 90px minmax(160px,1fr)',
-            gridTemplateRows: 'auto 90px auto 90px auto 90px auto 90px auto',
-            gridTemplateAreas:
-              '"chatbox . precios . ." ' +
-              '"chatArrow . precioLine . ." ' +
-              '"crm . top intPlanLine planificador" ' +
-              '"crmLine . lineTop . ." ' +
-              '"left lineLeft center lineRight right" ' +
-              '". . lineBottom . ." ' +
-              '"sisAntiguo . bottom . ." ' +
-              '". . importLine . ." ' +
-              '". . importador . ."',
-            position: 'relative',
-            maxWidth: 900,
-            margin: '0 auto',
-          }}
+      <div style={{ margin: '4px 0 10px', display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+        <button
+          type="button"
+          className="btn"
+          onClick={() => { setConnectMode((v) => !v); setConnectFrom(null); }}
         >
+          {connectMode ? 'Listo (salir de editar conexiones)' : 'Editar conexiones'}
+        </button>
+        <button type="button" className="btn" onClick={addTempNote}>+ Nota temporal</button>
+        <button type="button" className="btn" onClick={resetLayout}>Restablecer diagrama</button>
+        {connectMode && (
+          <span style={{ fontSize: 12, color: 'var(--muted)' }}>
+            Click en dos cajas para crear o quitar una conexión. Click en una línea para borrarla.
+          </span>
+        )}
+      </div>
+
+      <div style={{ overflow: 'auto', padding: '10px 0' }}>
+        <div ref={canvasRef} style={{ position: 'relative', maxWidth: 1000, height: 960, margin: '0 auto' }}>
           <svg
-            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
             viewBox="0 0 100 100"
             preserveAspectRatio="none"
           >
-            {/* línea p: Presupuestador -> Integrador, diagonal recta */}
-            <ConnectorPath d="M 10 52 L 50 27" />
-            {/* línea p: Odoo -> Planificador, diagonal recta */}
-            <ConnectorPath d="M 50 52 L 90 27" />
-            {/* línea p: Información de venta -> Remitos, diagonal recta */}
-            <ConnectorPath d="M 50 76 L 90 52" />
-            {/* línea p: Sistema antiguo -> Odoo, diagonal recta */}
-            <ConnectorPath d="M 10 76 L 50 52" />
+            {edges.map((e) => {
+              const a = positions[e.from];
+              const b = positions[e.to];
+              if (!a || !b) return null;
+              return (
+                <g key={e.id}>
+                  <line
+                    x1={a.x} y1={a.y} x2={b.x} y2={b.y}
+                    stroke="transparent"
+                    strokeWidth={5}
+                    vectorEffect="non-scaling-stroke"
+                    style={{ pointerEvents: connectMode ? 'stroke' : 'none', cursor: connectMode ? 'pointer' : 'default' }}
+                    onClick={() => connectMode && removeEdge(e.id)}
+                  />
+                  <line
+                    x1={a.x} y1={a.y} x2={b.x} y2={b.y}
+                    stroke="var(--border)"
+                    strokeWidth={2}
+                    vectorEffect="non-scaling-stroke"
+                    style={{ pointerEvents: 'none' }}
+                  />
+                </g>
+              );
+            })}
           </svg>
 
-          <Node id="chatbox" gridArea="chatbox" label="Chatbox" onOpen={openNodeModal} />
-          <div style={{ ...vLineStyle, gridArea: 'chatArrow' }} />
+          {DEFAULT_NODES.map((n) => (
+            <DiagramNode
+              key={n.id}
+              node={n}
+              pos={positions[n.id] || { x: n.x, y: n.y }}
+              connectMode={connectMode}
+              selected={connectFrom === n.id}
+              onPointerDown={handlePointerDown}
+            />
+          ))}
 
-          <Node id="precios" gridArea="precios" label="Actualización de precios" onOpen={openNodeModal} />
-          <div style={{ ...vLineStyle, gridArea: 'precioLine' }} />
-
-          <Node id="crm" gridArea="crm" label="CRM" onOpen={openNodeModal} />
-
-          <Node id="top" gridArea="top" label="Integrador" onOpen={openNodeModal} />
-          <div style={{ ...vLineStyle, gridArea: 'lineTop' }} />
-
-          <div style={{ ...hLineaPStyle, gridArea: 'intPlanLine' }} />
-          <Node
-            id="planificador"
-            gridArea="planificador"
-            label="Planificador"
-            extraStyle={{ border: '2px solid var(--brand)' }}
-            onOpen={openNodeModal}
-          />
-
-          <div style={{ ...vLineStyle, gridArea: 'crmLine' }} />
-
-          <Node id="left" gridArea="left" label="Presupuestador" onOpen={openNodeModal} />
-          <div style={{ ...hLineStyle, gridArea: 'lineLeft' }} />
-
-          <div style={{ gridArea: 'center', position: 'relative', zIndex: 1, display: 'flex', justifyContent: 'center' }}>
+          {tempNotes.map((n) => (
             <div
+              key={n.id}
               style={{
-                background: '#714B67',
-                borderRadius: 32,
-                padding: '28px 40px',
-                display: 'flex',
-                justifyContent: 'center',
+                position: 'absolute',
+                left: `${n.x}%`,
+                top: `${n.y}%`,
+                transform: 'translate(-50%, -50%)',
+                zIndex: 3,
+                width: 160,
+                background: '#fff6b0',
+                border: '1px dashed #c9a800',
+                borderRadius: 8,
+                boxShadow: 'var(--shadow)',
               }}
             >
-              <img src="/logos/odoo.png" alt="Odoo" style={{ maxWidth: 220, width: '100%', height: 'auto' }} />
+              <div
+                onPointerDown={(e) => handleTempPointerDown(e, n.id)}
+                style={{
+                  cursor: 'grab',
+                  touchAction: 'none',
+                  userSelect: 'none',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '4px 6px',
+                  borderBottom: '1px dashed #c9a800',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: '#7a5d00',
+                }}
+              >
+                <span>Nota temporal</span>
+                <button
+                  type="button"
+                  onClick={() => removeTempNote(n.id)}
+                  style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontWeight: 900, color: '#7a5d00', lineHeight: 1, fontSize: 14 }}
+                >
+                  ×
+                </button>
+              </div>
+              <textarea
+                value={n.text}
+                onChange={(e) => updateTempNoteText(n.id, e.target.value)}
+                placeholder="Escribí algo..."
+                rows={3}
+                style={{
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  border: 'none',
+                  background: 'transparent',
+                  resize: 'vertical',
+                  padding: 6,
+                  font: 'inherit',
+                  color: '#5a4600',
+                }}
+              />
             </div>
-          </div>
-
-          <div style={{ ...hLineStyle, gridArea: 'lineRight' }} />
-          <Node id="right" gridArea="right" label="Remitos" onOpen={openNodeModal} />
-
-          <Node id="sisAntiguo" gridArea="sisAntiguo" label="Sistema antiguo" onOpen={openNodeModal} />
-
-          <div style={{ ...vLineStyle, gridArea: 'lineBottom' }} />
-          <Node id="bottom" gridArea="bottom" label="Información de venta" onOpen={openNodeModal} />
-
-          <div style={{ ...vLineStyle, gridArea: 'importLine' }} />
-          <Node id="importador" gridArea="importador" label="Importador" onOpen={openNodeModal} />
+          ))}
         </div>
       </div>
+
+      {fidelityChoiceOpen && (
+        <div
+          onClick={() => setFidelityChoiceOpen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,.45)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 50,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'var(--surface)',
+              border: '1px solid var(--border)',
+              borderRadius: 14,
+              boxShadow: 'var(--shadow)',
+              padding: 20,
+              minWidth: 260,
+            }}
+          >
+            <h2 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 900, color: 'var(--text)' }}>FidelityTools</h2>
+            <p style={{ margin: '0 0 14px', fontSize: 13, color: 'var(--muted)' }}>¿Qué querés abrir?</p>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                type="button"
+                className="btn"
+                style={{ flex: 1 }}
+                onClick={() => { setFidelityChoiceOpen(false); openNodeModal('crm', 'CRM'); }}
+              >
+                CRM
+              </button>
+              <button
+                type="button"
+                className="btn"
+                style={{ flex: 1 }}
+                onClick={() => { setFidelityChoiceOpen(false); openNodeModal('chatbox', 'Chatbot+'); }}
+              >
+                Chatbot+
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {openNode && (
         <div
@@ -272,34 +903,194 @@ export default function IndiceProgramacionPage() {
               overflow: 'auto',
             }}
           >
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <h2 style={{ margin: 0, fontSize: 18, fontWeight: 900, color: 'var(--text)' }}>
+            <div style={{ marginBottom: 4 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                <h2
+                  onClick={() => goToProgram(openContent?.url)}
+                  title={openContent?.url ? 'Ir a este programa' : undefined}
+                  style={{
+                    margin: 0,
+                    fontSize: 19,
+                    fontWeight: 900,
+                    color: openContent?.url ? 'var(--brand-700)' : 'var(--text)',
+                    cursor: openContent?.url ? 'pointer' : 'default',
+                  }}
+                >
                   {openContent?.label || openNodeLabel}
                 </h2>
                 <button type="button" className="btn" onClick={() => setOpenNode(null)}>Cerrar</button>
               </div>
-              {(openContent?.adminUser || openContent?.adminPassword) && (
-                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
-                  usuario: {openContent.adminUser || '—'} · contraseña: {openContent.adminPassword || '—'}
-                </div>
-              )}
             </div>
 
-            <p style={{ margin: '0 0 12px', color: 'var(--text)' }}>
+            <p className="ip-lead" style={{ margin: '10px 0 0' }}>
               {openContent?.description || 'Descripción pendiente de definir.'}
             </p>
 
+            {openContent && (
+              <div className="ip-access-box">
+                <div className="ip-section-label" style={{ marginBottom: 8 }}>Acceso</div>
+
+                {notaLoading ? (
+                  <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>Cargando…</div>
+                ) : editingAccess ? (
+                  <>
+                    <div className="ip-access-row">
+                      <span className="ip-access-key">Usuario</span>
+                      <input
+                        type="text"
+                        className="ip-access-input"
+                        value={adminUserInput}
+                        onChange={(e) => setAdminUserInput(e.target.value)}
+                        disabled={notaLoading}
+                        placeholder="Usuario"
+                      />
+                    </div>
+                    <div className="ip-access-row">
+                      <span className="ip-access-key">Contraseña</span>
+                      <input
+                        type="text"
+                        className="ip-access-input"
+                        value={adminPasswordInput}
+                        onChange={(e) => setAdminPasswordInput(e.target.value)}
+                        disabled={notaLoading}
+                        placeholder="Contraseña"
+                      />
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
+                      <button
+                        type="button"
+                        className="btn btn--brand"
+                        onClick={saveAccess}
+                        disabled={notaSaving || !adminUserInput.trim() || !adminPasswordInput.trim()}
+                      >
+                        {notaSaving ? 'Guardando…' : 'Guardar'}
+                      </button>
+                      {savedAdminUser && savedAdminPassword && (
+                        <button type="button" className="btn" onClick={cancelEditAccess} disabled={notaSaving}>
+                          Cancelar
+                        </button>
+                      )}
+                      {(adminUserInput.trim() || adminPasswordInput.trim()) && !(adminUserInput.trim() && adminPasswordInput.trim()) && (
+                        <div style={{ fontSize: 11, color: 'var(--muted)' }}>Faltan cargar los dos campos para poder guardar.</div>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="ip-access-row">
+                      <span className="ip-access-key">Usuario</span>
+                      <span className="ip-access-value">{savedAdminUser}</span>
+                    </div>
+                    <div className="ip-access-row">
+                      <span className="ip-access-key">Contraseña</span>
+                      <span className="ip-access-value">{savedAdminPassword}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
+                      <button type="button" className="btn" onClick={startEditAccess}>Editar</button>
+                      {notaMeta?.updatedBy && (
+                        <div style={{ fontSize: 11, color: 'var(--muted)' }}>Última edición: {notaMeta.updatedBy}</div>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {accessError && (
+                  <div style={{ fontSize: 11.5, color: '#c0392b', marginTop: 8 }}>{accessError}</div>
+                )}
+              </div>
+            )}
+
             {openContent?.items?.length > 0 && (
-              <ul style={{ margin: '0 0 16px', paddingLeft: 18, color: 'var(--text)' }}>
-                {openContent.items.map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
+              <>
+                <hr className="ip-divider" />
+                <div className="ip-section-label">Qué hace</div>
+                <ul className="ip-modal-list">
+                  {openContent.items.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </>
             )}
 
             {openContent && (
-              <div>
+              <>
+                <hr className="ip-divider" />
+                <div className="ip-section-label">Usuarios de prueba</div>
+
+                {testUsers.length > 0 ? (
+                  <div className="ip-testusers-grid">
+                    {testUsers.map((u) => (
+                      <div key={u.id} className="ip-testuser-card">
+                        <button
+                          type="button"
+                          className="ip-testuser-del"
+                          onClick={() => removeTestUser(u.id)}
+                          title="Borrar este usuario de prueba"
+                        >
+                          ×
+                        </button>
+                        {u.etiqueta && <div className="ip-testuser-label">{u.etiqueta}</div>}
+                        <div className="ip-testuser-row">usuario: {u.usuario}</div>
+                        <div className="ip-testuser-row">contraseña: {u.password}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="ip-testuser-empty">
+                    {testUsersLoading ? 'Cargando…' : 'Todavía no hay usuarios de prueba cargados.'}
+                  </div>
+                )}
+
+                <div className="ip-testuser-form">
+                  <input
+                    type="text"
+                    placeholder="Etiqueta (opcional, ej: Vendedor)"
+                    value={newTestUser.etiqueta}
+                    onChange={(e) => setNewTestUser((prev) => ({ ...prev, etiqueta: e.target.value }))}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Usuario"
+                    value={newTestUser.usuario}
+                    onChange={(e) => setNewTestUser((prev) => ({ ...prev, usuario: e.target.value }))}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Contraseña"
+                    value={newTestUser.password}
+                    onChange={(e) => setNewTestUser((prev) => ({ ...prev, password: e.target.value }))}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn--brand"
+                    onClick={addTestUser}
+                    disabled={testUserSaving || !newTestUser.usuario.trim() || !newTestUser.password.trim()}
+                  >
+                    {testUserSaving ? 'Guardando…' : '+ Agregar'}
+                  </button>
+                </div>
+
+                {testUserError && (
+                  <div style={{ fontSize: 11.5, color: '#c0392b', marginTop: 6 }}>{testUserError}</div>
+                )}
+              </>
+            )}
+
+            {openContent?.database?.length > 0 && (
+              <>
+                <hr className="ip-divider" />
+                <div className="ip-section-label">Base de datos</div>
+                <ul className="ip-db-list">
+                  {openContent.database.map((item) => (
+                    <li key={item} className="ip-db-row">{item}</li>
+                  ))}
+                </ul>
+              </>
+            )}
+
+            {openContent && (
+              <div style={{ marginTop: 16 }}>
+                <hr className="ip-divider" />
                 <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 4 }}>
                   ¿Qué estás trabajando en este programa? (se ve en tiempo real para todos)
                 </label>
