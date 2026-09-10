@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react';
 
 export default function PruebaLaserModal({ open, onClose, nextNumero, onCreate }) {
   const [detalle, setDetalle] = useState('');
+  const [pasoPorPlegadora, setPasoPorPlegadora] = useState(false);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
 
   useEffect(() => {
     if (!open) return;
     setDetalle('');
+    setPasoPorPlegadora(false);
     setSaving(false);
     setErr('');
   }, [open]);
@@ -15,11 +17,12 @@ export default function PruebaLaserModal({ open, onClose, nextNumero, onCreate }
   if (!open) return null;
 
   const submit = async () => {
-    if (!window.confirm(`¿Confirmás generar PRUEBA ${nextNumero} en Corte piernas?`)) return;
+    const destino = pasoPorPlegadora ? 'Corte piernas y después Plegado piernas' : 'Corte piernas';
+    if (!window.confirm(`¿Confirmás generar PRUEBA ${nextNumero} en ${destino}?`)) return;
     try {
       setSaving(true);
       setErr('');
-      await onCreate?.(detalle.trim());
+      await onCreate?.(detalle.trim(), pasoPorPlegadora);
       onClose?.();
     } catch (e) {
       setErr(e?.response?.data?.error || e.message || 'Error creando la prueba');
@@ -57,8 +60,18 @@ export default function PruebaLaserModal({ open, onClose, nextNumero, onCreate }
               style={{ resize: 'vertical' }}
             />
           </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input
+              type="checkbox"
+              checked={pasoPorPlegadora}
+              onChange={(e) => setPasoPorPlegadora(e.target.checked)}
+            />
+            <span style={{ fontWeight: 800 }}>Paso por Plegadora</span>
+          </label>
           <div style={{ opacity: 0.7, fontSize: 12 }}>
-            Va a generar una orden en Corte piernas. Cuando se termine y se apruebe el QC ahí, desaparece sola — no sigue a ninguna otra sección.
+            {pasoPorPlegadora
+              ? 'Va a generar una orden en Corte piernas y, cuando se apruebe ahí, sigue a Plegado piernas. Recién desaparece cuando también se apruebe ahí.'
+              : 'Va a generar una orden en Corte piernas. Cuando se termine y se apruebe el QC ahí, desaparece sola — no sigue a ninguna otra sección.'}
           </div>
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
             <button className="btn btn--brand" type="button" onClick={submit} disabled={saving}>

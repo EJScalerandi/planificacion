@@ -331,8 +331,8 @@ function Board({ stages, seccion }) {
     }
   };
 
-  const handleCreatePrefabOrden = async (tipoId, seccion, cantidad) => {
-    await createPrefabricadoOrden({ tipo_id: tipoId, seccion, cantidad });
+  const handleCreatePrefabOrden = async (tipoId, seccion, cantidad, referencia) => {
+    await createPrefabricadoOrden({ tipo_id: tipoId, seccion, cantidad, referencia });
     await refreshPrefab();
   };
 
@@ -342,8 +342,8 @@ function Board({ stages, seccion }) {
     return maxNumero + 1;
   }, [stOrdenes]);
 
-  const handleCreatePruebaLaser = async (detalle) => {
-    await createPruebaLaserOrden(detalle);
+  const handleCreatePruebaLaser = async (detalle, pasoPorPlegadora) => {
+    await createPruebaLaserOrden(detalle, pasoPorPlegadora);
     await refreshSt();
   };
 
