@@ -14,7 +14,9 @@ export const API_BASE_URL = String(API_BASE).replace(/\/+$/, '');
 
 const api = axios.create({
   baseURL: String(API_BASE).replace(/\/+$/, ''), // sin trailing slash
-  timeout: 15000,
+  // 30s en vez de 15s: el backend en Render se "duerme" con inactividad y el
+  // primer pedido después de eso tarda en despertarlo (cold start).
+  timeout: 30000,
 });
 
 // ====== ADMIN TOKEN (localStorage) ======
@@ -591,7 +593,15 @@ export const adminSetInsumoProductoNombre = (productoId, nombreDisplay) =>
   api.put(`/admin/insumos/productos/${productoId}/nombre`, { nombre_display: nombreDisplay });
 
 export const adminGetNotaNodo = (nodoId) => api.get(`/admin/notas-nodo/${nodoId}`);
-export const adminSetNotaNodo = (nodoId, nota) => api.put(`/admin/notas-nodo/${nodoId}`, { nota });
+// payload: { nota, admin_user, admin_password } - los tres se guardan juntos;
+// el acceso principal solo se pisa si vienen los dos campos cargados.
+export const adminSetNotaNodo = (nodoId, payload) => api.put(`/admin/notas-nodo/${nodoId}`, payload);
+
+export const adminListUsuariosPrueba = (nodoId) => api.get(`/admin/notas-nodo/${nodoId}/usuarios-prueba`);
+export const adminAddUsuarioPrueba = (nodoId, { etiqueta, usuario, password }) =>
+  api.post(`/admin/notas-nodo/${nodoId}/usuarios-prueba`, { etiqueta, usuario, password });
+export const adminDeleteUsuarioPrueba = (nodoId, id) =>
+  api.delete(`/admin/notas-nodo/${nodoId}/usuarios-prueba/${id}`);
 export const adminFetchInsumosSeccionesCierre = () => api.get('/admin/insumos/secciones-cierre');
 export const adminSaveInsumosSeccionesCierre = (entries) => api.put('/admin/insumos/secciones-cierre', { entries });
 
