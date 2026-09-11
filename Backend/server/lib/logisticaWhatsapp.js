@@ -78,10 +78,19 @@ async function subirCollageYFirmar(buffer) {
   return storage.urlFirmada(path, 600);
 }
 
+// Argentina exige el "9" después del 54 para celulares en el formato que
+// pide la API (a diferencia de wa.me, que es más permisivo y no lo exige) -
+// ej. 5493572405259, no 543572405259 - confirmado por el usuario al probar
+// la API real. Ningún código de área argentino arranca con 9, así que
+// chequear si YA está no confunde un área real con la marca de celular.
 function formatearTelefono(telefono) {
   const digitos = String(telefono || '').replace(/\D/g, '');
   if (!digitos) return null;
-  return digitos.startsWith('54') ? digitos : `54${digitos.replace(/^0/, '')}`;
+  if (digitos.startsWith('54')) {
+    const resto = digitos.slice(2);
+    return resto.startsWith('9') ? digitos : `549${resto}`;
+  }
+  return `549${digitos.replace(/^0/, '')}`;
 }
 
 /**
