@@ -301,7 +301,11 @@ function MarcarEntregadoSection({ nv, viaje, parada, onParadaCambiada }) {
       setTiposPendientes((prev) => prev.filter((t) => t !== tipo));
       setPinAbierto(false);
       onParadaCambiada?.();
-      setConfirmarRuta({ siguienteParada: r?.siguienteParada || null });
+      // Aviso de WhatsApp apagado por ahora (WHATSAPP_AVISO_HABILITADO) - la
+      // cuadrilla sigue avisando manual desde su propio WhatsApp, sin popup.
+      if (r?.whatsappAvisoHabilitado) {
+        setConfirmarRuta({ siguienteParada: r?.siguienteParada || null });
+      }
     } catch (e) {
       setErr(e?.response?.data?.error || e.message);
     } finally {
