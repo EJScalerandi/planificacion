@@ -618,6 +618,19 @@ export const addLogisticaConsultaMessage = (kind, id, payload) =>
 export const markLogisticaConsultaRead = (kind, id) => api.post(`/admin/logistica-consultas/${kind}/${id}/read`, {});
 export const fetchLogisticaConsultasUnreadSummary = (kind) => api.get(`/admin/logistica-consultas/${kind}/unread-summary`);
 
+/* ========= Sistema de Tickets (botón junto a "Menú" / "Refrescar") =========
+   Cualquier admin logueado puede crear un ticket y ver/responder los propios;
+   también puede ver/responder/cerrar cualquier ticket desde /admin/tickets
+   (sin scope propio, como /admin/indice-programacion). */
+export const createTicket = (payload) => api.post('/admin/tickets', payload);
+export const fetchMyTickets = () => api.get('/admin/tickets/mine');
+export const fetchMyTicketDetail = (id) => api.get(`/admin/tickets/mine/${id}`);
+export const addMyTicketMessage = (id, payload) => api.post(`/admin/tickets/mine/${id}/messages`, payload);
+export const fetchAdminTickets = (params) => api.get('/admin/tickets', { params });
+export const fetchAdminTicketDetail = (id) => api.get(`/admin/tickets/${id}`);
+export const addAdminTicketMessage = (id, payload) => api.post(`/admin/tickets/${id}/messages`, payload);
+export const updateTicketStatus = (id, estado) => api.patch(`/admin/tickets/${id}/status`, { estado });
+
 /* ========= Logística de Viajes (despacho + instalación por semana, desde /a) =========
    Arma "viajes" (fecha + zona + cuadrilla + vehículo) por semana ISO y reparte en
    ellos los portones con despacho/instalación de esa semana. Ver

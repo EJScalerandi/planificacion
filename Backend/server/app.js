@@ -6,6 +6,7 @@ const healthRoutes = require('./routes/health');
 
 const adminAuthRoutes = require('./routes/admin/auth');
 const adminUsersRoutes = require('./routes/admin/users');
+const adminTicketsRoutes = require('./routes/admin/tickets');
 const adminQcRoutes = require('./routes/admin/qc');
 const adminWorkflowRoutes = require('./routes/admin/workflow');
 const adminPrefabricadosRoutes = require('./routes/admin/prefabricados');
@@ -81,6 +82,7 @@ app.use('/', healthRoutes);
 
 app.use('/admin', adminAuthRoutes);
 app.use('/admin', adminUsersRoutes);
+app.use('/admin', adminTicketsRoutes);
 // Montado antes que qc/workflow/prefabricados/servicio-tecnico: esos routers usan
 // router.use(adminAuth, requireScope(SU_SCOPE)) SIN path especifico, asi que
 // interceptan cualquier /admin/* que llegue a ellos primero (incluso rutas que no
