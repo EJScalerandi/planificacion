@@ -14,8 +14,15 @@
 // el costo y necesitaría una plantilla aprobada por cada una).
 const axios = require('axios');
 const sharp = require('sharp');
+const ffmpeg = require('fluent-ffmpeg');
+const ffmpegPath = require('ffmpeg-static');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const storage = require('./logisticaAdjuntosStorage');
 const { pool } = require('../db');
+
+ffmpeg.setFfmpegPath(ffmpegPath);
 
 const GRAPH_VERSION = 'v21.0';
 const WA_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
@@ -241,16 +248,51 @@ async function descargarMediaEntrante(mediaId, tipo) {
   return path;
 }
 
+// Los navegadores graban audio en webm/opus (Chrome) u ogg/opus (Firefox) -
+// WhatsApp solo acepta ogg/opus para notas de voz, nunca webm. Se transcodea
+// siempre que no sea ya ogg, así funciona sin importar el navegador de quien
+// esté grabando. Vía archivos temporales (ffmpeg no labura bien con buffers
+// puros para contenedores como estos).
+async function transcodearAudioOgg(buffer, mimeTypeOriginal) {
+  if (/ogg/i.test(mimeTypeOriginal || '')) return buffer; // ya viene en el formato que necesitamos
+  const tmpDir = os.tmpdir();
+  const inPath = path.join(tmpDir, `wa-in-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+  const outPath = `${inPath}.ogg`;
+  await fs.promises.writeFile(inPath, buffer);
+  try {
+    await new Promise((resolve, reject) => {
+      ffmpeg(inPath)
+        .audioCodec('libopus')
+        .audioBitrate('32k')
+        .audioChannels(1)
+        .format('ogg')
+        .on('error', reject)
+        .on('end', resolve)
+        .save(outPath);
+    });
+    return await fs.promises.readFile(outPath);
+  } finally {
+    fs.promises.unlink(inPath).catch(() => {});
+    fs.promises.unlink(outPath).catch(() => {});
+  }
+}
+
 // Sube un archivo NUESTRO (adjuntado desde el chat) y lo manda por Meta -
 // necesita una URL pública (firmada) para que Meta la descargue al momento
 // de entregar el mensaje, mismo patrón que el header de imagen del aviso
 // automático (logisticaWhatsapp.js#subirCollageYFirmar).
 async function enviarMedia({ telefono, tipo, buffer, mimeType, caption, enviadoPor }) {
   if (!configurado()) return { ok: false, error: 'WhatsApp Business no configurado en este entorno' };
-  const ext = (mimeType || '').split('/')[1]?.split(';')[0] || 'bin';
-  const path = `whatsapp-chat/${tipo}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
   try {
-    await storage.subirArchivo(path, buffer, mimeType || 'application/octet-stream');
+    let bufferFinal = buffer;
+    let mimeFinal = mimeType;
+    if (tipo === 'audio') {
+      bufferFinal = await transcodearAudioOgg(buffer, mimeType);
+      mimeFinal = 'audio/ogg';
+    }
+    const ext = (mimeFinal || '').split('/')[1]?.split(';')[0] || 'bin';
+    const path = `whatsapp-chat/${tipo}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    await storage.subirArchivo(path, bufferFinal, mimeFinal || 'application/octet-stream');
     const url = await storage.urlFirmada(path, 600);
     const { data } = await axios.post(
       `https://graph.facebook.com/${GRAPH_VERSION}/${WA_PHONE_NUMBER_ID}/messages`,

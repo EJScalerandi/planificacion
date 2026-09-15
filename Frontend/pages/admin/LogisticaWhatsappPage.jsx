@@ -31,6 +31,19 @@ function displayTelefono(t) {
 
 const ESTADO_ICONO = { enviado: '✓', entregado: '✓✓', leido: '✓✓', fallido: '⚠️' };
 
+// Selector de emojis propio - Win+. (el de Windows) le queda atado a otro
+// atajo en algunas máquinas (zoom de Lupa), así que no hay que depender de
+// eso. Set curado de los más usuales en un chat de atención al cliente.
+const EMOJIS = [
+  '😀', '😃', '😄', '😁', '😆', '🙂', '😉', '😊', '😇', '🥰',
+  '😍', '😘', '😋', '😎', '🤩', '🥳', '😏', '😢', '😭', '😞',
+  '😟', '😳', '😱', '😥', '😓', '🤔', '🤗', '😴', '🤤', '😪',
+  '😮', '😲', '😬', '🙄', '😐', '🤨', '😷', '🤒', '🤕', '🥵',
+  '🥶', '😡', '😠', '🤬', '👍', '👎', '👏', '🙌', '🙏', '💪',
+  '✌️', '🤝', '👋', '☝️', '👌', '🔥', '✨', '🎉', '💯', '⏰',
+  '📦', '🚚', '🚪', '📍', '📞', '❤️', '🧡', '💛', '💚', '💙',
+];
+
 function ConversacionRow({ c, activo, onClick }) {
   return (
     <div
@@ -108,6 +121,16 @@ export default function LogisticaWhatsappPage() {
   const [texto, setTexto] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [err, setErr] = useState('');
+  const [emojiAbierto, setEmojiAbierto] = useState(false);
+
+  // Archivo elegido o audio grabado, pendiente de confirmar - pedido
+  // explícito del usuario: no se manda solo, hay que verlo antes y darle
+  // Enviar (como cualquier chat real), con `texto` como caption opcional.
+  const [pendingMedia, setPendingMedia] = useState(null); // { file, previewUrl, tipo } | null
+  const [grabando, setGrabando] = useState(false);
+  const [grabandoSegundos, setGrabandoSegundos] = useState(0);
+  const mediaRecorderRef = useRef(null);
+  const chunksGrabacionRef = useRef([]);
 
   const scrollRef = useRef(null);
 
@@ -136,6 +159,13 @@ export default function LogisticaWhatsappPage() {
     return () => clearInterval(id);
   }, [cargarConversaciones]);
 
+  // Cambiar de conversación descarta cualquier adjunto pendiente sin mandar -
+  // evita el riesgo de mandarlo al contacto equivocado por error.
+  useEffect(() => {
+    setPendingMedia((prev) => { if (prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl); return null; });
+    setTexto('');
+  }, [telefonoActivo]);
+
   useEffect(() => { cargarMensajes(telefonoActivo); }, [telefonoActivo, cargarMensajes]);
   useEffect(() => {
     if (!telefonoActivo) return;
@@ -155,13 +185,24 @@ export default function LogisticaWhatsappPage() {
     if (t) setTelefonoActivo(t);
   }, [params]);
 
+  const limpiarPendingMedia = () => {
+    if (pendingMedia?.previewUrl) URL.revokeObjectURL(pendingMedia.previewUrl);
+    setPendingMedia(null);
+  };
+
   const enviar = async () => {
+    if (!telefonoActivo) return;
     const t = texto.trim();
-    if (!t || !telefonoActivo) return;
+    if (!pendingMedia && !t) return;
     setEnviando(true);
     setErr('');
     try {
-      await enviarLogisticaWhatsappMensaje(telefonoActivo, t);
+      if (pendingMedia) {
+        await enviarLogisticaWhatsappMedia(telefonoActivo, pendingMedia.file, t || undefined);
+        limpiarPendingMedia();
+      } else {
+        await enviarLogisticaWhatsappMensaje(telefonoActivo, t);
+      }
       setTexto('');
       await cargarMensajes(telefonoActivo);
       await cargarConversaciones();
@@ -172,22 +213,62 @@ export default function LogisticaWhatsappPage() {
     }
   };
 
-  const adjuntarArchivo = async (e) => {
+  const tipoDeArchivo = (mime) => {
+    if (mime.startsWith('image/')) return 'image';
+    if (mime.startsWith('video/')) return 'video';
+    if (mime.startsWith('audio/')) return 'audio';
+    return 'document';
+  };
+
+  // Solo arma la vista previa - el envío real pasa por `enviar()`, recién
+  // cuando el usuario confirma.
+  const elegirArchivo = (e) => {
     const archivo = e.target.files?.[0];
     e.target.value = '';
-    if (!archivo || !telefonoActivo) return;
-    setEnviando(true);
+    if (!archivo) return;
+    limpiarPendingMedia();
+    const tipo = tipoDeArchivo(archivo.type);
+    const previewUrl = ['image', 'video', 'audio'].includes(tipo) ? URL.createObjectURL(archivo) : null;
+    setPendingMedia({ file: archivo, previewUrl, tipo, nombre: archivo.name });
+  };
+
+  const iniciarGrabacion = async () => {
     setErr('');
     try {
-      await enviarLogisticaWhatsappMedia(telefonoActivo, archivo);
-      await cargarMensajes(telefonoActivo);
-      await cargarConversaciones();
-    } catch (e2) {
-      setErr(e2?.response?.data?.error || e2.message);
-    } finally {
-      setEnviando(false);
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeSoportado = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/ogg']
+        .find((t) => window.MediaRecorder?.isTypeSupported?.(t));
+      const mr = new MediaRecorder(stream, mimeSoportado ? { mimeType: mimeSoportado } : undefined);
+      chunksGrabacionRef.current = [];
+      mr.ondataavailable = (e) => { if (e.data.size > 0) chunksGrabacionRef.current.push(e.data); };
+      mr.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const tipoBlob = mr.mimeType || 'audio/webm';
+        const blob = new Blob(chunksGrabacionRef.current, { type: tipoBlob });
+        const ext = tipoBlob.includes('ogg') ? 'ogg' : 'webm';
+        const file = new File([blob], `audio-${Date.now()}.${ext}`, { type: tipoBlob });
+        limpiarPendingMedia();
+        setPendingMedia({ file, previewUrl: URL.createObjectURL(blob), tipo: 'audio', nombre: 'Nota de voz' });
+      };
+      mr.start();
+      mediaRecorderRef.current = mr;
+      setGrabandoSegundos(0);
+      setGrabando(true);
+    } catch (e) {
+      setErr('No se pudo acceder al micrófono: ' + e.message);
     }
   };
+
+  const detenerGrabacion = () => {
+    mediaRecorderRef.current?.stop();
+    setGrabando(false);
+  };
+
+  useEffect(() => {
+    if (!grabando) return;
+    const id = setInterval(() => setGrabandoSegundos((s) => s + 1), 1000);
+    return () => clearInterval(id);
+  }, [grabando]);
 
   const logout = () => {
     clearAdminToken();
@@ -240,30 +321,80 @@ export default function LogisticaWhatsappPage() {
                   mensajes.map((m) => <Burbuja key={m.id} m={m} />)
                 )}
               </div>
-              <div style={{ display: 'flex', gap: 8, padding: 10, borderTop: '1px solid var(--border)' }}>
-                <label className="btn" style={{ flex: '0 0 auto', cursor: enviando ? 'default' : 'pointer', opacity: enviando ? 0.6 : 1 }} title="Adjuntar imagen, video, audio o documento">
-                  📎
+              {pendingMedia ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderTop: '1px solid var(--border)', background: 'var(--surface-muted, #f9fafb)' }}>
+                  {pendingMedia.tipo === 'image' ? (
+                    <img src={pendingMedia.previewUrl} alt="" style={{ height: 60, borderRadius: 6 }} />
+                  ) : pendingMedia.tipo === 'video' ? (
+                    <video src={pendingMedia.previewUrl} style={{ height: 60, borderRadius: 6 }} muted />
+                  ) : pendingMedia.tipo === 'audio' ? (
+                    <audio src={pendingMedia.previewUrl} controls style={{ height: 32 }} />
+                  ) : (
+                    <span style={{ fontSize: 12 }}>📄 {pendingMedia.nombre}</span>
+                  )}
+                  <span style={{ fontSize: 11, opacity: 0.6, flex: 1 }}>Listo para enviar - podés agregarle un texto abajo.</span>
+                  <button type="button" className="btn" disabled={enviando} onClick={limpiarPendingMedia}>✕ Cancelar</button>
+                </div>
+              ) : null}
+
+              {grabando ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderTop: '1px solid var(--border)' }}>
+                  <span style={{ width: 10, height: 10, borderRadius: 999, background: '#dc2626', flex: '0 0 auto' }} />
+                  <span style={{ fontSize: 13, fontWeight: 700 }}>Grabando… {String(Math.floor(grabandoSegundos / 60)).padStart(2, '0')}:{String(grabandoSegundos % 60).padStart(2, '0')}</span>
+                  <button type="button" className="btn btn--brand" style={{ marginLeft: 'auto' }} onClick={detenerGrabacion}>⏹ Detener</button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', gap: 8, padding: 10, borderTop: '1px solid var(--border)', position: 'relative' }}>
+                  <div style={{ position: 'relative' }}>
+                    <button type="button" className="btn" disabled={enviando} onClick={() => setEmojiAbierto((v) => !v)} title="Emojis">😊</button>
+                    {emojiAbierto ? (
+                      <>
+                        <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onMouseDown={() => setEmojiAbierto(false)} />
+                        <div style={{
+                          position: 'absolute', bottom: '100%', left: 0, marginBottom: 4, zIndex: 1000,
+                          background: 'var(--surface, #fff)', border: '1px solid var(--border)', borderRadius: 10,
+                          boxShadow: '0 4px 14px rgba(0,0,0,0.18)', padding: 8, width: 260,
+                          display: 'grid', gridTemplateColumns: 'repeat(10, 1fr)', gap: 2,
+                        }}>
+                          {EMOJIS.map((e) => (
+                            <button
+                              key={e} type="button"
+                              onMouseDown={(ev) => ev.stopPropagation()}
+                              onClick={() => setTexto((t) => t + e)}
+                              style={{ fontSize: 18, background: 'none', border: 'none', cursor: 'pointer', padding: 2, borderRadius: 4 }}
+                            >
+                              {e}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    ) : null}
+                  </div>
+                  <label className="btn" style={{ flex: '0 0 auto', cursor: enviando ? 'default' : 'pointer', opacity: enviando ? 0.6 : 1 }} title="Adjuntar imagen, video, audio o documento">
+                    📎
+                    <input
+                      type="file"
+                      style={{ display: 'none' }}
+                      accept="image/jpeg,image/png,image/webp,video/mp4,video/3gpp,audio/aac,audio/mp4,audio/mpeg,audio/amr,audio/ogg,application/pdf,application/msword,text/plain,.docx,.xlsx"
+                      disabled={enviando}
+                      onChange={elegirArchivo}
+                    />
+                  </label>
+                  <button type="button" className="btn" disabled={enviando || !!pendingMedia} onClick={iniciarGrabacion} title="Grabar nota de voz">🎙️</button>
                   <input
-                    type="file"
-                    style={{ display: 'none' }}
-                    accept="image/jpeg,image/png,image/webp,video/mp4,video/3gpp,audio/aac,audio/mp4,audio/mpeg,audio/amr,audio/ogg,application/pdf,application/msword,text/plain,.docx,.xlsx"
+                    className="pp-input"
+                    style={{ flex: 1 }}
+                    placeholder={pendingMedia ? 'Agregar un texto (opcional)…' : 'Escribir un mensaje…'}
+                    value={texto}
+                    onChange={(e) => setTexto(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar(); } }}
                     disabled={enviando}
-                    onChange={adjuntarArchivo}
                   />
-                </label>
-                <input
-                  className="pp-input"
-                  style={{ flex: 1 }}
-                  placeholder="Escribir un mensaje… (Win+. para emojis)"
-                  value={texto}
-                  onChange={(e) => setTexto(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar(); } }}
-                  disabled={enviando}
-                />
-                <button className="btn btn--brand" disabled={enviando || !texto.trim()} onClick={enviar}>
-                  {enviando ? 'Enviando…' : 'Enviar'}
-                </button>
-              </div>
+                  <button className="btn btn--brand" disabled={enviando || (!texto.trim() && !pendingMedia)} onClick={enviar}>
+                    {enviando ? 'Enviando…' : 'Enviar'}
+                  </button>
+                </div>
+              )}
             </>
           )}
         </div>

@@ -366,21 +366,31 @@ const WA_MIME_TIPO = {
   'image/jpeg': 'image', 'image/png': 'image', 'image/webp': 'image',
   'video/mp4': 'video', 'video/3gpp': 'video',
   'audio/aac': 'audio', 'audio/mp4': 'audio', 'audio/mpeg': 'audio', 'audio/amr': 'audio', 'audio/ogg': 'audio',
+  // webm/wav: nunca los acepta la API de WhatsApp directamente, pero son lo
+  // que graba el micrófono del navegador (MediaRecorder) - se transcodean a
+  // ogg/opus en logisticaWhatsapp.js#enviarMedia antes de mandar.
+  'audio/webm': 'audio', 'audio/wav': 'audio', 'audio/x-wav': 'audio',
   'application/pdf': 'document', 'application/msword': 'document', 'text/plain': 'document',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'document',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'document',
 };
+// El navegador manda el mimetype del archivo/blob tal cual (ej. audio grabado
+// con MediaRecorder llega como "audio/webm;codecs=opus", con el codec pegado)
+// - se compara solo por la parte antes del ";".
+function tipoBaseDeArchivo(mimetype) {
+  return WA_MIME_TIPO[String(mimetype || '').split(';')[0].trim()];
+}
 const uploadChatMedia = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 16 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    if (!WA_MIME_TIPO[file.mimetype]) return cb(new Error(`Tipo de archivo no soportado por WhatsApp: ${file.mimetype}`));
+    if (!tipoBaseDeArchivo(file.mimetype)) return cb(new Error(`Tipo de archivo no soportado por WhatsApp: ${file.mimetype}`));
     cb(null, true);
   },
 });
 router.post('/logistica/whatsapp/conversaciones/:telefono/media', requireFullAccess, uploadChatMedia.single('archivo'), asyncRoute(async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Falta el archivo' });
-  const tipo = WA_MIME_TIPO[req.file.mimetype];
+  const tipo = tipoBaseDeArchivo(req.file.mimetype);
   const resultado = await whatsapp.enviarMedia({
     telefono: req.params.telefono, tipo, buffer: req.file.buffer, mimeType: req.file.mimetype,
     caption: req.body?.caption || null, enviadoPor: req.admin?.username || null,
