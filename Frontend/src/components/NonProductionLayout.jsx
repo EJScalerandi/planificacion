@@ -1,5 +1,6 @@
 import { Outlet, useNavigate } from 'react-router-dom';
 import { clearAdminToken } from '../api';
+import WhatsappToastWatcher from './WhatsappToastWatcher';
 
 export default function NonProductionLayout() {
   const nav = useNavigate();
@@ -32,6 +33,7 @@ export default function NonProductionLayout() {
       </div>
 
       <Outlet />
+      <WhatsappToastWatcher />
     </div>
   );
 }
