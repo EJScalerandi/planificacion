@@ -309,12 +309,14 @@ async function enviarMedia({ telefono, tipo, buffer, mimeType, caption, enviadoP
   }
 }
 
-// URL firmada de corta duración para mostrar un adjunto del chat - se
-// calcula al leer, nunca se guarda (la de Meta expira en minutos, y la
-// nuestra tampoco tiene sentido guardarla vencida).
+// URL firmada para mostrar un adjunto del chat - se calcula al leer, nunca
+// se guarda. Una hora (no los 600s de la URL que sube a Meta) para que una
+// conversación abierta un rato largo no se quede con imágenes/videos rotos
+// a mitad de sesión - el frontend además reusa la misma URL entre polls
+// mientras sea el mismo archivo, para no recargar el media de arriba.
 async function urlFirmadaDeMensaje(path) {
   if (!path) return null;
-  return storage.urlFirmada(path, 600).catch(() => null);
+  return storage.urlFirmada(path, 3600).catch(() => null);
 }
 
 // Orden de progreso de un mensaje saliente - evita que "delivered" pise a

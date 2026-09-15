@@ -399,7 +399,11 @@ function tipoBaseDeArchivo(mimetype) {
 }
 const uploadChatMedia = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 16 * 1024 * 1024 },
+  // 50MB: el techo real es el del bucket de Storage (mismo límite del plan
+  // de Supabase); WhatsApp además tiene sus propios límites por tipo
+  // (16MB imagen/audio/video, 100MB documento) que Meta rechaza en el
+  // momento de mandar si se pasa.
+  limits: { fileSize: 50 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     if (!tipoBaseDeArchivo(file.mimetype)) return cb(new Error(`Tipo de archivo no soportado por WhatsApp: ${file.mimetype}`));
     cb(null, true);

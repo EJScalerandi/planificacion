@@ -166,7 +166,22 @@ export default function LogisticaWhatsappPage() {
     if (!telefono) return;
     try {
       const d = await fetchLogisticaWhatsappMensajes(telefono);
-      setMensajes(d?.mensajes || []);
+      const nuevos = d?.mensajes || [];
+      // La URL firmada de cada media cambia en cada pedido (es nueva cada
+      // vez, aunque apunte al mismo archivo) - si se la pasa tal cual a
+      // <video>/<img> en cada poll, el navegador la recarga entera y
+      // parpadea. Se mantiene la URL ya usada mientras sea el mismo archivo,
+      // así solo se "recarga" cuando el mensaje es realmente nuevo.
+      setMensajes((prev) => {
+        const anteriorPorId = new Map(prev.map((m) => [m.id, m]));
+        return nuevos.map((m) => {
+          const anterior = anteriorPorId.get(m.id);
+          if (anterior?.media_url && anterior.media_storage_path === m.media_storage_path) {
+            return { ...m, media_url: anterior.media_url };
+          }
+          return m;
+        });
+      });
       setNombreClienteActivo(d?.nombreCliente || null);
       setVentanaAbierta(!!d?.ventanaAbierta);
     } catch (e) {
