@@ -91,24 +91,29 @@ async function getGasto(id) {
 async function listRendiciones() {
   const { rows } = await pool.query(
     `select vi.id as viaje_id, vi.nombre as viaje_nombre, vi.fecha::text as viaje_fecha,
-            vi.hora_llegada_real, vi.rendicion_aprobada_por, vi.rendicion_aprobada_at,
+            vi.hora_llegada_real, vi.rendicion_aprobada_por, vi.rendicion_aprobada_at, vi.fondo_efectivo,
             c.nombre as cuadrilla_nombre,
             count(g.id)::int as cantidad_gastos,
             count(g.id) filter (where g.estado_revision = 'revisar')::int as cantidad_a_revisar,
-            coalesce(sum(g.monto), 0) as total
+            coalesce(sum(g.monto), 0) as total,
+            coalesce(sum(g.monto) filter (where g.medio_pago = 'efectivo'), 0) as total_efectivo
        from public.logistica_gastos g
        join public.logistica_viajes vi on vi.id = g.viaje_id
        left join public.logistica_cuadrillas c on c.id = vi.cuadrilla_id
-      group by vi.id, vi.nombre, vi.fecha, vi.hora_llegada_real, vi.rendicion_aprobada_por, vi.rendicion_aprobada_at, c.nombre
+      group by vi.id, vi.nombre, vi.fecha, vi.hora_llegada_real, vi.rendicion_aprobada_por, vi.rendicion_aprobada_at, vi.fondo_efectivo, c.nombre
       order by vi.fecha desc, vi.id desc;`
   );
-  return rows;
+  return rows.map((r) => ({
+    ...r,
+    saldo_a_devolver: r.fondo_efectivo != null ? Number(r.fondo_efectivo) - Number(r.total_efectivo) : null,
+  }));
 }
 
 async function getRendicionDetalle(viajeId) {
   const { rows: viajeRows } = await pool.query(
     `select vi.id as viaje_id, vi.nombre as viaje_nombre, vi.fecha::text as viaje_fecha,
             vi.hora_salida_real, vi.hora_llegada_real, vi.rendicion_aprobada_por, vi.rendicion_aprobada_at,
+            vi.fondo_efectivo,
             c.nombre as cuadrilla_nombre
        from public.logistica_viajes vi
        left join public.logistica_cuadrillas c on c.id = vi.cuadrilla_id
@@ -119,7 +124,15 @@ async function getRendicionDetalle(viajeId) {
   if (!viaje) return null;
   const gastos = await listGastosDeViaje(viajeId);
   const total = gastos.reduce((acc, g) => acc + Number(g.monto), 0);
-  return { ...viaje, gastos, total };
+  // Efectivo: hoy según medio_pago que leyó la IA del ticket (provisorio -
+  // la Parte 2, todavía sin terminar, lo va a confirmar/corregir cruzando
+  // contra el email de la tarjeta; lo que ahí NO matchee también suma como
+  // efectivo). saldo_a_devolver: lo que le sobró del fondo a la cuadrilla,
+  // null si todavía no se cargó ningún fondo para este viaje.
+  const totalEfectivo = gastos.filter((g) => g.medio_pago === 'efectivo').reduce((acc, g) => acc + Number(g.monto), 0);
+  const fondoEfectivo = viaje.fondo_efectivo != null ? Number(viaje.fondo_efectivo) : null;
+  const saldoADevolver = fondoEfectivo != null ? fondoEfectivo - totalEfectivo : null;
+  return { ...viaje, gastos, total, total_efectivo: totalEfectivo, saldo_a_devolver: saldoADevolver };
 }
 
 // Logística no puede aprobar la rendición hasta que el viaje esté

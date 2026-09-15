@@ -30,3 +30,7 @@ do $$ begin
       check (estado_revision in ('pendiente','ok','revisar'));
   end if;
 end $$;
+
+-- Fondo de efectivo que logística le da a la cuadrilla al crear el viaje.
+alter table public.logistica_viajes
+  add column if not exists fondo_efectivo numeric(12,2);

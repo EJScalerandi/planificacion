@@ -352,6 +352,7 @@ function NuevoViajeForm({ semana, config, onCreate, onCancel, busy, initial, sub
   const [vehiculoId, setVehiculoId] = useState(() => (initial?.vehiculo_id != null ? String(initial.vehiculo_id) : ''));
   const [nombre, setNombre] = useState(() => initial?.nombre || '');
   const [horaSalida, setHoraSalida] = useState(() => initial?.hora_salida || '');
+  const [fondoEfectivo, setFondoEfectivo] = useState(() => (initial?.fondo_efectivo != null ? String(initial.fondo_efectivo) : ''));
 
   const zonasActivas = (config?.zonas || []).filter((z) => z.activo !== false);
   const cuadrillasActivas = (config?.cuadrillas || []).filter((c) => c.activo !== false);
@@ -397,6 +398,10 @@ function NuevoViajeForm({ semana, config, onCreate, onCancel, busy, initial, sub
         Hora de salida (opcional)
         <input type="time" className="pp-input" value={horaSalida} onChange={(e) => setHoraSalida(e.target.value)} />
       </label>
+      <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
+        Fondo en efectivo (opcional)
+        <input type="number" min="0" step="0.01" className="pp-input" placeholder="$" value={fondoEfectivo} onChange={(e) => setFondoEfectivo(e.target.value)} />
+      </label>
 
       <div style={{ display: 'flex', gap: 8 }}>
         <button
@@ -411,6 +416,7 @@ function NuevoViajeForm({ semana, config, onCreate, onCancel, busy, initial, sub
               vehiculo_id: vehiculoId ? Number(vehiculoId) : null,
               nombre: nombre.trim() || null,
               hora_salida: horaSalida || null,
+              fondo_efectivo: fondoEfectivo || null,
             })
           }
         >

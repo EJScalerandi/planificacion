@@ -892,6 +892,7 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
       cuadrilla_id: '',
       vehiculo_id: vehiculoSugerido ? String(vehiculoSugerido.id) : '',
       nombre: opts.nombreSugerido || `Viaje · Semana ${weekNumberFromLabel(semana)}`,
+      fondo_efectivo: '',
     });
     setConfirmando(true);
   };
@@ -914,12 +915,13 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
     setCreando(true);
     setErr('');
     try {
-      const { semana, incluidos, excluidos, fecha, zona_id, cuadrilla_id, vehiculo_id, nombre } = confirmForm;
+      const { semana, incluidos, excluidos, fecha, zona_id, cuadrilla_id, vehiculo_id, nombre, fondo_efectivo } = confirmForm;
       const crearRes = await crearLogisticaViaje(semana, {
         fecha, zona_id: zona_id ? Number(zona_id) : null,
         cuadrilla_id: cuadrilla_id ? Number(cuadrilla_id) : null,
         vehiculo_id: vehiculo_id ? Number(vehiculo_id) : null,
         nombre: nombre || null,
+        fondo_efectivo: fondo_efectivo || null,
       });
       const detalle = crearRes?.detalle;
       const viaje = (detalle?.viajes || []).reduce((max, v) => (max == null || v.id > max.id ? v : max), null);
@@ -1503,6 +1505,14 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
                 <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 11, marginBottom: 10 }}>
                   Nombre
                   <input className="pp-input" value={confirmForm.nombre} onChange={(e) => setConfirmForm((f) => ({ ...f, nombre: e.target.value }))} />
+                </label>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 11, marginBottom: 10 }}>
+                  Fondo en efectivo para la cuadrilla (opcional)
+                  <input
+                    className="pp-input" type="number" min="0" step="0.01" placeholder="$"
+                    value={confirmForm.fondo_efectivo}
+                    onChange={(e) => setConfirmForm((f) => ({ ...f, fondo_efectivo: e.target.value }))}
+                  />
                 </label>
 
                 <div style={{ display: 'flex', gap: 6 }}>

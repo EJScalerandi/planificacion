@@ -109,6 +109,18 @@ function RendicionDetalle({ viajeId, onVolver, onAprobado }) {
             </div>
           ) : null}
 
+          {detalle.fondo_efectivo != null ? (
+            <div style={{ fontSize: 12, background: 'var(--surface-muted, #f9fafb)', border: '1px solid var(--border)', borderRadius: 8, padding: 10, marginBottom: 10, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+              <div><b>Fondo entregado:</b> ${montoLegible(detalle.fondo_efectivo)}</div>
+              <div><b>Gastado en efectivo:</b> ${montoLegible(detalle.total_efectivo)} <span style={{ opacity: 0.6 }}>(provisorio, según lo que leyó la IA del ticket - falta confirmar contra el email de la tarjeta)</span></div>
+              <div style={{ fontWeight: 800, color: detalle.saldo_a_devolver < 0 ? '#dc2626' : '#16a34a' }}>
+                {detalle.saldo_a_devolver < 0
+                  ? `Faltan $${montoLegible(Math.abs(detalle.saldo_a_devolver))} (gastó más que el fondo)`
+                  : `A devolver a administración: $${montoLegible(detalle.saldo_a_devolver)}`}
+              </div>
+            </div>
+          ) : null}
+
           <div style={{ overflow: 'auto', border: '1px solid var(--border)', borderRadius: 12, marginBottom: 10 }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
@@ -199,15 +211,16 @@ export default function LogisticaRendicionesModal({ open, onClose }) {
                   <th style={th}>Cuadrilla</th>
                   <th style={th}>Gastos</th>
                   <th style={th}>Total</th>
+                  <th style={th}>A devolver</th>
                   <th style={th}>Estado</th>
                   <th style={th}></th>
                 </tr>
               </thead>
               <tbody>
                 {rendiciones == null ? (
-                  <tr><td style={{ ...td, color: '#6b7280' }} colSpan={7}>Cargando…</td></tr>
+                  <tr><td style={{ ...td, color: '#6b7280' }} colSpan={8}>Cargando…</td></tr>
                 ) : rendiciones.length === 0 ? (
-                  <tr><td style={{ ...td, color: '#6b7280' }} colSpan={7}>No hay rendiciones cargadas todavía.</td></tr>
+                  <tr><td style={{ ...td, color: '#6b7280' }} colSpan={8}>No hay rendiciones cargadas todavía.</td></tr>
                 ) : (
                   rendiciones.map((r) => (
                     <tr key={r.viaje_id}>
@@ -216,6 +229,13 @@ export default function LogisticaRendicionesModal({ open, onClose }) {
                       <td style={td}>{r.cuadrilla_nombre || '—'}</td>
                       <td style={td}>{r.cantidad_gastos}</td>
                       <td style={td}>${montoLegible(r.total)}</td>
+                      <td style={td}>
+                        {r.saldo_a_devolver != null ? (
+                          <span style={{ fontWeight: 700, color: r.saldo_a_devolver < 0 ? '#dc2626' : 'inherit' }}>
+                            ${montoLegible(Math.abs(r.saldo_a_devolver))}{r.saldo_a_devolver < 0 ? ' (faltante)' : ''}
+                          </span>
+                        ) : '—'}
+                      </td>
                       <td style={td}>
                         {r.rendicion_aprobada_at ? (
                           <span style={{ color: '#16a34a', fontWeight: 700, fontSize: 11 }}>✅ Aprobada</span>

@@ -427,6 +427,19 @@ const MIGRATIONS = [
       END $$;
     `,
   },
+  {
+    // Fondo de efectivo que logística le da a la cuadrilla al crear el
+    // viaje (ej. para viáticos en efectivo) - pedido explícito del usuario.
+    // El saldo a devolver se calcula como fondo_efectivo menos lo gastado en
+    // efectivo (hoy: medio_pago='efectivo' según la IA del ticket; a futuro,
+    // Parte 2 lo confirma contra el email de la tarjeta - lo que NO matchee
+    // ahí también cuenta como efectivo).
+    name: 'logistica_viajes_fondo_efectivo',
+    sql: `
+      ALTER TABLE public.logistica_viajes
+        ADD COLUMN IF NOT EXISTS fondo_efectivo NUMERIC(12,2);
+    `,
+  },
 ];
 
 async function runMigrations() {
