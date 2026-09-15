@@ -815,6 +815,10 @@ export async function enviarLogisticaWhatsappMensaje(telefono, texto) {
   const { data } = await api.post(`/admin/logistica/whatsapp/conversaciones/${encodeURIComponent(telefono)}/mensajes`, { texto });
   return data;
 }
+export async function enviarLogisticaWhatsappTemplateSimple(telefono, name, language) {
+  const { data } = await api.post(`/admin/logistica/whatsapp/conversaciones/${encodeURIComponent(telefono)}/template-simple`, { name, language });
+  return data;
+}
 export async function enviarLogisticaWhatsappMedia(telefono, archivo, caption) {
   const form = new FormData();
   form.append('archivo', archivo);

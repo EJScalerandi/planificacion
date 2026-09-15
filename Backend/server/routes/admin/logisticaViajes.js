@@ -349,12 +349,25 @@ router.get('/logistica/whatsapp/conversaciones', asyncRoute(async (_req, res) =>
   res.json({ ok: true, conversaciones: await whatsapp.listarConversaciones() });
 }));
 router.get('/logistica/whatsapp/conversaciones/:telefono/mensajes', asyncRoute(async (req, res) => {
-  res.json({ ok: true, mensajes: await whatsapp.listarMensajes(req.params.telefono) });
+  const [mensajes, nombreCliente, estado] = await Promise.all([
+    whatsapp.listarMensajes(req.params.telefono),
+    whatsapp.nombreClientePorTelefono(req.params.telefono).catch(() => null),
+    whatsapp.estadoConversacion(req.params.telefono),
+  ]);
+  res.json({ ok: true, mensajes, nombreCliente, ...estado });
 }));
 router.post('/logistica/whatsapp/conversaciones/:telefono/mensajes', requireFullAccess, asyncRoute(async (req, res) => {
   const texto = String(req.body?.texto || '').trim();
   if (!texto) return res.status(400).json({ error: 'Falta el texto del mensaje' });
   const resultado = await whatsapp.enviarTextoLibre({ telefono: req.params.telefono, texto, enviadoPor: req.admin?.username || null });
+  if (!resultado.ok) return res.status(400).json({ error: resultado.error, detalle: resultado.detalle });
+  res.json({ ok: true, mensaje: resultado.mensaje });
+}));
+router.post('/logistica/whatsapp/conversaciones/:telefono/template-simple', requireFullAccess, asyncRoute(async (req, res) => {
+  const name = String(req.body?.name || '').trim();
+  const language = String(req.body?.language || '').trim();
+  if (!name || !language) return res.status(400).json({ error: 'Falta name/language de la plantilla' });
+  const resultado = await whatsapp.enviarTemplateSimple({ telefono: req.params.telefono, templateName: name, language, enviadoPor: req.admin?.username || null });
   if (!resultado.ok) return res.status(400).json({ error: resultado.error, detalle: resultado.detalle });
   res.json({ ok: true, mensaje: resultado.mensaje });
 }));

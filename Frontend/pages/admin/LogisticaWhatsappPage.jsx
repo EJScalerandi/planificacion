@@ -9,7 +9,11 @@
 // logística, sin la complejidad de mantener una conexión persistente.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { getAdminToken, clearAdminToken, fetchLogisticaWhatsappConversaciones, fetchLogisticaWhatsappMensajes, enviarLogisticaWhatsappMensaje, enviarLogisticaWhatsappMedia } from '../../src/api';
+import {
+  getAdminToken, clearAdminToken, fetchLogisticaWhatsappConversaciones, fetchLogisticaWhatsappMensajes,
+  enviarLogisticaWhatsappMensaje, enviarLogisticaWhatsappMedia, enviarLogisticaWhatsappTemplateSimple,
+  fetchLogisticaWhatsappTemplates,
+} from '../../src/api';
 
 const POLL_MS = 4000;
 
@@ -55,9 +59,12 @@ function ConversacionRow({ c, activo, onClick }) {
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-        <span style={{ fontWeight: 800, fontSize: 13 }}>{displayTelefono(c.telefono)}</span>
+        <span style={{ fontWeight: 800, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {c.nombreCliente || displayTelefono(c.telefono)}
+        </span>
         <span style={{ fontSize: 10, opacity: 0.6, flex: '0 0 auto' }}>{formatHora(c.created_at)}</span>
       </div>
+      {c.nombreCliente ? <div style={{ fontSize: 10, opacity: 0.6 }}>{displayTelefono(c.telefono)}</div> : null}
       <div style={{ fontSize: 12, opacity: 0.75, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {c.direccion === 'saliente' ? `Vos: ${c.contenido || '(sin texto)'}` : (c.contenido || `(${c.tipo})`)}
       </div>
@@ -122,6 +129,15 @@ export default function LogisticaWhatsappPage() {
   const [enviando, setEnviando] = useState(false);
   const [err, setErr] = useState('');
   const [emojiAbierto, setEmojiAbierto] = useState(false);
+  const [busqueda, setBusqueda] = useState('');
+
+  // Datos de la conversación activa que no vienen en la lista de mensajes en
+  // sí - nombre del cliente (si matchea algún presupuesto) y si la ventana
+  // de 24hs de WhatsApp sigue abierta para mandar texto libre.
+  const [nombreClienteActivo, setNombreClienteActivo] = useState(null);
+  const [ventanaAbierta, setVentanaAbierta] = useState(true);
+  const [templates, setTemplates] = useState(null);
+  const [enviandoTemplate, setEnviandoTemplate] = useState(null); // nombre de la plantilla en curso, o null
 
   // Archivo elegido o audio grabado, pendiente de confirmar - pedido
   // explícito del usuario: no se manda solo, hay que verlo antes y darle
@@ -148,10 +164,20 @@ export default function LogisticaWhatsappPage() {
     try {
       const d = await fetchLogisticaWhatsappMensajes(telefono);
       setMensajes(d?.mensajes || []);
+      setNombreClienteActivo(d?.nombreCliente || null);
+      setVentanaAbierta(!!d?.ventanaAbierta);
     } catch (e) {
       setErr(e?.response?.data?.error || e.message);
     }
   }, []);
+
+  // Solo se piden las plantillas cuando hacen falta (ventana cerrada) - no
+  // tiene sentido pedirlas siempre si la conversación sigue fluida.
+  useEffect(() => {
+    if (ventanaAbierta || !telefonoActivo || templates) return;
+    fetchLogisticaWhatsappTemplates().then((d) => setTemplates(d?.templates || [])).catch(() => setTemplates([]));
+  }, [ventanaAbierta, telefonoActivo, templates]);
+  useEffect(() => { setTemplates(null); }, [telefonoActivo]);
 
   useEffect(() => { cargarConversaciones(); }, [cargarConversaciones]);
   useEffect(() => {
@@ -184,6 +210,21 @@ export default function LogisticaWhatsappPage() {
     const t = params.get('telefono');
     if (t) setTelefonoActivo(t);
   }, [params]);
+
+  const enviarTemplateSimple = async (t) => {
+    if (!telefonoActivo) return;
+    setEnviandoTemplate(t.name);
+    setErr('');
+    try {
+      await enviarLogisticaWhatsappTemplateSimple(telefonoActivo, t.name, t.language);
+      await cargarMensajes(telefonoActivo);
+      await cargarConversaciones();
+    } catch (e) {
+      setErr(e?.response?.data?.error || e.message);
+    } finally {
+      setEnviandoTemplate(null);
+    }
+  };
 
   const limpiarPendingMedia = () => {
     if (pendingMedia?.previewUrl) URL.revokeObjectURL(pendingMedia.previewUrl);
@@ -279,6 +320,15 @@ export default function LogisticaWhatsappPage() {
     ? [{ telefono: telefonoActivo, direccion: 'saliente', tipo: 'text', contenido: '(sin mensajes todavía)', created_at: new Date().toISOString() }, ...conversaciones]
     : conversaciones;
 
+  const busquedaNeedle = busqueda.trim().toLowerCase();
+  const busquedaDigitos = busqueda.replace(/\D/g, '');
+  const conversacionesFiltradas = !busquedaNeedle
+    ? conversacionesConActiva
+    : conversacionesConActiva.filter((c) =>
+        (busquedaDigitos && c.telefono.includes(busquedaDigitos)) ||
+        (c.nombreCliente || '').toLowerCase().includes(busquedaNeedle)
+      );
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 74px)', padding: '10px 16px 16px' }}>
       <div className="header-row" style={{ alignItems: 'center', flex: '0 0 auto' }}>
@@ -292,14 +342,27 @@ export default function LogisticaWhatsappPage() {
       {err ? <div style={{ color: 'crimson', fontWeight: 800, fontSize: 12, marginTop: 8 }}>{err}</div> : null}
 
       <div style={{ flex: '1 1 auto', minHeight: 0, display: 'flex', gap: 12, marginTop: 10 }}>
-        <div style={{ width: 300, flex: '0 0 auto', border: '1px solid var(--border)', borderRadius: 12, overflowY: 'auto' }}>
-          {conversacionesConActiva.length === 0 ? (
-            <div style={{ padding: 14, fontSize: 12, opacity: 0.7 }}>Sin conversaciones todavía.</div>
-          ) : (
-            conversacionesConActiva.map((c) => (
-              <ConversacionRow key={c.telefono} c={c} activo={c.telefono === telefonoActivo} onClick={() => setTelefonoActivo(c.telefono)} />
-            ))
-          )}
+        <div style={{ width: 300, flex: '0 0 auto', border: '1px solid var(--border)', borderRadius: 12, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div style={{ padding: 8, borderBottom: '1px solid var(--border)', flex: '0 0 auto' }}>
+            <input
+              className="pp-input"
+              style={{ width: '100%' }}
+              placeholder="Buscar por nombre o número…"
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+            />
+          </div>
+          <div style={{ flex: '1 1 auto', overflowY: 'auto' }}>
+            {conversacionesFiltradas.length === 0 ? (
+              <div style={{ padding: 14, fontSize: 12, opacity: 0.7 }}>
+                {busquedaNeedle ? 'Nada coincide con la búsqueda.' : 'Sin conversaciones todavía.'}
+              </div>
+            ) : (
+              conversacionesFiltradas.map((c) => (
+                <ConversacionRow key={c.telefono} c={c} activo={c.telefono === telefonoActivo} onClick={() => setTelefonoActivo(c.telefono)} />
+              ))
+            )}
+          </div>
         </div>
 
         <div style={{ flex: '1 1 auto', minWidth: 0, display: 'flex', flexDirection: 'column', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
@@ -307,8 +370,9 @@ export default function LogisticaWhatsappPage() {
             <div style={{ margin: 'auto', opacity: 0.6, fontSize: 13 }}>Elegí una conversación de la izquierda.</div>
           ) : (
             <>
-              <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)', fontWeight: 900, fontSize: 13 }}>
-                {displayTelefono(telefonoActivo)}
+              <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)' }}>
+                <div style={{ fontWeight: 900, fontSize: 13 }}>{nombreClienteActivo || displayTelefono(telefonoActivo)}</div>
+                {nombreClienteActivo ? <div style={{ fontSize: 11, opacity: 0.6 }}>{displayTelefono(telefonoActivo)}</div> : null}
               </div>
               <div ref={scrollRef} style={{ flex: '1 1 auto', overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 8, background: 'var(--surface-muted, #f9fafb)' }}>
                 {mensajes.length === 0 ? (
@@ -321,6 +385,51 @@ export default function LogisticaWhatsappPage() {
                   mensajes.map((m) => <Burbuja key={m.id} m={m} />)
                 )}
               </div>
+              {!ventanaAbierta ? (
+                <div style={{ padding: 12, borderTop: '1px solid var(--border)', background: '#fffbeb' }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: '#92400e', marginBottom: 6 }}>
+                    ⚠️ Pasaron más de 24hs desde el último mensaje del cliente - no se puede mandar texto libre.
+                  </div>
+                  <div style={{ fontSize: 11, color: '#92400e', marginBottom: 8 }}>
+                    Para reactivar la conversación hay que mandarle una plantilla aprobada:
+                  </div>
+                  {templates == null ? (
+                    <div style={{ fontSize: 12, opacity: 0.7 }}>Cargando plantillas…</div>
+                  ) : templates.length === 0 ? (
+                    <div style={{ fontSize: 12, opacity: 0.7 }}>No hay plantillas aprobadas todavía.</div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {templates.map((t) => {
+                        const body = t.components.find((c) => c.type === 'BODY');
+                        const tieneVariables = /\{\{\d+\}\}/.test(body?.text || '');
+                        const tieneHeaderMedia = t.components.some((c) => c.type === 'HEADER' && c.format !== 'TEXT');
+                        const sePuedeMandarDirecto = t.status === 'APPROVED' && !tieneVariables && !tieneHeaderMedia;
+                        return (
+                          <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid #fcd34d', borderRadius: 8, padding: 8 }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 12, fontWeight: 800 }}>{t.name} <span style={{ fontWeight: 400, opacity: 0.6 }}>({t.language})</span></div>
+                              {!sePuedeMandarDirecto ? (
+                                <div style={{ fontSize: 10, opacity: 0.65 }}>
+                                  {t.status !== 'APPROVED' ? 'Todavía no está aprobada.' : 'Necesita datos (foto/variables) - se manda desde el flujo del viaje, no desde acá.'}
+                                </div>
+                              ) : null}
+                            </div>
+                            <button
+                              type="button" className="btn btn--brand" style={{ fontSize: 11, flex: '0 0 auto' }}
+                              disabled={!sePuedeMandarDirecto || enviandoTemplate === t.name}
+                              onClick={() => enviarTemplateSimple(t)}
+                            >
+                              {enviandoTemplate === t.name ? 'Enviando…' : 'Enviar'}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              ) : null}
+              {ventanaAbierta ? (
+              <>
               {pendingMedia ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderTop: '1px solid var(--border)', background: 'var(--surface-muted, #f9fafb)' }}>
                   {pendingMedia.tipo === 'image' ? (
@@ -395,6 +504,8 @@ export default function LogisticaWhatsappPage() {
                   </button>
                 </div>
               )}
+              </>
+              ) : null}
             </>
           )}
         </div>

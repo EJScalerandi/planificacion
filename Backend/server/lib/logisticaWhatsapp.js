@@ -284,6 +284,7 @@ async function transcodearAudioOgg(buffer, mimeTypeOriginal) {
 async function enviarMedia({ telefono, tipo, buffer, mimeType, caption, enviadoPor }) {
   if (!configurado()) return { ok: false, error: 'WhatsApp Business no configurado en este entorno' };
   try {
+    await avisarAtencionSiCorresponde(telefono, enviadoPor);
     let bufferFinal = buffer;
     let mimeFinal = mimeType;
     if (tipo === 'audio') {
@@ -342,7 +343,10 @@ async function listarConversaciones() {
     order by telefono, created_at desc;
     `
   );
-  return rows.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  const conNombre = await Promise.all(
+    rows.map(async (r) => ({ ...r, nombreCliente: await nombreClientePorTelefono(r.telefono).catch(() => null) }))
+  );
+  return conNombre.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 }
 
 async function listarMensajes(telefono, { antes } = {}) {
@@ -362,18 +366,47 @@ async function listarMensajes(telefono, { antes } = {}) {
   return conUrl.reverse();
 }
 
+async function _enviarTextoCrudo(telefono, texto) {
+  const { data } = await axios.post(
+    `https://graph.facebook.com/${GRAPH_VERSION}/${WA_PHONE_NUMBER_ID}/messages`,
+    { messaging_product: 'whatsapp', to: telefono, type: 'text', text: { body: texto } },
+    { headers: { Authorization: `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' }, timeout: 15000 }
+  );
+  return data?.messages?.[0]?.id || null;
+}
+
+// "Usted está siendo atendido por X" - pedido explícito del usuario: se
+// manda solo en el PRIMER mensaje de una respuesta (el anterior en el hilo
+// es del cliente) o cuando cambia quién contesta respecto del último
+// saliente - nunca dos veces seguidas para el mismo usuario en la misma
+// tanda de mensajes.
+async function avisarAtencionSiCorresponde(telefono, enviadoPor) {
+  if (!enviadoPor) return;
+  const { rows } = await pool.query(
+    `select direccion, enviado_por from public.logistica_whatsapp_mensajes
+      where telefono = $1 order by created_at desc limit 1;`,
+    [telefono]
+  );
+  const ultimo = rows[0];
+  const corresponde = !!ultimo && (ultimo.direccion === 'entrante' || ultimo.enviado_por !== enviadoPor);
+  if (!corresponde) return;
+  try {
+    const texto = `Usted está siendo atendido por ${enviadoPor}`;
+    const waMessageId = await _enviarTextoCrudo(telefono, texto);
+    await registrarMensajeSaliente({ telefono, tipo: 'text', contenido: texto, waMessageId, enviadoPor });
+  } catch (e) {
+    console.error('No se pudo mandar el aviso de "atendido por":', e.response?.data || e.message);
+  }
+}
+
 // Texto libre - solo funciona dentro de las 24hs desde el último mensaje del
 // cliente (regla de la plataforma, no de este código); pasada la ventana,
 // Meta devuelve un error explícito que se propaga tal cual.
 async function enviarTextoLibre({ telefono, texto, enviadoPor }) {
   if (!configurado()) return { ok: false, error: 'WhatsApp Business no configurado en este entorno' };
   try {
-    const { data } = await axios.post(
-      `https://graph.facebook.com/${GRAPH_VERSION}/${WA_PHONE_NUMBER_ID}/messages`,
-      { messaging_product: 'whatsapp', to: telefono, type: 'text', text: { body: texto } },
-      { headers: { Authorization: `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' }, timeout: 15000 }
-    );
-    const waMessageId = data?.messages?.[0]?.id || null;
+    await avisarAtencionSiCorresponde(telefono, enviadoPor);
+    const waMessageId = await _enviarTextoCrudo(telefono, texto);
     const mensaje = await registrarMensajeSaliente({ telefono, tipo: 'text', contenido: texto, waMessageId, enviadoPor });
     return { ok: true, mensaje };
   } catch (e) {
@@ -382,9 +415,65 @@ async function enviarTextoLibre({ telefono, texto, enviadoPor }) {
   }
 }
 
+// Plantilla SIN variables (ej. hello_world) - para reabrir una conversación
+// con la ventana de 24hs vencida sin necesitar un formulario de parámetros.
+// Las que sí tienen variables (ej. porton_en_camino) se siguen mandando
+// desde su flujo dedicado (el aviso automático del viaje).
+async function enviarTemplateSimple({ telefono, templateName, language, enviadoPor }) {
+  if (!configurado()) return { ok: false, error: 'WhatsApp Business no configurado en este entorno' };
+  try {
+    const { data } = await axios.post(
+      `https://graph.facebook.com/${GRAPH_VERSION}/${WA_PHONE_NUMBER_ID}/messages`,
+      { messaging_product: 'whatsapp', to: telefono, type: 'template', template: { name: templateName, language: { code: language } } },
+      { headers: { Authorization: `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' }, timeout: 15000 }
+    );
+    const waMessageId = data?.messages?.[0]?.id || null;
+    const mensaje = await registrarMensajeSaliente({ telefono, tipo: 'template', contenido: `📦 Plantilla: ${templateName}`, waMessageId, enviadoPor });
+    return { ok: true, mensaje };
+  } catch (e) {
+    const msg = e.response?.data?.error?.message || e.message;
+    return { ok: false, error: msg, detalle: e.response?.data };
+  }
+}
+
+// Nombre del cliente para mostrar en el chat - mismo criterio "últimos 10
+// dígitos" para comparar teléfonos guardados en formatos distintos (con/sin
+// 54, 9, 15, etc.) contra el canónico que usa la API de WhatsApp.
+async function nombreClientePorTelefono(telefono) {
+  const digitos = String(telefono || '').replace(/\D/g, '').slice(-10);
+  if (digitos.length < 8) return null;
+  const { rows } = await pool.query(
+    `select q.end_customer->>'name' as nombre
+       from public.presupuestador_quotes q
+      where q.quote_kind = 'original'
+        and right(regexp_replace(coalesce(q.end_customer->>'phone', ''), '\\D', '', 'g'), 10) = $1
+      order by q.id desc
+      limit 1;`,
+    [digitos]
+  );
+  return rows[0]?.nombre || null;
+}
+
+const VENTANA_24HS_MS = 24 * 60 * 60 * 1000;
+
+// Estado de la ventana de conversación (regla de WhatsApp: solo se puede
+// mandar texto libre dentro de las 24hs desde el último mensaje ENTRANTE).
+async function estadoConversacion(telefono) {
+  const { rows } = await pool.query(
+    `select created_at from public.logistica_whatsapp_mensajes
+      where telefono = $1 and direccion = 'entrante'
+      order by created_at desc limit 1;`,
+    [telefono]
+  );
+  const ultimoEntranteAt = rows[0]?.created_at || null;
+  const ventanaAbierta = !!ultimoEntranteAt && (Date.now() - new Date(ultimoEntranteAt).getTime()) < VENTANA_24HS_MS;
+  return { ventanaAbierta, ultimoEntranteAt };
+}
+
 module.exports = {
   configurado, enviarAvisoEnCamino, armarCollage, listarTemplates, formatearTelefono,
   registrarMensajeSaliente, registrarMensajeEntrante, actualizarEstadoMensaje,
-  listarConversaciones, listarMensajes, enviarTextoLibre,
+  listarConversaciones, listarMensajes, enviarTextoLibre, enviarTemplateSimple,
   descargarMediaEntrante, enviarMedia, urlFirmadaDeMensaje,
+  nombreClientePorTelefono, estadoConversacion,
 };
