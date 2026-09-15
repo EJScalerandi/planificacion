@@ -9,7 +9,7 @@
 // logística, sin la complejidad de mantener una conexión persistente.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { getAdminToken, clearAdminToken, fetchLogisticaWhatsappConversaciones, fetchLogisticaWhatsappMensajes, enviarLogisticaWhatsappMensaje } from '../../src/api';
+import { getAdminToken, clearAdminToken, fetchLogisticaWhatsappConversaciones, fetchLogisticaWhatsappMensajes, enviarLogisticaWhatsappMensaje, enviarLogisticaWhatsappMedia } from '../../src/api';
 
 const POLL_MS = 4000;
 
@@ -52,8 +52,28 @@ function ConversacionRow({ c, activo, onClick }) {
   );
 }
 
+function ContenidoMensaje({ m }) {
+  if (m.tipo === 'image' && m.media_url) {
+    return <img src={m.media_url} alt="" style={{ maxWidth: 260, borderRadius: 8, display: 'block' }} />;
+  }
+  if (m.tipo === 'video' && m.media_url) {
+    return <video src={m.media_url} controls style={{ maxWidth: 260, borderRadius: 8, display: 'block' }} />;
+  }
+  if (m.tipo === 'audio' && m.media_url) {
+    return <audio src={m.media_url} controls style={{ maxWidth: 260 }} />;
+  }
+  if (m.tipo === 'document' && m.media_url) {
+    return <a href={m.media_url} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'underline' }}>📄 {m.contenido || 'Documento'}</a>;
+  }
+  if (['image', 'video', 'audio', 'document', 'sticker'].includes(m.tipo) && !m.media_url) {
+    return <span style={{ opacity: 0.7, fontStyle: 'italic' }}>{`(${m.tipo} - no se pudo descargar)`}</span>;
+  }
+  return m.contenido || (m.tipo === 'template' ? '📦 (plantilla)' : `(${m.tipo})`);
+}
+
 function Burbuja({ m }) {
   const saliente = m.direccion === 'saliente';
+  const conCaption = ['image', 'video', 'document'].includes(m.tipo) && m.contenido && m.media_url;
   return (
     <div style={{ display: 'flex', justifyContent: saliente ? 'flex-end' : 'flex-start' }}>
       <div
@@ -61,11 +81,12 @@ function Burbuja({ m }) {
           maxWidth: '70%', borderRadius: 12, padding: '8px 12px', fontSize: 13,
           background: saliente ? 'var(--brand)' : 'var(--surface-muted, #f3f4f6)',
           color: saliente ? '#fff' : 'inherit',
-          whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+          whiteSpace: 'pre-wrap', wordBreak: 'break-word', display: 'flex', flexDirection: 'column', gap: 4,
         }}
       >
-        {m.contenido || (m.tipo === 'template' ? '📦 (plantilla)' : `(${m.tipo})`)}
-        <div style={{ fontSize: 10, opacity: 0.7, marginTop: 3, textAlign: 'right' }}>
+        <ContenidoMensaje m={m} />
+        {conCaption ? <div>{m.contenido}</div> : null}
+        <div style={{ fontSize: 10, opacity: 0.7, textAlign: 'right' }}>
           {formatHora(m.created_at)} {saliente ? ESTADO_ICONO[m.estado] || '' : ''}
         </div>
       </div>
@@ -151,6 +172,23 @@ export default function LogisticaWhatsappPage() {
     }
   };
 
+  const adjuntarArchivo = async (e) => {
+    const archivo = e.target.files?.[0];
+    e.target.value = '';
+    if (!archivo || !telefonoActivo) return;
+    setEnviando(true);
+    setErr('');
+    try {
+      await enviarLogisticaWhatsappMedia(telefonoActivo, archivo);
+      await cargarMensajes(telefonoActivo);
+      await cargarConversaciones();
+    } catch (e2) {
+      setErr(e2?.response?.data?.error || e2.message);
+    } finally {
+      setEnviando(false);
+    }
+  };
+
   const logout = () => {
     clearAdminToken();
     nav('/admin/login', { replace: true });
@@ -203,10 +241,20 @@ export default function LogisticaWhatsappPage() {
                 )}
               </div>
               <div style={{ display: 'flex', gap: 8, padding: 10, borderTop: '1px solid var(--border)' }}>
+                <label className="btn" style={{ flex: '0 0 auto', cursor: enviando ? 'default' : 'pointer', opacity: enviando ? 0.6 : 1 }} title="Adjuntar imagen, video, audio o documento">
+                  📎
+                  <input
+                    type="file"
+                    style={{ display: 'none' }}
+                    accept="image/jpeg,image/png,image/webp,video/mp4,video/3gpp,audio/aac,audio/mp4,audio/mpeg,audio/amr,audio/ogg,application/pdf,application/msword,text/plain,.docx,.xlsx"
+                    disabled={enviando}
+                    onChange={adjuntarArchivo}
+                  />
+                </label>
                 <input
                   className="pp-input"
                   style={{ flex: 1 }}
-                  placeholder="Escribir un mensaje…"
+                  placeholder="Escribir un mensaje… (Win+. para emojis)"
                   value={texto}
                   onChange={(e) => setTexto(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar(); } }}

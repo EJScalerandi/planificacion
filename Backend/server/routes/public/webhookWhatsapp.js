@@ -48,14 +48,24 @@ router.post('/webhooks/whatsapp', (req, res) => {
           } else if (tipo === 'location') {
             contenido = `📍 ${msg.location?.name || ''} ${msg.location?.address || ''}`.trim() || '📍 Ubicación compartida';
           }
-          whatsapp.registrarMensajeEntrante({
-            telefono: msg.from,
-            tipo,
-            contenido,
-            mediaId,
-            waMessageId: msg.id,
-            raw: msg,
-          }).catch((e) => console.error('Error registrando mensaje entrante de WhatsApp:', e.message));
+
+          // La descarga (si hay media) va ANTES de registrar, para guardar
+          // el mensaje ya con el path propio - si Meta borra el archivo
+          // original pasados unos días, igual queda accesible desde acá.
+          (mediaId ? whatsapp.descargarMediaEntrante(mediaId, tipo).catch((e) => {
+            console.error('Error bajando media de WhatsApp:', e.message);
+            return null;
+          }) : Promise.resolve(null)).then((mediaStoragePath) => {
+            whatsapp.registrarMensajeEntrante({
+              telefono: msg.from,
+              tipo,
+              contenido,
+              mediaId,
+              mediaStoragePath,
+              waMessageId: msg.id,
+              raw: msg,
+            }).catch((e) => console.error('Error registrando mensaje entrante de WhatsApp:', e.message));
+          });
         }
 
         for (const st of value.statuses || []) {

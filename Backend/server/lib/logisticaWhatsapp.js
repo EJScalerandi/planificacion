@@ -201,27 +201,77 @@ async function listarTemplates() {
 // para poder mostrar el hilo de conversación por teléfono como un chat.
 // ===========================================================================
 
-async function registrarMensajeSaliente({ telefono, tipo, contenido, waMessageId, enviadoPor }) {
+async function registrarMensajeSaliente({ telefono, tipo, contenido, waMessageId, enviadoPor, mediaStoragePath }) {
   const { rows } = await pool.query(
     `insert into public.logistica_whatsapp_mensajes
-       (telefono, direccion, tipo, contenido, wa_message_id, estado, enviado_por)
-     values ($1, 'saliente', $2, $3, $4, 'enviado', $5)
+       (telefono, direccion, tipo, contenido, wa_message_id, estado, enviado_por, media_storage_path)
+     values ($1, 'saliente', $2, $3, $4, 'enviado', $5, $6)
      returning *;`,
-    [telefono, tipo || 'text', contenido || null, waMessageId || null, enviadoPor || null]
+    [telefono, tipo || 'text', contenido || null, waMessageId || null, enviadoPor || null, mediaStoragePath || null]
   );
   return rows[0];
 }
 
-async function registrarMensajeEntrante({ telefono, tipo, contenido, mediaId, waMessageId, raw }) {
+async function registrarMensajeEntrante({ telefono, tipo, contenido, mediaId, mediaStoragePath, waMessageId, raw }) {
   const { rows } = await pool.query(
     `insert into public.logistica_whatsapp_mensajes
-       (telefono, direccion, tipo, contenido, media_id, wa_message_id, estado, raw)
-     values ($1, 'entrante', $2, $3, $4, $5, 'recibido', $6)
+       (telefono, direccion, tipo, contenido, media_id, media_storage_path, wa_message_id, estado, raw)
+     values ($1, 'entrante', $2, $3, $4, $5, $6, 'recibido', $7)
      on conflict (wa_message_id) where wa_message_id is not null do nothing
      returning *;`,
-    [telefono, tipo || 'text', contenido || null, mediaId || null, waMessageId || null, raw ? JSON.stringify(raw) : null]
+    [telefono, tipo || 'text', contenido || null, mediaId || null, mediaStoragePath || null, waMessageId || null, raw ? JSON.stringify(raw) : null]
   );
   return rows[0] || null;
+}
+
+// Baja el archivo de un mensaje ENTRANTE (Meta da un media_id, hay que
+// resolverlo a una URL temporal - unos minutos de vida - y bajarla con el
+// mismo token) y lo resube al bucket privado propio, para poder mostrarlo en
+// el chat con una URL firmada nuestra en vez de depender de la de Meta.
+async function descargarMediaEntrante(mediaId, tipo) {
+  const { data: meta } = await axios.get(`https://graph.facebook.com/${GRAPH_VERSION}/${mediaId}`, {
+    headers: { Authorization: `Bearer ${WA_TOKEN}` }, timeout: 15000,
+  });
+  const { data: buffer } = await axios.get(meta.url, {
+    headers: { Authorization: `Bearer ${WA_TOKEN}` }, responseType: 'arraybuffer', timeout: 30000,
+  });
+  const ext = (meta.mime_type || '').split('/')[1]?.split(';')[0] || 'bin';
+  const path = `whatsapp-chat/${tipo}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  await storage.subirArchivo(path, Buffer.from(buffer), meta.mime_type || 'application/octet-stream');
+  return path;
+}
+
+// Sube un archivo NUESTRO (adjuntado desde el chat) y lo manda por Meta -
+// necesita una URL pública (firmada) para que Meta la descargue al momento
+// de entregar el mensaje, mismo patrón que el header de imagen del aviso
+// automático (logisticaWhatsapp.js#subirCollageYFirmar).
+async function enviarMedia({ telefono, tipo, buffer, mimeType, caption, enviadoPor }) {
+  if (!configurado()) return { ok: false, error: 'WhatsApp Business no configurado en este entorno' };
+  const ext = (mimeType || '').split('/')[1]?.split(';')[0] || 'bin';
+  const path = `whatsapp-chat/${tipo}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  try {
+    await storage.subirArchivo(path, buffer, mimeType || 'application/octet-stream');
+    const url = await storage.urlFirmada(path, 600);
+    const { data } = await axios.post(
+      `https://graph.facebook.com/${GRAPH_VERSION}/${WA_PHONE_NUMBER_ID}/messages`,
+      { messaging_product: 'whatsapp', to: telefono, type: tipo, [tipo]: { link: url, ...(caption ? { caption } : {}) } },
+      { headers: { Authorization: `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' }, timeout: 20000 }
+    );
+    const waMessageId = data?.messages?.[0]?.id || null;
+    const mensaje = await registrarMensajeSaliente({ telefono, tipo, contenido: caption || null, waMessageId, enviadoPor, mediaStoragePath: path });
+    return { ok: true, mensaje };
+  } catch (e) {
+    const msg = e.response?.data?.error?.message || e.message;
+    return { ok: false, error: msg, detalle: e.response?.data };
+  }
+}
+
+// URL firmada de corta duración para mostrar un adjunto del chat - se
+// calcula al leer, nunca se guarda (la de Meta expira en minutos, y la
+// nuestra tampoco tiene sentido guardarla vencida).
+async function urlFirmadaDeMensaje(path) {
+  if (!path) return null;
+  return storage.urlFirmada(path, 600).catch(() => null);
 }
 
 // Orden de progreso de un mensaje saliente - evita que "delivered" pise a
@@ -264,7 +314,10 @@ async function listarMensajes(telefono, { antes } = {}) {
       limit 100;`,
     params
   );
-  return rows.reverse();
+  const conUrl = await Promise.all(
+    rows.map(async (r) => ({ ...r, media_url: r.media_storage_path ? await urlFirmadaDeMensaje(r.media_storage_path) : null }))
+  );
+  return conUrl.reverse();
 }
 
 // Texto libre - solo funciona dentro de las 24hs desde el último mensaje del
@@ -291,4 +344,5 @@ module.exports = {
   configurado, enviarAvisoEnCamino, armarCollage, listarTemplates, formatearTelefono,
   registrarMensajeSaliente, registrarMensajeEntrante, actualizarEstadoMensaje,
   listarConversaciones, listarMensajes, enviarTextoLibre,
+  descargarMediaEntrante, enviarMedia, urlFirmadaDeMensaje,
 };

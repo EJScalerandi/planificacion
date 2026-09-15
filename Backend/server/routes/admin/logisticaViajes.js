@@ -5,6 +5,7 @@
 // portones con despacho/instalación de esa semana. Ver server/lib/logisticaViajesDb.js
 // para el detalle de las queries.
 const express = require('express');
+const multer = require('multer');
 const { adminAuth } = require('../../middleware/adminAuth');
 const db = require('../../lib/logisticaViajesDb');
 const { resolveCoordsForNvs, getSemanaMapa } = require('../../lib/logisticaMapa');
@@ -354,6 +355,36 @@ router.post('/logistica/whatsapp/conversaciones/:telefono/mensajes', requireFull
   const texto = String(req.body?.texto || '').trim();
   if (!texto) return res.status(400).json({ error: 'Falta el texto del mensaje' });
   const resultado = await whatsapp.enviarTextoLibre({ telefono: req.params.telefono, texto, enviadoPor: req.admin?.username || null });
+  if (!resultado.ok) return res.status(400).json({ error: resultado.error, detalle: resultado.detalle });
+  res.json({ ok: true, mensaje: resultado.mensaje });
+}));
+
+// Imagen/video/audio/documento adjuntado desde el chat - mismos formatos que
+// soporta WhatsApp para cada tipo (Meta rechaza lo que no soporte, el error
+// se propaga tal cual).
+const WA_MIME_TIPO = {
+  'image/jpeg': 'image', 'image/png': 'image', 'image/webp': 'image',
+  'video/mp4': 'video', 'video/3gpp': 'video',
+  'audio/aac': 'audio', 'audio/mp4': 'audio', 'audio/mpeg': 'audio', 'audio/amr': 'audio', 'audio/ogg': 'audio',
+  'application/pdf': 'document', 'application/msword': 'document', 'text/plain': 'document',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'document',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'document',
+};
+const uploadChatMedia = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 16 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (!WA_MIME_TIPO[file.mimetype]) return cb(new Error(`Tipo de archivo no soportado por WhatsApp: ${file.mimetype}`));
+    cb(null, true);
+  },
+});
+router.post('/logistica/whatsapp/conversaciones/:telefono/media', requireFullAccess, uploadChatMedia.single('archivo'), asyncRoute(async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Falta el archivo' });
+  const tipo = WA_MIME_TIPO[req.file.mimetype];
+  const resultado = await whatsapp.enviarMedia({
+    telefono: req.params.telefono, tipo, buffer: req.file.buffer, mimeType: req.file.mimetype,
+    caption: req.body?.caption || null, enviadoPor: req.admin?.username || null,
+  });
   if (!resultado.ok) return res.status(400).json({ error: resultado.error, detalle: resultado.detalle });
   res.json({ ok: true, mensaje: resultado.mensaje });
 }));

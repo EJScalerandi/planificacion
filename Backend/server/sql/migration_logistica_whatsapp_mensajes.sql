@@ -25,3 +25,10 @@ create index if not exists idx_logistica_whatsapp_mensajes_telefono
 create unique index if not exists idx_logistica_whatsapp_mensajes_wa_id
   on public.logistica_whatsapp_mensajes (wa_message_id)
   where wa_message_id is not null;
+
+-- Imagen/video/audio/documento entrante: se baja UNA vez de Meta (la URL que
+-- da la API expira en minutos) y se resube al mismo bucket privado de
+-- Storage que ya usa el collage - acá queda el path para armar la URL
+-- firmada al mostrar el chat.
+alter table public.logistica_whatsapp_mensajes
+  add column if not exists media_storage_path text;

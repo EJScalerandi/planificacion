@@ -364,6 +364,15 @@ const MIGRATIONS = [
       CREATE UNIQUE INDEX IF NOT EXISTS idx_logistica_whatsapp_mensajes_wa_id ON public.logistica_whatsapp_mensajes (wa_message_id) WHERE wa_message_id IS NOT NULL;
     `,
   },
+  {
+    // Imagen/video/audio/documento entrante o saliente por el chat de
+    // WhatsApp - path en Storage (mismo bucket que el collage), no la URL
+    // temporal de Meta que expira en minutos.
+    name: 'logistica_whatsapp_mensajes_media_storage_path',
+    sql: `
+      ALTER TABLE public.logistica_whatsapp_mensajes ADD COLUMN IF NOT EXISTS media_storage_path TEXT;
+    `,
+  },
 ];
 
 async function runMigrations() {

@@ -815,6 +815,15 @@ export async function enviarLogisticaWhatsappMensaje(telefono, texto) {
   const { data } = await api.post(`/admin/logistica/whatsapp/conversaciones/${encodeURIComponent(telefono)}/mensajes`, { texto });
   return data;
 }
+export async function enviarLogisticaWhatsappMedia(telefono, archivo, caption) {
+  const form = new FormData();
+  form.append('archivo', archivo);
+  if (caption) form.append('caption', caption);
+  const { data } = await api.post(`/admin/logistica/whatsapp/conversaciones/${encodeURIComponent(telefono)}/media`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return data;
+}
 export async function asignarLogisticaParadaExtra(viajeId, puntoExtraId) {
   const { data } = await api.post(`/admin/logistica/viajes/${viajeId}/paradas-extra`, { punto_extra_id: puntoExtraId });
   return data;
