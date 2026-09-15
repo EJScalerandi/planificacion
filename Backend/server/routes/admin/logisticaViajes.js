@@ -363,6 +363,10 @@ router.post('/logistica/whatsapp/conversaciones/:telefono/mensajes', requireFull
   if (!resultado.ok) return res.status(400).json({ error: resultado.error, detalle: resultado.detalle });
   res.json({ ok: true, mensaje: resultado.mensaje });
 }));
+router.patch('/logistica/whatsapp/conversaciones/:telefono/nombre', requireFullAccess, asyncRoute(async (req, res) => {
+  const nombre = await whatsapp.setNombreContacto(req.params.telefono, req.body?.nombre, req.admin?.username || null);
+  res.json({ ok: true, nombre });
+}));
 router.post('/logistica/whatsapp/conversaciones/:telefono/template-simple', requireFullAccess, asyncRoute(async (req, res) => {
   const name = String(req.body?.name || '').trim();
   const language = String(req.body?.language || '').trim();

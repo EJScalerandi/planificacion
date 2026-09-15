@@ -12,7 +12,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   getAdminToken, clearAdminToken, fetchLogisticaWhatsappConversaciones, fetchLogisticaWhatsappMensajes,
   enviarLogisticaWhatsappMensaje, enviarLogisticaWhatsappMedia, enviarLogisticaWhatsappTemplateSimple,
-  fetchLogisticaWhatsappTemplates,
+  fetchLogisticaWhatsappTemplates, setLogisticaWhatsappNombreContacto,
 } from '../../src/api';
 
 const POLL_MS = 4000;
@@ -135,6 +135,9 @@ export default function LogisticaWhatsappPage() {
   // sí - nombre del cliente (si matchea algún presupuesto) y si la ventana
   // de 24hs de WhatsApp sigue abierta para mandar texto libre.
   const [nombreClienteActivo, setNombreClienteActivo] = useState(null);
+  const [editandoNombre, setEditandoNombre] = useState(false);
+  const [nombreDraft, setNombreDraft] = useState('');
+  const [guardandoNombre, setGuardandoNombre] = useState(false);
   const [ventanaAbierta, setVentanaAbierta] = useState(true);
   const [templates, setTemplates] = useState(null);
   const [enviandoTemplate, setEnviandoTemplate] = useState(null); // nombre de la plantilla en curso, o null
@@ -190,6 +193,7 @@ export default function LogisticaWhatsappPage() {
   useEffect(() => {
     setPendingMedia((prev) => { if (prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl); return null; });
     setTexto('');
+    setEditandoNombre(false);
   }, [telefonoActivo]);
 
   useEffect(() => { cargarMensajes(telefonoActivo); }, [telefonoActivo, cargarMensajes]);
@@ -210,6 +214,27 @@ export default function LogisticaWhatsappPage() {
     const t = params.get('telefono');
     if (t) setTelefonoActivo(t);
   }, [params]);
+
+  const abrirEdicionNombre = () => {
+    setNombreDraft(nombreClienteActivo || '');
+    setEditandoNombre(true);
+  };
+
+  const guardarNombre = async () => {
+    if (!telefonoActivo) return;
+    setGuardandoNombre(true);
+    setErr('');
+    try {
+      const d = await setLogisticaWhatsappNombreContacto(telefonoActivo, nombreDraft.trim());
+      setNombreClienteActivo(d?.nombre || null);
+      setEditandoNombre(false);
+      await cargarConversaciones();
+    } catch (e) {
+      setErr(e?.response?.data?.error || e.message);
+    } finally {
+      setGuardandoNombre(false);
+    }
+  };
 
   const enviarTemplateSimple = async (t) => {
     if (!telefonoActivo) return;
@@ -371,8 +396,30 @@ export default function LogisticaWhatsappPage() {
           ) : (
             <>
               <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)' }}>
-                <div style={{ fontWeight: 900, fontSize: 13 }}>{nombreClienteActivo || displayTelefono(telefonoActivo)}</div>
-                {nombreClienteActivo ? <div style={{ fontSize: 11, opacity: 0.6 }}>{displayTelefono(telefonoActivo)}</div> : null}
+                {editandoNombre ? (
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <input
+                      className="pp-input"
+                      style={{ flex: 1, fontSize: 13 }}
+                      placeholder="Nombre del cliente"
+                      value={nombreDraft}
+                      autoFocus
+                      onChange={(e) => setNombreDraft(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') guardarNombre(); if (e.key === 'Escape') setEditandoNombre(false); }}
+                      disabled={guardandoNombre}
+                    />
+                    <button type="button" className="btn btn--brand" style={{ fontSize: 11 }} disabled={guardandoNombre} onClick={guardarNombre}>Guardar</button>
+                    <button type="button" className="btn" style={{ fontSize: 11 }} disabled={guardandoNombre} onClick={() => setEditandoNombre(false)}>Cancelar</button>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 900, fontSize: 13 }}>{nombreClienteActivo || displayTelefono(telefonoActivo)}</div>
+                      {nombreClienteActivo ? <div style={{ fontSize: 11, opacity: 0.6 }}>{displayTelefono(telefonoActivo)}</div> : null}
+                    </div>
+                    <button type="button" onClick={abrirEdicionNombre} title="Editar nombre del cliente" style={{ background: 'none', border: 'none', cursor: 'pointer', opacity: 0.6, fontSize: 13 }}>✏️</button>
+                  </div>
+                )}
               </div>
               <div ref={scrollRef} style={{ flex: '1 1 auto', overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 8, background: 'var(--surface-muted, #f9fafb)' }}>
                 {mensajes.length === 0 ? (

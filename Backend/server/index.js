@@ -373,6 +373,20 @@ const MIGRATIONS = [
       ALTER TABLE public.logistica_whatsapp_mensajes ADD COLUMN IF NOT EXISTS media_storage_path TEXT;
     `,
   },
+  {
+    // Nombre de contacto editable a mano - pedido explícito del usuario: el
+    // nombre resuelto automático contra presupuestador_quotes a veces sale
+    // mal (mezcla nombre + descripción de producto).
+    name: 'logistica_whatsapp_contactos',
+    sql: `
+      CREATE TABLE IF NOT EXISTS public.logistica_whatsapp_contactos (
+        telefono TEXT PRIMARY KEY,
+        nombre TEXT NOT NULL,
+        updated_by TEXT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+    `,
+  },
 ];
 
 async function runMigrations() {

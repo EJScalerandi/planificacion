@@ -438,8 +438,18 @@ async function enviarTemplateSimple({ telefono, templateName, language, enviadoP
 
 // Nombre del cliente para mostrar en el chat - mismo criterio "últimos 10
 // dígitos" para comparar teléfonos guardados en formatos distintos (con/sin
-// 54, 9, 15, etc.) contra el canónico que usa la API de WhatsApp.
+// 54, 9, 15, etc.) contra el canónico que usa la API de WhatsApp. El nombre
+// cargado a mano (logistica_whatsapp_contactos) pisa al resuelto automático
+// - pedido explícito del usuario: el de presupuestador_quotes a veces sale
+// mezclado con la descripción del producto, según cómo haya quedado cargado
+// el presupuesto.
 async function nombreClientePorTelefono(telefono) {
+  const { rows: manual } = await pool.query(
+    `select nombre from public.logistica_whatsapp_contactos where telefono = $1;`,
+    [telefono]
+  );
+  if (manual[0]?.nombre) return manual[0].nombre;
+
   const digitos = String(telefono || '').replace(/\D/g, '').slice(-10);
   if (digitos.length < 8) return null;
   const { rows } = await pool.query(
@@ -452,6 +462,22 @@ async function nombreClientePorTelefono(telefono) {
     [digitos]
   );
   return rows[0]?.nombre || null;
+}
+
+async function setNombreContacto(telefono, nombre, updatedBy) {
+  const nm = String(nombre || '').trim();
+  if (!nm) {
+    await pool.query(`delete from public.logistica_whatsapp_contactos where telefono = $1;`, [telefono]);
+    return null;
+  }
+  const { rows } = await pool.query(
+    `insert into public.logistica_whatsapp_contactos (telefono, nombre, updated_by, updated_at)
+     values ($1, $2, $3, now())
+     on conflict (telefono) do update set nombre = excluded.nombre, updated_by = excluded.updated_by, updated_at = now()
+     returning nombre;`,
+    [telefono, nm, updatedBy || null]
+  );
+  return rows[0].nombre;
 }
 
 const VENTANA_24HS_MS = 24 * 60 * 60 * 1000;
@@ -475,5 +501,5 @@ module.exports = {
   registrarMensajeSaliente, registrarMensajeEntrante, actualizarEstadoMensaje,
   listarConversaciones, listarMensajes, enviarTextoLibre, enviarTemplateSimple,
   descargarMediaEntrante, enviarMedia, urlFirmadaDeMensaje,
-  nombreClientePorTelefono, estadoConversacion,
+  nombreClientePorTelefono, estadoConversacion, setNombreContacto,
 };
