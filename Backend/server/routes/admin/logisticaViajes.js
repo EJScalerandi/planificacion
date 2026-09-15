@@ -24,6 +24,7 @@ const {
 } = require('../../lib/logisticaParadasExtra');
 const gastosDb = require('../../lib/logisticaGastosDb');
 const adjuntosStorage = require('../../lib/logisticaAdjuntosStorage');
+const { listarTemplates: listarTemplatesWhatsapp } = require('../../lib/logisticaWhatsapp');
 
 // Zonas del corredor + ruta real por calle comparten el mismo trigger
 // (cualquier cambio de paradas/orden de un viaje) - se disparan juntas.
@@ -332,6 +333,12 @@ router.patch('/logistica/puntos-extra/:id', requireFullAccess, asyncRoute(async 
 router.delete('/logistica/puntos-extra/:id', requireFullAccess, asyncRoute(async (req, res) => {
   await deletePuntoExtra(req.params.id);
   res.json({ ok: true });
+}));
+
+// Plantillas de mensaje de WhatsApp Business ya cargadas en Meta - solo
+// lectura, para verlas desde acá en vez de entrar a WhatsApp Manager.
+router.get('/logistica/whatsapp-templates', asyncRoute(async (_req, res) => {
+  res.json({ ok: true, templates: await listarTemplatesWhatsapp() });
 }));
 
 // Asigna/saca una parada extra (del catálogo) a un viaje - se trata como un

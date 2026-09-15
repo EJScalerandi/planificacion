@@ -799,6 +799,10 @@ export async function deleteLogisticaPuntoExtra(id) {
   const { data } = await api.delete(`/admin/logistica/puntos-extra/${id}`);
   return data;
 }
+export async function fetchLogisticaWhatsappTemplates() {
+  const { data } = await api.get('/admin/logistica/whatsapp-templates');
+  return data;
+}
 export async function asignarLogisticaParadaExtra(viajeId, puntoExtraId) {
   const { data } = await api.post(`/admin/logistica/viajes/${viajeId}/paradas-extra`, { punto_extra_id: puntoExtraId });
   return data;

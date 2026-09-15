@@ -19,6 +19,7 @@ const storage = require('./logisticaAdjuntosStorage');
 const GRAPH_VERSION = 'v21.0';
 const WA_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
 const WA_PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID;
+const WA_BUSINESS_ACCOUNT_ID = process.env.WHATSAPP_BUSINESS_ACCOUNT_ID;
 const WA_TEMPLATE_NAME = process.env.WHATSAPP_TEMPLATE_NAME || 'porton_en_camino';
 const WA_TEMPLATE_LANG = process.env.WHATSAPP_TEMPLATE_LANG || 'es_AR';
 
@@ -162,4 +163,26 @@ async function enviarAvisoEnCamino({ telefono, nombreCliente, horasTexto, cuadri
   }
 }
 
-module.exports = { configurado, enviarAvisoEnCamino, armarCollage };
+// Lista las plantillas de mensaje ya cargadas en Meta para esta cuenta de
+// WhatsApp Business (nombre, idioma, categoría, estado de aprobación y el
+// texto de cada componente) - pedido explícito del usuario, para poder
+// verlas desde la app en vez de entrar a WhatsApp Manager.
+async function listarTemplates() {
+  if (!WA_TOKEN || !WA_BUSINESS_ACCOUNT_ID) {
+    throw new Error('WhatsApp Business no configurado en este entorno (falta WHATSAPP_ACCESS_TOKEN / WHATSAPP_BUSINESS_ACCOUNT_ID)');
+  }
+  const { data } = await axios.get(
+    `https://graph.facebook.com/${GRAPH_VERSION}/${WA_BUSINESS_ACCOUNT_ID}/message_templates`,
+    { headers: { Authorization: `Bearer ${WA_TOKEN}` }, params: { limit: 100 }, timeout: 15000 }
+  );
+  return (data?.data || []).map((t) => ({
+    id: t.id,
+    name: t.name,
+    language: t.language,
+    category: t.category,
+    status: t.status,
+    components: t.components || [],
+  }));
+}
+
+module.exports = { configurado, enviarAvisoEnCamino, armarCollage, listarTemplates };
