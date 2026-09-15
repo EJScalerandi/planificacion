@@ -24,7 +24,7 @@ const {
 } = require('../../lib/logisticaParadasExtra');
 const gastosDb = require('../../lib/logisticaGastosDb');
 const adjuntosStorage = require('../../lib/logisticaAdjuntosStorage');
-const { listarTemplates: listarTemplatesWhatsapp } = require('../../lib/logisticaWhatsapp');
+const whatsapp = require('../../lib/logisticaWhatsapp');
 
 // Zonas del corredor + ruta real por calle comparten el mismo trigger
 // (cualquier cambio de paradas/orden de un viaje) - se disparan juntas.
@@ -338,7 +338,24 @@ router.delete('/logistica/puntos-extra/:id', requireFullAccess, asyncRoute(async
 // Plantillas de mensaje de WhatsApp Business ya cargadas en Meta - solo
 // lectura, para verlas desde acá en vez de entrar a WhatsApp Manager.
 router.get('/logistica/whatsapp-templates', asyncRoute(async (_req, res) => {
-  res.json({ ok: true, templates: await listarTemplatesWhatsapp() });
+  res.json({ ok: true, templates: await whatsapp.listarTemplates() });
+}));
+
+// ===== Bandeja de WhatsApp (chat) - lectura para cualquiera de los 3
+// scopes, igual que el resto de la config; mandar un mensaje requiere
+// preproduccion:full (misma regla que crear/editar viajes). =====
+router.get('/logistica/whatsapp/conversaciones', asyncRoute(async (_req, res) => {
+  res.json({ ok: true, conversaciones: await whatsapp.listarConversaciones() });
+}));
+router.get('/logistica/whatsapp/conversaciones/:telefono/mensajes', asyncRoute(async (req, res) => {
+  res.json({ ok: true, mensajes: await whatsapp.listarMensajes(req.params.telefono) });
+}));
+router.post('/logistica/whatsapp/conversaciones/:telefono/mensajes', requireFullAccess, asyncRoute(async (req, res) => {
+  const texto = String(req.body?.texto || '').trim();
+  if (!texto) return res.status(400).json({ error: 'Falta el texto del mensaje' });
+  const resultado = await whatsapp.enviarTextoLibre({ telefono: req.params.telefono, texto, enviadoPor: req.admin?.username || null });
+  if (!resultado.ok) return res.status(400).json({ error: resultado.error, detalle: resultado.detalle });
+  res.json({ ok: true, mensaje: resultado.mensaje });
 }));
 
 // Asigna/saca una parada extra (del catálogo) a un viaje - se trata como un

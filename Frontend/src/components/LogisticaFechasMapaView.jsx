@@ -12,6 +12,7 @@
 // LogisticaIaMapaModal.jsx (no se duplica la lógica de negocio, se adapta a
 // vivir embebido en la página en vez de en un modal).
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import {
@@ -227,6 +228,8 @@ function expandirSinFechaSalida(items) {
 }
 
 export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
+  const nav = useNavigate();
+
   // Arranca en la semana en curso (pedido del usuario) - '' sigue siendo una
   // opción válida desde el selector ("Pendientes de asignar (todas)"), solo
   // que ya no es el default al entrar a la página.
@@ -1307,6 +1310,15 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
                                 <div style={{ fontSize: 9, opacity: 0.7, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.nombre}</div>
                               ) : null}
                             </div>
+                            {!esExtra && it.telefono ? (
+                              <button
+                                type="button" className="btn" style={{ padding: '0 4px', fontSize: 10, flex: '0 0 auto' }}
+                                onClick={() => nav(`/admin/logistica-whatsapp?telefono=${encodeURIComponent(it.telefono)}`)}
+                                title="Abrir chat de WhatsApp con el cliente"
+                              >
+                                💬
+                              </button>
+                            ) : null}
                             {!esExtra ? (
                               <button
                                 type="button" className="btn" style={{ padding: '0 4px', fontSize: 10, flex: '0 0 auto' }}

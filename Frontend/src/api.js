@@ -803,6 +803,18 @@ export async function fetchLogisticaWhatsappTemplates() {
   const { data } = await api.get('/admin/logistica/whatsapp-templates');
   return data;
 }
+export async function fetchLogisticaWhatsappConversaciones() {
+  const { data } = await api.get('/admin/logistica/whatsapp/conversaciones');
+  return data;
+}
+export async function fetchLogisticaWhatsappMensajes(telefono) {
+  const { data } = await api.get(`/admin/logistica/whatsapp/conversaciones/${encodeURIComponent(telefono)}/mensajes`);
+  return data;
+}
+export async function enviarLogisticaWhatsappMensaje(telefono, texto) {
+  const { data } = await api.post(`/admin/logistica/whatsapp/conversaciones/${encodeURIComponent(telefono)}/mensajes`, { texto });
+  return data;
+}
 export async function asignarLogisticaParadaExtra(viajeId, puntoExtraId) {
   const { data } = await api.post(`/admin/logistica/viajes/${viajeId}/paradas-extra`, { punto_extra_id: puntoExtraId });
   return data;

@@ -339,6 +339,31 @@ const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_logistica_gastos_viaje ON public.logistica_gastos(viaje_id);
     `,
   },
+  {
+    // Bandeja de WhatsApp Business: TODOS los mensajes (entrantes por webhook
+    // + salientes desde la app) en una sola tabla, agrupados por teléfono,
+    // para el chat tipo WhatsApp Web - pedido explícito del usuario. Ver
+    // server/sql/migration_logistica_whatsapp_mensajes.sql (mismo contenido).
+    name: 'logistica_whatsapp_mensajes',
+    sql: `
+      CREATE TABLE IF NOT EXISTS public.logistica_whatsapp_mensajes (
+        id BIGSERIAL PRIMARY KEY,
+        telefono TEXT NOT NULL,
+        direccion TEXT NOT NULL CHECK (direccion IN ('entrante', 'saliente')),
+        tipo TEXT NOT NULL DEFAULT 'text',
+        contenido TEXT,
+        media_id TEXT,
+        wa_message_id TEXT,
+        estado TEXT NOT NULL DEFAULT 'enviado',
+        detalle_error TEXT,
+        enviado_por TEXT,
+        raw JSONB,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_logistica_whatsapp_mensajes_telefono ON public.logistica_whatsapp_mensajes (telefono, created_at);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_logistica_whatsapp_mensajes_wa_id ON public.logistica_whatsapp_mensajes (wa_message_id) WHERE wa_message_id IS NOT NULL;
+    `,
+  },
 ];
 
 async function runMigrations() {
