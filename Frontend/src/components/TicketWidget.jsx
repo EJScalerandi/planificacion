@@ -99,7 +99,10 @@ export default function TicketWidget() {
   }
 
   async function onSeleccionarArchivos(e) {
-    const files = e.target.files;
+    // Ojo: hay que copiar el FileList a un array ANTES de limpiar
+    // e.target.value - si no, vaciar el input también vacía esta misma
+    // referencia (es "viva"), y agregarArchivos recibe una lista vacía.
+    const files = Array.from(e.target.files || []);
     e.target.value = '';
     await agregarArchivos(files);
   }
@@ -343,7 +346,7 @@ export default function TicketWidget() {
                 <button
                   type="submit"
                   className="btn btn--brand"
-                  disabled={enviando}
+                  disabled={enviando || !mensaje.trim()}
                   style={{ width: '100%', padding: '10px 12px', fontSize: 13, borderRadius: 10 }}
                 >
                   {enviando ? 'Enviando...' : 'Enviar ticket'}
