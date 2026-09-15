@@ -39,10 +39,6 @@ const ESTADO_COLOR = {
 // todas escriben en las mismas tablas `tickets`/`ticket_mensajes`.
 const APP_LABEL = { planificacion: 'Planificación', integrador: 'Integrador' };
 
-// Quien responde elige a nombre de quién queda la respuesta (para que el
-// que mandó el ticket vea el nombre real, no "Soporte").
-const RESPONDIENTES = ['Esteban', 'Juan Ignacio', 'Santiago'];
-
 export default function AdminTicketsPage() {
   const nav = useNavigate();
   const [estadoFiltro, setEstadoFiltro] = useState('');
@@ -52,7 +48,6 @@ export default function AdminTicketsPage() {
 
   const [seleccionado, setSeleccionado] = useState(null);
   const [respuesta, setRespuesta] = useState('');
-  const [autorNombre, setAutorNombre] = useState(RESPONDIENTES[0]);
   const [enviandoRespuesta, setEnviandoRespuesta] = useState(false);
   const [cambiandoEstado, setCambiandoEstado] = useState(false);
 
@@ -93,7 +88,7 @@ export default function AdminTicketsPage() {
     if (!seleccionado || !respuesta.trim()) return;
     setEnviandoRespuesta(true);
     try {
-      await addAdminTicketMessage(seleccionado.id, { mensaje: respuesta.trim(), autorNombre: autorNombre.trim() });
+      await addAdminTicketMessage(seleccionado.id, { mensaje: respuesta.trim() });
       setRespuesta('');
       await abrir(seleccionado.id);
       await cargar();
@@ -264,18 +259,6 @@ export default function AdminTicketsPage() {
             </div>
 
             <form onSubmit={enviarRespuesta} style={{ marginTop: 10 }}>
-              <label style={{ display: 'block', fontSize: 12, marginBottom: 4, color: 'var(--ink-weak)' }}>
-                Respondiendo como
-              </label>
-              <select
-                value={autorNombre}
-                onChange={(e) => setAutorNombre(e.target.value)}
-                style={{ width: '100%', padding: 8, marginBottom: 8, borderRadius: 8, border: '1px solid var(--border)' }}
-              >
-                {RESPONDIENTES.map((n) => (
-                  <option key={n} value={n}>{n}</option>
-                ))}
-              </select>
               <div style={{ display: 'flex', gap: 8 }}>
                 <input
                   value={respuesta}
