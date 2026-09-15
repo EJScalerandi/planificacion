@@ -32,6 +32,47 @@ router.put('/notas-nodo/:nodoId', adminAuth, async (req, res) => {
   }
 });
 
+// GET /admin/notas-nodo/:nodoId/entradas — lista de "¿qué se está trabajando
+// acá?" por admin (una fila por autor, ver notasNodoDb.js).
+router.get('/notas-nodo/:nodoId/entradas', adminAuth, async (req, res) => {
+  try {
+    const entradas = await notasNodoDb.listNotaEntradas(req.params.nodoId);
+    return res.json({ entradas });
+  } catch (err) {
+    console.error('admin get notas-nodo entradas error:', err);
+    return res.status(500).json({ error: 'Error leyendo las entradas', detail: err.message });
+  }
+});
+
+// PUT /admin/notas-nodo/:nodoId/entradas  body: { texto }
+// El autor SIEMPRE es el admin logueado (req.admin.username) — nunca viene
+// del body, así nadie puede escribir o borrar la entrada de otro.
+router.put('/notas-nodo/:nodoId/entradas', adminAuth, async (req, res) => {
+  try {
+    const autor = req.admin?.username;
+    if (!autor) return res.status(401).json({ error: 'No autorizado' });
+    const texto = String(req.body?.texto || '');
+    const entrada = await notasNodoDb.upsertNotaEntrada(req.params.nodoId, autor, texto);
+    return res.json({ ok: true, entrada });
+  } catch (err) {
+    console.error('admin put notas-nodo entrada error:', err);
+    return res.status(500).json({ error: 'Error guardando la entrada', detail: err.message });
+  }
+});
+
+// DELETE /admin/notas-nodo/:nodoId/entradas — borra SOLO la entrada propia.
+router.delete('/notas-nodo/:nodoId/entradas', adminAuth, async (req, res) => {
+  try {
+    const autor = req.admin?.username;
+    if (!autor) return res.status(401).json({ error: 'No autorizado' });
+    await notasNodoDb.deleteNotaEntrada(req.params.nodoId, autor);
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error('admin delete notas-nodo entrada error:', err);
+    return res.status(500).json({ error: 'Error borrando la entrada', detail: err.message });
+  }
+});
+
 // GET /admin/notas-nodo/:nodoId/usuarios-prueba
 router.get('/notas-nodo/:nodoId/usuarios-prueba', adminAuth, async (req, res) => {
   try {

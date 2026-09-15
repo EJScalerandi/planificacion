@@ -56,4 +56,47 @@ async function setNota(nodoId, { nota, adminUser, adminPassword, link } = {}, up
   return rows[0];
 }
 
-module.exports = { getNota, setNota };
+// Entradas de "¿qué se está trabajando acá?" - a diferencia de nota/admin_user/
+// admin_password/link (un solo valor compartido por nodo), acá cada admin
+// tiene SU PROPIA fila (nodo_id, autor_username) - así dos personas escribiendo
+// al mismo tiempo nunca se pisan: cada uno guarda y borra solo la suya.
+async function listNotaEntradas(nodoId) {
+  const { rows } = await pool.query(
+    `select nodo_id, autor_username, texto, updated_at
+       from public.notas_nodo_entradas
+      where nodo_id = $1
+      order by updated_at desc`,
+    [nodoId]
+  );
+  return rows;
+}
+
+// texto vacío borra la fila directamente (así "vaciar el cuadro y salir" y
+// "Terminé, liberar" hacen exactamente lo mismo, sin dejar filas fantasma con
+// texto en blanco dando vueltas en la lista).
+async function upsertNotaEntrada(nodoId, autorUsername, texto) {
+  const limpio = String(texto || '').trim();
+  if (!limpio) {
+    await deleteNotaEntrada(nodoId, autorUsername);
+    return null;
+  }
+  const { rows } = await pool.query(
+    `insert into public.notas_nodo_entradas (nodo_id, autor_username, texto, updated_at)
+     values ($1, $2, $3, now())
+     on conflict (nodo_id, autor_username) do update
+       set texto = excluded.texto,
+           updated_at = now()
+     returning nodo_id, autor_username, texto, updated_at`,
+    [nodoId, autorUsername, limpio]
+  );
+  return rows[0];
+}
+
+async function deleteNotaEntrada(nodoId, autorUsername) {
+  await pool.query(
+    'delete from public.notas_nodo_entradas where nodo_id = $1 and autor_username = $2',
+    [nodoId, autorUsername]
+  );
+}
+
+module.exports = { getNota, setNota, listNotaEntradas, upsertNotaEntrada, deleteNotaEntrada };

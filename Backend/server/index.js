@@ -534,6 +534,25 @@ const MIGRATIONS = [
         ON public.notas_nodo_usuarios_prueba (nodo_id, created_at);
     `,
   },
+  {
+    // "¿Qué se está trabajando acá?" pasa de un solo campo compartido
+    // (notas_nodo.nota, "gana el último que guarda") a una fila POR ADMIN:
+    // así dos personas escribiendo al mismo tiempo en el mismo nodo nunca se
+    // pisan - cada quien edita y borra solo la suya. notas_nodo.nota queda
+    // sin usar por esta pantalla (no se borra la columna, por si acaso).
+    name: 'notas_nodo_entradas',
+    sql: `
+      CREATE TABLE IF NOT EXISTS public.notas_nodo_entradas (
+        nodo_id TEXT NOT NULL,
+        autor_username TEXT NOT NULL,
+        texto TEXT NOT NULL DEFAULT '',
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        PRIMARY KEY (nodo_id, autor_username)
+      );
+      CREATE INDEX IF NOT EXISTS idx_notas_nodo_entradas_nodo
+        ON public.notas_nodo_entradas (nodo_id, updated_at);
+    `,
+  },
 ];
 
 async function runMigrations() {
