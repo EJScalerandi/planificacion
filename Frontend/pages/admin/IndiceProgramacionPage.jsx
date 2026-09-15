@@ -326,6 +326,7 @@ export default function IndiceProgramacionPage() {
   // Nota + usuario/contraseña editables: se guardan juntos por nodo en
   // public.notas_nodo, así que lo que carga uno lo ve el resto del equipo.
   const [nota, setNota] = useState('');
+  const [link, setLink] = useState('');
   // adminUserInput/adminPasswordInput: lo que se está tipeando (borrador).
   // savedAdminUser/savedAdminPassword: lo último realmente guardado - es lo
   // que se muestra como texto fijo hasta que alguien aprieta "Editar".
@@ -489,6 +490,7 @@ export default function IndiceProgramacionPage() {
   useEffect(() => {
     if (!openNode) return;
     setNota('');
+    setLink('');
     setAdminUserInput('');
     setAdminPasswordInput('');
     setSavedAdminUser('');
@@ -502,6 +504,7 @@ export default function IndiceProgramacionPage() {
         const u = data?.admin_user || '';
         const p = data?.admin_password || '';
         setNota(data?.nota || '');
+        setLink(data?.link || '');
         setAdminUserInput(u);
         setAdminPasswordInput(p);
         setSavedAdminUser(u);
@@ -535,9 +538,9 @@ export default function IndiceProgramacionPage() {
       .finally(() => setNotaSaving(false));
   };
 
-  // La nota se sigue guardando sola al salir del campo (no manda usuario ni
-  // contraseña, así nunca los toca sin querer).
-  const saveNota = () => saveField({ nota });
+  // La nota y el link se guardan solos al salir del campo (no mandan usuario
+  // ni contraseña, así nunca los tocan sin querer).
+  const saveNota = () => saveField({ nota, link });
 
   // El acceso (usuario/contraseña) SOLO se guarda con el botón "Guardar".
   // Una vez guardado, queda fijo como texto (savedAdminUser/Password) y sale
@@ -925,6 +928,33 @@ export default function IndiceProgramacionPage() {
             <p className="ip-lead" style={{ margin: '10px 0 0' }}>
               {openContent?.description || 'Descripción pendiente de definir.'}
             </p>
+
+            {openContent && (
+              <div className="ip-access-box">
+                <div className="ip-section-label" style={{ marginBottom: 8 }}>Link</div>
+                <div className="ip-access-row">
+                  <input
+                    type="url"
+                    className="ip-access-input"
+                    value={link}
+                    onChange={(e) => setLink(e.target.value)}
+                    onBlur={saveNota}
+                    disabled={notaLoading}
+                    placeholder="https://..."
+                  />
+                  {link.trim() && (
+                    <button
+                      type="button"
+                      className="btn"
+                      style={{ flex: 'none', padding: '4px 10px' }}
+                      onClick={() => goToProgram(link.trim())}
+                    >
+                      Abrir ↗
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
 
             {openContent && (
               <div className="ip-access-box">

@@ -7,11 +7,11 @@ const { pool } = require('./db');
 
 async function getNota(nodoId) {
   const { rows } = await pool.query(
-    'select nodo_id, nota, admin_user, admin_password, updated_by, updated_at from public.notas_nodo where nodo_id = $1',
+    'select nodo_id, nota, admin_user, admin_password, link, updated_by, updated_at from public.notas_nodo where nodo_id = $1',
     [nodoId]
   );
   if (!rows.length) {
-    return { nodo_id: nodoId, nota: '', admin_user: '', admin_password: '', updated_by: null, updated_at: null };
+    return { nodo_id: nodoId, nota: '', admin_user: '', admin_password: '', link: '', updated_by: null, updated_at: null };
   }
   return rows[0];
 }
@@ -20,34 +20,38 @@ async function getNota(nodoId) {
 // los DOS campos cargados: si solo vino uno (o ninguno), esta fila guarda la
 // nota igual pero deja admin_user/admin_password como estaban en la base -
 // así un blur a medio cargar nunca borra un acceso que ya estaba guardado.
-async function setNota(nodoId, { nota, adminUser, adminPassword } = {}, updatedBy) {
+// El link, en cambio, se guarda siempre junto con la nota (el frontend manda
+// las dos juntas en cada blur), así que no necesita esa misma protección.
+async function setNota(nodoId, { nota, adminUser, adminPassword, link } = {}, updatedBy) {
   const hasCreds = String(adminUser || '').trim() && String(adminPassword || '').trim();
 
   if (hasCreds) {
     const { rows } = await pool.query(
-      `insert into public.notas_nodo (nodo_id, nota, admin_user, admin_password, updated_by, updated_at)
-       values ($1, $2, $3, $4, $5, now())
+      `insert into public.notas_nodo (nodo_id, nota, admin_user, admin_password, link, updated_by, updated_at)
+       values ($1, $2, $3, $4, $5, $6, now())
        on conflict (nodo_id) do update
          set nota = excluded.nota,
              admin_user = excluded.admin_user,
              admin_password = excluded.admin_password,
+             link = excluded.link,
              updated_by = excluded.updated_by,
              updated_at = now()
-       returning nodo_id, nota, admin_user, admin_password, updated_by, updated_at`,
-      [nodoId, String(nota || ''), String(adminUser).trim(), String(adminPassword).trim(), updatedBy || null]
+       returning nodo_id, nota, admin_user, admin_password, link, updated_by, updated_at`,
+      [nodoId, String(nota || ''), String(adminUser).trim(), String(adminPassword).trim(), String(link || ''), updatedBy || null]
     );
     return rows[0];
   }
 
   const { rows } = await pool.query(
-    `insert into public.notas_nodo (nodo_id, nota, updated_by, updated_at)
-     values ($1, $2, $3, now())
+    `insert into public.notas_nodo (nodo_id, nota, link, updated_by, updated_at)
+     values ($1, $2, $3, $4, now())
      on conflict (nodo_id) do update
        set nota = excluded.nota,
+           link = excluded.link,
            updated_by = excluded.updated_by,
            updated_at = now()
-     returning nodo_id, nota, admin_user, admin_password, updated_by, updated_at`,
-    [nodoId, String(nota || ''), updatedBy || null]
+     returning nodo_id, nota, admin_user, admin_password, link, updated_by, updated_at`,
+    [nodoId, String(nota || ''), String(link || ''), updatedBy || null]
   );
   return rows[0];
 }

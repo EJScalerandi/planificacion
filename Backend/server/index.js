@@ -489,6 +489,51 @@ const MIGRATIONS = [
       ALTER TABLE public.tickets ADD COLUMN IF NOT EXISTS adjuntos JSONB NOT NULL DEFAULT '[]'::jsonb;
     `,
   },
+  {
+    // Link editable por cuadro del diagrama "Índice de Programación" (ver
+    // server/sql/migration_notas_nodo*.sql) - pedido del usuario: poder
+    // guardar una URL de referencia (repo, doc, tablero) junto con la nota y
+    // el acceso de cada nodo, visible para todo el equipo.
+    name: 'notas_nodo_link',
+    sql: `
+      CREATE TABLE IF NOT EXISTS public.notas_nodo (
+        nodo_id TEXT PRIMARY KEY,
+        nota TEXT NOT NULL DEFAULT '',
+        admin_user TEXT NOT NULL DEFAULT '',
+        admin_password TEXT NOT NULL DEFAULT '',
+        updated_by TEXT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      ALTER TABLE public.notas_nodo ADD COLUMN IF NOT EXISTS link TEXT NOT NULL DEFAULT '';
+    `,
+  },
+  {
+    // En algunos entornos locales notas_nodo ya existía (creada a mano solo
+    // con migration_notas_nodo.sql, sin correr nunca
+    // migration_notas_nodo_credenciales.sql ni
+    // migration_notas_nodo_usuarios_prueba.sql) - el CREATE TABLE IF NOT
+    // EXISTS de arriba es un no-op en ese caso y deja faltando estas
+    // columnas/tabla. Estas dos ALTER/CREATE son additivas e idempotentes,
+    // así que no rompen nada donde ya estaban corridas a mano.
+    name: 'notas_nodo_credenciales_y_usuarios_prueba',
+    sql: `
+      ALTER TABLE public.notas_nodo
+        ADD COLUMN IF NOT EXISTS admin_user TEXT NOT NULL DEFAULT '',
+        ADD COLUMN IF NOT EXISTS admin_password TEXT NOT NULL DEFAULT '';
+
+      CREATE TABLE IF NOT EXISTS public.notas_nodo_usuarios_prueba (
+        id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        nodo_id TEXT NOT NULL,
+        etiqueta TEXT NOT NULL DEFAULT '',
+        usuario TEXT NOT NULL,
+        password TEXT NOT NULL,
+        created_by TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS notas_nodo_usuarios_prueba_nodo_id_idx
+        ON public.notas_nodo_usuarios_prueba (nodo_id, created_at);
+    `,
+  },
 ];
 
 async function runMigrations() {
