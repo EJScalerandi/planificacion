@@ -368,7 +368,7 @@ export default function LogisticaFechasPage() {
             </button>
           </div>
           <Link className="btn" to="/a">/a</Link>
-          <Link className="btn" to="/admin/logistica-viajes">Viajes de Logística</Link>
+          <Link className="btn" to="/admin/logistica-whatsapp">💬 Mensajes Logística</Link>
           <button className="btn" onClick={() => setRendicionesOpen(true)}>💰 Rendiciones</button>
           <button className="btn" onClick={load} disabled={loading}>Recargar</button>
           <button className="btn" onClick={logout}>Salir</button>
