@@ -502,4 +502,13 @@ router.get('/logistica/rendiciones/:viajeId', asyncRoute(async (req, res) => {
   res.json({ ok: true, detalle: { ...detalle, gastos: gastosConUrl } });
 }));
 
+// "Ok" final de logística sobre la rendición completa - pedido explícito
+// del usuario: bloqueado (409) hasta que el viaje esté finalizado
+// (hora_llegada_real). Requiere preproduccion:full, igual que el resto de
+// las acciones que dejan constancia de quién autorizó algo.
+router.post('/logistica/rendiciones/:viajeId/aprobar', requireFullAccess, asyncRoute(async (req, res) => {
+  const resultado = await gastosDb.aprobarRendicion(req.params.viajeId, req.admin?.username || null);
+  res.json({ ok: true, ...resultado });
+}));
+
 module.exports = router;

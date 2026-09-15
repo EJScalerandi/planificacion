@@ -13,6 +13,7 @@ const db = require('../../lib/despachoV2Db');
 const adjuntosDb = require('../../lib/logisticaAdjuntosDb');
 const adjuntosStorage = require('../../lib/logisticaAdjuntosStorage');
 const gastosDb = require('../../lib/logisticaGastosDb');
+const gastosIa = require('../../lib/logisticaGastosIa');
 
 const router = express.Router();
 
@@ -96,6 +97,15 @@ router.post('/despacho-v2/viajes/:id/marcar-salida', asyncRoute(async (req, res)
   res.json({ ok: true, hora_salida_real });
 }));
 
+// POST /despacho-v2/viajes/:id/marcar-llegada - "Finalizar viaje": pedido
+// explícito del usuario, cierra el rango de fechas válido para los gastos
+// de la rendición - sin esto, logística no puede aprobarla.
+router.post('/despacho-v2/viajes/:id/marcar-llegada', asyncRoute(async (req, res) => {
+  if (!(await requireViajeDeMiCuadrilla(req, res, req.params.id))) return;
+  const hora_llegada_real = await db.marcarLlegadaReal(req.params.id);
+  res.json({ ok: true, hora_llegada_real });
+}));
+
 // GET /despacho-v2/viajes/:id/paradas - botón de tres líneas.
 router.get('/despacho-v2/viajes/:id/paradas', asyncRoute(async (req, res) => {
   if (!(await requireViajeDeMiCuadrilla(req, res, req.params.id))) return;
@@ -176,25 +186,56 @@ router.get('/despacho-v2/viajes/:id/gastos', asyncRoute(async (req, res) => {
   res.json({ ok: true, gastos: conUrl });
 }));
 
+// Sube la foto/PDF PRIMERO - pedido explícito del usuario: la IA lo lee y
+// completa fecha/motivo/monto/tipo de comprobante (chequeando la fecha
+// contra el rango real del viaje, hora_salida_real -> hora_llegada_real).
+// Si algo no se pudo leer con confianza, ese campo queda en
+// campos_inciertos (editable acá mismo con el PATCH de abajo) - pero
+// SIEMPRE que haya campos_inciertos el gasto queda en estado_revision =
+// 'revisar', aunque la cuadrilla lo corrija después: logística lo tiene
+// que ver resaltado igual.
 router.post('/despacho-v2/viajes/:id/gastos', uploadGasto.single('archivo'), asyncRoute(async (req, res) => {
-  if (!(await requireViajeDeMiCuadrilla(req, res, req.params.id))) return;
+  const viaje = await requireViajeDeMiCuadrilla(req, res, req.params.id);
+  if (!viaje) return;
   if (!req.file) throw new Error('Falta la foto o el PDF del ticket');
-  const fecha = String(req.body?.fecha || '').slice(0, 10);
-  const motivo = String(req.body?.motivo || '').trim();
-  const monto = Number(req.body?.monto);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) throw new Error('Falta la fecha');
-  if (!motivo) throw new Error('Falta el motivo');
-  if (!Number.isFinite(monto) || monto <= 0) throw new Error('El monto tiene que ser un número mayor a 0');
 
   const path = `gasto-viaje-${req.params.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${extensionDeGasto(req.file.originalname, req.file.mimetype)}`;
   await adjuntosStorage.subirArchivo(path, req.file.buffer, req.file.mimetype);
 
+  const analisis = await gastosIa.analizarGasto({
+    buffer: req.file.buffer, mimeType: req.file.mimetype,
+    horaSalidaReal: viaje.hora_salida_real, horaLlegadaReal: viaje.hora_llegada_real,
+  });
+
   const gasto = await gastosDb.crearGasto({
-    viaje_id: req.params.id, fecha, motivo, monto,
+    viaje_id: req.params.id,
+    fecha: analisis.fecha, motivo: analisis.motivo, monto: analisis.monto,
     storage_path: path, nombre_archivo: req.file.originalname, tipo_mime: req.file.mimetype,
     cargado_por: req.despachoUser.name,
+    tipo_comprobante: analisis.tipo_comprobante, medio_pago: analisis.medio_pago,
+    estado_revision: analisis.estado_revision, detalle_revision: analisis.detalle_revision,
+    campos_inciertos: analisis.campos_inciertos,
   });
   res.json({ ok: true, gasto: { ...gasto, url: await adjuntosStorage.urlFirmada(path) } });
+}));
+
+// Corrección a mano de un campo que la IA no pudo leer bien (o cualquier
+// otro) - pedido explícito del usuario. No cambia estado_revision: sigue
+// resaltado para logística aunque se corrija acá.
+router.patch('/despacho-v2/viajes/:id/gastos/:gastoId', asyncRoute(async (req, res) => {
+  if (!(await requireViajeDeMiCuadrilla(req, res, req.params.id))) return;
+  const gastoExistente = await gastosDb.getGasto(req.params.gastoId);
+  if (!gastoExistente || Number(gastoExistente.viaje_id) !== Number(req.params.id)) return res.status(404).json({ error: 'Gasto no encontrado' });
+
+  const patch = {};
+  if (req.body?.fecha !== undefined) patch.fecha = String(req.body.fecha).slice(0, 10);
+  if (req.body?.motivo !== undefined) patch.motivo = String(req.body.motivo).trim();
+  if (req.body?.monto !== undefined) patch.monto = Number(req.body.monto);
+  if (req.body?.tipo_comprobante !== undefined) patch.tipo_comprobante = String(req.body.tipo_comprobante).trim();
+  if (req.body?.medio_pago !== undefined) patch.medio_pago = String(req.body.medio_pago).trim();
+
+  const gasto = await gastosDb.actualizarGasto(req.params.gastoId, patch);
+  res.json({ ok: true, gasto: { ...gasto, url: await adjuntosStorage.urlFirmada(gasto.storage_path) } });
 }));
 
 router.delete('/despacho-v2/viajes/:id/gastos/:gastoId', asyncRoute(async (req, res) => {

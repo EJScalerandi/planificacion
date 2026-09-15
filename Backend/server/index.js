@@ -387,6 +387,46 @@ const MIGRATIONS = [
       );
     `,
   },
+  {
+    // Rendiciones con verificación por IA - pedido explícito del usuario.
+    // hora_llegada_real: la marca "finalizar viaje" que le falta a
+    // marcar-salida/hora_salida_real - define el fin del rango de fechas
+    // válido para los gastos, y logística no puede aprobar la rendición
+    // hasta que esté cargada. rendicion_aprobada_*: el "ok" final de
+    // logística sobre TODOS los gastos del viaje.
+    name: 'logistica_viajes_rendicion_aprobacion',
+    sql: `
+      ALTER TABLE public.logistica_viajes
+        ADD COLUMN IF NOT EXISTS hora_llegada_real TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS rendicion_aprobada_por TEXT,
+        ADD COLUMN IF NOT EXISTS rendicion_aprobada_at TIMESTAMPTZ;
+    `,
+  },
+  {
+    // Por gasto: qué leyó la IA del comprobante (tipo_comprobante,
+    // medio_pago - este último ya pensado para la Parte 2, reconciliación
+    // con Odoo/email) y si hizo falta revisión humana (estado_revision:
+    // pendiente/ok/revisar) - campos_inciertos guarda CUÁLES campos no supo
+    // resolver con confianza, para resaltarlos en la auditoría de logística.
+    name: 'logistica_gastos_revision_ia',
+    sql: `
+      ALTER TABLE public.logistica_gastos
+        ADD COLUMN IF NOT EXISTS tipo_comprobante TEXT,
+        ADD COLUMN IF NOT EXISTS medio_pago TEXT,
+        ADD COLUMN IF NOT EXISTS estado_revision TEXT NOT NULL DEFAULT 'pendiente',
+        ADD COLUMN IF NOT EXISTS detalle_revision TEXT,
+        ADD COLUMN IF NOT EXISTS campos_inciertos TEXT[];
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'logistica_gastos_estado_revision_check'
+        ) THEN
+          ALTER TABLE public.logistica_gastos
+            ADD CONSTRAINT logistica_gastos_estado_revision_check
+            CHECK (estado_revision IN ('pendiente','ok','revisar'));
+        END IF;
+      END $$;
+    `,
+  },
 ];
 
 async function runMigrations() {

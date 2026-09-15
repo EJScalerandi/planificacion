@@ -142,6 +142,10 @@ export async function marcarSalidaDespachoV2(viajeId) {
   const { data } = await apiDespachoV2.post(`/despacho-v2/viajes/${viajeId}/marcar-salida`);
   return data;
 }
+export async function marcarLlegadaDespachoV2(viajeId) {
+  const { data } = await apiDespachoV2.post(`/despacho-v2/viajes/${viajeId}/marcar-llegada`);
+  return data;
+}
 export async function fetchParadasDespachoV2(viajeId) {
   const { data } = await apiDespachoV2.get(`/despacho-v2/viajes/${viajeId}/paradas`);
   return data;
@@ -181,13 +185,17 @@ export async function fetchGastosDespachoV2(viajeId) {
   const { data } = await apiDespachoV2.get(`/despacho-v2/viajes/${viajeId}/gastos`);
   return data;
 }
-export async function crearGastoDespachoV2(viajeId, { fecha, motivo, monto, archivo }) {
+// Sube la foto/PDF PRIMERO - la IA lee fecha/motivo/monto/tipo de
+// comprobante (ver server/lib/logisticaGastosIa.js), no hace falta
+// completar nada a mano de entrada.
+export async function crearGastoDespachoV2(viajeId, archivo) {
   const form = new FormData();
-  form.append('fecha', fecha);
-  form.append('motivo', motivo);
-  form.append('monto', String(monto));
   form.append('archivo', archivo);
   const { data } = await apiDespachoV2.post(`/despacho-v2/viajes/${viajeId}/gastos`, form, { timeout: 60000 });
+  return data;
+}
+export async function actualizarGastoDespachoV2(viajeId, gastoId, patch) {
+  const { data } = await apiDespachoV2.patch(`/despacho-v2/viajes/${viajeId}/gastos/${gastoId}`, patch);
   return data;
 }
 export async function deleteGastoDespachoV2(viajeId, gastoId) {
@@ -981,6 +989,10 @@ export async function fetchLogisticaRendiciones() {
 }
 export async function fetchLogisticaRendicionDetalle(viajeId) {
   const { data } = await api.get(`/admin/logistica/rendiciones/${viajeId}`);
+  return data;
+}
+export async function aprobarLogisticaRendicion(viajeId) {
+  const { data } = await api.post(`/admin/logistica/rendiciones/${viajeId}/aprobar`);
   return data;
 }
 
