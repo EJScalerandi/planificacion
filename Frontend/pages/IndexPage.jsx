@@ -110,6 +110,7 @@ export default function IndexPage({ routes = [] }) {
     if (isComprasAdmin) out.push({ path: '/admin/insumos/entregas', label: 'Admin · Compras · Entregas de Insumos' });
     if (isComprasAdmin) out.push({ path: '/admin/insumos/config', label: 'Admin · Compras · Config Categorías↔Sección' });
     out.push({ path: '/admin/tickets', label: 'Admin · Tickets' });
+    out.push({ path: '/admin/indice-programacion', label: 'Admin · Índice de Programación (BETA)' });
     return out;
   }, [isPreprodOnly, isQcAdmin, isWfAdmin, canUsers, isPrefabAdmin, isStAdmin, isComprasAdmin]);
 

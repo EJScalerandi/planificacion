@@ -22,6 +22,7 @@ import {
 } from '../../src/utils/isoWeek';
 import { BLOCKED_NV_URL, parseBlockedNvText, getAny, getNvCanonicalFromRow, getSistemaFromRow } from '../../src/utils/preproduccionRow';
 import PortonesMapaModal from '../../src/components/modals/PortonesMapaModal';
+import LogisticaRendicionesModal from '../../src/components/modals/LogisticaRendicionesModal';
 import LogisticaFechasMapaView from '../../src/components/LogisticaFechasMapaView';
 
 // NV únicos de un conjunto de filas (despacho e instalación del mismo NV son
@@ -176,6 +177,7 @@ export default function LogisticaFechasPage() {
   const [saving, setSaving] = useState(() => new Set());
   const [search, setSearch] = useState('');
   const [mapa, setMapa] = useState(null); // { nvs, titulo } | null
+  const [rendicionesOpen, setRendicionesOpen] = useState(false);
 
   const [blockedNvSet, setBlockedNvSet] = useState(() => new Set());
   const [despachoFinalizadoByNv, setDespachoFinalizadoByNv] = useState(() => new Map());
@@ -367,6 +369,7 @@ export default function LogisticaFechasPage() {
           </div>
           <Link className="btn" to="/a">/a</Link>
           <Link className="btn" to="/admin/logistica-viajes">Viajes de Logística</Link>
+          <button className="btn" onClick={() => setRendicionesOpen(true)}>💰 Rendiciones</button>
           <button className="btn" onClick={load} disabled={loading}>Recargar</button>
           <button className="btn" onClick={logout}>Salir</button>
         </div>
@@ -488,6 +491,7 @@ export default function LogisticaFechasPage() {
       )}
 
       <PortonesMapaModal open={!!mapa} nvs={mapa?.nvs} titulo={mapa?.titulo} onClose={() => setMapa(null)} />
+      <LogisticaRendicionesModal open={rendicionesOpen} onClose={() => setRendicionesOpen(false)} />
     </div>
   );
 }

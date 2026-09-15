@@ -9,6 +9,7 @@ function fmt(dt) {
 export default function NuevoPedidoPrefabricadoModal({ open, onClose, tipos = [], seccion, seccionLabel, onCreate, historial = [] }) {
   const [tipoId, setTipoId] = useState('');
   const [cantidad, setCantidad] = useState(1);
+  const [referencia, setReferencia] = useState('');
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
 
@@ -16,6 +17,7 @@ export default function NuevoPedidoPrefabricadoModal({ open, onClose, tipos = []
     if (!open) return;
     setTipoId(tipos?.[0]?.id != null ? String(tipos[0].id) : '');
     setCantidad(1);
+    setReferencia('');
     setSaving(false);
     setErr('');
   }, [open, tipos]);
@@ -33,13 +35,14 @@ export default function NuevoPedidoPrefabricadoModal({ open, onClose, tipos = []
       setErr('Ingresá una cantidad válida (entero mayor a 0).');
       return;
     }
+    const referenciaTrim = referencia.trim();
     const tipoNombre = tipos.find((t) => String(t.id) === String(id))?.nombre || 'este prefabricado';
-    const confirmMsg = `¿Confirmás crear el pedido de "${tipoNombre}" x${nCantidad}${seccionLabel ? ` desde ${seccionLabel}` : ''}?`;
+    const confirmMsg = `¿Confirmás crear el pedido de "${tipoNombre}" x${nCantidad}${seccionLabel ? ` desde ${seccionLabel}` : ''}${referenciaTrim ? ` (Ref: ${referenciaTrim})` : ''}?`;
     if (!window.confirm(confirmMsg)) return;
     try {
       setSaving(true);
       setErr('');
-      await onCreate?.(id, seccion, nCantidad);
+      await onCreate?.(id, seccion, nCantidad, referenciaTrim);
       onClose?.();
     } catch (e) {
       setErr(e?.response?.data?.error || e.message || 'Error creando el pedido');
@@ -86,6 +89,18 @@ export default function NuevoPedidoPrefabricadoModal({ open, onClose, tipos = []
               />
             </label>
           ) : null}
+          {tipos.length > 0 ? (
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <span style={{ fontWeight: 800 }}>Referencia (opcional)</span>
+              <input
+                className="btn"
+                type="text"
+                value={referencia}
+                onChange={(e) => setReferencia(e.target.value)}
+                placeholder="NV u otro número, para saber a qué producto corresponde"
+              />
+            </label>
+          ) : null}
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
             <button className="btn btn--brand" type="button" onClick={submit} disabled={saving || !tipos.length}>
               {saving ? 'Creando…' : 'Crear pedido'}
@@ -104,7 +119,10 @@ export default function NuevoPedidoPrefabricadoModal({ open, onClose, tipos = []
                     style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '6px 8px', borderRadius: 8, background: '#f8fafc', border: '1px solid #eef2f7', fontSize: 13 }}
                   >
                     <div style={{ display: 'flex', flexDirection: 'column' }}>
-                      <span style={{ fontWeight: 700 }}>Pref {h.numero} · {h.tipo_nombre} · x{h.cantidad}</span>
+                      <span style={{ fontWeight: 700 }}>
+                        Pref {h.numero} · {h.tipo_nombre} · x{h.cantidad}
+                        {h.referencia ? <span style={{ fontWeight: 400, opacity: 0.75 }}> · Ref: {h.referencia}</span> : null}
+                      </span>
                       <span style={{ opacity: 0.65 }}>{fmt(h.created_at)}</span>
                     </div>
                     <span className={`pp-badge ${h.finalizado ? 'pp-badge--ok' : 'pp-badge--pending'}`}>

@@ -40,7 +40,7 @@ function shapeOrders(orders, estadoRows, tiemposRows) {
 async function loadOrders(db, whereSql = '', params = []) {
   const { rows: orders } = await db.query(
     `
-    select o.id, o.numero, o.tipo_id, o.solicitado_por_seccion, o.created_at, o.cantidad,
+    select o.id, o.numero, o.tipo_id, o.solicitado_por_seccion, o.created_at, o.cantidad, o.referencia,
            t.nombre as tipo_nombre, t.workflow_stages
     from public.prefabricado_ordenes o
     join public.prefabricado_tipos t on t.id = o.tipo_id
@@ -91,10 +91,11 @@ router.get('/prefabricados', async (_req, res) => {
 
 // POST /prefabricados — crea un pedido de fabricación para un tipo, disparado por una sección
 router.post('/prefabricados', async (req, res) => {
-  const { tipo_id, seccion, cantidad } = req.body || {};
+  const { tipo_id, seccion, cantidad, referencia } = req.body || {};
   const tipoId = Number(tipo_id);
   const seccionStr = String(seccion || '').trim();
   const nCantidad = Number(cantidad);
+  const referenciaStr = String(referencia || '').trim() || null;
 
   if (!Number.isInteger(tipoId) || !seccionStr) {
     return res.status(400).json({ error: 'tipo_id y seccion son requeridos' });
@@ -128,11 +129,11 @@ router.post('/prefabricados', async (req, res) => {
 
     const ins = await client.query(
       `
-      insert into public.prefabricado_ordenes(tipo_id, solicitado_por_seccion, cantidad)
-      values ($1, $2, $3)
+      insert into public.prefabricado_ordenes(tipo_id, solicitado_por_seccion, cantidad, referencia)
+      values ($1, $2, $3, $4)
       returning id;
       `,
-      [tipoId, seccionStr, nCantidad]
+      [tipoId, seccionStr, nCantidad, referenciaStr]
     );
     const id = ins.rows[0].id;
 
