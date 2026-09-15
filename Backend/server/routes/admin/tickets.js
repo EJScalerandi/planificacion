@@ -129,13 +129,9 @@ router.post('/tickets/:id/messages', adminAuth, async (req, res) => {
     if (!ticket) return res.status(404).json({ error: 'Ticket no encontrado' });
     const mensaje = String(req.body?.mensaje || '').trim();
     if (!mensaje) return res.status(400).json({ error: 'Falta el mensaje' });
-    // Quien responde puede elegir a nombre de quién queda la respuesta (para
-    // que el que mandó el ticket vea el nombre real, no siempre "Soporte"),
-    // en vez de forzar siempre el usuario con el que está logueado.
-    const autorNombre = String(req.body?.autorNombre || '').trim();
     const nuevo = await ticketsDb.addMessage(ticket.id, {
       autorId: req.admin?.sub || null,
-      autorUsername: autorNombre || req.admin?.username || null,
+      autorUsername: req.admin?.username || null,
       esAdmin: true,
       mensaje,
     });

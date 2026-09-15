@@ -16,6 +16,13 @@ const gastosDb = require('../../lib/logisticaGastosDb');
 
 const router = express.Router();
 
+// Aviso automático de WhatsApp a la siguiente parada - pedido explícito del
+// usuario: mergear /despacho_v2 a main YA, pero dejar esto apagado por ahora
+// (la cuadrilla sigue avisando manual desde su propio WhatsApp, como hasta
+// hoy). Prender con WHATSAPP_AVISO_HABILITADO=true en el entorno cuando se
+// decida activarlo - no hace falta tocar código, solo la env var.
+const WHATSAPP_AVISO_HABILITADO = String(process.env.WHATSAPP_AVISO_HABILITADO || '').toLowerCase() === 'true';
+
 // Mismo salt/hash que ya usa el resto del sistema QC (routes/public/qc.js,
 // routes/admin/qc.js) - así los PIN que ya tienen cargados los QC users
 // sirven acá tal cual, sin duplicar usuarios.
@@ -122,8 +129,8 @@ router.post('/despacho-v2/viajes/:id/nv/:nv/marcar-entregado', asyncRoute(async 
   if (!(await requireViajeDeMiCuadrilla(req, res, req.params.id))) return;
   const tipo = String(req.body?.tipo || '').trim();
   await db.marcarEntregado({ nv: req.params.nv, tipo, pin: req.body?.pin });
-  const siguiente = await db.siguienteParadaPorton(req.params.id, req.params.nv);
-  res.json({ ok: true, siguienteParada: siguiente });
+  const siguiente = WHATSAPP_AVISO_HABILITADO ? await db.siguienteParadaPorton(req.params.id, req.params.nv) : null;
+  res.json({ ok: true, siguienteParada: siguiente, whatsappAvisoHabilitado: WHATSAPP_AVISO_HABILITADO });
 }));
 
 // POST /despacho-v2/viajes/:id/nv/:nv/avisar-siguiente - se llama SOLO
@@ -131,6 +138,7 @@ router.post('/despacho-v2/viajes/:id/nv/:nv/marcar-entregado', asyncRoute(async 
 // siguiente parada de nuevo acá (no confía en lo que ya vio el frontend,
 // por si cambió algo en el medio) y manda el WhatsApp.
 router.post('/despacho-v2/viajes/:id/nv/:nv/avisar-siguiente', asyncRoute(async (req, res) => {
+  if (!WHATSAPP_AVISO_HABILITADO) return res.status(403).json({ ok: false, error: 'Aviso automático de WhatsApp deshabilitado en este entorno' });
   if (!(await requireViajeDeMiCuadrilla(req, res, req.params.id))) return;
   const resultado = await db.avisarSiguienteParada({
     viajeId: req.params.id, nvOrigen: req.params.nv, enviadoPor: req.despachoUser.name,

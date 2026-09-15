@@ -80,9 +80,8 @@ export default function TicketWidget() {
     }
   }
 
-  async function onSeleccionarArchivos(e) {
-    const files = Array.from(e.target.files || []);
-    e.target.value = '';
+  async function agregarArchivos(fileList) {
+    const files = Array.from(fileList || []);
     if (!files.length) return;
     setErrorNueva('');
     setSubiendoAdjunto(true);
@@ -97,6 +96,18 @@ export default function TicketWidget() {
     } finally {
       setSubiendoAdjunto(false);
     }
+  }
+
+  async function onSeleccionarArchivos(e) {
+    const files = e.target.files;
+    e.target.value = '';
+    await agregarArchivos(files);
+  }
+
+  function onDropArchivos(e) {
+    e.preventDefault();
+    if (subiendoAdjunto || adjuntos.length >= 5) return;
+    agregarArchivos(e.dataTransfer.files);
   }
 
   function quitarAdjunto(idx) {
@@ -207,76 +218,134 @@ export default function TicketWidget() {
 
           <div style={{ padding: 14, maxHeight: 420, overflowY: 'auto' }}>
             {tab === 'nueva' && (
-              <form onSubmit={enviarNuevoTicket}>
-                <label style={{ display: 'block', fontSize: 12, marginBottom: 4, color: 'var(--ink-weak)' }}>
-                  Categoría
-                </label>
-                <select
-                  value={categoria}
-                  onChange={(e) => setCategoria(e.target.value)}
-                  style={{ width: '100%', padding: 8, marginBottom: 10, borderRadius: 8, border: '1px solid var(--border)' }}
-                >
-                  {TICKET_CATEGORIAS.map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-
-                <label style={{ display: 'block', fontSize: 12, marginBottom: 4, color: 'var(--ink-weak)' }}>
-                  Contanos tu ticket
-                </label>
-                <textarea
-                  value={mensaje}
-                  onChange={(e) => setMensaje(e.target.value)}
-                  rows={5}
-                  placeholder="Escribí acá el detalle..."
-                  style={{ width: '100%', padding: 8, borderRadius: 8, border: '1px solid var(--border)', resize: 'vertical' }}
-                />
-
-                <label style={{ display: 'block', fontSize: 12, margin: '10px 0 4px', color: 'var(--ink-weak)' }}>
-                  Adjuntar foto, video o PDF (opcional)
-                </label>
-                <input
-                  type="file"
-                  accept="image/*,video/mp4,video/quicktime,video/webm,application/pdf"
-                  multiple
-                  onChange={onSeleccionarArchivos}
-                  disabled={subiendoAdjunto || adjuntos.length >= 5}
-                  style={{ fontSize: 12 }}
-                />
-                {subiendoAdjunto && <div style={{ fontSize: 12, color: 'var(--ink-weak)', marginTop: 4 }}>Procesando...</div>}
-
-                {adjuntos.length > 0 && (
-                  <div style={{ marginTop: 8 }}>
-                    {adjuntos.map((a, idx) => (
-                      <div
-                        key={idx}
-                        style={{
-                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                          fontSize: 12, padding: '4px 8px', marginBottom: 4,
-                          borderRadius: 6, border: '1px solid var(--border)',
-                        }}
-                      >
-                        <span>{formatTicketAttachmentMeta(a)}</span>
-                        <button
-                          type="button"
-                          onClick={() => quitarAdjunto(idx)}
-                          style={{ background: 'none', border: 'none', color: '#b3261e', cursor: 'pointer', padding: 0 }}
-                        >
-                          Quitar
-                        </button>
-                      </div>
+              <form onSubmit={enviarNuevoTicket} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 5, color: 'var(--ink-weak)' }}>
+                    Categoría
+                  </label>
+                  <select
+                    value={categoria}
+                    onChange={(e) => setCategoria(e.target.value)}
+                    style={{
+                      width: '100%', padding: '9px 10px', borderRadius: 10,
+                      border: '1px solid var(--border)', background: 'var(--surface)',
+                      color: 'var(--ink)', fontSize: 13,
+                    }}
+                  >
+                    {TICKET_CATEGORIAS.map((c) => (
+                      <option key={c} value={c}>{c}</option>
                     ))}
-                  </div>
-                )}
+                  </select>
+                </div>
 
-                {errorNueva && <div style={{ color: '#b3261e', fontSize: 12, marginTop: 6 }}>{errorNueva}</div>}
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 5, color: 'var(--ink-weak)' }}>
+                    Contanos tu ticket
+                  </label>
+                  <textarea
+                    value={mensaje}
+                    onChange={(e) => setMensaje(e.target.value)}
+                    rows={5}
+                    placeholder="Escribí acá el detalle..."
+                    style={{
+                      width: '100%', padding: 10, borderRadius: 10,
+                      border: '1px solid var(--border)', background: 'var(--surface)',
+                      color: 'var(--ink)', fontSize: 13, resize: 'vertical', lineHeight: 1.4,
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 5, color: 'var(--ink-weak)' }}>
+                    Adjuntos (opcional)
+                  </label>
+                  <label
+                    htmlFor="ticket-adjuntos-input"
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={onDropArchivos}
+                    style={{
+                      position: 'relative',
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+                      padding: '14px 10px', borderRadius: 10, textAlign: 'center',
+                      border: '1.5px dashed var(--border)', background: 'var(--brand-100)',
+                      opacity: (subiendoAdjunto || adjuntos.length >= 5) ? 0.6 : 1,
+                      cursor: (subiendoAdjunto || adjuntos.length >= 5) ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    <span style={{ fontSize: 20, lineHeight: 1 }}>📎</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--brand-700)' }}>
+                      {subiendoAdjunto ? 'Procesando...' : 'Foto, video o PDF'}
+                    </span>
+                    <span style={{ fontSize: 11, color: 'var(--ink-weak)' }}>
+                      Elegí un archivo o arrastralo acá · máx. 5
+                    </span>
+                    <input
+                      id="ticket-adjuntos-input"
+                      type="file"
+                      accept="image/*,video/mp4,video/quicktime,video/webm,application/pdf"
+                      multiple
+                      onChange={onSeleccionarArchivos}
+                      disabled={subiendoAdjunto || adjuntos.length >= 5}
+                      style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
+                    />
+                  </label>
+
+                  {adjuntos.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                      {adjuntos.map((a, idx) => (
+                        <div
+                          key={idx}
+                          title={formatTicketAttachmentMeta(a)}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: 6, maxWidth: '100%',
+                            padding: '4px 6px 4px 4px', borderRadius: 999,
+                            border: '1px solid var(--border)', background: 'var(--surface)', fontSize: 12,
+                          }}
+                        >
+                          {isImageTicketAttachment(a) ? (
+                            <img
+                              src={a.data_url}
+                              alt={a.name}
+                              style={{ width: 22, height: 22, objectFit: 'cover', borderRadius: '50%', flexShrink: 0 }}
+                            />
+                          ) : (
+                            <span style={{ fontSize: 14, flexShrink: 0 }}>📄</span>
+                          )}
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>
+                            {a.name}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => quitarAdjunto(idx)}
+                            aria-label={`Quitar ${a.name}`}
+                            style={{
+                              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                              width: 18, height: 18, borderRadius: '50%', border: 'none', padding: 0,
+                              background: 'color-mix(in srgb, #b3261e 12%, transparent)', color: '#b3261e',
+                              cursor: 'pointer', fontSize: 12, lineHeight: 1,
+                            }}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {errorNueva && <div style={{ color: '#b3261e', fontSize: 12 }}>{errorNueva}</div>}
                 {enviado && (
-                  <div style={{ color: 'var(--brand-700)', fontSize: 12, marginTop: 6 }}>
+                  <div style={{ color: 'var(--brand-700)', fontSize: 12, fontWeight: 600 }}>
                     ¡Listo! Tu ticket fue enviado.
                   </div>
                 )}
 
-                <button type="submit" className="btn btn--brand" disabled={enviando} style={{ width: '100%', marginTop: 10 }}>
+                <button
+                  type="submit"
+                  className="btn btn--brand"
+                  disabled={enviando}
+                  style={{ width: '100%', padding: '10px 12px', fontSize: 13, borderRadius: 10 }}
+                >
                   {enviando ? 'Enviando...' : 'Enviar ticket'}
                 </button>
               </form>
