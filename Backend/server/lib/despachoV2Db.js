@@ -339,12 +339,9 @@ async function datosParaAviso(viajeId) {
   const cuadrillaTexto = miembros.length
     ? miembros.map((m) => `${m.name}${m.rol ? ` (${m.rol})` : ''}`).join(', ')
     : null;
-  const fotosStoragePaths = [
-    ...miembros.map((m) => m.foto_storage_path).filter(Boolean),
-    viaje.vehiculo_foto,
-  ].filter(Boolean);
+  const fotosMiembros = miembros.map((m) => m.foto_storage_path).filter(Boolean);
 
-  return { vehiculoNombre: viaje.vehiculo_nombre, cuadrillaTexto, fotosStoragePaths };
+  return { vehiculoNombre: viaje.vehiculo_nombre, cuadrillaTexto, fotosMiembros, fotoVehiculo: viaje.vehiculo_foto || null };
 }
 
 async function registrarAviso({ viajeId, nvOrigen, nvDestino, telefono, resultado, enviadoPor }) {
@@ -381,7 +378,8 @@ async function avisarSiguienteParada({ viajeId, nvOrigen, enviadoPor }) {
     horasTexto: formatearDuracionHoras(siguiente.horas_tramo),
     cuadrillaTexto: datos.cuadrillaTexto,
     vehiculoNombre: datos.vehiculoNombre,
-    fotosStoragePaths: datos.fotosStoragePaths,
+    fotosMiembros: datos.fotosMiembros,
+    fotoVehiculo: datos.fotoVehiculo,
   });
 
   await registrarAviso({

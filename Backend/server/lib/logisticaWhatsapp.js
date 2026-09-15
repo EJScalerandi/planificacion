@@ -42,28 +42,36 @@ async function placeholderMarca() {
   return sharp(Buffer.from(svg)).png().toBuffer();
 }
 
-// Baja las fotos (cuadrilla + vehículo, lo que haya) y las arma en una
-// grilla - máximo 6 (3 columnas x 2 filas), si sobran se recortan (mejor
-// mandar un collage con las primeras que fallar el envío entero).
-async function armarCollage({ fotosStoragePaths }) {
-  const paths = (fotosStoragePaths || []).filter(Boolean).slice(0, 6);
+// Collage de 2 filas (pedido explícito del usuario): arriba las fotos de la
+// cuadrilla (1 a 3, lado a lado), abajo SIEMPRE la del vehículo, estirada
+// (cover, sin deformar) al ancho total de la fila de arriba - así el
+// resultado queda prolijo tenga 1, 2 o 3 integrantes.
+async function armarCollage({ fotosMiembros, fotoVehiculo }) {
+  const pathsMiembros = (fotosMiembros || []).filter(Boolean).slice(0, 3);
 
-  let buffers = [];
-  if (paths.length) {
-    const descargadas = await Promise.all(paths.map((p) => storage.descargarArchivo(p).catch(() => null)));
-    buffers = descargadas.filter(Boolean);
+  let buffersMiembros = [];
+  if (pathsMiembros.length) {
+    const descargadas = await Promise.all(pathsMiembros.map((p) => storage.descargarArchivo(p).catch(() => null)));
+    buffersMiembros = descargadas.filter(Boolean);
   }
-  if (!buffers.length) buffers = [await placeholderMarca()];
+  if (!buffersMiembros.length) buffersMiembros = [await placeholderMarca()];
 
-  const resized = await Promise.all(
-    buffers.map((buf) => sharp(buf).resize(TILE, TILE, { fit: 'cover' }).toBuffer())
-  );
+  const bufferVehiculo = (fotoVehiculo && await storage.descargarArchivo(fotoVehiculo).catch(() => null)) || await placeholderMarca();
 
-  const cols = Math.min(3, resized.length);
-  const rows = Math.ceil(resized.length / cols);
-  const composites = resized.map((buf, i) => ({ input: buf, left: (i % cols) * TILE, top: Math.floor(i / cols) * TILE }));
+  const cols = buffersMiembros.length;
+  const anchoTotal = cols * TILE;
 
-  return sharp({ create: { width: cols * TILE, height: rows * TILE, channels: 3, background: '#ffffff' } })
+  const [arriba, abajo] = await Promise.all([
+    Promise.all(buffersMiembros.map((buf) => sharp(buf).resize(TILE, TILE, { fit: 'cover' }).toBuffer())),
+    sharp(bufferVehiculo).resize(anchoTotal, TILE, { fit: 'cover' }).toBuffer(),
+  ]);
+
+  const composites = [
+    ...arriba.map((buf, i) => ({ input: buf, left: i * TILE, top: 0 })),
+    { input: abajo, left: 0, top: TILE },
+  ];
+
+  return sharp({ create: { width: anchoTotal, height: TILE * 2, channels: 3, background: '#ffffff' } })
     .composite(composites)
     .jpeg({ quality: 85 })
     .toBuffer();
@@ -100,9 +108,10 @@ function formatearTelefono(telefono) {
  * @param {string} p.horasTexto - ej. "2 horas y 50 minutos"
  * @param {string} p.cuadrillaTexto - ej. "Martín Ferreyra (Chofer), Francisco Correa"
  * @param {string} p.vehiculoNombre
- * @param {string[]} p.fotosStoragePaths - paths de Storage (cuadrilla + vehículo)
+ * @param {string[]} p.fotosMiembros - paths de Storage de la cuadrilla (1 a 3)
+ * @param {string} p.fotoVehiculo - path de Storage de la foto del vehículo
  */
-async function enviarAvisoEnCamino({ telefono, nombreCliente, horasTexto, cuadrillaTexto, vehiculoNombre, fotosStoragePaths }) {
+async function enviarAvisoEnCamino({ telefono, nombreCliente, horasTexto, cuadrillaTexto, vehiculoNombre, fotosMiembros, fotoVehiculo }) {
   if (!configurado()) {
     console.warn('WhatsApp Business no configurado en este entorno (falta WHATSAPP_ACCESS_TOKEN / WHATSAPP_PHONE_NUMBER_ID) - no se manda el aviso.');
     return { ok: false, error: 'WhatsApp Business no configurado en este entorno' };
@@ -112,7 +121,7 @@ async function enviarAvisoEnCamino({ telefono, nombreCliente, horasTexto, cuadri
 
   let imagenUrl = null;
   try {
-    const collage = await armarCollage({ fotosStoragePaths });
+    const collage = await armarCollage({ fotosMiembros, fotoVehiculo });
     imagenUrl = await subirCollageYFirmar(collage);
   } catch (e) {
     console.error('Error armando/subiendo el collage de WhatsApp:', e.message);
