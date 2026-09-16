@@ -1,6 +1,7 @@
 // src/pages/IndexPage.jsx
 import { Link, useNavigate } from 'react-router-dom';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { fetchAdminTickets } from '../src/api';
 
 function parseJwtPayload(token) {
   try {
@@ -88,6 +89,30 @@ export default function IndexPage({ routes = [] }) {
     if (!String(token || '').trim()) nav('/admin/login', { replace: true });
   }, [nav]);
 
+  // Cuántos tickets están "pending" (recién llegados, nadie los tomó
+  // todavía) — se muestra como badge junto a "Admin · Tickets" para que no
+  // haga falta entrar a /admin/tickets a ver si hay algo nuevo. Se pollea acá
+  // (no en el botón del header, que es el widget de "mis tickets" de cada
+  // admin) porque esto es la cola compartida entre todos los admins.
+  const [pendingTicketsCount, setPendingTicketsCount] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    async function cargarPendientes() {
+      try {
+        const { data } = await fetchAdminTickets({ estado: 'pending' });
+        if (!cancelled) setPendingTicketsCount((data?.tickets || []).length);
+      } catch (err) {
+        console.error('Error cargando tickets pendientes:', err);
+      }
+    }
+    cargarPendientes();
+    const interval = setInterval(cargarPendientes, 60000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
+
   const logout = () => {
     clearAdminSession();
     nav('/admin/login', { replace: true });
@@ -109,10 +134,10 @@ export default function IndexPage({ routes = [] }) {
     if (isComprasAdmin) out.push({ path: '/admin/insumos', label: 'Admin · Compras (Pedidos de Insumos)' });
     if (isComprasAdmin) out.push({ path: '/admin/insumos/entregas', label: 'Admin · Compras · Entregas de Insumos' });
     if (isComprasAdmin) out.push({ path: '/admin/insumos/config', label: 'Admin · Compras · Config Categorías↔Sección' });
-    out.push({ path: '/admin/tickets', label: 'Admin · Tickets' });
+    out.push({ path: '/admin/tickets', label: 'Admin · Tickets', badge: pendingTicketsCount });
     out.push({ path: '/admin/indice-programacion', label: 'Admin · Índice de Programación (BETA)' });
     return out;
-  }, [isPreprodOnly, isQcAdmin, isWfAdmin, canUsers, isPrefabAdmin, isStAdmin, isComprasAdmin]);
+  }, [isPreprodOnly, isQcAdmin, isWfAdmin, canUsers, isPrefabAdmin, isStAdmin, isComprasAdmin, pendingTicketsCount]);
 
   const opsRoutes = useMemo(() => {
     if (isPreprodOnly) return [];
@@ -160,11 +185,27 @@ export default function IndexPage({ routes = [] }) {
     ];
   }, [isPreprodOnly, isPreprodAdmin, isQcAdmin, isWfAdmin, preprodRoutes]);
 
+  const NavBadge = ({ r }) => {
+    if (!r.badge) return null;
+    return (
+      <span
+        title={`${r.badge} ticket${r.badge === 1 ? '' : 's'} pendiente${r.badge === 1 ? '' : 's'}`}
+        style={{
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          minWidth: 18, height: 18, padding: '0 5px', marginLeft: 6, borderRadius: 999,
+          background: '#dc2626', color: '#fff', fontSize: 11, fontWeight: 700, lineHeight: 1,
+        }}
+      >
+        {r.badge > 99 ? '99+' : r.badge}
+      </span>
+    );
+  };
+
   const NavTitle = ({ r }) => {
     if (isStaticPage(r.path)) {
-      return <a href={r.path} className="idx-linkTitle">{r.label}</a>;
+      return <a href={r.path} className="idx-linkTitle">{r.label}<NavBadge r={r} /></a>;
     }
-    return <Link to={r.path} className="idx-linkTitle">{r.label}</Link>;
+    return <Link to={r.path} className="idx-linkTitle">{r.label}<NavBadge r={r} /></Link>;
   };
 
   const NavButton = ({ r }) => {

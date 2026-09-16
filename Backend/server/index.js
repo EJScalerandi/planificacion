@@ -553,6 +553,16 @@ const MIGRATIONS = [
         ON public.notas_nodo_entradas (nodo_id, updated_at);
     `,
   },
+  {
+    // Todas las consultas de tickets (listMyTickets, listAllTickets) ordenan
+    // por created_at desc y no había índice para eso - quedaba resuelto con
+    // un sort completo de la tabla en cada pedido. No afecta hoy con el
+    // volumen actual, pero es gratis agregarlo ahora.
+    name: 'tickets_created_at_index',
+    sql: `
+      CREATE INDEX IF NOT EXISTS idx_tickets_created_at ON public.tickets (created_at DESC);
+    `,
+  },
 ];
 
 async function runMigrations() {
