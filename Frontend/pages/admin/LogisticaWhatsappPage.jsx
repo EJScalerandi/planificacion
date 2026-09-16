@@ -218,8 +218,20 @@ export default function LogisticaWhatsappPage() {
     return () => clearInterval(id);
   }, [telefonoActivo, cargarMensajes]);
 
+  // Al entrar a una conversación siempre arrancamos en el fondo, pero el
+  // polling (cada POLL_MS) no debe volver a bajarte a la fuerza si estás
+  // leyendo mensajes viejos - solo si ya estabas cerca del fondo (es decir,
+  // siguiendo la conversación en vivo).
+  const forzarScrollRef = useRef(true);
+  useEffect(() => { forzarScrollRef.current = true; }, [telefonoActivo]);
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
+    const el = scrollRef.current;
+    if (!el) return;
+    const cercaDelFondo = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    if (forzarScrollRef.current || cercaDelFondo) {
+      el.scrollTo({ top: el.scrollHeight });
+    }
+    forzarScrollRef.current = false;
   }, [mensajes]);
 
   // Si vino un ?telefono= de un link (ej. el ícono de WhatsApp del mapa) y esa
