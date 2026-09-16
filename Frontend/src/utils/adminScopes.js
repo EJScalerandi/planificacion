@@ -42,6 +42,15 @@ export function getCurrentScopes() {
   return normalizeScopes(payload.scopes ?? payload.scope ?? payload.permissions ?? []);
 }
 
+// Username del admin logueado (viene en el JWT, ver signAdminToken en
+// routes/admin/auth.js) - para decidir "¿el que está trabajando en esto soy
+// yo?" sin pedirlo al backend.
+export function getCurrentAdminUsername() {
+  const token = getAdminToken();
+  const payload = parseJwt(token) || {};
+  return payload.username || null;
+}
+
 export function hasAny(scopes, needed) {
   const set = new Set((scopes || []).map((s) => String(s || '').trim()));
   return (needed || []).some((n) => set.has(n));

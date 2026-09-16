@@ -4,8 +4,17 @@
 // reusarlo también en AdminTicketsBoardPage.jsx (tablero tipo Trello) sin
 // duplicar la lógica de responder/cambiar estado.
 import { useEffect, useState } from 'react';
-import { fetchAdminTicketDetail, addAdminTicketMessage, updateTicketStatus, deleteAdminTicket } from '../api';
+import {
+  fetchAdminTicketDetail,
+  addAdminTicketMessage,
+  updateTicketStatus,
+  assignTicketToMe,
+  unassignTicket,
+  deleteAdminTicket,
+} from '../api';
 import BaseModal from './modals/BaseModal';
+import UserAvatar from './UserAvatar';
+import { getCurrentAdminUsername } from '../utils/adminScopes';
 import {
   formatTicketAttachmentMeta,
   isImageTicketAttachment,
@@ -33,6 +42,9 @@ export const APP_LABEL = {
   remitos: 'Remitos',
   'informe-ventas': 'Informe de Ventas',
   distribuidor: 'Distribuidor',
+  // No es una app real - tarjetas creadas a mano desde el tablero
+  // (/admin/tickets-tablero), no mandadas por ninguna app.
+  tarea: 'Tareas',
 };
 
 // `ticketId` en null cierra el modal. `onTicketChanged(patch)` se llama con
@@ -47,8 +59,10 @@ export default function AdminTicketDetailModal({ ticketId, onClose, onTicketChan
   const [respuesta, setRespuesta] = useState('');
   const [enviandoRespuesta, setEnviandoRespuesta] = useState(false);
   const [cambiandoEstado, setCambiandoEstado] = useState(false);
+  const [asignando, setAsignando] = useState(false);
   const [confirmandoBorrar, setConfirmandoBorrar] = useState(false);
   const [borrando, setBorrando] = useState(false);
+  const miUsername = getCurrentAdminUsername();
 
   useEffect(() => {
     if (!ticketId) {
@@ -96,13 +110,37 @@ export default function AdminTicketDetailModal({ ticketId, onClose, onTicketChan
     setCambiandoEstado(true);
     try {
       const { data } = await updateTicketStatus(ticket.id, nuevoEstado);
-      const estadoFinal = data?.ticket?.estado || nuevoEstado;
-      setTicket((prev) => (prev ? { ...prev, estado: estadoFinal } : prev));
-      onTicketChanged?.({ id: ticket.id, estado: estadoFinal });
+      const actualizado = data?.ticket;
+      const estadoFinal = actualizado?.estado || nuevoEstado;
+      // El backend ya decide qué hacer con en_progreso_por según el estado
+      // (lo pisa con quien lo puso "En curso", lo limpia si vuelve a
+      // "Pendiente", lo deja igual si se cierra) - simplemente reflejamos lo
+      // que devolvió, no lo calculamos acá.
+      const enProgresoPor = actualizado ? actualizado.en_progreso_por : ticket.en_progreso_por;
+      setTicket((prev) => (prev ? { ...prev, estado: estadoFinal, en_progreso_por: enProgresoPor } : prev));
+      onTicketChanged?.({ id: ticket.id, estado: estadoFinal, en_progreso_por: enProgresoPor });
     } catch (err) {
       console.error('Error cambiando estado:', err);
     } finally {
       setCambiandoEstado(false);
+    }
+  }
+
+  // "Asignarme"/"Tomar" o "Quitarme" - un click directo, en cualquier
+  // estado (a diferencia de cambiarEstado, esto no necesita pasar por "En
+  // curso").
+  async function cambiarAsignado(accion) {
+    if (!ticket) return;
+    setAsignando(true);
+    try {
+      const { data } = accion === 'liberar' ? await unassignTicket(ticket.id) : await assignTicketToMe(ticket.id);
+      const enProgresoPor = data?.ticket?.en_progreso_por ?? null;
+      setTicket((prev) => (prev ? { ...prev, en_progreso_por: enProgresoPor } : prev));
+      onTicketChanged?.({ id: ticket.id, en_progreso_por: enProgresoPor });
+    } catch (err) {
+      console.error('Error asignando el ticket:', err);
+    } finally {
+      setAsignando(false);
     }
   }
 
@@ -148,6 +186,23 @@ export default function AdminTicketDetailModal({ ticketId, onClose, onTicketChan
                 {ESTADO_LABEL[e]}
               </button>
             ))}
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, fontSize: 13, flexWrap: 'wrap' }}>
+            <span style={{ color: 'var(--ink-weak)' }}>Trabajando en esto:</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <UserAvatar username={ticket.en_progreso_por} size={20} />
+              <strong>{ticket.en_progreso_por || 'Nadie todavía'}</strong>
+            </span>
+            {ticket.en_progreso_por && ticket.en_progreso_por === miUsername ? (
+              <button type="button" className="btn" disabled={asignando} onClick={() => cambiarAsignado('liberar')}>
+                {asignando ? '...' : 'Quitarme'}
+              </button>
+            ) : (
+              <button type="button" className="btn" disabled={asignando} onClick={() => cambiarAsignado('asignar')}>
+                {asignando ? '...' : (ticket.en_progreso_por ? 'Tomar' : 'Asignarme')}
+              </button>
+            )}
           </div>
 
           <div style={{ fontSize: 14, whiteSpace: 'pre-wrap', marginBottom: 12 }}>{ticket.mensaje}</div>
@@ -204,7 +259,11 @@ export default function AdminTicketDetailModal({ ticketId, onClose, onTicketChan
             </div>
           </form>
 
-          {ticket.estado === 'closed' && (
+          {/* Un ticket real solo se puede borrar cerrado (historial de soporte
+              ya resuelto); una tarjeta "tarea" (app_origen='tarea') se puede
+              borrar en cualquier estado - no es un registro que haya que
+              conservar. Ver deleteTicketAdmin en el backend. */}
+          {(ticket.estado === 'closed' || ticket.app_origen === 'tarea') && (
             !confirmandoBorrar ? (
               <button
                 type="button"

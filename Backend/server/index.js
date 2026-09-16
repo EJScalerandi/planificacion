@@ -563,6 +563,46 @@ const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_tickets_created_at ON public.tickets (created_at DESC);
     `,
   },
+  {
+    // Las tarjetas "tarea" (creadas a mano desde /admin/tickets-tablero, no
+    // mandadas por ninguna app - ver app_origen='tarea') se pueden arrastrar
+    // a CUALQUIER columna del tablero, no solo Cerrados/su propia columna
+    // como un ticket real. app_origen se queda fijo en 'tarea' siempre (así
+    // se sabe que es libre de mover/borrar en cualquier estado);
+    // board_column guarda en qué columna se ve HOY. NULL para cualquier
+    // ticket real (esos siempre se pintan por su app_origen, sin esta
+    // columna).
+    name: 'tickets_board_column',
+    sql: `
+      ALTER TABLE public.tickets ADD COLUMN IF NOT EXISTS board_column TEXT;
+    `,
+  },
+  {
+    // "Apartados": columnas EXTRA del tablero (/admin/tickets-tablero) que
+    // un admin puede crear a mano ("+ Nuevo apartado"), además de las fijas
+    // (una por app + "Tareas" + "Cerrados"). `clave` es lo que se guarda en
+    // tickets.board_column para ubicar ahí una tarjeta "tarea"; `nombre` es
+    // el título que se ve en el header de la columna.
+    name: 'ticket_board_apartados',
+    sql: `
+      CREATE TABLE IF NOT EXISTS public.ticket_board_apartados (
+        id SERIAL PRIMARY KEY,
+        clave TEXT UNIQUE NOT NULL,
+        nombre TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+    `,
+  },
+  {
+    // "¿Quién lo está trabajando ahora?" - se pisa con el username de quien
+    // pone el ticket/tarea en "En curso" (PATCH .../status), se limpia si
+    // vuelve a "Pendiente", y se conserva al cerrarlo (queda como "quién lo
+    // resolvió"). Ver ticketsDb.setEstado.
+    name: 'tickets_en_progreso_por',
+    sql: `
+      ALTER TABLE public.tickets ADD COLUMN IF NOT EXISTS en_progreso_por TEXT;
+    `,
+  },
 ];
 
 async function runMigrations() {
