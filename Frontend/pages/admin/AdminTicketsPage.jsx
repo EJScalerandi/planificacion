@@ -9,6 +9,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { clearAdminToken, fetchAdminTickets } from '../../src/api';
 import AdminTicketDetailModal, { ESTADO_LABEL, ESTADO_COLOR, APP_LABEL } from '../../src/components/AdminTicketDetailModal';
+import UserAvatar from '../../src/components/UserAvatar';
 
 const ESTADOS = [
   { key: '', label: 'Todos' },
@@ -114,6 +115,12 @@ export default function AdminTicketsPage() {
                   <span style={{ fontWeight: 700, color: ESTADO_COLOR[t.estado] || 'var(--ink)' }}>
                     {ESTADO_LABEL[t.estado] || t.estado}
                   </span>
+                  {t.en_progreso_por && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 2 }}>
+                      <UserAvatar username={t.en_progreso_por} size={14} />
+                      <span style={{ fontSize: 11, color: 'var(--ink-weak)' }}>{t.en_progreso_por}</span>
+                    </div>
+                  )}
                 </td>
               </tr>
             ))}

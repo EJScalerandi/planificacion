@@ -678,7 +678,19 @@ export const fetchAdminTickets = (params) => api.get('/admin/tickets', { params 
 export const fetchAdminTicketDetail = (id) => api.get(`/admin/tickets/${id}`);
 export const addAdminTicketMessage = (id, payload) => api.post(`/admin/tickets/${id}/messages`, payload);
 export const updateTicketStatus = (id, estado) => api.patch(`/admin/tickets/${id}/status`, { estado });
+// "Asignarme"/"Tomar" (quedo yo como quien está trabajando en esto) o
+// "Quitarme" (queda sin nadie) - un click directo, en cualquier estado.
+export const assignTicketToMe = (id) => api.patch(`/admin/tickets/${id}/asignado`, { accion: 'asignar' });
+export const unassignTicket = (id) => api.patch(`/admin/tickets/${id}/asignado`, { accion: 'liberar' });
+// Solo para tarjetas "tarea" (creadas a mano en el tablero) - mueve la
+// tarjeta a otra columna del tablero, sin tocar su estado.
+export const updateTicketBoardColumn = (id, column) => api.patch(`/admin/tickets/${id}/board-column`, { column });
 export const deleteAdminTicket = (id) => api.delete(`/admin/tickets/${id}`);
+// "Apartados": columnas extra del tablero que un admin crea a mano ("+
+// Nuevo apartado" en AdminTicketsBoardPage.jsx), además de las fijas.
+export const fetchTicketApartados = () => api.get('/admin/tickets/apartados');
+export const createTicketApartado = (nombre) => api.post('/admin/tickets/apartados', { nombre });
+export const deleteTicketApartado = (clave) => api.delete(`/admin/tickets/apartados/${encodeURIComponent(clave)}`);
 
 /* ========= Logística de Viajes (despacho + instalación por semana, desde /a) =========
    Arma "viajes" (fecha + zona + cuadrilla + vehículo) por semana ISO y reparte en

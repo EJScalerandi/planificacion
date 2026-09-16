@@ -9,6 +9,21 @@ const ticketsDb = require('../../lib/ticketsDb');
 const router = express.Router();
 
 const ESTADOS_VALIDOS = ['pending', 'in_progress', 'closed'];
+// `app_origen` normalmente lo pone el backend ('planificacion', fijo) - un
+// admin no puede mandar cualquier string y hacerse pasar por otra app. La
+// única excepción es 'tarea': tarjetas que un admin crea directo desde el
+// tablero (/admin/tickets-tablero), sin que las mande otra app vía ticket.
+const APP_ORIGENES_MANUAL_PERMITIDOS = ['planificacion', 'tarea'];
+// Columnas FIJAS del tablero (ver AdminTicketsBoardPage.jsx APP_ORDER) - una
+// tarjeta "tarea" también puede vivir en cualquier "apartado" custom que un
+// admin haya creado (tabla ticket_board_apartados), por eso la lista final
+// de columnas válidas se calcula en runtime con getColumnasValidas().
+const COLUMNAS_TABLERO_FIJAS = ['tarea', 'planificacion', 'integrador', 'presupuestador', 'remitos', 'informe-ventas', 'distribuidor'];
+
+async function getColumnasValidas() {
+  const apartados = await ticketsDb.listApartados();
+  return new Set([...COLUMNAS_TABLERO_FIJAS, ...apartados.map((a) => a.clave)]);
+}
 const MAX_ADJUNTOS = 5;
 // ~15MB de bytes crudos de adjuntos (igual al límite combinado del cliente,
 // ver ticketAttachment.js) codificado en base64 (~x1.34). El cliente ya
@@ -53,6 +68,17 @@ router.post('/tickets', adminAuth, async (req, res) => {
     if (adjuntosExceedTotal(adjuntos)) {
       return res.status(400).json({ error: 'Los adjuntos superan el tamaño total permitido.' });
     }
+    const appOrigenReq = String(req.body?.appOrigen || '').trim();
+    const appOrigen = APP_ORIGENES_MANUAL_PERMITIDOS.includes(appOrigenReq) ? appOrigenReq : 'planificacion';
+    // boardColumn solo importa para 'tarea' (en qué columna/apartado se creó
+    // la tarjeta) - se valida contra las columnas que existen HOY (fijas +
+    // apartados custom), si no llega ninguna válida cae en 'tarea'.
+    let boardColumn = null;
+    if (appOrigen === 'tarea') {
+      const columnasValidas = await getColumnasValidas();
+      const boardColumnReq = String(req.body?.boardColumn || '').trim();
+      boardColumn = columnasValidas.has(boardColumnReq) ? boardColumnReq : 'tarea';
+    }
 
     const ticket = await ticketsDb.createTicket({
       categoria,
@@ -60,7 +86,8 @@ router.post('/tickets', adminAuth, async (req, res) => {
       rutaOrigen,
       creadoPorId: req.admin?.sub || null,
       creadoPorUsername: req.admin?.username || null,
-      appOrigen: 'planificacion',
+      appOrigen,
+      boardColumn,
       adjuntos,
     });
     return res.json({ ok: true, ticket });
@@ -150,6 +177,48 @@ router.get('/tickets', adminAuth, async (req, res) => {
   }
 });
 
+// GET /admin/tickets/apartados — listar los apartados custom del tablero
+// (van antes de /:id para que Express no confunda "apartados" con un id).
+router.get('/tickets/apartados', adminAuth, async (req, res) => {
+  try {
+    const apartados = await ticketsDb.listApartados();
+    return res.json({ ok: true, apartados });
+  } catch (err) {
+    console.error('tickets apartados list error:', err);
+    return res.status(500).json({ error: 'Error listando los apartados', detail: err.message });
+  }
+});
+
+// POST /admin/tickets/apartados — crear un apartado custom (columna extra
+// del tablero, ver "+ Nuevo apartado" en AdminTicketsBoardPage.jsx)
+router.post('/tickets/apartados', adminAuth, async (req, res) => {
+  try {
+    const nombre = String(req.body?.nombre || '').trim().slice(0, 60);
+    if (!nombre) return res.status(400).json({ error: 'Falta el nombre del apartado' });
+    const apartado = await ticketsDb.createApartado(nombre);
+    return res.json({ ok: true, apartado });
+  } catch (err) {
+    console.error('tickets apartados create error:', err);
+    return res.status(500).json({ error: 'Error creando el apartado', detail: err.message });
+  }
+});
+
+// DELETE /admin/tickets/apartados/:clave — borrar un apartado custom. Los
+// fijos (una por app real + "Tareas") no pasan por acá - no tienen ninguna
+// fila en ticket_board_apartados, así que esto nunca los toca.
+router.delete('/tickets/apartados/:clave', adminAuth, async (req, res) => {
+  try {
+    const borrado = await ticketsDb.deleteApartado(String(req.params.clave));
+    if (!borrado) {
+      return res.status(404).json({ error: 'Apartado no encontrado' });
+    }
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error('tickets apartados delete error:', err);
+    return res.status(500).json({ error: 'Error borrando el apartado', detail: err.message });
+  }
+});
+
 // GET /admin/tickets/:id — detalle de cualquier ticket
 router.get('/tickets/:id', adminAuth, async (req, res) => {
   try {
@@ -189,7 +258,7 @@ router.patch('/tickets/:id/status', adminAuth, async (req, res) => {
     if (!ESTADOS_VALIDOS.includes(estado)) {
       return res.status(400).json({ error: `Estado inválido. Debe ser uno de: ${ESTADOS_VALIDOS.join(', ')}` });
     }
-    const ticket = await ticketsDb.setEstado(Number(req.params.id), estado);
+    const ticket = await ticketsDb.setEstado(Number(req.params.id), estado, req.admin?.username || null);
     if (!ticket) return res.status(404).json({ error: 'Ticket no encontrado' });
     return res.json({ ok: true, ticket });
   } catch (err) {
@@ -198,13 +267,55 @@ router.patch('/tickets/:id/status', adminAuth, async (req, res) => {
   }
 });
 
-// DELETE /admin/tickets/:id — borrar un ticket ya cerrado, a mano. Cualquier
-// admin logueado (no hace falta ser quien lo creó), pero solo si está
-// "closed" - es una decisión explícita sobre historial ya resuelto, no algo
-// automático.
+// PATCH /admin/tickets/:id/asignado — "Asignarme"/"Tomar" (accion:'asignar',
+// default) o "Quitarme" (accion:'liberar'). Un click directo en el modal
+// (ver AdminTicketDetailModal.jsx) para dejar constancia de quién está
+// trabajando en un ticket/tarea, en CUALQUIER estado - no hace falta pasar
+// por "En curso" (que también lo pisa automáticamente, ver PATCH .../status
+// más abajo, pero esto da un control explícito además de ese efecto
+// automático).
+router.patch('/tickets/:id/asignado', adminAuth, async (req, res) => {
+  try {
+    const accion = String(req.body?.accion || 'asignar').trim();
+    const valor = accion === 'liberar' ? null : (req.admin?.username || null);
+    const ticket = await ticketsDb.setEnProgresoPor(Number(req.params.id), valor);
+    if (!ticket) return res.status(404).json({ error: 'Ticket no encontrado' });
+    return res.json({ ok: true, ticket });
+  } catch (err) {
+    console.error('tickets admin asignado error:', err);
+    return res.status(500).json({ error: 'Error asignando el ticket', detail: err.message });
+  }
+});
+
+// PATCH /admin/tickets/:id/board-column — mover una tarjeta "tarea" a otra
+// columna del tablero (ver AdminTicketsBoardPage.jsx). Solo aplica a
+// tarjetas creadas a mano (app_origen='tarea') - un ticket real de otra app
+// no se puede reasignar de columna, setBoardColumn no toca esas filas.
+router.patch('/tickets/:id/board-column', adminAuth, async (req, res) => {
+  try {
+    const columna = String(req.body?.column || '').trim();
+    const columnasValidas = await getColumnasValidas();
+    if (!columnasValidas.has(columna)) {
+      return res.status(400).json({ error: `Columna inválida. Debe ser una de: ${[...columnasValidas].join(', ')}` });
+    }
+    const ticket = await ticketsDb.setBoardColumn(Number(req.params.id), columna);
+    if (!ticket) {
+      return res.status(404).json({ error: 'Tarea no encontrada (o no es una tarjeta de tipo tarea)' });
+    }
+    return res.json({ ok: true, ticket });
+  } catch (err) {
+    console.error('tickets admin board-column error:', err);
+    return res.status(500).json({ error: 'Error moviendo la tarea', detail: err.message });
+  }
+});
+
+// DELETE /admin/tickets/:id — borrar un ticket, a mano. Cualquier admin
+// logueado (no hace falta ser quien lo creó). Un ticket real solo se puede
+// borrar si está "closed" (historial ya resuelto); una tarjeta "tarea" se
+// puede borrar en cualquier estado - ver deleteTicketAdmin.
 router.delete('/tickets/:id', adminAuth, async (req, res) => {
   try {
-    const borrado = await ticketsDb.deleteClosedTicket(Number(req.params.id));
+    const borrado = await ticketsDb.deleteTicketAdmin(Number(req.params.id));
     if (!borrado) {
       return res.status(404).json({ error: 'Ticket no encontrado o todavía no está cerrado' });
     }

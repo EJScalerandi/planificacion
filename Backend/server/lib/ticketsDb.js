@@ -13,14 +13,23 @@ const { pool } = require('../db');
 // los tickets solo para mostrar categoría/estado/fecha.
 const TICKET_LIST_COLUMNS = `
   id, categoria, mensaje, estado, creado_por_id, creado_por_username,
-  ruta_origen, app_origen, created_at, updated_at
+  ruta_origen, app_origen, board_column, en_progreso_por, created_at, updated_at
 `;
 
-async function createTicket({ categoria, mensaje, rutaOrigen, creadoPorId, creadoPorUsername, appOrigen, adjuntos }) {
+async function createTicket({ categoria, mensaje, rutaOrigen, creadoPorId, creadoPorUsername, appOrigen, boardColumn, adjuntos }) {
+  const appOrigenFinal = appOrigen || 'planificacion';
+  // Una tarjeta "tarea" arranca viéndose en la columna donde se creó (la
+  // propia "Tareas" o cualquier apartado custom - ver "+ Crear tarea" en
+  // cada columna manual); si no llega ninguna, cae en 'tarea' por defecto.
+  // Cualquier ticket real (mandado por otra app) no usa board_column, se
+  // pinta siempre por su app_origen fijo. Ver migración tickets_board_column.
+  // El caller (routes/admin/tickets.js) ya validó que boardColumn sea una
+  // columna existente antes de llegar acá.
+  const boardColumnFinal = appOrigenFinal === 'tarea' ? (boardColumn || 'tarea') : null;
   const { rows } = await pool.query(
     `
-    insert into public.tickets (categoria, mensaje, ruta_origen, creado_por_id, creado_por_username, app_origen, adjuntos)
-    values ($1, $2, $3, $4, $5, $6, $7::jsonb)
+    insert into public.tickets (categoria, mensaje, ruta_origen, creado_por_id, creado_por_username, app_origen, board_column, adjuntos)
+    values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
     returning *;
     `,
     [
@@ -29,7 +38,8 @@ async function createTicket({ categoria, mensaje, rutaOrigen, creadoPorId, cread
       rutaOrigen || null,
       creadoPorId || null,
       creadoPorUsername || null,
-      appOrigen || 'planificacion',
+      appOrigenFinal,
+      boardColumnFinal,
       JSON.stringify(Array.isArray(adjuntos) ? adjuntos : []),
     ]
   );
@@ -107,12 +117,45 @@ async function addMessage(ticketId, { autorId, autorUsername, esAdmin, mensaje }
   return rows[0];
 }
 
-async function setEstado(id, estado) {
+// `actorUsername` es quien está haciendo el cambio (req.admin.username) -
+// solo importa para "En curso": ahí queda registrado como "quién lo está
+// trabajando ahora" (se pisa cada vez que alguien lo pone en curso, incluso
+// si ya estaba en curso por otra persona - "tomar" el ticket). Al volver a
+// "Pendiente" se limpia (nadie lo está trabajando ya); al cerrarlo se deja
+// como estaba (queda como "quién lo resolvió").
+async function setEstado(id, estado, actorUsername) {
+  if (estado === 'in_progress') {
+    const { rows } = await pool.query(
+      `update public.tickets set estado = $2, en_progreso_por = $3, updated_at = now() where id = $1 returning *;`,
+      [id, estado, actorUsername || null]
+    );
+    return rows[0];
+  }
+  if (estado === 'pending') {
+    const { rows } = await pool.query(
+      `update public.tickets set estado = $2, en_progreso_por = null, updated_at = now() where id = $1 returning *;`,
+      [id, estado]
+    );
+    return rows[0];
+  }
   const { rows } = await pool.query(
     `update public.tickets set estado = $2, updated_at = now() where id = $1 returning *;`,
     [id, estado]
   );
   return rows[0];
+}
+
+// Mueve una tarjeta "tarea" a otra columna del tablero. A propósito NO
+// reasigna app_origen (queda fijo en 'tarea' para siempre) - solo el WHERE
+// app_origen='tarea' importa acá: un ticket real (de otra app) nunca puede
+// moverse de columna por este camino, solo tiene el flujo existente
+// (Cerrados / reabrir a su propia columna vía setEstado).
+async function setBoardColumn(id, boardColumn) {
+  const { rows } = await pool.query(
+    `update public.tickets set board_column = $2, updated_at = now() where id = $1 and app_origen = 'tarea' returning *;`,
+    [id, boardColumn]
+  );
+  return rows[0] || null;
 }
 
 // Anular el propio ticket: BORRA la fila (a pedido explícito del usuario -
@@ -129,17 +172,95 @@ async function deleteOwnTicket(id, userId) {
   return rows[0] || null;
 }
 
-// Borrar un ticket ya CERRADO, a mano, desde el panel admin. Cualquier admin
-// (no hace falta ser quien lo creó, a diferencia de deleteOwnTicket) - pero
-// solo si está "closed": es una decisión explícita de alguien de soporte
-// sobre historial ya resuelto, no algo que pase solo. `ticket_mensajes`
-// tiene ON DELETE CASCADE, así que sus respuestas se borran solas.
-async function deleteClosedTicket(id) {
+// Borrar un ticket, a mano, desde el panel admin. Cualquier admin (no hace
+// falta ser quien lo creó, a diferencia de deleteOwnTicket). Dos reglas
+// distintas según qué es la fila:
+// - Un ticket REAL (mandado por otra app) solo se puede borrar si está
+//   "closed": es una decisión explícita de alguien de soporte sobre
+//   historial ya resuelto, no algo que pase solo mientras sigue activo.
+// - Una tarjeta "tarea" (creada a mano en el tablero, app_origen='tarea') se
+//   puede borrar en CUALQUIER estado - no es un registro de soporte que haya
+//   que conservar como historial, es una tarea propia que se puede cancelar
+//   en el momento que sea.
+// `ticket_mensajes` tiene ON DELETE CASCADE, así que sus respuestas se
+// borran solas con cualquiera de los dos casos.
+async function deleteTicketAdmin(id) {
   const { rows } = await pool.query(
-    `delete from public.tickets where id = $1 and estado = 'closed' returning id;`,
+    `delete from public.tickets where id = $1 and (estado = 'closed' or app_origen = 'tarea') returning id;`,
     [id]
   );
   return rows[0] || null;
+}
+
+// "Apartados": columnas EXTRA del tablero que un admin crea a mano ("+ Nuevo
+// apartado" en AdminTicketsBoardPage.jsx), además de las fijas (una por app
+// + "Tareas" + "Cerrados"). `clave` es lo que se guarda en
+// tickets.board_column para ubicar ahí una tarjeta "tarea"; se deriva del id
+// (vía nextval/currval sobre la misma secuencia, en un solo INSERT) para que
+// dos altas concurrentes nunca puedan chocar - no hace falta un valor
+// temporario compartido que sí podría colisionar.
+async function listApartados() {
+  const { rows } = await pool.query(
+    `select clave, nombre, created_at from public.ticket_board_apartados order by created_at asc;`
+  );
+  return rows;
+}
+
+async function createApartado(nombre) {
+  const { rows } = await pool.query(
+    `
+    insert into public.ticket_board_apartados (id, clave, nombre)
+    values (
+      nextval('public.ticket_board_apartados_id_seq'),
+      'apartado_' || currval('public.ticket_board_apartados_id_seq'),
+      $1
+    )
+    returning clave, nombre, created_at;
+    `,
+    [nombre]
+  );
+  return rows[0];
+}
+
+// "Asignarme"/"Tomar"/"Quitarme" (botón directo en el modal, ver
+// AdminTicketDetailModal.jsx) - a diferencia de lo que hace setEstado, esto
+// SIEMPRE deja poner o quitar quién está trabajando en un ticket/tarea, sin
+// importar en qué estado esté (no hace falta que esté "En curso"). `valor`
+// null lo libera.
+async function setEnProgresoPor(id, valor) {
+  const { rows } = await pool.query(
+    `update public.tickets set en_progreso_por = $2, updated_at = now() where id = $1 returning *;`,
+    [id, valor]
+  );
+  return rows[0] || null;
+}
+
+// Borrar un apartado custom. Las tarjetas "tarea" que estaban viviendo ahí
+// NO se borran ni quedan huérfanas - vuelven a la columna "Tareas" (el
+// fallback de siempre, mismo criterio que columnaActualDe en el frontend),
+// así nunca "desaparecen" del tablero por borrar el apartado donde estaban.
+// Transacción porque son dos escrituras relacionadas (mover las tarjetas y
+// después borrar la fila) que tienen que aplicarse juntas o ninguna.
+async function deleteApartado(clave) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `update public.tickets set board_column = 'tarea', updated_at = now() where board_column = $1 and app_origen = 'tarea';`,
+      [clave]
+    );
+    const { rows } = await client.query(
+      `delete from public.ticket_board_apartados where clave = $1 returning clave;`,
+      [clave]
+    );
+    await client.query('COMMIT');
+    return rows[0] || null;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 module.exports = {
@@ -150,6 +271,11 @@ module.exports = {
   getTicketAdmin,
   addMessage,
   setEstado,
+  setEnProgresoPor,
+  setBoardColumn,
   deleteOwnTicket,
-  deleteClosedTicket,
+  deleteTicketAdmin,
+  listApartados,
+  createApartado,
+  deleteApartado,
 };
