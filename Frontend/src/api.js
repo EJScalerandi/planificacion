@@ -673,10 +673,12 @@ export const createTicket = (payload) => api.post('/admin/tickets', payload);
 export const fetchMyTickets = () => api.get('/admin/tickets/mine');
 export const fetchMyTicketDetail = (id) => api.get(`/admin/tickets/mine/${id}`);
 export const addMyTicketMessage = (id, payload) => api.post(`/admin/tickets/mine/${id}/messages`, payload);
+export const cancelMyTicket = (id) => api.delete(`/admin/tickets/mine/${id}`);
 export const fetchAdminTickets = (params) => api.get('/admin/tickets', { params });
 export const fetchAdminTicketDetail = (id) => api.get(`/admin/tickets/${id}`);
 export const addAdminTicketMessage = (id, payload) => api.post(`/admin/tickets/${id}/messages`, payload);
 export const updateTicketStatus = (id, estado) => api.patch(`/admin/tickets/${id}/status`, { estado });
+export const deleteAdminTicket = (id) => api.delete(`/admin/tickets/${id}`);
 
 /* ========= Logística de Viajes (despacho + instalación por semana, desde /a) =========
    Arma "viajes" (fecha + zona + cuadrilla + vehículo) por semana ISO y reparte en
