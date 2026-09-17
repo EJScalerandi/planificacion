@@ -220,10 +220,13 @@ function normalizaAutomaticoManual(raw) {
 async function getNvDetalle(nv) {
   const nNv = Number(nv);
   if (!Number.isInteger(nNv)) return null;
-  const datos = await fetchDatosPorNv([nNv]);
+  const [datos, stAbierta] = await Promise.all([
+    fetchDatosPorNv([nNv]),
+    solicitudesDb.getSolicitudAbiertaPorNv(nNv).catch(() => null),
+  ]);
   const d = datos.get(nNv);
-  if (!d) return { nv: nNv, nombre_cliente: null, distribuidor: null, direccion: null, localidad: null, telefono: null, maps_url: null };
-  return { nv: nNv, ...d, automatico_manual: normalizaAutomaticoManual(d.motor_condicion) };
+  if (!d) return { nv: nNv, nombre_cliente: null, distribuidor: null, direccion: null, localidad: null, telefono: null, maps_url: null, st_abierta: stAbierta };
+  return { nv: nNv, ...d, automatico_manual: normalizaAutomaticoManual(d.motor_condicion), st_abierta: stAbierta };
 }
 
 // Botón "ST/PV" - crea una solicitud de Servicio Técnico (Fase 0, mismo

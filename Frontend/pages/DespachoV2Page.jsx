@@ -281,13 +281,21 @@ function ConfirmarRutaSheet({ siguienteParada, busy, resultado, onSi, onNo, onCe
 // avisar por WhatsApp a la siguiente parada de la ruta - pero antes SIEMPRE
 // pregunta si la ruta sigue igual.
 // ===========================================================================
-function MarcarEntregadoSection({ nv, viaje, parada, onParadaCambiada }) {
+function MarcarEntregadoSection({ nv, viaje, parada, onParadaCambiada, stAbierta }) {
   const [tiposPendientes, setTiposPendientes] = useState(() => parada?.tipos_pendientes || []);
   const [pinAbierto, setPinAbierto] = useState(false);
   const [marcando, setMarcando] = useState(false);
   const [err, setErr] = useState('');
   const [confirmarRuta, setConfirmarRuta] = useState(null); // { siguienteParada } | null
   const [resultadoAviso, setResultadoAviso] = useState(null);
+  // "¿Quedó todo bien o hubo un problema?" - paso intermedio al cerrar la
+  // instalación (pedido explícito del usuario). Si hubo un problema, se
+  // exige cargar la solicitud de ST/PV ANTES de cerrar la instalación (así
+  // nunca queda "cerrada en silencio" sin que el problema quede registrado
+  // en algún lado) - recién al enviarla con éxito se llama confirmarMarcado.
+  const [preguntandoInstalacion, setPreguntandoInstalacion] = useState(false);
+  const [mostrarStCierre, setMostrarStCierre] = useState(false);
+  const [stAbiertaLocal, setStAbiertaLocal] = useState(null);
 
   if (!parada) return null;
 
@@ -325,7 +333,30 @@ function MarcarEntregadoSection({ nv, viaje, parada, onParadaCambiada }) {
     }
   };
 
-  if (!tiposPendientes.length) return null;
+  const alEnviarStDeCierre = (solicitud) => {
+    setMostrarStCierre(false);
+    setStAbiertaLocal(solicitud || null);
+    confirmarMarcado('instalacion', null);
+  };
+
+  const stVisible = stAbiertaLocal || stAbierta;
+
+  if (!tiposPendientes.length) {
+    if (!stVisible) return null;
+    return (
+      <div style={{ ...s.card, marginBottom: 16, background: '#fffbeb', border: '1px solid #fde68a' }}>
+        <div style={{ fontWeight: 900, fontSize: 15, textAlign: 'center' }}>✅ Instalación terminada</div>
+        <div style={{ fontWeight: 800, color: '#b45309', fontSize: 13, textAlign: 'center', marginTop: 2 }}>
+          ⚠️ Con problema reportado (pendiente)
+        </div>
+        {stVisible.descripcion ? (
+          <div style={{ background: '#fff', borderRadius: 10, padding: 10, marginTop: 10, fontSize: 13, opacity: 0.85 }}>
+            {stVisible.descripcion}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div style={{ marginBottom: 16 }}>
@@ -336,9 +367,26 @@ function MarcarEntregadoSection({ nv, viaje, parada, onParadaCambiada }) {
           </button>
         ) : null}
         {tiposPendientes.includes('instalacion') ? (
-          <button type="button" style={s.botonPrimario} disabled={marcando} onClick={() => confirmarMarcado('instalacion', null)}>
-            {marcando ? 'Marcando…' : '✅ Marcar instalación terminada'}
-          </button>
+          preguntandoInstalacion ? (
+            <div style={{ ...s.card, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ fontWeight: 800, fontSize: 15, textAlign: 'center', marginBottom: 2 }}>
+                ¿Quedó todo bien o hubo algún problema?
+              </div>
+              <button type="button" style={{ ...s.botonPrimario, background: '#16a34a' }} disabled={marcando} onClick={() => confirmarMarcado('instalacion', null)}>
+                {marcando ? 'Marcando…' : '✅ Todo bien'}
+              </button>
+              <button type="button" style={{ ...s.botonPrimario, background: '#d97706' }} disabled={marcando} onClick={() => { setPreguntandoInstalacion(false); setMostrarStCierre(true); }}>
+                ⚠️ Hubo un problema
+              </button>
+              <button type="button" style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: 13, fontWeight: 700, padding: 2 }} disabled={marcando} onClick={() => setPreguntandoInstalacion(false)}>
+                Cancelar
+              </button>
+            </div>
+          ) : (
+            <button type="button" style={s.botonPrimario} disabled={marcando} onClick={() => setPreguntandoInstalacion(true)}>
+              ✅ Marcar instalación terminada
+            </button>
+          )
         ) : null}
       </div>
       {err ? <div style={{ color: 'crimson', fontWeight: 700, fontSize: 13, marginTop: 8 }}>{err}</div> : null}
@@ -360,6 +408,10 @@ function MarcarEntregadoSection({ nv, viaje, parada, onParadaCambiada }) {
           onNo={cerrarTodo}
           onCerrar={cerrarTodo}
         />
+      ) : null}
+
+      {mostrarStCierre ? (
+        <StFormSheet nv={nv} onClose={() => setMostrarStCierre(false)} onEnviada={alEnviarStDeCierre} />
       ) : null}
     </div>
   );
@@ -418,7 +470,7 @@ function NvDetailSheet({ nv, viaje, parada, onParadaCambiada, onClose }) {
           <div style={{ color: 'crimson', fontWeight: 700 }}>{err}</div>
         ) : (
           <>
-            <MarcarEntregadoSection nv={nv} viaje={viaje} parada={parada} onParadaCambiada={onParadaCambiada} />
+            <MarcarEntregadoSection nv={nv} viaje={viaje} parada={parada} onParadaCambiada={onParadaCambiada} stAbierta={detalle?.st_abierta} />
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
               <Campo label="Cliente" valor={detalle?.nombre_cliente} />
@@ -501,7 +553,7 @@ function Campo({ label, valor }) {
 // ===========================================================================
 // ST/PV: reportar un problema (Servicio Técnico / Post Venta) con foto/video
 // ===========================================================================
-function StFormSheet({ nv, onClose }) {
+function StFormSheet({ nv, onClose, onEnviada }) {
   const [descripcion, setDescripcion] = useState('');
   const [archivo, setArchivo] = useState(null); // { name, type, size, data_url } | null
   const [subiendo, setSubiendo] = useState(false);
@@ -528,8 +580,9 @@ function StFormSheet({ nv, onClose }) {
     setSubiendo(true);
     setErr('');
     try {
-      await crearSolicitudStDespachoV2(nv, { descripcion: descripcion.trim(), attachment: archivo });
+      const r = await crearSolicitudStDespachoV2(nv, { descripcion: descripcion.trim(), attachment: archivo });
       setOk(true);
+      onEnviada?.(r?.solicitud || null);
     } catch (e) {
       setErr(e?.response?.data?.error || e.message);
     } finally {
@@ -541,14 +594,13 @@ function StFormSheet({ nv, onClose }) {
     <div style={{ ...s.overlay, zIndex: 10000 }} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div style={s.hoja}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 10 }}>
-          <div style={{ fontWeight: 900, fontSize: 18 }}>🛠️ ST/PV — NV {nv}</div>
+          <div style={{ fontWeight: 900, fontSize: 18 }}>Reportar un problema — NV {nv}</div>
           <button type="button" onClick={onClose} style={{ marginLeft: 'auto', background: 'none', border: 'none', fontSize: 22, lineHeight: 1, padding: 4 }}>✕</button>
         </div>
 
         {ok ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center', padding: '20px 0' }}>
-            <div style={{ fontSize: 40 }}>✅</div>
-            <div style={{ fontWeight: 800, fontSize: 16, textAlign: 'center' }}>Solicitud enviada</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '10px 0' }}>
+            <div style={{ fontWeight: 900, fontSize: 16, textAlign: 'center' }}>✅ Solicitud enviada</div>
             <button type="button" style={s.botonPrimario} onClick={onClose}>Listo</button>
           </div>
         ) : (
