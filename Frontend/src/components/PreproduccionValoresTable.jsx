@@ -1,5 +1,6 @@
 ﻿// src/components/PreproduccionValoresTable.jsx
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import {
   fetchPreproduccionValores,
@@ -523,6 +524,23 @@ export default function PreproduccionValoresTable() {
   // toda la tabla (no por fila): el teléfono de la fila cuyo menú está
   // abierto, o null si ninguno.
   const [waMenuTelefono, setWaMenuTelefono] = useState(null);
+  // Posición en coordenadas de viewport (fixed) del menú, calculada al abrir -
+  // el menú se renderiza en un portal a <body> para no quedar recortado por
+  // el overflow/scroll horizontal de la tabla (pasaba en la última fila).
+  const [waMenuPos, setWaMenuPos] = useState(null);
+
+  // Cerrar el menú si se scrollea (la tabla tiene scroll horizontal propio,
+  // y un menú "fixed" quedaría flotando desalineado del ícono si no se cierra).
+  useEffect(() => {
+    if (!waMenuTelefono) return;
+    const cerrar = () => { setWaMenuTelefono(null); setWaMenuPos(null); };
+    window.addEventListener('scroll', cerrar, true);
+    window.addEventListener('resize', cerrar);
+    return () => {
+      window.removeEventListener('scroll', cerrar, true);
+      window.removeEventListener('resize', cerrar);
+    };
+  }, [waMenuTelefono]);
 
   // Limited (comercial_view)
   const LIMITED_COL_IDS = useMemo(
@@ -1560,7 +1578,21 @@ export default function PreproduccionValoresTable() {
               <div style={{ position: 'relative', display: 'inline-flex' }}>
                 <button
                   type="button"
-                  onClick={() => setWaMenuTelefono((prev) => (prev === phone ? null : phone))}
+                  onClick={(e) => {
+                    if (waMenuTelefono === phone) {
+                      setWaMenuTelefono(null);
+                      setWaMenuPos(null);
+                      return;
+                    }
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const menuAlto = 76; // alto aproximado del menú de 2 opciones
+                    const abrirHaciaArriba = rect.bottom + menuAlto > window.innerHeight;
+                    setWaMenuPos({
+                      left: rect.left,
+                      top: abrirHaciaArriba ? rect.top - menuAlto - 4 : rect.bottom + 4,
+                    });
+                    setWaMenuTelefono(phone);
+                  }}
                   title={`WhatsApp: +54 ${phone}`}
                   style={{ display: 'inline-flex', alignItems: 'center', color: '#25D366', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
                 >
@@ -1568,12 +1600,12 @@ export default function PreproduccionValoresTable() {
                     <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
                   </svg>
                 </button>
-                {waMenuTelefono === phone ? (
+                {waMenuTelefono === phone && waMenuPos ? createPortal(
                   <>
-                    <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onMouseDown={() => setWaMenuTelefono(null)} />
+                    <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onMouseDown={() => { setWaMenuTelefono(null); setWaMenuPos(null); }} />
                     <div
                       style={{
-                        position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 1000,
+                        position: 'fixed', top: waMenuPos.top, left: waMenuPos.left, zIndex: 1000,
                         background: 'var(--surface, #fff)', border: '1px solid var(--border, #d1d5db)', borderRadius: 8,
                         boxShadow: '0 4px 14px rgba(0,0,0,0.18)', minWidth: 200, overflow: 'hidden',
                       }}
@@ -1582,7 +1614,7 @@ export default function PreproduccionValoresTable() {
                         href={`https://wa.me/54${phone}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        onClick={() => setWaMenuTelefono(null)}
+                        onClick={() => { setWaMenuTelefono(null); setWaMenuPos(null); }}
                         style={{ display: 'block', padding: '8px 12px', fontSize: 12, color: 'inherit', textDecoration: 'none', whiteSpace: 'nowrap' }}
                         onMouseDown={(e) => e.stopPropagation()}
                       >
@@ -1593,6 +1625,7 @@ export default function PreproduccionValoresTable() {
                         onMouseDown={(e) => e.stopPropagation()}
                         onClick={() => {
                           setWaMenuTelefono(null);
+                          setWaMenuPos(null);
                           const digitos = phone.startsWith('54') ? phone.slice(2) : phone;
                           const telefonoCanonico = digitos.startsWith('9') ? `54${digitos}` : `549${digitos.replace(/^0/, '')}`;
                           window.open(`/admin/logistica-whatsapp?telefono=${encodeURIComponent(telefonoCanonico)}`, '_blank');
@@ -1602,7 +1635,8 @@ export default function PreproduccionValoresTable() {
                         💬 Abrir en Mensajes Logística
                       </button>
                     </div>
-                  </>
+                  </>,
+                  document.body
                 ) : null}
               </div>
               <span style={{ fontSize: 12, color: '#374151', userSelect: 'all', letterSpacing: 0.2 }}>
