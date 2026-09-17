@@ -412,5 +412,5 @@ module.exports = {
   listQcUsersDeCuadrillas, getQcUser, cuadrillasDeUsuario,
   listViajesDeCuadrillas, getViajeCuadrilla, marcarSalidaReal, marcarLlegadaReal,
   listParadasDeViaje, getNvDetalle, crearSolicitudSt,
-  marcarEntregado, siguienteParadaPorton, avisarSiguienteParada,
+  marcarEntregado, siguienteParadaPorton, avisarSiguienteParada, datosParaAviso,
 };

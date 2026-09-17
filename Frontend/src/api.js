@@ -981,6 +981,14 @@ export async function fetchLogisticaMensajeViaje(viajeId) {
   return data;
 }
 
+// Modo de pruebas: manda el aviso "en camino" (collage + plantilla) de este
+// viaje a un teléfono cualquiera, para ver cómo sale antes de que se dispare
+// en producción con el cliente real.
+export async function probarAvisoWhatsappViaje(viajeId, { telefono, nombreCliente, horasTexto }) {
+  const { data } = await api.post(`/admin/logistica/viajes/${viajeId}/probar-aviso-whatsapp`, { telefono, nombreCliente, horasTexto });
+  return data;
+}
+
 // Rendiciones de gastos (consulta) - una fila por viaje con gastos
 // cargados desde /despacho_v2, con su detalle (gastos + ticket adjunto) y total.
 export async function fetchLogisticaRendiciones() {

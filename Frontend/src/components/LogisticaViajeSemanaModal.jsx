@@ -25,6 +25,7 @@ import {
   updateLogisticaParadaExtraViaje,
   cerrarLogisticaSemana,
   reabrirLogisticaSemana,
+  probarAvisoWhatsappViaje,
 } from '../api';
 import { isoWeekStartEndFromLabel, weekTitleFromSelection, todayISO10 } from '../utils/isoWeek';
 import LogisticaZonasModal from './modals/LogisticaZonasModal';
@@ -428,7 +429,7 @@ function NuevoViajeForm({ semana, config, onCreate, onCancel, busy, initial, sub
   );
 }
 
-function ViajeColumn({ viaje, items, canEdit, cerrada, onDropItem, onReorder, onEditar, onBorrar, onDragStartChip, onDragEndChip, onVerMapa, onMensaje, onAdjuntosViaje, onAdjuntosNv, onToggleZona, puntosExtra, agregandoParada, onAbrirAgregarParada, onCerrarAgregarParada, agregandoParadaBusy, onElegirParada, onCrearParada, onQuitarParada, onMoverParada, onGuardarHorarioParada, onRecalcularRuta, recalculando }) {
+function ViajeColumn({ viaje, items, canEdit, cerrada, onDropItem, onReorder, onEditar, onBorrar, onDragStartChip, onDragEndChip, onVerMapa, onMensaje, onAdjuntosViaje, onAdjuntosNv, onToggleZona, puntosExtra, agregandoParada, onAbrirAgregarParada, onCerrarAgregarParada, agregandoParadaBusy, onElegirParada, onCrearParada, onQuitarParada, onMoverParada, onGuardarHorarioParada, onRecalcularRuta, recalculando, onProbarAviso, probandoAviso }) {
   const [over, setOver] = useState(false);
   const [dragOverIndex, setDragOverIndex] = useState(null);
   const capacidad = Number(viaje.vehiculo_capacidad || 0);
@@ -503,6 +504,16 @@ function ViajeColumn({ viaje, items, canEdit, cerrada, onDropItem, onReorder, on
               {recalculando === viaje.id ? '⏳…' : '🔄 Recalcular'}
             </button>
           ) : null}
+          <button
+            type="button"
+            className="btn"
+            style={{ padding: '1px 6px', fontSize: 10, marginTop: 4, marginLeft: 4 }}
+            disabled={probandoAviso === viaje.id}
+            onClick={() => onProbarAviso(viaje)}
+            title="Modo de pruebas: manda el aviso 'en camino' (fotos + collage) a un teléfono cualquiera"
+          >
+            {probandoAviso === viaje.id ? '⏳…' : '🧪 Probar aviso'}
+          </button>
         </div>
         {canEdit && !cerrada ? (
           <div style={{ display: 'flex', gap: 4 }}>
@@ -855,6 +866,25 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
     setRecalculando(null);
   };
 
+  // Modo de pruebas: manda el aviso "en camino" (collage de fotos + cuadrilla
+  // + vehículo) a un teléfono cualquiera, para ver cómo sale antes de que se
+  // dispare en producción con el cliente real - pedido explícito del usuario.
+  const [probandoAviso, setProbandoAviso] = useState(null); // viajeId en curso, o null
+  const onProbarAviso = async (viaje) => {
+    const telefono = window.prompt('Teléfono de prueba (con o sin 549, ej. 3572400170):', '3572400170');
+    if (!telefono?.trim()) return;
+    setProbandoAviso(viaje.id);
+    setErr('');
+    try {
+      const r = await probarAvisoWhatsappViaje(viaje.id, { telefono: telefono.trim() });
+      if (r?.ok) window.alert('Aviso de prueba enviado ✅');
+    } catch (e) {
+      setErr(e?.response?.data?.error || e.message);
+    } finally {
+      setProbandoAviso(null);
+    }
+  };
+
   // Paradas que no son un portón (ej. alojamiento) - se tratan igual que un
   // portón para la ruta (misma secuencia de `orden`, cuentan para zonas y
   // mensaje) pero se agregan/reordenan distinto: elegir del catálogo o
@@ -1057,6 +1087,8 @@ export default function LogisticaViajeSemanaModal({ semana, open, canEdit, onClo
                     onToggleZona={onToggleZona}
                     onRecalcularRuta={onRecalcularRuta}
                     recalculando={recalculando}
+                    onProbarAviso={onProbarAviso}
+                    probandoAviso={probandoAviso}
                     puntosExtra={puntosExtra}
                     agregandoParada={agregandoParadaViajeId === v.id}
                     onAbrirAgregarParada={abrirAgregarParada}

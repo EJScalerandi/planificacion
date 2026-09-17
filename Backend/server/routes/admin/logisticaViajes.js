@@ -26,6 +26,7 @@ const {
 const gastosDb = require('../../lib/logisticaGastosDb');
 const adjuntosStorage = require('../../lib/logisticaAdjuntosStorage');
 const whatsapp = require('../../lib/logisticaWhatsapp');
+const despachoV2Db = require('../../lib/despachoV2Db');
 
 // Zonas del corredor + ruta real por calle comparten el mismo trigger
 // (cualquier cambio de paradas/orden de un viaje) - se disparan juntas.
@@ -471,6 +472,29 @@ router.post('/logistica/viajes/:id/recalcular-ruta', requireFullAccess, asyncRou
 // no modifica nada, alcanza con cualquiera de los 3 scopes de Preproducción.
 router.get('/logistica/viajes/:id/mensaje', asyncRoute(async (req, res) => {
   res.json({ ok: true, texto: await buildMensajeViaje(req.params.id) });
+}));
+
+// Modo de pruebas: manda el mismo aviso "en camino" (collage de fotos +
+// plantilla) que se dispara solo al avisar la próxima parada, pero a un
+// teléfono cualquiera que se pase por body en vez del cliente real - pedido
+// explícito del usuario para poder ver cómo salen las fotos/collage antes
+// de que se dispare en producción.
+router.post('/logistica/viajes/:id/probar-aviso-whatsapp', requireFullAccess, asyncRoute(async (req, res) => {
+  const telefono = String(req.body?.telefono || '').trim();
+  if (!telefono) return res.status(400).json({ error: 'Falta el teléfono de prueba' });
+  const datos = await despachoV2Db.datosParaAviso(req.params.id);
+  if (!datos) return res.status(404).json({ error: 'Viaje no encontrado' });
+  const resultado = await whatsapp.enviarAvisoEnCamino({
+    telefono,
+    nombreCliente: String(req.body?.nombreCliente || 'Cliente de prueba').trim(),
+    horasTexto: String(req.body?.horasTexto || 'poco tiempo').trim(),
+    cuadrillaTexto: datos.cuadrillaTexto,
+    vehiculoNombre: datos.vehiculoNombre,
+    fotosMiembros: datos.fotosMiembros,
+    fotoVehiculo: datos.fotoVehiculo,
+  });
+  if (!resultado.ok) return res.status(400).json({ error: resultado.error, detalle: resultado.detalle });
+  res.json({ ok: true, wa_message_id: resultado.wa_message_id });
 }));
 
 router.post('/logistica/semanas/:semana/cerrar', requireFullAccess, asyncRoute(async (req, res) => {
