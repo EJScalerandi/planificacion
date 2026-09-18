@@ -135,7 +135,7 @@ export default function LogisticaAuthModal({ open, row, onClose, onSubmit, busy,
           <div
             style={{
               border: '1px solid #e5e7eb',
-              background: '#f9fafb',
+              background: 'var(--surface)',
               padding: 10,
               borderRadius: 12,
               marginBottom: 10,

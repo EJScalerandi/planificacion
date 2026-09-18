@@ -15,6 +15,7 @@ import InsumosCartButton from './components/InsumosCartButton';
 import TicketWidget from './components/TicketWidget';
 import PruebaLaserModal from './components/modals/PruebaLaserModal';
 import SessionExpiredOverlay from './components/SessionExpiredOverlay';
+import ThemeToggle from './components/ThemeToggle.jsx';
 
 import StatusGatePage from '../src/components/StatusGatePage';
 import CreateGatePage from '../pages/CreateGatePage';
@@ -477,7 +478,7 @@ function Board({ stages, seccion }) {
 
   return (
     <div className="container">
-      <div className="header-row">
+      <div className="header-row ph-topbar">
         <h2 className="h1" style={{ borderColor: color }}>DE GRANDIS PORTONES</h2>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {seccion ? <InsumosCartButton seccion={seccion} /> : null}
@@ -487,6 +488,7 @@ function Board({ stages, seccion }) {
             </button>
           ) : null}
           <TicketWidget />
+          <ThemeToggle />
           <button
             className="btn btn--brand"
             onClick={() => { refresh(); refreshIpanel(); refreshQcSummary(); refreshPrefab(); refreshSt(); }}

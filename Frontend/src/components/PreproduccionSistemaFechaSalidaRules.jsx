@@ -128,7 +128,7 @@ export default function PreproduccionSistemaFechaSalidaRules({ open, onClose }) 
       <div
         style={{
           width: 'min(980px, 100%)',
-          background: '#fff',
+          background: 'var(--surface)',
           borderRadius: 14,
           border: '1px solid #e5e7eb',
           boxShadow: '0 12px 32px rgba(0,0,0,0.18)',
@@ -157,7 +157,7 @@ export default function PreproduccionSistemaFechaSalidaRules({ open, onClose }) 
         <div style={{ overflow: 'auto', border: '1px solid #e5e7eb', borderRadius: 12 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
-              <tr style={{ background: '#f9fafb' }}>
+              <tr style={{ background: 'var(--surface)' }}>
                 <th style={th}>Match (Sistema contiene)</th>
                 <th style={th}>Días</th>
                 <th style={th}>Base</th>
@@ -200,7 +200,7 @@ export default function PreproduccionSistemaFechaSalidaRules({ open, onClose }) 
 
               {items.length === 0 ? (
                 <tr>
-                  <td style={{ ...td, padding: 12, color: '#6b7280' }} colSpan={4}>
+                  <td style={{ ...td, padding: 12, color: 'var(--muted)' }} colSpan={4}>
                     No hay reglas cargadas. Tocá “Agregar”.
                   </td>
                 </tr>
@@ -209,7 +209,7 @@ export default function PreproduccionSistemaFechaSalidaRules({ open, onClose }) 
           </table>
         </div>
 
-        <div style={{ marginTop: 8, fontSize: 11, color: '#6b7280' }}>
+        <div style={{ marginTop: 8, fontSize: 11, color: 'var(--muted)' }}>
           Guardado local (este navegador). Si necesitás multiusuario, lo migramos a backend.
         </div>
       </div>

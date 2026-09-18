@@ -61,7 +61,7 @@ const daysUntil = (ymd) => {
 };
 function getPlanIndicator(p) {
   const fecha = dateOnly(p.fecha_plan);
-  if (!fecha) return { color: '#d1d5db', label: 'Sin fecha', days: null, title: 'Sin fecha planificada' };
+  if (!fecha) return { color: 'var(--muted)', label: 'Sin fecha', days: null, title: 'Sin fecha planificada' };
   const apFinished = (p.armado_primario || '').toLowerCase() === 'finalizado';
   const d = daysUntil(fecha);
   if (apFinished) return { color: '#16a34a', label: 'OK', days: d, title: `Entrega planificada ${fecha} · Armado Primario finalizado` };
@@ -173,11 +173,11 @@ export default function PlantaReadOnlySimplePage() {
   const stickyCorner = { position: 'sticky', top: 0, left: 0, zIndex: 6, background: 'var(--surface)' };
 
   const cellBase   = { border: `1px solid ${bordo}`, borderRadius: 8, boxSizing: 'border-box' };
-  const headerCell = { ...cellBase, background:'#fafafa', fontWeight:800, textAlign:'center', padding: 4, lineHeight: 1.05 };
+  const headerCell = { ...cellBase, background:'var(--surface)', fontWeight:800, textAlign:'center', padding: 4, lineHeight: 1.05 };
   const headerAbbr = { fontSize: 12, letterSpacing: .2 };
   const headerMini = { fontSize: 10, opacity:.8, marginTop: 2 };
 
-  const nvCell     = { ...cellBase, background:'#fff', minHeight:CELL_MIN_H, display:'flex', alignItems:'center', justifyContent:'center', gap:2, flexDirection:'column', padding: 4, lineHeight: 1.05 };
+  const nvCell     = { ...cellBase, background:'var(--surface)', minHeight:CELL_MIN_H, display:'flex', alignItems:'center', justifyContent:'center', gap:2, flexDirection:'column', padding: 4, lineHeight: 1.05 };
 
   const stageCell  = { ...cellBase, minHeight: CELL_MIN_H, height: CELL_MIN_H, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent' };
   const stageRect = (bg) => ({

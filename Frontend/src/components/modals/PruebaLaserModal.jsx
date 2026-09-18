@@ -38,7 +38,7 @@ export default function PruebaLaserModal({ open, onClose, nextNumero, onCreate }
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
       style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, zIndex: 9999 }}
     >
-      <div style={{ width: 'min(420px, 100%)', background: '#fff', borderRadius: 14, border: '1px solid #e5e7eb', boxShadow: '0 18px 55px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
+      <div style={{ width: 'min(420px, 100%)', background: 'var(--surface)', borderRadius: 14, border: '1px solid #e5e7eb', boxShadow: '0 18px 55px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
         <div style={{ padding: '12px 14px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, background: '#f8fafc' }}>
           <div style={{ fontWeight: 900 }}>Generar Prueba Laser Plano</div>
           <button className="btn" type="button" onClick={onClose}>Cerrar</button>

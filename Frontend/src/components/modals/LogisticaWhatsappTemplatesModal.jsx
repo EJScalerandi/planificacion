@@ -12,11 +12,11 @@ const ESTADO_COLOR = {
   PENDING: { bg: '#fef9c3', color: '#854d0e', label: 'En revisión' },
   REJECTED: { bg: '#fee2e2', color: '#991b1b', label: 'Rechazada' },
   PAUSED: { bg: '#fee2e2', color: '#991b1b', label: 'Pausada' },
-  DISABLED: { bg: '#f3f4f6', color: '#4b5563', label: 'Deshabilitada' },
+  DISABLED: { bg: 'var(--surface)', color: '#4b5563', label: 'Deshabilitada' },
 };
 
 function EstadoBadge({ status }) {
-  const cfg = ESTADO_COLOR[status] || { bg: '#f3f4f6', color: '#4b5563', label: status || '—' };
+  const cfg = ESTADO_COLOR[status] || { bg: 'var(--surface)', color: '#4b5563', label: status || '—' };
   return (
     <span style={{ fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 999, background: cfg.bg, color: cfg.color }}>
       {cfg.label}

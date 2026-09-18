@@ -49,7 +49,7 @@ const ESTADO_LABEL = {
   pendiente: 'Pendiente', planificado: 'Planificado', en_viaje: 'En viaje', resuelto: 'Resuelto', cancelado: 'Cancelado',
 };
 const ESTADO_COLOR = {
-  pendiente: '#f59e0b', planificado: '#2563eb', en_viaje: '#7c3aed', resuelto: '#16a34a', cancelado: '#6b7280',
+  pendiente: '#f59e0b', planificado: '#2563eb', en_viaje: '#7c3aed', resuelto: '#16a34a', cancelado: 'var(--muted)',
 };
 
 const emptyForm = { nv: '', nombre_cliente: '', distribuidor: '', direccion: '', maps_url: '', telefono: '', descripcion: '' };

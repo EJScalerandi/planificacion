@@ -185,7 +185,7 @@ function ConditionBuilder({ value, onChange, fields }) {
             gridTemplateColumns: '1.3fr .7fr 1fr auto',
             gap: 8,
             alignItems: 'center',
-            border: '1px solid #e5e7eb',
+            border: '1px solid var(--border)',
             borderRadius: 12,
             padding: 10,
           }}
@@ -305,7 +305,7 @@ function AnyGroupsEditor({ stageOptions, groups, onChange }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       {(local || []).map((g, idx) => (
-        <div key={idx} style={{ border: '1px solid #d1d5db', borderRadius: 12, padding: 10 }}>
+        <div key={idx} style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 10 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
             <div style={{ fontWeight: 900 }}>Grupo {idx + 1} (OR)</div>
             <button className="btn" type="button" onClick={() => removeGroup(idx)}>
@@ -585,7 +585,7 @@ export default function WorkflowDesignerPage() {
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 12 }}>
-                  <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 12 }}>
+                  <div style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 12 }}>
                     <div style={{ fontWeight: 900, marginBottom: 8 }}>Siguientes etapas (rutas mixtas)</div>
 
                     <StageMultiSelect
@@ -602,7 +602,7 @@ export default function WorkflowDesignerPage() {
                           {currentEdges.map((e) => (
                             <div
                               key={`${e.from_key}->${e.to_key}`}
-                              style={{ border: '1px dashed #d1d5db', borderRadius: 12, padding: 10 }}
+                              style={{ border: '1px dashed var(--border)', borderRadius: 12, padding: 10 }}
                             >
                               <div style={{ fontWeight: 900, marginBottom: 6 }}>
                                 {e.from_key} → {e.to_key}
@@ -633,7 +633,7 @@ export default function WorkflowDesignerPage() {
                     )}
                   </div>
 
-                  <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 12 }}>
+                  <div style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 12 }}>
                     <div style={{ fontWeight: 900, marginBottom: 8 }}>Requisitos para poder iniciar esta etapa</div>
 
                     <div style={{ fontWeight: 800, margin: '8px 0' }}>ALL (obligatorias)</div>

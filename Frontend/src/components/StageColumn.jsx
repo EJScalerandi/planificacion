@@ -375,7 +375,7 @@ function ShellModal({ open, onClose, headerBg = '#f8fafc', borderColor = '#e5e7e
       <div
         style={{
           width,
-          background: '#fff',
+          background: 'var(--surface)',
           borderRadius: 14,
           border: `1px solid ${borderColor}`,
           boxShadow: '0 18px 55px rgba(0,0,0,0.25)',
@@ -710,7 +710,7 @@ function HistoryModal({ open, onClose, title, effKey, rows = [] }) {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {rows.map((r) => (
-              <div key={r._key} style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 12, background: '#ffffff', display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, alignItems: 'center' }}>
+              <div key={r._key} style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 12, background: 'var(--surface)', display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, alignItems: 'center' }}>
                 <div style={{ fontSize: 13 }}>
                   <div style={{ fontWeight: 900 }}>{r.label}</div>
                   {r.semana ? <div style={{ opacity: 0.8, marginTop: 2 }}>{r.semana}</div> : null}
@@ -887,7 +887,7 @@ function AnexoDetailModal({ open, onClose, item }) {
                       gap: 10,
                     }}
                   >
-                    <span style={{ fontWeight: 700, minWidth: 28, color: '#64748b' }}>{Number(l.qty) || 1}×</span>
+                    <span style={{ fontWeight: 700, minWidth: 28, color: 'var(--muted)' }}>{Number(l.qty) || 1}×</span>
                     <span>{String(l.raw_name || l.name || '').trim()}</span>
                   </div>
                 ))

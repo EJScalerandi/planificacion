@@ -18,7 +18,7 @@ function stageBadgeStyle(estado) {
   if (st === 'en proceso') return { background: '#f59e0b', color: '#fff', border: '1px solid #b45309' };
   if (st === 'pendiente') return { background: '#ef4444', color: '#fff', border: '1px solid #b91c1c' };
   // Todavía no llegó a esta etapa.
-  return { background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0' };
+  return { background: '#f1f5f9', color: 'var(--muted)', border: '1px solid #e2e8f0' };
 }
 
 function orderLabel(o) {

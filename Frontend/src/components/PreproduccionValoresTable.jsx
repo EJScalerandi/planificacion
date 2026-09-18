@@ -1639,7 +1639,7 @@ export default function PreproduccionValoresTable() {
                   document.body
                 ) : null}
               </div>
-              <span style={{ fontSize: 12, color: '#374151', userSelect: 'all', letterSpacing: 0.2 }}>
+              <span style={{ fontSize: 12, color: 'var(--muted)', userSelect: 'all', letterSpacing: 0.2 }}>
                 {phone}
               </span>
             </>
@@ -1658,7 +1658,7 @@ export default function PreproduccionValoresTable() {
             </a>
           ) : null}
           {mapsUrl && localidad ? (
-            <span style={{ fontSize: 12, color: '#374151' }}>{localidad}</span>
+            <span style={{ fontSize: 12, color: 'var(--muted)' }}>{localidad}</span>
           ) : null}
         </div>
       );
@@ -1796,13 +1796,13 @@ export default function PreproduccionValoresTable() {
           const effectiveDate = normalizeDate10(fromPres ? data.pq_fecha_medicion : v);
           return (
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 12, whiteSpace: 'nowrap', color: '#374151' }}>
+              <span style={{ fontSize: 12, whiteSpace: 'nowrap', color: 'var(--muted)' }}>
                 {formatDMY(effectiveDate) || '—'}
               </span>
               {fromPres ? (
                 <span
                   title="Fecha provista por el Presupuestador"
-                  style={{ fontSize: 10, color: '#6b7280', background: '#f3f4f6', padding: '1px 5px', borderRadius: 4, whiteSpace: 'nowrap' }}
+                  style={{ fontSize: 10, color: 'var(--muted)', background: 'var(--surface-muted)', padding: '1px 5px', borderRadius: 4, whiteSpace: 'nowrap' }}
                 >
                   Pres.
                 </span>
@@ -2037,7 +2037,7 @@ export default function PreproduccionValoresTable() {
                     </label>
                   ))}
 
-                  <div style={{ marginTop: 8, fontSize: 11, color: '#6b7280' }}>Se guarda en este navegador.</div>
+                  <div style={{ marginTop: 8, fontSize: 11, color: 'var(--muted)' }}>Se guarda en este navegador.</div>
                 </div>
               ) : null}
             </div>
@@ -2063,8 +2063,8 @@ export default function PreproduccionValoresTable() {
                     width: 380,
                     maxHeight: 460,
                     overflow: 'auto',
-                    background: '#fff',
-                    border: '1px solid #e5e7eb',
+                    background: 'var(--surface)',
+                    border: '1px solid var(--border)',
                     borderRadius: 12,
                     boxShadow: '0 8px 24px rgba(0,0,0,0.08)',
                     padding: 10,
@@ -2102,7 +2102,7 @@ export default function PreproduccionValoresTable() {
                           </option>
                         ))}
                       </select>
-                      <div style={{ fontSize: 12, color: '#374151', marginTop: 6 }}>
+                      <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>
                         Filas a imprimir: <b>{pdfSelectedRows.length}</b>
                       </div>
                     </label>
@@ -2149,12 +2149,12 @@ export default function PreproduccionValoresTable() {
           ) : null}
 
           {accessMode === 'admin' ? (
-            <div style={{ fontSize: 12, color: '#374151' }}>
+            <div style={{ fontSize: 12, color: 'var(--muted)' }}>
               Mostrando hasta: <b>{formatDMY(nextWeekFridayCutoffISO10())}</b>
             </div>
           ) : null}
 
-          <div style={{ marginLeft: 'auto', fontSize: 12, color: '#374151' }}>{loading ? 'Cargando…' : `Registros: ${total}`}</div>
+          <div style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--muted)' }}>{loading ? 'Cargando…' : `Registros: ${total}`}</div>
         </div>
 
         {err ? (
@@ -2176,7 +2176,7 @@ export default function PreproduccionValoresTable() {
                       style={{
                         textAlign: 'left',
                         whiteSpace: 'nowrap',
-                        color: '#111827',
+                        color: 'var(--text)',
                       }}
                     >
                       {c.label}
@@ -2252,7 +2252,7 @@ export default function PreproduccionValoresTable() {
 
                 {!loading && pagedRows.length === 0 ? (
                   <tr>
-                    <td colSpan={visibleColsList.length || 1} style={{ padding: 12, color: '#6b7280', fontSize: 12 }}>
+                    <td colSpan={visibleColsList.length || 1} style={{ padding: 12, color: 'var(--muted)', fontSize: 12 }}>
                       No hay filas para mostrar (revisá filtros o datos).
                     </td>
                   </tr>
@@ -2268,11 +2268,11 @@ export default function PreproduccionValoresTable() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
-          <div style={{ fontSize: 12, color: '#374151' }}>
+          <div style={{ fontSize: 12, color: 'var(--muted)' }}>
             Mostrando <b>{total ? startIdx + 1 : 0}</b>–<b>{endIdx}</b> de <b>{total}</b>
           </div>
 
-          <label style={{ fontSize: 12, color: '#111827' }}>
+          <label style={{ fontSize: 12, color: 'var(--text)' }}>
             Tamaño
             <select
               value={pageSize}
@@ -2292,7 +2292,7 @@ export default function PreproduccionValoresTable() {
             Anterior
           </button>
 
-          <div style={{ fontSize: 12, color: '#374151' }}>
+          <div style={{ fontSize: 12, color: 'var(--muted)' }}>
             Página <b>{safePage}</b> / <b>{pageCount}</b>
           </div>
 
@@ -2301,7 +2301,7 @@ export default function PreproduccionValoresTable() {
           </button>
         </div>
 
-        <div style={{ marginTop: 8, fontSize: 11, color: '#6b7280' }}>
+        <div style={{ marginTop: 8, fontSize: 11, color: 'var(--muted)' }}>
           Fechas: podés usar <b>Desde/Hasta</b> (intervalo), y/o <b>Con fecha</b>, y/o <b>Sin fecha</b>. Si combinás
           intervalo + "Sin fecha" trae <i>intervalo OR sin fecha</i>.
         </div>

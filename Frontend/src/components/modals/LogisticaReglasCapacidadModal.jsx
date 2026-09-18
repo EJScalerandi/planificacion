@@ -151,7 +151,7 @@ export default function LogisticaReglasCapacidadModal({ open, config, onClose, o
             <tbody>
               {reglas.map((r) => (
                 <tr key={r.id}>
-                  <td style={td}>{r.nombre || <span style={{ color: '#9ca3af' }}>—</span>}</td>
+                  <td style={td}>{r.nombre || <span style={{ color: 'var(--muted)' }}>—</span>}</td>
                   <td style={td}>{(CAMPO_OPCIONES.find((o) => o.value === r.campo)?.label) || r.campo} {r.operador} {r.valor_mm}mm</td>
                   <td style={td}>{r.peso}</td>
                   <td style={td}>{r.prioridad}</td>

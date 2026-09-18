@@ -146,7 +146,7 @@ function statusStyle(estadoRaw) {
   const s = String(estadoRaw || '').trim().toLowerCase();
   if (s === 'finalizado') return { bg: '#dcfce7', fg: '#15803d', border: '#86efac', label: 'Finalizado' };
   if (s === 'en proceso') return { bg: '#fffbeb', fg: '#92400e', border: '#f59e0b', label: 'En Proceso' };
-  if (s === 'pendiente') return { bg: '#f1f5f9', fg: '#475569', border: '#cbd5e1', label: 'Pendiente' };
+  if (s === 'pendiente') return { bg: '#f1f5f9', fg: 'var(--muted)', border: '#cbd5e1', label: 'Pendiente' };
   return { bg: 'transparent', fg: '#cbd5e1', border: '#e2e8f0', label: '—' };
 }
 

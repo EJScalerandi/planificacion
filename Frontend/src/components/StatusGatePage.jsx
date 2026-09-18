@@ -266,14 +266,14 @@ export default function StatusGatePage() {
                 <div style={{ fontSize:12, color:'var(--muted)' }}>N° Partida {p.partida ?? '—'}</div>
                 {isSistema(p) && (
                   <div style={{
-                    fontSize:11, background:'#eee', padding:'2px 8px',
+                    fontSize:11, background:'var(--surface-muted)', padding:'2px 8px',
                     borderRadius:999, border:'1px solid #ddd', alignSelf:'flex-start'
                   }}>
                     Sistema
                   </div>
                 )}
                 {p.observaciones && (
-                  <span style={{ fontSize:11, marginTop:4, color:'#555' }}>
+                  <span style={{ fontSize:11, marginTop:4, color:'var(--muted)' }}>
                     📝 {p.observaciones.slice(0, 40)}{p.observaciones.length > 40 ? '…' : ''}
                   </span>
                 )}

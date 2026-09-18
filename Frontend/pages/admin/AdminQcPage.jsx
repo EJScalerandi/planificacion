@@ -521,14 +521,14 @@ export default function AdminQcPage() {
 
                   return (
                     <tr key={u.id}>
-                      <td style={{ padding: 8, borderBottom: '1px solid #eee' }}>{u.id}</td>
-                      <td style={{ padding: 8, borderBottom: '1px solid #eee', fontWeight: 800 }}>{u.name}</td>
-                      <td style={{ padding: 8, borderBottom: '1px solid #eee' }}>{u.is_active !== false ? 'Sí' : 'No'}</td>
-                      <td style={{ padding: 8, borderBottom: '1px solid #eee' }}>{u.is_global === true ? 'Sí' : 'No'}</td>
-                      <td style={{ padding: 8, borderBottom: '1px solid #eee' }}>
+                      <td style={{ padding: 8, borderBottom: '1px solid var(--border)' }}>{u.id}</td>
+                      <td style={{ padding: 8, borderBottom: '1px solid var(--border)', fontWeight: 800 }}>{u.name}</td>
+                      <td style={{ padding: 8, borderBottom: '1px solid var(--border)' }}>{u.is_active !== false ? 'Sí' : 'No'}</td>
+                      <td style={{ padding: 8, borderBottom: '1px solid var(--border)' }}>{u.is_global === true ? 'Sí' : 'No'}</td>
+                      <td style={{ padding: 8, borderBottom: '1px solid var(--border)' }}>
                         {u.is_global === true ? <span style={{ fontWeight: 800 }}>GLOBAL</span> : <span>{scopeCount} permisos</span>}
                       </td>
-                      <td style={{ padding: 8, borderBottom: '1px solid #eee' }}>
+                      <td style={{ padding: 8, borderBottom: '1px solid var(--border)' }}>
                         <button className="btn btn--brand" type="button" onClick={() => openEditUser(u)}>
                           Editar
                         </button>
@@ -616,16 +616,16 @@ export default function AdminQcPage() {
             <tbody>
               {(motives || []).map((m) => (
                 <tr key={m.id}>
-                  <td style={{ padding: 8, borderBottom: '1px solid #eee' }}>{m.id}</td>
-                  <td style={{ padding: 8, borderBottom: '1px solid #eee' }}>{m.line}</td>
-                  <td style={{ padding: 8, borderBottom: '1px solid #eee', fontWeight: 800 }}>{m.kind}</td>
-                  <td style={{ padding: 8, borderBottom: '1px solid #eee' }}>
+                  <td style={{ padding: 8, borderBottom: '1px solid var(--border)' }}>{m.id}</td>
+                  <td style={{ padding: 8, borderBottom: '1px solid var(--border)' }}>{m.line}</td>
+                  <td style={{ padding: 8, borderBottom: '1px solid var(--border)', fontWeight: 800 }}>{m.kind}</td>
+                  <td style={{ padding: 8, borderBottom: '1px solid var(--border)' }}>
                     {m.stage_key ? `${stageLabel(m.line, m.stage_key)} (${m.stage_key})` : '—'}
                   </td>
-                  <td style={{ padding: 8, borderBottom: '1px solid #eee' }}>{m.label}</td>
-                  <td style={{ padding: 8, borderBottom: '1px solid #eee' }}>{m.enabled !== false ? 'Sí' : 'No'}</td>
-                  <td style={{ padding: 8, borderBottom: '1px solid #eee' }}>{m.priority}</td>
-                  <td style={{ padding: 8, borderBottom: '1px solid #eee' }}>
+                  <td style={{ padding: 8, borderBottom: '1px solid var(--border)' }}>{m.label}</td>
+                  <td style={{ padding: 8, borderBottom: '1px solid var(--border)' }}>{m.enabled !== false ? 'Sí' : 'No'}</td>
+                  <td style={{ padding: 8, borderBottom: '1px solid var(--border)' }}>{m.priority}</td>
+                  <td style={{ padding: 8, borderBottom: '1px solid var(--border)' }}>
                     <button className="btn btn--brand" type="button" onClick={() => openEditMotive(m)}>
                       Editar
                     </button>

@@ -173,7 +173,7 @@ export default function InsumosPedidoModal({ open, onClose, seccion }) {
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
       style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, zIndex: 9999 }}
     >
-      <div style={{ width: 'min(760px, 100%)', maxHeight: '90vh', overflow: 'auto', background: '#fff', borderRadius: 14, border: '1px solid #e5e7eb', boxShadow: '0 18px 55px rgba(0,0,0,0.25)' }}>
+      <div style={{ width: 'min(760px, 100%)', maxHeight: '90vh', overflow: 'auto', background: 'var(--surface)', borderRadius: 14, border: '1px solid #e5e7eb', boxShadow: '0 18px 55px rgba(0,0,0,0.25)' }}>
         <div style={{ padding: '12px 14px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, background: '#f8fafc', position: 'sticky', top: 0 }}>
           <div style={{ fontWeight: 900 }}>Pedido de insumos del día</div>
           <button className="btn" type="button" onClick={onClose}>Cerrar</button>
@@ -186,7 +186,7 @@ export default function InsumosPedidoModal({ open, onClose, seccion }) {
           {!loading && pedido ? (
             <>
               <div style={{ fontWeight: 800 }}>
-                Estado: <span style={{ color: isAbierto ? '#0f766e' : '#334155' }}>{STATUS_LABELS[pedido.status] || pedido.status}</span>
+                Estado: <span style={{ color: isAbierto ? '#0f766e' : 'var(--muted)' }}>{STATUS_LABELS[pedido.status] || pedido.status}</span>
                 {pedido.confirmed_by_name ? (
                   <span style={{ opacity: 0.75, fontWeight: 600 }}>
                     {' '}— confirmado por {pedido.confirmed_by_name} a las{' '}
@@ -216,7 +216,7 @@ export default function InsumosPedidoModal({ open, onClose, seccion }) {
                             }}
                           >
                             <div>
-                              <div style={{ fontWeight: 700, color: pendiente ? '#b91c1c' : '#0f172a' }}>{producto.producto_nombre}</div>
+                              <div style={{ fontWeight: 700, color: pendiente ? '#b91c1c' : 'var(--text)' }}>{producto.producto_nombre}</div>
                               {pendiente ? (
                                 <div style={{ fontSize: 11, color: '#b91c1c', fontWeight: 700 }}>
                                   {item.is_carryover ? 'Pendiente de entrega anterior' : 'Entrega parcial anterior'}
@@ -264,13 +264,13 @@ export default function InsumosPedidoModal({ open, onClose, seccion }) {
                         key={item.id}
                         style={{
                           display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
-                          border: `1px solid ${pendiente ? '#fecaca' : '#e5e7eb'}`,
-                          background: pendiente ? '#fef2f2' : '#fff',
+                          border: `1px solid ${pendiente ? '#fecaca' : 'var(--border)'}`,
+                          background: pendiente ? '#fef2f2' : 'var(--surface)',
                           borderRadius: 10,
                         }}
                       >
                         <div style={{ flex: 1 }}>
-                          <div style={{ fontWeight: 800, color: pendiente ? '#b91c1c' : '#0f172a' }}>{item.producto_nombre}</div>
+                          <div style={{ fontWeight: 800, color: pendiente ? '#b91c1c' : 'var(--text)' }}>{item.producto_nombre}</div>
                           {pendiente ? (
                             <div style={{ fontSize: 12, color: '#b91c1c', fontWeight: 700 }}>
                               {item.is_carryover

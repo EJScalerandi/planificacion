@@ -141,8 +141,8 @@ export default function IpanelReadOnlyPage() {
 
   // estilos base
   const cellBase   = { border: `2px solid ${bordo}`, padding: 8, borderRadius: 12, boxSizing: 'border-box' };
-  const headerCell = { ...cellBase, background:'#fafafa', fontWeight:700, textAlign:'center' };
-  const nvCell     = { ...cellBase, background:'#fff', minHeight:CELL_MIN_H, display:'flex', alignItems:'center', justifyContent:'center', gap:4, flexDirection:'column' };
+  const headerCell = { ...cellBase, background:'var(--surface)', fontWeight:700, textAlign:'center' };
+  const nvCell     = { ...cellBase, background:'var(--surface)', minHeight:CELL_MIN_H, display:'flex', alignItems:'center', justifyContent:'center', gap:4, flexDirection:'column' };
 
   // chips (visor partidas)
   const chip = {

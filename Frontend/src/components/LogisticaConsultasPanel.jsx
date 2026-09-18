@@ -87,7 +87,7 @@ function ShellModal({ onClose, title, children, width = 'min(980px, 100%)' }) {
 
 const STATUS_LABEL = { pending: 'Pendiente', in_progress: 'En proceso', closed: 'Cerrada' };
 function statusTone(status) {
-  if (status === 'closed') return { bg: '#f1f5f9', fg: '#475569', border: '#cbd5e1' };
+  if (status === 'closed') return { bg: '#f1f5f9', fg: 'var(--muted)', border: '#cbd5e1' };
   if (status === 'in_progress') return { bg: '#fffbeb', fg: '#92400e', border: '#f59e0b' };
   return { bg: '#fef2f2', fg: '#991b1b', border: '#fca5a5' };
 }

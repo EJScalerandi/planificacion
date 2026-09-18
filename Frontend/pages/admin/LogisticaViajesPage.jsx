@@ -89,7 +89,7 @@ export default function LogisticaViajesPage() {
   if (accessMode === 'none') {
     return (
       <div className="container">
-        <div style={{ background: '#fff5f5', border: '1px solid #fecaca', padding: 12, borderRadius: 12 }}>
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', padding: 12, borderRadius: 12 }}>
           No tenés permisos para ver Logística de Viajes. Pedí que te asignen: <b>preproduccion:full</b>,{' '}
           <b>preproduccion:admin</b> o <b>preproduccion:comercial_view</b>.
         </div>

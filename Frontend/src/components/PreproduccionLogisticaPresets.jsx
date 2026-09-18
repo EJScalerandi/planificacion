@@ -194,7 +194,7 @@ export default function PreproduccionLogisticaPresets({ open, onClose, distribut
       <div
         style={{
           width: 'min(1100px, 100%)',
-          background: '#fff',
+          background: 'var(--surface)',
           borderRadius: 14,
           border: '1px solid #e5e7eb',
           boxShadow: '0 12px 32px rgba(0,0,0,0.18)',
@@ -229,7 +229,7 @@ export default function PreproduccionLogisticaPresets({ open, onClose, distribut
         <div style={{ overflow: 'auto', border: '1px solid #e5e7eb', borderRadius: 12 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
-              <tr style={{ background: '#f9fafb' }}>
+              <tr style={{ background: 'var(--surface)' }}>
                 <th style={th}>Distribuidor</th>
                 <th style={th}>Nombre Cliente</th>
                 <th style={th}>Email</th>
@@ -261,7 +261,7 @@ export default function PreproduccionLogisticaPresets({ open, onClose, distribut
                           );
                         })}
                       </select>
-                      <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>
+                      <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
                         Si no aparece, es porque aún no hay registros con ese distribuidor (RazSoc) en la tabla.
                       </div>
                     </td>
@@ -304,7 +304,7 @@ export default function PreproduccionLogisticaPresets({ open, onClose, distribut
 
               {items.length === 0 ? (
                 <tr>
-                  <td style={{ ...td, padding: 12, color: '#6b7280' }} colSpan={6}>
+                  <td style={{ ...td, padding: 12, color: 'var(--muted)' }} colSpan={6}>
                     No hay presets cargados. Tocá “Agregar”.
                   </td>
                 </tr>
@@ -313,7 +313,7 @@ export default function PreproduccionLogisticaPresets({ open, onClose, distribut
           </table>
         </div>
 
-        <div style={{ marginTop: 8, fontSize: 11, color: '#6b7280' }}>
+        <div style={{ marginTop: 8, fontSize: 11, color: 'var(--muted)' }}>
           Guardado local (este navegador). Si necesitás multiusuario, esto lo migramos a backend.
         </div>
       </div>

@@ -148,7 +148,7 @@ export default function LogisticaParadasExtraModal({ open, puntosExtra, onClose,
                 </tr>
               ))}
               {puntos.length === 0 ? (
-                <tr><td style={{ ...td, color: '#6b7280' }} colSpan={4}>No hay paradas estándar cargadas todavía.</td></tr>
+                <tr><td style={{ ...td, color: 'var(--muted)' }} colSpan={4}>No hay paradas estándar cargadas todavía.</td></tr>
               ) : null}
             </tbody>
           </table>

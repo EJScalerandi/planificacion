@@ -76,7 +76,7 @@ export default function ServicioTecnicoConfigModal({ open, config, onClose, onCh
                     <td style={td}><button className="btn" style={{ padding: '2px 6px', fontSize: 11, borderColor: '#ef4444', color: '#991b1b' }} disabled={busy} onClick={() => run(() => deleteStVehiculo(v.id))}>Borrar</button></td>
                   </tr>
                 ))}
-                {vehiculos.length === 0 ? <tr><td style={{ ...td, color: '#6b7280' }} colSpan={3}>Sin vehículos cargados.</td></tr> : null}
+                {vehiculos.length === 0 ? <tr><td style={{ ...td, color: 'var(--muted)' }} colSpan={3}>Sin vehículos cargados.</td></tr> : null}
               </tbody>
             </table>
           </div>
@@ -101,7 +101,7 @@ export default function ServicioTecnicoConfigModal({ open, config, onClose, onCh
                     <td style={td}><button className="btn" style={{ padding: '2px 6px', fontSize: 11, borderColor: '#ef4444', color: '#991b1b' }} disabled={busy} onClick={() => run(() => deleteStCuadrilla(c.id))}>Borrar</button></td>
                   </tr>
                 ))}
-                {cuadrillas.length === 0 ? <tr><td style={{ ...td, color: '#6b7280' }} colSpan={3}>Sin cuadrillas cargadas.</td></tr> : null}
+                {cuadrillas.length === 0 ? <tr><td style={{ ...td, color: 'var(--muted)' }} colSpan={3}>Sin cuadrillas cargadas.</td></tr> : null}
               </tbody>
             </table>
 

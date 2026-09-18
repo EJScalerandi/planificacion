@@ -75,7 +75,7 @@ const daysUntil = (ymd) => {
 function getPlanIndicator(p) {
   const fecha = dateOnly(p.fecha_plan);
   if (!fecha) {
-    return { color: '#d1d5db', label: 'Sin fecha', days: null, title: 'Sin fecha planificada' }; // gris
+    return { color: 'var(--muted)', label: 'Sin fecha', days: null, title: 'Sin fecha planificada' }; // gris
   }
 
   const apFinished = (p.armado_primario || '').toLowerCase() === 'finalizado';
@@ -220,8 +220,8 @@ export default function PlantaReadOnlyPage() {
 
   // estilos base
   const cellBase   = { border: `2px solid ${bordo}`, padding: 8, borderRadius: 12, boxSizing: 'border-box' };
-  const headerCell = { ...cellBase, background:'#fafafa', fontWeight:700, textAlign:'center' };
-  const nvCell     = { ...cellBase, background:'#fff', minHeight:CELL_MIN_H, display:'flex', alignItems:'center', justifyContent:'center', gap:4, flexDirection:'column' };
+  const headerCell = { ...cellBase, background:'var(--surface)', fontWeight:700, textAlign:'center' };
+  const nvCell     = { ...cellBase, background:'var(--surface)', minHeight:CELL_MIN_H, display:'flex', alignItems:'center', justifyContent:'center', gap:4, flexDirection:'column' };
 
   // chips estilos
   const chip = {

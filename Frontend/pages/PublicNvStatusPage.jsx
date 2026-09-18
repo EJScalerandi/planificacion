@@ -237,8 +237,8 @@ export default function PublicNvStatusPage() {
       {!loading && !err && hasQuery && !invalidNv && !target ? (
         <div
           style={{
-            border: '1px solid #e5e7eb',
-            background: '#fff',
+            border: '1px solid var(--border)',
+            background: 'var(--surface)',
             borderRadius: 12,
             padding: 14,
           }}
@@ -260,7 +260,7 @@ export default function PublicNvStatusPage() {
             style={{
               padding: '14px 16px',
               borderBottom: '1px solid var(--border)',
-              background: '#f8fafc',
+              background: 'var(--surface-muted)',
               display: 'grid',
               gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
               gap: 10,
@@ -276,7 +276,7 @@ export default function PublicNvStatusPage() {
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 520 }}>
               <thead>
-                <tr style={{ background: '#ffffff' }}>
+                <tr style={{ background: 'var(--surface)' }}>
                   <th style={thStyle}>Sector</th>
                   <th style={thStyle}>Estado</th>
                   <th style={thStyle}>Fecha de finalización</th>

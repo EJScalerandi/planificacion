@@ -30,7 +30,7 @@ function montoLegible(n) {
 function GastoRowAdmin({ g }) {
   const revisar = g.estado_revision === 'revisar';
   return (
-    <tr style={revisar ? { background: '#fef2f2' } : undefined}>
+    <tr style={revisar ? { background: 'var(--surface-muted)' } : undefined}>
       <td style={td}>
         {revisar && (g.campos_inciertos || []).includes('fecha') ? <span style={{ color: '#dc2626', fontWeight: 800 }}>⚠️ </span> : null}
         {fechaLegible(g.fecha)}
@@ -136,7 +136,7 @@ function RendicionDetalle({ viajeId, onVolver, onAprobado }) {
               <tbody>
                 {(detalle.gastos || []).map((g) => <GastoRowAdmin key={g.id} g={g} />)}
                 {(detalle.gastos || []).length === 0 ? (
-                  <tr><td style={{ ...td, color: '#6b7280' }} colSpan={6}>Sin gastos cargados.</td></tr>
+                  <tr><td style={{ ...td, color: 'var(--muted)' }} colSpan={6}>Sin gastos cargados.</td></tr>
                 ) : null}
               </tbody>
             </table>
@@ -218,9 +218,9 @@ export default function LogisticaRendicionesModal({ open, onClose }) {
               </thead>
               <tbody>
                 {rendiciones == null ? (
-                  <tr><td style={{ ...td, color: '#6b7280' }} colSpan={8}>Cargando…</td></tr>
+                  <tr><td style={{ ...td, color: 'var(--muted)' }} colSpan={8}>Cargando…</td></tr>
                 ) : rendiciones.length === 0 ? (
-                  <tr><td style={{ ...td, color: '#6b7280' }} colSpan={8}>No hay rendiciones cargadas todavía.</td></tr>
+                  <tr><td style={{ ...td, color: 'var(--muted)' }} colSpan={8}>No hay rendiciones cargadas todavía.</td></tr>
                 ) : (
                   rendiciones.map((r) => (
                     <tr key={r.viaje_id}>

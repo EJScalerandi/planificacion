@@ -479,7 +479,7 @@ export default function LogisticaWhatsappPage() {
                         const tieneHeaderMedia = t.components.some((c) => c.type === 'HEADER' && c.format !== 'TEXT');
                         const sePuedeMandarDirecto = t.status === 'APPROVED' && !tieneVariables && !tieneHeaderMedia;
                         return (
-                          <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid #fcd34d', borderRadius: 8, padding: 8 }}>
+                          <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--surface)', border: '1px solid #fcd34d', borderRadius: 8, padding: 8 }}>
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ fontSize: 12, fontWeight: 800 }}>{t.name} <span style={{ fontWeight: 400, opacity: 0.6 }}>({t.language})</span></div>
                               {!sePuedeMandarDirecto ? (

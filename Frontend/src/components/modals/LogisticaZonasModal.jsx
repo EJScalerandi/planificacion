@@ -370,7 +370,7 @@ export default function LogisticaZonasModal({ open, config, onClose, onChanged }
                 );
               })}
               {zonas.length === 0 ? (
-                <div style={{ color: '#6b7280', fontSize: 12 }}>No hay zonas cargadas todavía.</div>
+                <div style={{ color: 'var(--muted)', fontSize: 12 }}>No hay zonas cargadas todavía.</div>
               ) : null}
             </div>
           </div>

@@ -227,7 +227,7 @@ export default function LogisticaVehiculosModal({ open, config, onClose, onChang
                 </tr>
               ))}
               {vehiculos.length === 0 ? (
-                <tr><td style={{ ...td, color: '#6b7280' }} colSpan={5}>No hay vehículos cargados todavía.</td></tr>
+                <tr><td style={{ ...td, color: 'var(--muted)' }} colSpan={5}>No hay vehículos cargados todavía.</td></tr>
               ) : null}
             </tbody>
           </table>

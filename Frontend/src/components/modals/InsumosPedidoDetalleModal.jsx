@@ -72,7 +72,7 @@ export default function InsumosPedidoDetalleModal({ open, onClose, pedidoId, onC
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
       style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, zIndex: 9999 }}
     >
-      <div style={{ width: 'min(720px, 100%)', maxHeight: '90vh', overflow: 'auto', background: '#fff', borderRadius: 14, border: '1px solid #e5e7eb', boxShadow: '0 18px 55px rgba(0,0,0,0.25)' }}>
+      <div style={{ width: 'min(720px, 100%)', maxHeight: '90vh', overflow: 'auto', background: 'var(--surface)', borderRadius: 14, border: '1px solid #e5e7eb', boxShadow: '0 18px 55px rgba(0,0,0,0.25)' }}>
         <div style={{ padding: '12px 14px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, background: '#f8fafc', position: 'sticky', top: 0 }}>
           <div style={{ fontWeight: 900 }}>
             Pedido #{pedido?.id ?? pedidoId} {pedido ? `· ${pedido.seccion} · ${String(pedido.fecha).slice(0, 10)}` : ''}
@@ -113,8 +113,8 @@ export default function InsumosPedidoDetalleModal({ open, onClose, pedidoId, onC
                         style={{
                           display: 'flex', flexDirection: 'column', gap: 8,
                           padding: '8px 10px',
-                          border: `1px solid ${enFalta ? '#fecaca' : '#e5e7eb'}`,
-                          background: enFalta ? '#fef2f2' : '#fff',
+                          border: `1px solid ${enFalta ? '#fecaca' : 'var(--border)'}`,
+                          background: enFalta ? '#fef2f2' : 'var(--surface)',
                           borderRadius: 10,
                         }}
                       >

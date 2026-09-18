@@ -45,8 +45,8 @@ function Modal({ open, onClose, title, children, width = 'min(680px,100%)' }) {
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
       style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, zIndex: 9999 }}
     >
-      <div style={{ width, background: '#fff', borderRadius: 14, border: '1px solid #e5e7eb', boxShadow: '0 18px 55px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
-        <div style={{ padding: '12px 14px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, background: '#f8fafc' }}>
+      <div style={{ width, background: 'var(--surface)', borderRadius: 14, border: '1px solid var(--border)', boxShadow: '0 18px 55px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
+        <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, background: 'var(--surface-muted)' }}>
           <div style={{ fontWeight: 900 }}>{title}</div>
           <button className="btn" type="button" onClick={onClose}>Cerrar</button>
         </div>
@@ -202,9 +202,9 @@ function RefabricacionModal({ open, onClose, porton, onCreated }) {
                   key={e.key}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
-                    border: checked ? '2px solid #dc2626' : '1px solid #d1d5db',
+                    border: checked ? '2px solid #dc2626' : '1px solid var(--border)',
                     borderRadius: 8, padding: '5px 10px',
-                    background: checked ? '#fff5f5' : '#fff',
+                    background: checked ? '#fff5f5' : 'var(--surface)',
                     fontWeight: checked ? 800 : 500,
                     fontSize: 13,
                   }}
@@ -464,7 +464,7 @@ export default function RefabricacionPage() {
       )}
 
       {!loading && total === 0 && !err && (
-        <div style={{ padding: 20, border: '1px solid #e5e7eb', borderRadius: 12, background: '#f8fafc', textAlign: 'center', opacity: 0.7 }}>
+        <div style={{ padding: 20, border: '1px solid var(--border)', borderRadius: 12, background: 'var(--surface-muted)', textAlign: 'center', opacity: 0.7 }}>
           No hay portones observados ni rechazados pendientes de revisión.
         </div>
       )}

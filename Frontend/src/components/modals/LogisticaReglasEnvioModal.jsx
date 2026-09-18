@@ -175,7 +175,7 @@ export default function LogisticaReglasEnvioModal({ open, config, onClose, onCha
                 </tr>
               ))}
               {reglas.length === 0 ? (
-                <tr><td style={{ ...td, color: '#6b7280' }} colSpan={7}>No hay reglas cargadas todavía.</td></tr>
+                <tr><td style={{ ...td, color: 'var(--muted)' }} colSpan={7}>No hay reglas cargadas todavía.</td></tr>
               ) : null}
             </tbody>
           </table>

@@ -815,7 +815,7 @@ export default function CreateGatePage() {
                       <strong>{productionWeekLabel(p)}</strong>
                       <span style={{ fontSize:12, opacity:.8 }}>N° Portón {p.nlista}</span>
                       {p.observaciones && (
-                        <span style={{ fontSize:11, marginTop:4, color:'#555' }}>
+                        <span style={{ fontSize:11, marginTop:4, color:'var(--muted)' }}>
                           📝 {p.observaciones.slice(0, 40)}{p.observaciones.length > 40 ? '…' : ''}
                         </span>
                       )}

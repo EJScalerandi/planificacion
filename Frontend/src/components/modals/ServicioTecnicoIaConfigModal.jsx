@@ -69,7 +69,7 @@ export default function ServicioTecnicoIaConfigModal({ open, onClose }) {
         </div>
 
         {err ? <div style={{ color: 'crimson', fontWeight: 800, fontSize: 12, marginBottom: 8 }}>{err}</div> : null}
-        {saved ? <div style={{ color: '#0a6a33', fontWeight: 800, fontSize: 12, marginBottom: 8 }}>Guardado.</div> : null}
+        {saved ? <div style={{ color: 'var(--brand-700)', fontWeight: 800, fontSize: 12, marginBottom: 8 }}>Guardado.</div> : null}
 
         {loading || !form ? (
           <div style={{ opacity: 0.75, fontSize: 13 }}>Cargando…</div>

@@ -14,37 +14,98 @@ body {
 :root{
   --bg: #f6f7f9;
   --surface: #ffffff;
+  --surface-muted: #f3f4f6;
+  --surface-2: #f8fafc;
   --text: #101418;
+  --ink: #0f172a;
+  --ink-weak: #475569;
   --muted: #6b7280;
 
   --brand: #008241;
+  /* --brand-700 es texto/heading (títulos, tabs activos, links); se aclara en
+     dark mode para que siga siendo legible sobre superficies oscuras.
+     --brand-700-fixed es la franja de encabezado de .stage__head: un verde
+     oscuro fijo en los dos temas, porque siempre lleva texto blanco encima.
+     --brand-line es el borde grueso de .h1/.metric/.stage/.cell/.chip: en
+     light queda igual que --brand, pero en dark se desatura (si no, cada
+     tarjeta termina con un borde verde neón encima del fondo oscuro). */
   --brand-700: #0a6a33;
+  --brand-700-fixed: #0a6a33;
   --brand-100: #e8f6ee;
+  --brand-line: var(--brand);
   --border: #dfe3e8;
 
+  /* Los 3 pares "estado + ink" son badges/celdas autocontenidos (fondo pastel
+     + texto oscuro a juego, ver .cell--* y .pp-badge--*): quedan iguales en
+     los dos temas a propósito, para no perder contraste en ninguno. */
   --state-pending: #f7b1b1;
+  --state-pending-ink: #991b1b;
   --state-process: #ffe58a;
+  --state-process-ink: #92400e;
   --state-done: #c9f2d7;
+  --state-done-ink: #065f46;
 
   --radius: 14px;
   --shadow: 0 6px 18px rgba(0,0,0,.06);
+
+  color-scheme: light;
 }
 
-/* Modo oscuro opcional */
-@media (prefers-color-scheme: dark){
-  :root{
-    --bg:#0c0f12; --surface:#11161b; --text:#e9eef4; --muted:#98a2b3; --border:#1f242a;
-    --brand-100:#0f291e; --state-pending:#562c2c; --state-process:#4c3f10; --state-done:#163524;
-  }
+/* Dark mode: se activa con data-theme="dark" en <html>, controlado desde
+   src/theme/themeStore.js (persistido, con opción "auto" que sigue al SO).
+   Reemplaza al viejo @media (prefers-color-scheme: dark) + styles/force-light.css:
+   ese combo forzaba SIEMPRE claro porque el dark automático rompía /despacho
+   y otras pantallas (bg oscuro con textos/inputs que seguían con fondos
+   claros hardcodeados). Ahora el cambio de tema es explícito y auditado. */
+:root[data-theme="dark"]{
+  --bg: #0c0f13;
+  --surface: #1c232c;
+  --surface-muted: #232b35;
+  --surface-2: #262f3a;
+  --text: #eef2f4;
+  --ink: #eef2f4;
+  --ink-weak: #9aa7b8;
+  --muted: #93a0ac;
+
+  /* Verde bien saturado en headings/tabs quedaba "neón" repetido por toda la
+     pantalla; se cambia por un blanco con apenas un dejo verde, y el acento
+     de marca full-saturación se reserva para botones/badges. */
+  --brand-700: #d7ecdf;
+  --brand-100: #15311f;
+  --brand-line: #3c7a56;
+  --border: rgba(238, 242, 244, 0.16);
+
+  --shadow: 0 1px 0 rgba(255,255,255,.05) inset, 0 16px 38px rgba(0,0,0,.6);
+
+  color-scheme: dark;
 }
 
 /* ---- Helpers ---- */
 .container { max-width: 1440px; margin: 0 auto; padding: 16px; }
 .header-row { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+
+/* Barra superior: sigue el tema (clara en modo claro, oscura en modo
+   oscuro) igual que el resto de la app, en vez de quedar siempre oscura.
+   Solo aporta una superficie/borde levemente distinta de la página para
+   separar el título de las acciones. */
+.ph-topbar {
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+}
+.ph-topbar .h1 { margin: 0; }
+.ph-topbar-title {
+  margin: 0;
+  color: var(--text);
+  font-weight: 800;
+  font-size: clamp(16px, 2vw, 20px);
+}
 .h1 {
   margin:0;
   padding:10px 14px;
-  border: 3px solid var(--brand);
+  border: 3px solid var(--brand-line);
   color: var(--brand-700);
   background: var(--surface);
   border-radius: 12px;
@@ -63,7 +124,7 @@ body {
 
 /* Métricas */
 .metric {
-  border: 3px solid var(--brand);
+  border: 3px solid var(--brand-line);
   border-radius: 12px;
   box-shadow: var(--shadow);
   background: var(--surface);
@@ -72,8 +133,11 @@ body {
   font-weight: 900;
   font-size: clamp(18px, 2vw, 22px);
 }
-.metric--warn { background: #fff8f0; }
-.metric--ok   { background: #f3fff7; }
+/* Fondo pastel fijo en los dos temas (como .cell--*/.pp-badge--*): por eso
+   necesitan su propio color de texto fijo, si no heredan var(--text) y en
+   dark mode quedan casi ilegibles (texto claro sobre fondo claro). */
+.metric--warn { background: #fff8f0; color: #7a4a00; }
+.metric--ok   { background: #f3fff7; color: #0f5132; }
 
 /* ---- Tablero por columnas ---- */
 .stage-grid {
@@ -84,14 +148,17 @@ body {
 }
 .stage {
   display:flex; flex-direction:column; background: var(--surface);
-  border: 2px solid var(--brand);
+  border: 2px solid var(--brand-line);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   min-height: 320px;
 }
 .stage__head {
   padding: 10px 12px;
-  color:#fff; background: var(--brand-700);
+  /* Fijo (no usa var(--brand-700)): esa variable se aclara en dark mode para
+     que sirva como color de texto/heading, y --brand-700-fixed es la franja
+     oscura de esta franja de encabezado en los dos temas por igual. */
+  color:#fff; background: var(--brand-700-fixed, #0a6a33);
   border-top-left-radius: var(--radius);
   border-top-right-radius: var(--radius);
   font-weight: 800;
@@ -124,15 +191,15 @@ body {
 
 /* Badges/estados (status gate) */
 .cell {
-  border: 2px solid var(--brand);
+  border: 2px solid var(--brand-line);
   border-radius: 12px;
   min-height: 72px;
   padding: 10px 12px;
   display:flex; flex-direction:column; justify-content:center;
 }
-.cell--pending  { background: var(--state-pending);  }
-.cell--process  { background: var(--state-process);  }
-.cell--done     { background: var(--state-done);     }
+.cell--pending  { background: var(--state-pending); color: var(--state-pending-ink); }
+.cell--process  { background: var(--state-process); color: var(--state-process-ink); }
+.cell--done     { background: var(--state-done);    color: var(--state-done-ink); }
 
 /* Responsivo */
 @media (max-width: 1280px){
@@ -150,7 +217,7 @@ body {
 }
 .input-num--filled{
   background: var(--brand-100);
-  border-color: var(--brand);
+  border-color: var(--brand-line);
   box-shadow: 0 0 0 3px rgba(0,130,65,.15);
   color: var(--text);
 }
@@ -158,7 +225,7 @@ body {
 /* Chips */
 .chip-preview{ display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .chip{
-  border: 2px solid var(--brand);
+  border: 2px solid var(--brand-line);
   border-radius: 12px;
   padding: 6px 10px;
   font-weight: 900;
@@ -187,7 +254,7 @@ body {
 
 .pp-card{
   background: var(--surface);
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border);
   border-radius: 14px;
   box-shadow: 0 10px 30px rgba(15, 23, 42, .08);
   padding: 12px;
@@ -224,8 +291,9 @@ body {
   gap: 8px;
   padding: 6px 10px;
   border-radius: 999px;
-  border: 1px solid #e5e7eb;
-  background: color-mix(in srgb, var(--surface-muted) 70%, #fff);
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface-muted) 70%, var(--surface));
+  color: var(--ink);
   font-weight: 800;
   font-feature-settings: "tnum" 1;
 }
@@ -289,7 +357,7 @@ body {
 .pp-tableWrap{
   overflow-x: scroll;       /* fuerza scrollbar horizontal */
   overflow-y: auto;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border);
   border-radius: 14px;
   background: var(--surface);
   scrollbar-gutter: stable both-edges;
@@ -315,7 +383,7 @@ body {
   overflow-y: hidden;
   scrollbar-gutter: stable;
   background: var(--surface);
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--border);
   /* para que no “tape” sombras/elementos */
   z-index: 20;
 }
@@ -341,14 +409,14 @@ body {
 .pp-table th,
 .pp-table td{
   padding: 10px 12px;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--border);
   white-space: nowrap;
   vertical-align: top;
 }
 
 .pp-table th,
 .pp-table td{
-  border-right: 1px solid #eef2f7;
+  border-right: 1px solid var(--border);
 }
 .pp-table th:last-child,
 .pp-table td:last-child{
@@ -362,7 +430,7 @@ body {
   position: sticky;
   top: 0;
   z-index: 30; /* antes 50 */
-  background: linear-gradient(180deg, var(--surface-muted), #fff);
+  background: linear-gradient(180deg, var(--surface-muted), var(--surface));
   background-clip: padding-box;
   text-align: left;
   font-weight: 900;
@@ -374,16 +442,16 @@ body {
   position: sticky;
   top: var(--pp-head-h);
   z-index: 20; /* antes 40 */
-  background: color-mix(in srgb, var(--surface-muted) 85%, #fff);
-  box-shadow: inset 0 0 0 1px #d1d5db;
+  background: color-mix(in srgb, var(--surface-muted) 85%, var(--surface));
+  box-shadow: inset 0 0 0 1px var(--border);
   padding: 8px 10px;
 }
 
 .pp-table tbody tr:nth-child(even){
-  background: color-mix(in srgb, var(--surface-muted) 55%, #fff);
+  background: color-mix(in srgb, var(--surface-muted) 55%, var(--surface));
 }
 .pp-table tbody tr:hover{
-  background: color-mix(in srgb, var(--brand) 10%, #fff);
+  background: color-mix(in srgb, var(--brand) 10%, var(--surface));
 }
 
 .pp-input,
@@ -392,20 +460,20 @@ body {
   font-size: 12px;
   padding: 7px 10px;
   border-radius: 12px;
-  border: 2px solid #d1d5db;
+  border: 2px solid var(--border);
   outline: none;
-  background: #fff;
+  background: var(--surface);
   color: var(--ink);
 }
 
 .pp-input:focus,
 .pp-select:focus{
-  border-color: color-mix(in srgb, var(--brand) 70%, #d1d5db);
+  border-color: color-mix(in srgb, var(--brand) 70%, var(--border));
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand) 18%, transparent);
 }
 
 .pp-input::placeholder{
-  color: color-mix(in srgb, var(--ink-weak) 70%, #fff);
+  color: color-mix(in srgb, var(--ink-weak) 70%, var(--surface));
 }
 
 .pp-input--date{ width: 160px; }
@@ -498,7 +566,7 @@ body {
   max-height: 480px;
   overflow: auto;
   background: var(--surface);
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border);
   border-radius: 14px;
   box-shadow: 0 18px 45px rgba(15, 23, 42, .14);
   padding: 10px;
@@ -531,7 +599,7 @@ body {
 }
 
 .pp-panelRow:hover{
-  background: color-mix(in srgb, var(--brand) 8%, #fff);
+  background: color-mix(in srgb, var(--brand) 8%, var(--surface));
 }
 
 .pp-panelHint{
@@ -639,7 +707,7 @@ body {
   max-height: calc(100vh - 24px);
   overflow: auto;
   background: var(--surface);
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border);
   border-radius: 16px;
   box-shadow: 0 20px 70px rgba(15, 23, 42, .35);
 }
@@ -648,8 +716,8 @@ body {
   position: sticky;
   top: 0;
   z-index: 2;
-  background: linear-gradient(180deg, var(--surface), color-mix(in srgb, var(--surface) 80%, #fff));
-  border-bottom: 1px solid #e5e7eb;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
   padding: 14px 16px;
   display: flex;
   align-items: center;
@@ -671,8 +739,8 @@ body {
 }
 
 .pp-modal__close{
-  border: 1px solid #e5e7eb;
-  background: #fff;
+  border: 1px solid var(--border);
+  background: var(--surface);
   border-radius: 12px;
   padding: 8px 10px;
   cursor: pointer;
@@ -719,9 +787,9 @@ body {
   font-size: 13px;
   padding: 10px 12px;
   border-radius: 12px;
-  border: 2px solid #d1d5db;
+  border: 2px solid var(--border);
   outline: none;
-  background: #fff;
+  background: var(--surface);
   color: var(--ink);
 }
 
@@ -755,7 +823,7 @@ body {
   gap: 10px;
   justify-content: flex-end;
   padding: 12px 16px 16px 16px;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--border);
 }
 
 .pp-btn--danger{
@@ -768,8 +836,9 @@ body {
 .pp-btnCell{
   padding: 7px 10px;
   border-radius: 10px;
-  border: 1px solid #e5e7eb;
-  background: #f9fafb;
+  border: 1px solid var(--border);
+  background: var(--surface-muted);
+  color: var(--ink);
   cursor: pointer;
   font-size: 12px;
   font-weight: 900;
@@ -794,7 +863,7 @@ body {
   justify-content: flex-end;
   gap: 10px;
   padding-top: 12px;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--border);
   margin-top: 12px;
 }
 
@@ -808,17 +877,17 @@ body {
 
 /* Refuerzo: botón secundario visible */
 .pp-modal__footer .btn{
-  background: #f9fafb !important;
+  background: var(--surface-muted) !important;
   color: var(--ink) !important;
-  border: 1px solid #e5e7eb !important;
+  border: 1px solid var(--border) !important;
 }
 
 /* Si tenés pp-btnCell como “botón de celda”, aseguro que se vea bien en modal también */
 .pp-btnCell{
   border-radius: 10px;
   padding: .6em 1em;
-  border: 1px solid #e5e7eb;
-  background: #f9fafb;
+  border: 1px solid var(--border);
+  background: var(--surface-muted);
   color: var(--ink);
   cursor: pointer;
 }
@@ -855,7 +924,7 @@ body {
   width: min(640px, 100%);
   background: var(--surface, #fff);
   color: var(--ink, #0f172a);
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border);
   border-radius: 14px;
   box-shadow: 0 18px 50px rgba(15, 23, 42, .18);
   overflow: hidden;
@@ -867,8 +936,8 @@ body {
   justify-content: space-between;
   gap: 16px;
   padding: 14px 16px;
-  border-bottom: 1px solid #e5e7eb;
-  background: linear-gradient(180deg, var(--surface-muted, #f3f4f6), #fff);
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, var(--surface-muted, #f3f4f6), var(--surface));
 }
 
 .pp-modalTitle{
@@ -886,8 +955,8 @@ body {
   width: 38px;
   height: 38px;
   border-radius: 10px;
-  border: 1px solid #e5e7eb;
-  background: #fff;
+  border: 1px solid var(--border);
+  background: var(--surface);
   cursor: pointer;
   font-size: 20px;
   line-height: 1;
@@ -902,8 +971,8 @@ body {
   justify-content: flex-end;
   gap: 10px;
   padding: 14px 16px;
-  border-top: 1px solid #e5e7eb;
-  background: #fff;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
 }
 
 .pp-formGroup{ display: grid; gap: 8px; }
@@ -917,8 +986,8 @@ body {
 }
 
 .pp-chip{
-  border: 1px solid #e5e7eb;
-  background: #fff;
+  border: 1px solid var(--border);
+  background: var(--surface);
   padding: 10px 12px;
   border-radius: 999px;
   cursor: pointer;
@@ -1329,7 +1398,7 @@ body {
 }
 
 .idx-linkItem:hover {
-  background: color-mix(in srgb, var(--brand) 7%, #fff);
+  background: color-mix(in srgb, var(--brand) 7%, var(--surface));
   border-color: color-mix(in srgb, var(--brand) 25%, var(--border));
 }
 
@@ -1487,4 +1556,42 @@ html, body{
 }
 .route-fullbleed .pp-tableWrap::-webkit-scrollbar{
   height: 0;                         /* Chrome/Safari/Edge */
+}
+
+/* =========================================================
+   Theme toggle (claro / oscuro / auto)
+   ========================================================= */
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+}
+
+.theme-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.theme-toggle-btn:hover {
+  background: color-mix(in srgb, var(--brand) 10%, transparent);
+}
+
+.theme-toggle-btn.active {
+  background: var(--brand);
+  color: #fff;
 }

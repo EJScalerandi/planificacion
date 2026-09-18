@@ -376,7 +376,7 @@ export default function LogisticaCuadrillasModal({ open, config, onClose, onChan
                 </tr>
               ))}
               {cuadrillas.length === 0 ? (
-                <tr><td style={{ ...td, color: '#6b7280' }} colSpan={4}>No hay cuadrillas cargadas todavía.</td></tr>
+                <tr><td style={{ ...td, color: 'var(--muted)' }} colSpan={4}>No hay cuadrillas cargadas todavía.</td></tr>
               ) : null}
             </tbody>
           </table>
