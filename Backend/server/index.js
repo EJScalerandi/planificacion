@@ -604,6 +604,28 @@ const MIGRATIONS = [
     `,
   },
   {
+    // "Reuniones y Tareas" (/admin/reuniones) - agenda simple para que los
+    // admins carguen fecha/hora de reuniones entre ellos. Sin invitados/RSVP
+    // (no se pidió) - un espacio compartido, cualquier admin ve/crea/edita,
+    // mismo criterio "sin scope propio" que /admin/tickets.
+    name: 'reuniones_admin',
+    sql: `
+      CREATE TABLE IF NOT EXISTS public.reuniones (
+        id SERIAL PRIMARY KEY,
+        titulo TEXT NOT NULL,
+        descripcion TEXT,
+        fecha DATE NOT NULL,
+        hora_inicio TIME NOT NULL,
+        hora_fin TIME,
+        enlace TEXT,
+        creado_por TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_reuniones_fecha ON public.reuniones(fecha);
+    `,
+  },
+  {
     // Bandeja de WhatsApp Business: TODOS los mensajes (entrantes por webhook
     // + salientes desde la app) en una sola tabla, agrupados por teléfono,
     // para el chat tipo WhatsApp Web - pedido explícito del usuario. Ver

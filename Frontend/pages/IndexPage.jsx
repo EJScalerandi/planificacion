@@ -1,7 +1,8 @@
 // src/pages/IndexPage.jsx
 import { Link, useNavigate } from 'react-router-dom';
 import { useEffect, useMemo, useState } from 'react';
-import { fetchAdminTickets } from '../src/api';
+import { fetchAdminTickets, fetchReuniones } from '../src/api';
+import { todayISO10 } from '../src/utils/isoWeek';
 
 function parseJwtPayload(token) {
   try {
@@ -113,6 +114,29 @@ export default function IndexPage({ routes = [] }) {
     };
   }, []);
 
+  // Cuántas reuniones hay cargadas para HOY - mismo criterio que el badge de
+  // Tickets pendientes: para que no haga falta entrar a /admin/reuniones a
+  // ver si hay algo agendado.
+  const [reunionesHoyCount, setReunionesHoyCount] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    async function cargarReunionesHoy() {
+      try {
+        const hoy = todayISO10();
+        const { data } = await fetchReuniones({ desde: hoy, hasta: hoy });
+        if (!cancelled) setReunionesHoyCount((data?.reuniones || []).length);
+      } catch (err) {
+        console.error('Error cargando reuniones de hoy:', err);
+      }
+    }
+    cargarReunionesHoy();
+    const interval = setInterval(cargarReunionesHoy, 60000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
+
   const logout = () => {
     clearAdminSession();
     nav('/admin/login', { replace: true });
@@ -137,7 +161,7 @@ export default function IndexPage({ routes = [] }) {
     out.push({ path: '/admin/tickets', label: 'Admin · Tickets' });
     out.push({ path: '/admin/indice-programacion', label: 'Admin · Índice de Programación (BETA)' });
     return out;
-  }, [isPreprodOnly, isQcAdmin, isWfAdmin, canUsers, isPrefabAdmin, isStAdmin, isComprasAdmin, pendingTicketsCount]);
+  }, [isPreprodOnly, isQcAdmin, isWfAdmin, canUsers, isPrefabAdmin, isStAdmin, isComprasAdmin, pendingTicketsCount, reunionesHoyCount]);
 
   const opsRoutes = useMemo(() => {
     if (isPreprodOnly) return [];
@@ -189,7 +213,7 @@ export default function IndexPage({ routes = [] }) {
     if (!r.badge) return null;
     return (
       <span
-        title={`${r.badge} ticket${r.badge === 1 ? '' : 's'} pendiente${r.badge === 1 ? '' : 's'}`}
+        title={r.badgeTitle || String(r.badge)}
         style={{
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           minWidth: 18, height: 18, padding: '0 5px', marginLeft: 6, borderRadius: 999,
