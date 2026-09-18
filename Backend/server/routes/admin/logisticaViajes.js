@@ -5,6 +5,7 @@
 // portones con despacho/instalación de esa semana. Ver server/lib/logisticaViajesDb.js
 // para el detalle de las queries.
 const express = require('express');
+const multer = require('multer');
 const { adminAuth } = require('../../middleware/adminAuth');
 const db = require('../../lib/logisticaViajesDb');
 const { resolveCoordsForNvs, getSemanaMapa } = require('../../lib/logisticaMapa');
@@ -24,6 +25,8 @@ const {
 } = require('../../lib/logisticaParadasExtra');
 const gastosDb = require('../../lib/logisticaGastosDb');
 const adjuntosStorage = require('../../lib/logisticaAdjuntosStorage');
+const whatsapp = require('../../lib/logisticaWhatsapp');
+const despachoV2Db = require('../../lib/despachoV2Db');
 
 // Zonas del corredor + ruta real por calle comparten el mismo trigger
 // (cualquier cambio de paradas/orden de un viaje) - se disparan juntas.
@@ -334,6 +337,90 @@ router.delete('/logistica/puntos-extra/:id', requireFullAccess, asyncRoute(async
   res.json({ ok: true });
 }));
 
+// Plantillas de mensaje de WhatsApp Business ya cargadas en Meta - solo
+// lectura, para verlas desde acá en vez de entrar a WhatsApp Manager.
+router.get('/logistica/whatsapp-templates', asyncRoute(async (_req, res) => {
+  res.json({ ok: true, templates: await whatsapp.listarTemplates() });
+}));
+
+// ===== Bandeja de WhatsApp (chat) - lectura para cualquiera de los 3
+// scopes, igual que el resto de la config; mandar un mensaje requiere
+// preproduccion:full (misma regla que crear/editar viajes). =====
+router.get('/logistica/whatsapp/conversaciones', asyncRoute(async (_req, res) => {
+  res.json({ ok: true, conversaciones: await whatsapp.listarConversaciones() });
+}));
+router.get('/logistica/whatsapp/conversaciones/:telefono/mensajes', asyncRoute(async (req, res) => {
+  const [mensajes, nombreCliente, estado] = await Promise.all([
+    whatsapp.listarMensajes(req.params.telefono),
+    whatsapp.nombreClientePorTelefono(req.params.telefono).catch(() => null),
+    whatsapp.estadoConversacion(req.params.telefono),
+  ]);
+  res.json({ ok: true, mensajes, nombreCliente, ...estado });
+}));
+router.post('/logistica/whatsapp/conversaciones/:telefono/mensajes', requireFullAccess, asyncRoute(async (req, res) => {
+  const texto = String(req.body?.texto || '').trim();
+  if (!texto) return res.status(400).json({ error: 'Falta el texto del mensaje' });
+  const resultado = await whatsapp.enviarTextoLibre({ telefono: req.params.telefono, texto, enviadoPor: req.admin?.username || null });
+  if (!resultado.ok) return res.status(400).json({ error: resultado.error, detalle: resultado.detalle });
+  res.json({ ok: true, mensaje: resultado.mensaje });
+}));
+router.patch('/logistica/whatsapp/conversaciones/:telefono/nombre', requireFullAccess, asyncRoute(async (req, res) => {
+  const nombre = await whatsapp.setNombreContacto(req.params.telefono, req.body?.nombre, req.admin?.username || null);
+  res.json({ ok: true, nombre });
+}));
+router.post('/logistica/whatsapp/conversaciones/:telefono/template-simple', requireFullAccess, asyncRoute(async (req, res) => {
+  const name = String(req.body?.name || '').trim();
+  const language = String(req.body?.language || '').trim();
+  if (!name || !language) return res.status(400).json({ error: 'Falta name/language de la plantilla' });
+  const resultado = await whatsapp.enviarTemplateSimple({ telefono: req.params.telefono, templateName: name, language, enviadoPor: req.admin?.username || null });
+  if (!resultado.ok) return res.status(400).json({ error: resultado.error, detalle: resultado.detalle });
+  res.json({ ok: true, mensaje: resultado.mensaje });
+}));
+
+// Imagen/video/audio/documento adjuntado desde el chat - mismos formatos que
+// soporta WhatsApp para cada tipo (Meta rechaza lo que no soporte, el error
+// se propaga tal cual).
+const WA_MIME_TIPO = {
+  'image/jpeg': 'image', 'image/png': 'image', 'image/webp': 'image',
+  'video/mp4': 'video', 'video/3gpp': 'video',
+  'audio/aac': 'audio', 'audio/mp4': 'audio', 'audio/mpeg': 'audio', 'audio/amr': 'audio', 'audio/ogg': 'audio',
+  // webm/wav: nunca los acepta la API de WhatsApp directamente, pero son lo
+  // que graba el micrófono del navegador (MediaRecorder) - se transcodean a
+  // ogg/opus en logisticaWhatsapp.js#enviarMedia antes de mandar.
+  'audio/webm': 'audio', 'audio/wav': 'audio', 'audio/x-wav': 'audio',
+  'application/pdf': 'document', 'application/msword': 'document', 'text/plain': 'document',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'document',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'document',
+};
+// El navegador manda el mimetype del archivo/blob tal cual (ej. audio grabado
+// con MediaRecorder llega como "audio/webm;codecs=opus", con el codec pegado)
+// - se compara solo por la parte antes del ";".
+function tipoBaseDeArchivo(mimetype) {
+  return WA_MIME_TIPO[String(mimetype || '').split(';')[0].trim()];
+}
+const uploadChatMedia = multer({
+  storage: multer.memoryStorage(),
+  // 50MB: el techo real es el del bucket de Storage (mismo límite del plan
+  // de Supabase); WhatsApp además tiene sus propios límites por tipo
+  // (16MB imagen/audio/video, 100MB documento) que Meta rechaza en el
+  // momento de mandar si se pasa.
+  limits: { fileSize: 50 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (!tipoBaseDeArchivo(file.mimetype)) return cb(new Error(`Tipo de archivo no soportado por WhatsApp: ${file.mimetype}`));
+    cb(null, true);
+  },
+});
+router.post('/logistica/whatsapp/conversaciones/:telefono/media', requireFullAccess, uploadChatMedia.single('archivo'), asyncRoute(async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Falta el archivo' });
+  const tipo = tipoBaseDeArchivo(req.file.mimetype);
+  const resultado = await whatsapp.enviarMedia({
+    telefono: req.params.telefono, tipo, buffer: req.file.buffer, mimeType: req.file.mimetype,
+    caption: req.body?.caption || null, enviadoPor: req.admin?.username || null,
+  });
+  if (!resultado.ok) return res.status(400).json({ error: resultado.error, detalle: resultado.detalle });
+  res.json({ ok: true, mensaje: resultado.mensaje });
+}));
+
 // Asigna/saca una parada extra (del catálogo) a un viaje - se trata como un
 // portón más para la ruta: entra en la misma secuencia de `orden`, cuenta
 // para la detección de zonas del corredor, y aparece en el mensaje.
@@ -387,6 +474,29 @@ router.get('/logistica/viajes/:id/mensaje', asyncRoute(async (req, res) => {
   res.json({ ok: true, texto: await buildMensajeViaje(req.params.id) });
 }));
 
+// Modo de pruebas: manda el mismo aviso "en camino" (collage de fotos +
+// plantilla) que se dispara solo al avisar la próxima parada, pero a un
+// teléfono cualquiera que se pase por body en vez del cliente real - pedido
+// explícito del usuario para poder ver cómo salen las fotos/collage antes
+// de que se dispare en producción.
+router.post('/logistica/viajes/:id/probar-aviso-whatsapp', requireFullAccess, asyncRoute(async (req, res) => {
+  const telefono = String(req.body?.telefono || '').trim();
+  if (!telefono) return res.status(400).json({ error: 'Falta el teléfono de prueba' });
+  const datos = await despachoV2Db.datosParaAviso(req.params.id);
+  if (!datos) return res.status(404).json({ error: 'Viaje no encontrado' });
+  const resultado = await whatsapp.enviarAvisoEnCamino({
+    telefono,
+    nombreCliente: String(req.body?.nombreCliente || 'Cliente de prueba').trim(),
+    horasTexto: String(req.body?.horasTexto || 'poco tiempo').trim(),
+    cuadrillaTexto: datos.cuadrillaTexto,
+    vehiculoNombre: datos.vehiculoNombre,
+    fotosMiembros: datos.fotosMiembros,
+    fotoVehiculo: datos.fotoVehiculo,
+  });
+  if (!resultado.ok) return res.status(400).json({ error: resultado.error, detalle: resultado.detalle });
+  res.json({ ok: true, wa_message_id: resultado.wa_message_id });
+}));
+
 router.post('/logistica/semanas/:semana/cerrar', requireFullAccess, asyncRoute(async (req, res) => {
   const cerradaBy = req?.admin?.username || req?.admin?.name || null;
   res.json({ ok: true, detalle: await db.cerrarSemana(req.params.semana, cerradaBy) });
@@ -414,6 +524,15 @@ router.get('/logistica/rendiciones/:viajeId', asyncRoute(async (req, res) => {
     detalle.gastos.map(async (g) => ({ ...g, url: await adjuntosStorage.urlFirmada(g.storage_path) }))
   );
   res.json({ ok: true, detalle: { ...detalle, gastos: gastosConUrl } });
+}));
+
+// "Ok" final de logística sobre la rendición completa - pedido explícito
+// del usuario: bloqueado (409) hasta que el viaje esté finalizado
+// (hora_llegada_real). Requiere preproduccion:full, igual que el resto de
+// las acciones que dejan constancia de quién autorizó algo.
+router.post('/logistica/rendiciones/:viajeId/aprobar', requireFullAccess, asyncRoute(async (req, res) => {
+  const resultado = await gastosDb.aprobarRendicion(req.params.viajeId, req.admin?.username || null);
+  res.json({ ok: true, ...resultado });
 }));
 
 module.exports = router;
