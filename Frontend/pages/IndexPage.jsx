@@ -158,14 +158,7 @@ export default function IndexPage({ routes = [] }) {
     if (isComprasAdmin) out.push({ path: '/admin/insumos', label: 'Admin · Compras (Pedidos de Insumos)' });
     if (isComprasAdmin) out.push({ path: '/admin/insumos/entregas', label: 'Admin · Compras · Entregas de Insumos' });
     if (isComprasAdmin) out.push({ path: '/admin/insumos/config', label: 'Admin · Compras · Config Categorías↔Sección' });
-    out.push({
-      path: '/admin/tickets', label: 'Admin · Tickets', badge: pendingTicketsCount,
-      badgeTitle: `${pendingTicketsCount} ticket${pendingTicketsCount === 1 ? '' : 's'} pendiente${pendingTicketsCount === 1 ? '' : 's'}`,
-    });
-    out.push({
-      path: '/admin/reuniones', label: 'Admin · Reuniones y Tareas', badge: reunionesHoyCount,
-      badgeTitle: `${reunionesHoyCount} reunión${reunionesHoyCount === 1 ? '' : 'es'} hoy`,
-    });
+    out.push({ path: '/admin/tickets', label: 'Admin · Tickets' });
     out.push({ path: '/admin/indice-programacion', label: 'Admin · Índice de Programación (BETA)' });
     return out;
   }, [isPreprodOnly, isQcAdmin, isWfAdmin, canUsers, isPrefabAdmin, isStAdmin, isComprasAdmin, pendingTicketsCount, reunionesHoyCount]);
