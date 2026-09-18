@@ -14,7 +14,9 @@ export const API_BASE_URL = String(API_BASE).replace(/\/+$/, '');
 
 const api = axios.create({
   baseURL: String(API_BASE).replace(/\/+$/, ''), // sin trailing slash
-  timeout: 15000,
+  // 30s en vez de 15s: el backend en Render se "duerme" con inactividad y el
+  // primer pedido después de eso tarda en despertarlo (cold start).
+  timeout: 30000,
 });
 
 // ====== ADMIN TOKEN (localStorage) ======
@@ -140,6 +142,10 @@ export async function marcarSalidaDespachoV2(viajeId) {
   const { data } = await apiDespachoV2.post(`/despacho-v2/viajes/${viajeId}/marcar-salida`);
   return data;
 }
+export async function marcarLlegadaDespachoV2(viajeId) {
+  const { data } = await apiDespachoV2.post(`/despacho-v2/viajes/${viajeId}/marcar-llegada`);
+  return data;
+}
 export async function fetchParadasDespachoV2(viajeId) {
   const { data } = await apiDespachoV2.get(`/despacho-v2/viajes/${viajeId}/paradas`);
   return data;
@@ -159,6 +165,41 @@ export async function crearSolicitudStDespachoV2(nv, { descripcion, attachment }
 // Remito por NV - endpoint ya público, sin login de despacho_v2 (routes/public/remitosProxy.js).
 export async function fetchRemitosPorNv(nv) {
   const { data } = await apiDespachoV2.get('/remitos-proxy/search-by-nv', { params: { nv } });
+  return data;
+}
+// "Marcar entregado/instalado" - cierre OFICIAL (despacho: pin; instalación:
+// sin pin). Devuelve la siguiente parada-portón de la ruta (o null si esta
+// era la última) para preguntarle al usuario antes de avisar por WhatsApp.
+export async function marcarEntregadoDespachoV2(viajeId, nv, { tipo, pin } = {}) {
+  const { data } = await apiDespachoV2.post(`/despacho-v2/viajes/${viajeId}/nv/${nv}/marcar-entregado`, { tipo, pin });
+  return data;
+}
+// Se llama SOLO después de que el usuario confirmó "sí, la ruta sigue así".
+export async function avisarSiguienteDespachoV2(viajeId, nv) {
+  const { data } = await apiDespachoV2.post(`/despacho-v2/viajes/${viajeId}/nv/${nv}/avisar-siguiente`);
+  return data;
+}
+// Gastos del viaje ("rendición de gastos") - se comparte entre toda la
+// cuadrilla del viaje, no solo quien los subió.
+export async function fetchGastosDespachoV2(viajeId) {
+  const { data } = await apiDespachoV2.get(`/despacho-v2/viajes/${viajeId}/gastos`);
+  return data;
+}
+// Sube la foto/PDF PRIMERO - la IA lee fecha/motivo/monto/tipo de
+// comprobante (ver server/lib/logisticaGastosIa.js), no hace falta
+// completar nada a mano de entrada.
+export async function crearGastoDespachoV2(viajeId, archivo) {
+  const form = new FormData();
+  form.append('archivo', archivo);
+  const { data } = await apiDespachoV2.post(`/despacho-v2/viajes/${viajeId}/gastos`, form, { timeout: 60000 });
+  return data;
+}
+export async function actualizarGastoDespachoV2(viajeId, gastoId, patch) {
+  const { data } = await apiDespachoV2.patch(`/despacho-v2/viajes/${viajeId}/gastos/${gastoId}`, patch);
+  return data;
+}
+export async function deleteGastoDespachoV2(viajeId, gastoId) {
+  const { data } = await apiDespachoV2.delete(`/despacho-v2/viajes/${viajeId}/gastos/${gastoId}`);
   return data;
 }
 
@@ -374,7 +415,8 @@ export const adminUpdatePrefabricadoTipo = (id, payload) => api.put(`/admin/pref
 export const fetchServicioTecnico = () => api.get('/servicio-tecnico');
 export const startStStage = (id, stage) => api.post(`/servicio-tecnico/${id}/stage`, { stage, action: 'start' });
 export const stopStStage = (id, stage) => api.post(`/servicio-tecnico/${id}/stage`, { stage, action: 'stop' });
-export const createPruebaLaserOrden = (descripcion) => api.post('/servicio-tecnico/prueba-laser', { descripcion });
+export const createPruebaLaserOrden = (descripcion, pasoPorPlegadora) =>
+  api.post('/servicio-tecnico/prueba-laser', { descripcion, paso_por_plegadora: Boolean(pasoPorPlegadora) });
 
 export const adminListStOrdenes = () => api.get('/admin/servicio-tecnico/ordenes');
 export const adminCreateStOrden = (payload) => api.post('/admin/servicio-tecnico/ordenes', payload);
@@ -557,6 +599,17 @@ export const adminUpdateInsumosPedidoItem = (pedidoId, itemId, patch) => api.put
 export const adminAddInsumosPedidoItem = (pedidoId, payload) => api.post(`/admin/insumos/pedidos/${pedidoId}/items`, payload);
 export const adminSetInsumoProductoNombre = (productoId, nombreDisplay) =>
   api.put(`/admin/insumos/productos/${productoId}/nombre`, { nombre_display: nombreDisplay });
+
+export const adminGetNotaNodo = (nodoId) => api.get(`/admin/notas-nodo/${nodoId}`);
+// payload: { nota, admin_user, admin_password } - los tres se guardan juntos;
+// el acceso principal solo se pisa si vienen los dos campos cargados.
+export const adminSetNotaNodo = (nodoId, payload) => api.put(`/admin/notas-nodo/${nodoId}`, payload);
+
+export const adminListUsuariosPrueba = (nodoId) => api.get(`/admin/notas-nodo/${nodoId}/usuarios-prueba`);
+export const adminAddUsuarioPrueba = (nodoId, { etiqueta, usuario, password }) =>
+  api.post(`/admin/notas-nodo/${nodoId}/usuarios-prueba`, { etiqueta, usuario, password });
+export const adminDeleteUsuarioPrueba = (nodoId, id) =>
+  api.delete(`/admin/notas-nodo/${nodoId}/usuarios-prueba/${id}`);
 export const adminFetchInsumosSeccionesCierre = () => api.get('/admin/insumos/secciones-cierre');
 export const adminSaveInsumosSeccionesCierre = (entries) => api.put('/admin/insumos/secciones-cierre', { entries });
 
@@ -767,6 +820,39 @@ export async function deleteLogisticaPuntoExtra(id) {
   const { data } = await api.delete(`/admin/logistica/puntos-extra/${id}`);
   return data;
 }
+export async function fetchLogisticaWhatsappTemplates() {
+  const { data } = await api.get('/admin/logistica/whatsapp-templates');
+  return data;
+}
+export async function fetchLogisticaWhatsappConversaciones() {
+  const { data } = await api.get('/admin/logistica/whatsapp/conversaciones');
+  return data;
+}
+export async function fetchLogisticaWhatsappMensajes(telefono) {
+  const { data } = await api.get(`/admin/logistica/whatsapp/conversaciones/${encodeURIComponent(telefono)}/mensajes`);
+  return data;
+}
+export async function enviarLogisticaWhatsappMensaje(telefono, texto) {
+  const { data } = await api.post(`/admin/logistica/whatsapp/conversaciones/${encodeURIComponent(telefono)}/mensajes`, { texto });
+  return data;
+}
+export async function setLogisticaWhatsappNombreContacto(telefono, nombre) {
+  const { data } = await api.patch(`/admin/logistica/whatsapp/conversaciones/${encodeURIComponent(telefono)}/nombre`, { nombre });
+  return data;
+}
+export async function enviarLogisticaWhatsappTemplateSimple(telefono, name, language) {
+  const { data } = await api.post(`/admin/logistica/whatsapp/conversaciones/${encodeURIComponent(telefono)}/template-simple`, { name, language });
+  return data;
+}
+export async function enviarLogisticaWhatsappMedia(telefono, archivo, caption) {
+  const form = new FormData();
+  form.append('archivo', archivo);
+  if (caption) form.append('caption', caption);
+  const { data } = await api.post(`/admin/logistica/whatsapp/conversaciones/${encodeURIComponent(telefono)}/media`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return data;
+}
 export async function asignarLogisticaParadaExtra(viajeId, puntoExtraId) {
   const { data } = await api.post(`/admin/logistica/viajes/${viajeId}/paradas-extra`, { punto_extra_id: puntoExtraId });
   return data;
@@ -835,6 +921,36 @@ export async function habilitarLogisticaAdjuntoMiembro({ origen_miembro_id, viaj
   const { data } = await api.post('/admin/logistica/adjuntos/habilitar-miembro', { origen_miembro_id, viaje_id, nv });
   return data;
 }
+// Foto de perfil (integrante) y foto de vehículo - una sola cada uno, para
+// el collage del mensaje automático de WhatsApp "en camino".
+export async function fetchLogisticaFotoQcUser(qcUserId) {
+  const { data } = await api.get(`/admin/logistica/qc-users/${qcUserId}/foto`);
+  return data;
+}
+export async function uploadLogisticaFotoQcUser(qcUserId, archivo) {
+  const form = new FormData();
+  form.append('archivo', archivo);
+  const { data } = await api.post(`/admin/logistica/qc-users/${qcUserId}/foto`, form, { timeout: 60000 });
+  return data;
+}
+export async function deleteLogisticaFotoQcUser(qcUserId) {
+  const { data } = await api.delete(`/admin/logistica/qc-users/${qcUserId}/foto`);
+  return data;
+}
+export async function fetchLogisticaFotoVehiculo(vehiculoId) {
+  const { data } = await api.get(`/admin/logistica/vehiculos/${vehiculoId}/foto`);
+  return data;
+}
+export async function uploadLogisticaFotoVehiculo(vehiculoId, archivo) {
+  const form = new FormData();
+  form.append('archivo', archivo);
+  const { data } = await api.post(`/admin/logistica/vehiculos/${vehiculoId}/foto`, form, { timeout: 60000 });
+  return data;
+}
+export async function deleteLogisticaFotoVehiculo(vehiculoId) {
+  const { data } = await api.delete(`/admin/logistica/vehiculos/${vehiculoId}/foto`);
+  return data;
+}
 export async function cerrarLogisticaSemana(semana) {
   const { data } = await api.post(`/admin/logistica/semanas/${encodeURIComponent(semana)}/cerrar`, {});
   return data;
@@ -875,6 +991,29 @@ export async function fetchLogisticaSemanaPromesaMapa(semana) {
 // Mensaje de texto (borrador) para mandarle a la cuadrilla de un viaje.
 export async function fetchLogisticaMensajeViaje(viajeId) {
   const { data } = await api.get(`/admin/logistica/viajes/${viajeId}/mensaje`);
+  return data;
+}
+
+// Modo de pruebas: manda el aviso "en camino" (collage + plantilla) de este
+// viaje a un teléfono cualquiera, para ver cómo sale antes de que se dispare
+// en producción con el cliente real.
+export async function probarAvisoWhatsappViaje(viajeId, { telefono, nombreCliente, horasTexto }) {
+  const { data } = await api.post(`/admin/logistica/viajes/${viajeId}/probar-aviso-whatsapp`, { telefono, nombreCliente, horasTexto });
+  return data;
+}
+
+// Rendiciones de gastos (consulta) - una fila por viaje con gastos
+// cargados desde /despacho_v2, con su detalle (gastos + ticket adjunto) y total.
+export async function fetchLogisticaRendiciones() {
+  const { data } = await api.get('/admin/logistica/rendiciones');
+  return data;
+}
+export async function fetchLogisticaRendicionDetalle(viajeId) {
+  const { data } = await api.get(`/admin/logistica/rendiciones/${viajeId}`);
+  return data;
+}
+export async function aprobarLogisticaRendicion(viajeId) {
+  const { data } = await api.post(`/admin/logistica/rendiciones/${viajeId}/aprobar`);
   return data;
 }
 

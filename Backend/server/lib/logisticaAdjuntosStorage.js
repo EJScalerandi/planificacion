@@ -51,4 +51,13 @@ async function borrarArchivo(path) {
   await supabase.storage.from(BUCKET).remove([path]);
 }
 
-module.exports = { subirArchivo, urlFirmada, borrarArchivo, BUCKET };
+// Bytes crudos - lo usa el armado del collage de WhatsApp (logisticaWhatsapp.js)
+// para bajar las fotos de perfil/vehículo antes de componerlas.
+async function descargarArchivo(path) {
+  const supabase = requireClient();
+  const { data, error } = await supabase.storage.from(BUCKET).download(path);
+  if (error) throw error;
+  return Buffer.from(await data.arrayBuffer());
+}
+
+module.exports = { subirArchivo, urlFirmada, borrarArchivo, descargarArchivo, BUCKET };

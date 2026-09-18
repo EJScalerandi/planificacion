@@ -16,6 +16,7 @@ const adminInsumosRoutes = require('./routes/admin/insumos');
 const adminLogisticaConsultasRoutes = require('./routes/admin/logisticaConsultas');
 const adminLogisticaViajesRoutes = require('./routes/admin/logisticaViajes');
 const adminLogisticaAdjuntosRoutes = require('./routes/admin/logisticaAdjuntos');
+const adminNotasNodoRoutes = require('./routes/admin/notasNodo');
 
 const plantaRoutes = require('./routes/public/planta');
 const despacharRoutes = require('./routes/public/despachar');
@@ -32,6 +33,7 @@ const prefabricadosRoutes = require('./routes/public/prefabricados');
 const servicioTecnicoRoutes = require('./routes/public/servicioTecnico');
 const insumosRoutes = require('./routes/public/insumos');
 const despachoV2Routes = require('./routes/public/despachoV2');
+const webhookWhatsappRoutes = require('./routes/public/webhookWhatsapp');
 const iaRoutes = require('./routes/external/ia');
 
 const { errorHandler } = require('./middleware/errorHandler');
@@ -97,6 +99,7 @@ app.use('/admin', adminWorkflowRoutes);
 app.use('/admin', adminPrefabricadosRoutes);
 app.use('/admin', adminServicioTecnicoRoutes);
 app.use('/admin', adminServicioTecnicoViajesRoutes);
+app.use('/admin', adminNotasNodoRoutes);
 
 // ---------------------------------------------------------------------------
 // Backward-compat aliases (legacy frontend)
@@ -121,6 +124,7 @@ app.use('/', prefabricadosRoutes);
 app.use('/', servicioTecnicoRoutes);
 app.use('/', insumosRoutes);
 app.use('/', despachoV2Routes);
+app.use('/', webhookWhatsappRoutes);
 app.use('/', iaRoutes);
 
 app.use(errorHandler);

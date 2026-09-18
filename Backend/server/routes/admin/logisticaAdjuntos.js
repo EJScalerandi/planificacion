@@ -165,6 +165,66 @@ router.post('/logistica/adjuntos/habilitar-miembro', requireFullAccess, asyncRou
   res.json({ ok: true, adjunto: { ...adjunto, url: await storage.urlFirmada(adjunto.storage_path) } });
 }));
 
+// ===========================================================================
+// Foto de perfil (integrante) y foto de vehículo - una sola cada uno, para
+// el collage del mensaje automático de WhatsApp "en camino"
+// (logisticaWhatsapp.js). Solo imagen (nunca PDF, es una foto).
+// ===========================================================================
+
+const IMAGE_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic']);
+const uploadFoto = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_BYTES },
+  fileFilter: (req, file, cb) => {
+    if (!IMAGE_MIME.has(file.mimetype)) return cb(new Error('Tiene que ser una foto (jpg/png/webp/heic)'));
+    cb(null, true);
+  },
+});
+
+router.get('/logistica/qc-users/:id/foto', asyncRoute(async (req, res) => {
+  const path = await db.getFotoQcUser(req.params.id);
+  res.json({ ok: true, url: path ? await storage.urlFirmada(path) : null });
+}));
+
+router.post('/logistica/qc-users/:id/foto', requireFullAccess, uploadFoto.single('archivo'), asyncRoute(async (req, res) => {
+  if (!req.file) throw new Error('Falta la foto');
+  const viejaPath = await db.getFotoQcUser(req.params.id);
+  const path = `perfil-qc-${req.params.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${extensionDe(req.file.originalname, req.file.mimetype)}`;
+  await storage.subirArchivo(path, req.file.buffer, req.file.mimetype);
+  await db.setFotoQcUser(req.params.id, path);
+  if (viejaPath) await storage.borrarArchivo(viejaPath).catch(() => {});
+  res.json({ ok: true, url: await storage.urlFirmada(path) });
+}));
+
+router.delete('/logistica/qc-users/:id/foto', requireFullAccess, asyncRoute(async (req, res) => {
+  const path = await db.getFotoQcUser(req.params.id);
+  await db.setFotoQcUser(req.params.id, null);
+  if (path) await storage.borrarArchivo(path).catch(() => {});
+  res.json({ ok: true });
+}));
+
+router.get('/logistica/vehiculos/:id/foto', asyncRoute(async (req, res) => {
+  const path = await db.getFotoVehiculo(req.params.id);
+  res.json({ ok: true, url: path ? await storage.urlFirmada(path) : null });
+}));
+
+router.post('/logistica/vehiculos/:id/foto', requireFullAccess, uploadFoto.single('archivo'), asyncRoute(async (req, res) => {
+  if (!req.file) throw new Error('Falta la foto');
+  const viejaPath = await db.getFotoVehiculo(req.params.id);
+  const path = `perfil-vehiculo-${req.params.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${extensionDe(req.file.originalname, req.file.mimetype)}`;
+  await storage.subirArchivo(path, req.file.buffer, req.file.mimetype);
+  await db.setFotoVehiculo(req.params.id, path);
+  if (viejaPath) await storage.borrarArchivo(viejaPath).catch(() => {});
+  res.json({ ok: true, url: await storage.urlFirmada(path) });
+}));
+
+router.delete('/logistica/vehiculos/:id/foto', requireFullAccess, asyncRoute(async (req, res) => {
+  const path = await db.getFotoVehiculo(req.params.id);
+  await db.setFotoVehiculo(req.params.id, null);
+  if (path) await storage.borrarArchivo(path).catch(() => {});
+  res.json({ ok: true });
+}));
+
 // Multer manda sus propios errores (tamaño/tipo) antes de llegar a
 // asyncRoute (los tira en el middleware de upload, no en un handler async) -
 // sin esto quedaban como error 500 genérico en vez del mensaje claro.

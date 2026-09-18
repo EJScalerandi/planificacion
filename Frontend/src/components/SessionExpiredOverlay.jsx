@@ -36,7 +36,13 @@ export default function SessionExpiredOverlay() {
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(0,0,0,0.5)',
+        // Semi-transparente + blur: se sigue viendo la pantalla de atrás
+        // (da la sensación de "vidrio esmerilado"), pero el desenfoque hace
+        // que texto como el "Token inválido" de cada pantalla no se pueda
+        // leer - ese estado de error sigue existiendo, solo no se lee.
+        background: 'rgba(0,0,0,0.55)',
+        backdropFilter: 'blur(10px)',
+        WebkitBackdropFilter: 'blur(10px)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',

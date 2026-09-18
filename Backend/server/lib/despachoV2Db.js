@@ -65,7 +65,7 @@ async function listViajesDeCuadrillas(cuadrillaIds, { soloProximos10 } = {}) {
     `
     select
       vi.id, vi.nombre, vi.fecha::text as fecha, to_char(vi.hora_salida, 'HH24:MI') as hora_salida,
-      vi.hora_salida_real, vi.ruta_real,
+      vi.hora_salida_real, vi.hora_llegada_real, vi.ruta_real,
       c.id as cuadrilla_id, c.nombre as cuadrilla_nombre,
       ve.nombre as vehiculo_nombre, ve.capacidad_portones as vehiculo_capacidad,
       (select count(distinct p.nv)
@@ -108,6 +108,7 @@ async function listViajesDeCuadrillas(cuadrillaIds, { soloProximos10 } = {}) {
     fecha: r.fecha,
     hora_salida: r.hora_salida,
     hora_salida_real: r.hora_salida_real,
+    hora_llegada_real: r.hora_llegada_real,
     vehiculo_nombre: r.vehiculo_nombre,
     vehiculo_capacidad: r.vehiculo_capacidad,
     cuadrilla_id: r.cuadrilla_id,
@@ -121,7 +122,10 @@ async function listViajesDeCuadrillas(cuadrillaIds, { soloProximos10 } = {}) {
 }
 
 async function getViajeCuadrilla(viajeId) {
-  const { rows } = await pool.query(`select id, cuadrilla_id from public.logistica_viajes where id = $1;`, [Number(viajeId)]);
+  const { rows } = await pool.query(
+    `select id, cuadrilla_id, hora_salida_real, hora_llegada_real from public.logistica_viajes where id = $1;`,
+    [Number(viajeId)]
+  );
   return rows[0] || null;
 }
 
@@ -136,6 +140,21 @@ async function marcarSalidaReal(viajeId) {
     [Number(viajeId)]
   );
   return rows[0]?.hora_salida_real || null;
+}
+
+// "Finalizar viaje" - pedido explícito del usuario: cierra el rango de
+// fechas válido para los gastos de la rendición (hora_salida_real ->
+// hora_llegada_real). Sin esto cargado, logística no puede aprobar la
+// rendición (ver aprobarRendicion en logisticaGastosDb.js).
+async function marcarLlegadaReal(viajeId) {
+  const { rows } = await pool.query(
+    `update public.logistica_viajes
+        set hora_llegada_real = coalesce(hora_llegada_real, now())
+      where id = $1
+      returning hora_llegada_real;`,
+    [Number(viajeId)]
+  );
+  return rows[0]?.hora_llegada_real || null;
 }
 
 // Lista desplegable (botón de tres líneas) de portones + paradas extra de un
@@ -238,8 +257,160 @@ async function crearSolicitudSt({ nv, descripcion, attachment, creadoPor }) {
   return solicitud;
 }
 
+// ===========================================================================
+// "Marcar entregado/instalado" - cierre OFICIAL real (pedido explícito del
+// usuario, no un aviso interno aparte): despacho pasa por el mismo QC/PIN
+// que ya usa /despacho (qc_authorize) - se reusa esa ruta YA PROBADA por
+// llamado interno en vez de reimplementar su lógica (scopes, motivos,
+// RECHAZADO, etc.) acá. Instalación no tiene ese mecanismo en el resto de
+// la app (no hay columna portones.instalacion ni etapa de workflow para
+// eso) - su "cierre oficial" YA ES, en todo el resto de la app, poner
+// fecha_llegada_imput (lo que hace el campo "Fecha Llegada/Instalación" en
+// /a) - así que es lo que hacemos acá, sin pedir PIN (nunca lo pidió nada
+// que ya exista para este campo).
+const PORT = process.env.PORT || 4000;
+
+async function marcarDespachoOficial({ nv, pin }) {
+  const axios = require('axios');
+  const { data } = await axios.post(
+    `http://127.0.0.1:${PORT}/qc/authorize`,
+    { line: 'portones', item_id: Number(nv), stage_key: 'despacho', qc_status: 'FINALIZADO', pin },
+    { timeout: 15000 }
+  );
+  return data;
+}
+
+async function marcarInstalacionOficial(nv) {
+  const { rows } = await pool.query(
+    `select id from public.preproduccion_valores where nv = $1 and nv_tipo = 'NV' limit 1;`,
+    [Number(nv)]
+  );
+  if (!rows.length) throw new Error('No se encontró el registro de este NV para marcar instalación');
+  const hoy = new Date().toISOString().slice(0, 10);
+  await pool.query(
+    `update public.preproduccion_valores set data = coalesce(data,'{}'::jsonb) || $2::jsonb where id = $1;`,
+    [rows[0].id, JSON.stringify({ fecha_llegada_imput: hoy })]
+  );
+  return hoy;
+}
+
+// tipo: 'despacho' | 'instalacion'. pin solo hace falta para despacho.
+async function marcarEntregado({ nv, tipo, pin }) {
+  if (tipo === 'despacho') {
+    const r = await marcarDespachoOficial({ nv, pin });
+    return { ok: true, detalle: r };
+  }
+  if (tipo === 'instalacion') {
+    const fecha = await marcarInstalacionOficial(nv);
+    return { ok: true, fecha_llegada: fecha };
+  }
+  throw new Error("tipo debe ser 'despacho' o 'instalacion'");
+}
+
+// Próxima PARADA-PORTÓN de la ruta después de la actual (salta paradas
+// extra tipo hotel - no tiene sentido avisarle a un hotel "su portón está
+// en camino"). null si esta era la última parada del viaje.
+async function siguienteParadaPorton(viajeId, nvActual) {
+  const paradas = await listParadasDeViaje(viajeId);
+  const idx = paradas.findIndex((p) => p.tipo === 'porton' && p.nv === Number(nvActual));
+  if (idx === -1) return null;
+  for (let i = idx + 1; i < paradas.length; i++) {
+    if (paradas[i].tipo === 'porton') return paradas[i];
+  }
+  return null;
+}
+
+// ===========================================================================
+// Aviso automático de WhatsApp a la siguiente parada - collage de fotos de
+// la cuadrilla (qc_users.foto_storage_path) + del vehículo
+// (logistica_vehiculos.foto_storage_path), lo que haya cargado (ver
+// logisticaWhatsapp.js, tiene un placeholder de marca si no hay ninguna
+// foto todavía).
+function formatearDuracionHoras(horas) {
+  if (horas == null) return 'poco tiempo';
+  if (horas < 1) return `${Math.max(1, Math.round(horas * 60))} minutos`;
+  const h = Math.floor(horas);
+  const min = Math.round((horas - h) * 60);
+  const horaTxt = `${h} hora${h === 1 ? '' : 's'}`;
+  return min > 0 ? `${horaTxt} y ${min} minutos` : horaTxt;
+}
+
+async function datosParaAviso(viajeId) {
+  const { rows } = await pool.query(
+    `select vi.id, vi.cuadrilla_id, ve.nombre as vehiculo_nombre, ve.foto_storage_path as vehiculo_foto
+       from public.logistica_viajes vi
+       left join public.logistica_vehiculos ve on ve.id = vi.vehiculo_id
+      where vi.id = $1;`,
+    [Number(viajeId)]
+  );
+  const viaje = rows[0];
+  if (!viaje) return null;
+
+  const { rows: miembros } = await pool.query(
+    `select u.name, cm.rol, u.foto_storage_path
+       from public.logistica_cuadrilla_miembros cm
+       join public.qc_users u on u.id = cm.qc_user_id and u.is_active
+      where cm.cuadrilla_id = $1
+      order by u.name asc;`,
+    [viaje.cuadrilla_id]
+  );
+
+  const cuadrillaTexto = miembros.length
+    ? miembros.map((m) => `${m.name}${m.rol ? ` (${m.rol})` : ''}`).join(', ')
+    : null;
+  const fotosMiembros = miembros.map((m) => m.foto_storage_path).filter(Boolean);
+
+  return { vehiculoNombre: viaje.vehiculo_nombre, cuadrillaTexto, fotosMiembros, fotoVehiculo: viaje.vehiculo_foto || null };
+}
+
+async function registrarAviso({ viajeId, nvOrigen, nvDestino, telefono, resultado, enviadoPor }) {
+  await pool.query(
+    `insert into public.logistica_whatsapp_avisos
+       (viaje_id, nv_origen, nv_destino, telefono_destino, estado, detalle_error, wa_message_id, enviado_por)
+     values ($1,$2,$3,$4,$5,$6,$7,$8);`,
+    [
+      Number(viajeId), Number(nvOrigen), Number(nvDestino), telefono || null,
+      resultado.ok ? 'enviado' : 'error',
+      resultado.ok ? null : String(resultado.error || 'error desconocido').slice(0, 500),
+      resultado.wa_message_id || null,
+      enviadoPor || null,
+    ]
+  );
+}
+
+// Orquesta todo: busca la próxima parada-portón, arma el texto/collage, y
+// manda - pensado para llamarse DESPUÉS de que el usuario confirmó "sí, la
+// ruta sigue así" (ver el endpoint, que ya le mostró esta misma parada
+// antes de preguntar).
+async function avisarSiguienteParada({ viajeId, nvOrigen, enviadoPor }) {
+  const whatsapp = require('./logisticaWhatsapp');
+
+  const siguiente = await siguienteParadaPorton(viajeId, nvOrigen);
+  if (!siguiente) return { ok: false, sinSiguiente: true };
+
+  const [nvDetalle, datos] = await Promise.all([getNvDetalle(siguiente.nv), datosParaAviso(viajeId)]);
+  if (!datos) return { ok: false, error: 'Viaje no encontrado' };
+
+  const resultado = await whatsapp.enviarAvisoEnCamino({
+    telefono: nvDetalle?.telefono,
+    nombreCliente: nvDetalle?.nombre_cliente,
+    horasTexto: formatearDuracionHoras(siguiente.horas_tramo),
+    cuadrillaTexto: datos.cuadrillaTexto,
+    vehiculoNombre: datos.vehiculoNombre,
+    fotosMiembros: datos.fotosMiembros,
+    fotoVehiculo: datos.fotoVehiculo,
+  });
+
+  await registrarAviso({
+    viajeId, nvOrigen, nvDestino: siguiente.nv, telefono: nvDetalle?.telefono, resultado, enviadoPor,
+  }).catch((e) => console.error('No se pudo registrar el aviso de WhatsApp:', e.message));
+
+  return { ok: resultado.ok, error: resultado.error, siguienteNv: siguiente.nv, nombreCliente: nvDetalle?.nombre_cliente };
+}
+
 module.exports = {
   listQcUsersDeCuadrillas, getQcUser, cuadrillasDeUsuario,
-  listViajesDeCuadrillas, getViajeCuadrilla, marcarSalidaReal,
+  listViajesDeCuadrillas, getViajeCuadrilla, marcarSalidaReal, marcarLlegadaReal,
   listParadasDeViaje, getNvDetalle, crearSolicitudSt,
+  marcarEntregado, siguienteParadaPorton, avisarSiguienteParada, datosParaAviso,
 };

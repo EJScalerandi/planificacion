@@ -36,8 +36,10 @@ import ServicioTecnicoSolicitudesPage from '../pages/admin/ServicioTecnicoSolici
 import InsumosComprasPage from '../pages/admin/InsumosComprasPage';
 import InsumosConfigPage from '../pages/admin/InsumosConfigPage';
 import InsumosEntregasPage from '../pages/admin/InsumosEntregasPage';
+import IndiceProgramacionPage from '../pages/admin/IndiceProgramacionPage';
 import LogisticaViajesPage from '../pages/admin/LogisticaViajesPage';
 import LogisticaFechasPage from '../pages/admin/LogisticaFechasPage';
+import LogisticaWhatsappPage from '../pages/admin/LogisticaWhatsappPage';
 import ServicioTecnicoViajesPage from '../pages/admin/ServicioTecnicoViajesPage';
 import ServicioTecnicoFechasPage from '../pages/admin/ServicioTecnicoFechasPage';
 import AdminTicketsPage from '../pages/admin/AdminTicketsPage';
@@ -332,8 +334,8 @@ function Board({ stages, seccion }) {
     }
   };
 
-  const handleCreatePrefabOrden = async (tipoId, seccion, cantidad) => {
-    await createPrefabricadoOrden({ tipo_id: tipoId, seccion, cantidad });
+  const handleCreatePrefabOrden = async (tipoId, seccion, cantidad, referencia) => {
+    await createPrefabricadoOrden({ tipo_id: tipoId, seccion, cantidad, referencia });
     await refreshPrefab();
   };
 
@@ -343,8 +345,8 @@ function Board({ stages, seccion }) {
     return maxNumero + 1;
   }, [stOrdenes]);
 
-  const handleCreatePruebaLaser = async (detalle) => {
-    await createPruebaLaserOrden(detalle);
+  const handleCreatePruebaLaser = async (detalle, pasoPorPlegadora) => {
+    await createPruebaLaserOrden(detalle, pasoPorPlegadora);
     await refreshSt();
   };
 
@@ -745,12 +747,21 @@ export default function App() {
           <Route path="/admin/insumos" element={<InsumosComprasPage />} />
           <Route path="/admin/insumos/config" element={<InsumosConfigPage />} />
           <Route path="/admin/insumos/entregas" element={<InsumosEntregasPage />} />
+          <Route path="/admin/indice-programacion" element={<IndiceProgramacionPage />} />
           <Route path="/admin/logistica-viajes" element={<LogisticaViajesPage />} />
           <Route
             path="/admin/logistica-fechas"
             element={
               <FullBleed>
                 <LogisticaFechasPage />
+              </FullBleed>
+            }
+          />
+          <Route
+            path="/admin/logistica-whatsapp"
+            element={
+              <FullBleed>
+                <LogisticaWhatsappPage />
               </FullBleed>
             }
           />

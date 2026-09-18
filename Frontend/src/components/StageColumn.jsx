@@ -636,7 +636,9 @@ function ObservacionesModal({ open, onClose, title, item, line, despacho = false
   }, [open, item, line]);
 
   if (!open || !item) return null;
-  const pref = item?.__kind === 'prefabricado' && item?.numero != null ? `Pref ${item.numero}` : '';
+  const pref = item?.__kind === 'prefabricado' && item?.numero != null
+    ? `Pref ${item.numero}${item?.referencia ? ` (Ref: ${item.referencia})` : ''}`
+    : '';
   const oe = item?.__kind === 'servicio_tecnico' && item?.tipo === 'OE' && item?.numero != null ? `OE ${item.numero}` : '';
   const prueba = item?.__kind === 'servicio_tecnico' && item?.tipo === 'PRUEBA' && item?.numero != null ? `PRUEBA ${item.numero}` : '';
   const nv = item?.nv != null ? (item?.__kind === 'servicio_tecnico' ? `ST ${item.nv}` : `NV ${item.nv}`) : '';
@@ -1002,6 +1004,7 @@ export default function StageColumn({
           tipo_nombre: p.tipo_nombre,
           cantidad: p.cantidad,
           created_at: p.created_at,
+          referencia: p.referencia,
           finalizado: !pendienteEn,
           seccionActual: pendienteEn ? sectionLabel(pendienteEn) : null,
         };
@@ -1111,7 +1114,7 @@ export default function StageColumn({
       const qcLatest = up(qcInfoFor(p)?.latest_by_stage?.[key] || '');
       const isNoNv = p?.__kind === 'servicio_tecnico' && NO_NV_TIPOS.includes(p?.tipo);
       const label = p?.__kind === 'prefabricado'
-        ? `Pref ${p?.numero ?? '-'}${p?.tipo_nombre ? ` · ${p.tipo_nombre}` : ''}`
+        ? `Pref ${p?.numero ?? '-'}${p?.tipo_nombre ? ` · ${p.tipo_nombre}` : ''}${p?.referencia ? ` · Ref: ${p.referencia}` : ''}`
         : p?.__kind === 'servicio_tecnico'
           ? getOrderLabel(p, 'servicio_tecnico')
           : mode === 'ipanel'
@@ -1187,6 +1190,11 @@ export default function StageColumn({
                     <span style={{ fontWeight: 900 }}>{getOrderLabel(p, kind)}</span>
                     {kind === 'prefabricado' && p?.tipo_nombre ? (
                       <span style={{ fontSize: 12, opacity: 0.75 }}>{p.tipo_nombre}</span>
+                    ) : null}
+                    {kind === 'prefabricado' && p?.referencia ? (
+                      <span style={{ fontSize: 12, fontWeight: 700, background: '#fef3c7', color: '#92400e', padding: '1px 6px', borderRadius: 6 }}>
+                        Ref: {p.referencia}
+                      </span>
                     ) : null}
                   </div>
                   {kind === 'servicio_tecnico' ? (

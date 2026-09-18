@@ -69,12 +69,16 @@ router.get('/servicio-tecnico', async (_req, res) => {
 });
 
 // POST /servicio-tecnico/prueba-laser
-// Botón "Generar Prueba Laser Plano" en /diseno: crea una orden de un solo
-// paso (workflow_stages = ['guillotina']), sin NV, con numeración propia
-// (prueba_seq, prefijo "PRUEBA" agregado solo en el frontend). Público
-// porque /diseno es una tablet de planta sin login, igual que prefabricados.
+// Botón "Generar Prueba Laser Plano" en /diseno: crea una orden sin NV, con
+// numeración propia (prueba_seq, prefijo "PRUEBA" agregado solo en el
+// frontend). Siempre entra por Corte piernas (guillotina); si viene marcado
+// "Paso por Plegadora" sigue además a Plegado piernas (plegadora) antes de
+// desaparecer, si no, es de un solo paso. Público porque /diseno es una
+// tablet de planta sin login, igual que prefabricados.
 router.post('/servicio-tecnico/prueba-laser', async (req, res) => {
   const descripcionStr = String(req.body?.descripcion || '').trim() || 'Prueba Laser Plano';
+  const pasoPorPlegadora = req.body?.paso_por_plegadora === true;
+  const stages = pasoPorPlegadora ? ['guillotina', 'plegadora'] : ['guillotina'];
 
   const client = await pool.connect();
   try {
@@ -83,10 +87,10 @@ router.post('/servicio-tecnico/prueba-laser', async (req, res) => {
     const ins = await client.query(
       `
       insert into public.st_ordenes(nv, cantidad, descripcion, workflow_stages, created_by, tipo, numero)
-      values (null, 1, $1, array['guillotina']::text[], null, 'PRUEBA', nextval('public.prueba_seq'))
+      values (null, 1, $1, $2::text[], null, 'PRUEBA', nextval('public.prueba_seq'))
       returning id;
       `,
-      [descripcionStr]
+      [descripcionStr, stages]
     );
     const id = ins.rows[0].id;
 

@@ -12,6 +12,7 @@
 // LogisticaIaMapaModal.jsx (no se duplica la lógica de negocio, se adapta a
 // vivir embebido en la página en vez de en un modal).
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import {
@@ -39,6 +40,10 @@ import LogisticaZonasModal from './modals/LogisticaZonasModal';
 import LogisticaIaConfigModal from './modals/LogisticaIaConfigModal';
 import LogisticaPromesaConfigModal from './modals/LogisticaPromesaConfigModal';
 import LogisticaMensajeViajeModal from './modals/LogisticaMensajeViajeModal';
+import LogisticaVehiculosModal from './modals/LogisticaVehiculosModal';
+import LogisticaCuadrillasModal from './modals/LogisticaCuadrillasModal';
+import LogisticaParadasExtraModal from './modals/LogisticaParadasExtraModal';
+import LogisticaWhatsappTemplatesModal from './modals/LogisticaWhatsappTemplatesModal';
 import LogisticaAdjuntosModal from './modals/LogisticaAdjuntosModal';
 import LogisticaViajeSemanaModal, { AgregarParadaExtra } from './LogisticaViajeSemanaModal';
 
@@ -223,6 +228,8 @@ function expandirSinFechaSalida(items) {
 }
 
 export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
+  const nav = useNavigate();
+
   // Arranca en la semana en curso (pedido del usuario) - '' sigue siendo una
   // opción válida desde el selector ("Pendientes de asignar (todas)"), solo
   // que ya no es el default al entrar a la página.
@@ -256,8 +263,16 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
   const [creando, setCreando] = useState(false);
   const [resultado, setResultado] = useState(null);
 
+  // Panel de acciones/config del costado - colapsado por defecto para que el
+  // mapa ocupe todo el ancho (pedido explícito del usuario); el botón ⚙️ lo
+  // despliega cuando hace falta seleccionar/crear un viaje o configurar algo.
+  const [panelAbierto, setPanelAbierto] = useState(false);
   const [showZonas, setShowZonas] = useState(false);
   const [showIaConfig, setShowIaConfig] = useState(false);
+  const [showVehiculos, setShowVehiculos] = useState(false);
+  const [showCuadrillas, setShowCuadrillas] = useState(false);
+  const [showParadasExtra, setShowParadasExtra] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
   const [mensajeViaje, setMensajeViaje] = useState(null); // { viajeId, titulo } | null
   const [adjuntos, setAdjuntos] = useState(null); // { viajeId, titulo, cuadrillaId } | { nv, titulo, cuadrillaId } | null
   const [semanaModalAbierta, setSemanaModalAbierta] = useState(false); // abre LogisticaViajeSemanaModal (mismo popup que en Logística de Viajes) - ahora solo para fecha/zona/cuadrilla/vehículo/borrar; reordenar y agregar/quitar paradas ya se hace acá mismo
@@ -877,6 +892,7 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
       cuadrilla_id: '',
       vehiculo_id: vehiculoSugerido ? String(vehiculoSugerido.id) : '',
       nombre: opts.nombreSugerido || `Viaje · Semana ${weekNumberFromLabel(semana)}`,
+      fondo_efectivo: '',
     });
     setConfirmando(true);
   };
@@ -899,12 +915,13 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
     setCreando(true);
     setErr('');
     try {
-      const { semana, incluidos, excluidos, fecha, zona_id, cuadrilla_id, vehiculo_id, nombre } = confirmForm;
+      const { semana, incluidos, excluidos, fecha, zona_id, cuadrilla_id, vehiculo_id, nombre, fondo_efectivo } = confirmForm;
       const crearRes = await crearLogisticaViaje(semana, {
         fecha, zona_id: zona_id ? Number(zona_id) : null,
         cuadrilla_id: cuadrilla_id ? Number(cuadrilla_id) : null,
         vehiculo_id: vehiculo_id ? Number(vehiculo_id) : null,
         nombre: nombre || null,
+        fondo_efectivo: fondo_efectivo || null,
       });
       const detalle = crearRes?.detalle;
       const viaje = (detalle?.viajes || []).reduce((max, v) => (max == null || v.id > max.id ? v : max), null);
@@ -1146,9 +1163,17 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
             </>
           )}
         </div>
-        {canEdit ? <button className="btn" onClick={() => setShowZonas(true)}>Zonas</button> : null}
-        {canEdit ? <button className="btn" onClick={() => setShowIaConfig(true)}>🤖 Config IA</button> : null}
-        {canEdit ? <button className="btn" onClick={() => setShowPromesaConfig(true)}>📅 Config promesa</button> : null}
+        {canEdit ? (
+          <button
+            type="button"
+            className="btn"
+            title={panelAbierto ? 'Ocultar panel de acciones/config' : 'Mostrar panel de acciones/config'}
+            style={panelAbierto ? { background: 'var(--brand)', color: '#fff', borderColor: 'var(--brand)' } : undefined}
+            onClick={() => setPanelAbierto((v) => !v)}
+          >
+            ⚙️ {panelAbierto ? 'Ocultar panel' : 'Panel'}
+          </button>
+        ) : null}
       </div>
 
       {err ? <div style={{ color: 'crimson', fontWeight: 800, fontSize: 12 }}>{err}</div> : null}
@@ -1287,6 +1312,15 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
                                 <div style={{ fontSize: 9, opacity: 0.7, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.nombre}</div>
                               ) : null}
                             </div>
+                            {!esExtra && it.telefono ? (
+                              <button
+                                type="button" className="btn" style={{ padding: '0 4px', fontSize: 10, flex: '0 0 auto' }}
+                                onClick={() => nav(`/admin/logistica-whatsapp?telefono=${encodeURIComponent(it.telefono)}`)}
+                                title="Abrir chat de WhatsApp con el cliente"
+                              >
+                                💬
+                              </button>
+                            ) : null}
                             {!esExtra ? (
                               <button
                                 type="button" className="btn" style={{ padding: '0 4px', fontSize: 10, flex: '0 0 auto' }}
@@ -1357,8 +1391,17 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
           </div>
         ) : null}
 
-        {canEdit && modoSemana === 'sin_fecha_salida' ? (
+        {panelAbierto && canEdit && modoSemana === 'sin_fecha_salida' ? (
           <div style={{ width: 340, flex: '0 0 auto', display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              <button type="button" className="btn" onClick={() => setShowZonas(true)}>Zonas</button>
+              <button type="button" className="btn" onClick={() => setShowIaConfig(true)}>🤖 Config IA</button>
+              <button type="button" className="btn" onClick={() => setShowPromesaConfig(true)}>📅 Config promesa</button>
+              <button type="button" className="btn" onClick={() => setShowCuadrillas(true)}>👷 Cuadrillas</button>
+              <button type="button" className="btn" onClick={() => setShowVehiculos(true)}>🚚 Vehículos</button>
+              <button type="button" className="btn" onClick={() => setShowParadasExtra(true)}>🏨 Paradas estándar</button>
+              <button type="button" className="btn" onClick={() => setShowTemplates(true)}>📄 Templates WhatsApp</button>
+            </div>
             <div style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 12, fontSize: 12, opacity: 0.85 }}>
               Son NV sin "Fecha Salida" cargada todavía en /a (mismo filtro "Sin fecha" de esa
               columna). Hacé click en los pines para seleccionar los que quieras agrupar por
@@ -1399,8 +1442,17 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
               </div>
             )}
           </div>
-        ) : canEdit ? (
+        ) : panelAbierto && canEdit ? (
           <div style={{ width: 340, flex: '0 0 auto', display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              <button type="button" className="btn" onClick={() => setShowZonas(true)}>Zonas</button>
+              <button type="button" className="btn" onClick={() => setShowIaConfig(true)}>🤖 Config IA</button>
+              <button type="button" className="btn" onClick={() => setShowPromesaConfig(true)}>📅 Config promesa</button>
+              <button type="button" className="btn" onClick={() => setShowCuadrillas(true)}>👷 Cuadrillas</button>
+              <button type="button" className="btn" onClick={() => setShowVehiculos(true)}>🚚 Vehículos</button>
+              <button type="button" className="btn" onClick={() => setShowParadasExtra(true)}>🏨 Paradas estándar</button>
+              <button type="button" className="btn" onClick={() => setShowTemplates(true)}>📄 Templates WhatsApp</button>
+            </div>
             {resultado ? (
               <div style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 12, background: 'var(--surface-muted, #f9fafb)' }}>
                 <div style={{ fontWeight: 900, marginBottom: 6 }}>✅ Viaje creado</div>
@@ -1453,6 +1505,14 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
                 <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 11, marginBottom: 10 }}>
                   Nombre
                   <input className="pp-input" value={confirmForm.nombre} onChange={(e) => setConfirmForm((f) => ({ ...f, nombre: e.target.value }))} />
+                </label>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 11, marginBottom: 10 }}>
+                  Fondo en efectivo para la cuadrilla (opcional)
+                  <input
+                    className="pp-input" type="number" min="0" step="0.01" placeholder="$"
+                    value={confirmForm.fondo_efectivo}
+                    onChange={(e) => setConfirmForm((f) => ({ ...f, fondo_efectivo: e.target.value }))}
+                  />
                 </label>
 
                 <div style={{ display: 'flex', gap: 6 }}>
@@ -1600,6 +1660,10 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
       <LogisticaZonasModal open={showZonas} config={config} onClose={() => setShowZonas(false)} onChanged={reloadConfig} />
       <LogisticaIaConfigModal open={showIaConfig} onClose={() => setShowIaConfig(false)} />
       <LogisticaPromesaConfigModal open={showPromesaConfig} onClose={() => setShowPromesaConfig(false)} onChanged={load} />
+      <LogisticaVehiculosModal open={showVehiculos} config={config} onClose={() => setShowVehiculos(false)} onChanged={reloadConfig} />
+      <LogisticaCuadrillasModal open={showCuadrillas} config={config} onClose={() => setShowCuadrillas(false)} onChanged={reloadConfig} />
+      <LogisticaParadasExtraModal open={showParadasExtra} puntosExtra={puntosExtra} onClose={() => setShowParadasExtra(false)} onChanged={load} />
+      <LogisticaWhatsappTemplatesModal open={showTemplates} onClose={() => setShowTemplates(false)} />
       <LogisticaMensajeViajeModal open={!!mensajeViaje} viajeId={mensajeViaje?.viajeId} titulo={mensajeViaje?.titulo} onClose={() => setMensajeViaje(null)} />
       <LogisticaAdjuntosModal open={!!adjuntos} viajeId={adjuntos?.viajeId} nv={adjuntos?.nv} titulo={adjuntos?.titulo} canEdit={canEdit} cuadrillaId={adjuntos?.cuadrillaId} onClose={() => setAdjuntos(null)} />
       <LogisticaViajeSemanaModal
