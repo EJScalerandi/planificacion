@@ -5,10 +5,30 @@ import {
   getAdminToken,
   adminGetNotaNodo,
   adminSetNotaNodo,
+  adminListNotaEntradas,
+  adminSetNotaEntrada,
+  adminDeleteNotaEntrada,
   adminListUsuariosPrueba,
   adminAddUsuarioPrueba,
   adminDeleteUsuarioPrueba,
 } from '../../src/api';
+
+// Para mostrar el nombre de quien está escribiendo la nota apenas empieza a
+// tipear, sin esperar a que se confirme el guardado (notaMeta.updatedBy solo
+// se actualiza después de que el servidor responde).
+function currentAdminUsername() {
+  try {
+    const token = getAdminToken();
+    const payload = String(token || '').split('.')[1];
+    if (!payload) return '';
+    const b64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const pad = b64.length % 4 ? '='.repeat(4 - (b64.length % 4)) : '';
+    const decoded = JSON.parse(atob(b64 + pad));
+    return decoded?.username || '';
+  } catch {
+    return '';
+  }
+}
 
 const nodeBoxStyle = {
   position: 'absolute',
@@ -271,6 +291,31 @@ const NODE_CONTENT = {
   },
 };
 
+const RELATIVE_TIME_FORMATTER = new Intl.RelativeTimeFormat('es', { numeric: 'auto' });
+
+// "hace 5 min" en vez de la fecha completa - más fácil de leer de un vistazo
+// para saber si lo que dice la nota está fresco o es de hace rato.
+function formatRelativeTime(iso) {
+  if (!iso) return '';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  const diffSec = Math.round((date.getTime() - Date.now()) / 1000);
+  const abs = Math.abs(diffSec);
+  if (abs < 45) return 'recién';
+  if (abs < 3600) return RELATIVE_TIME_FORMATTER.format(Math.round(diffSec / 60), 'minute');
+  if (abs < 86400) return RELATIVE_TIME_FORMATTER.format(Math.round(diffSec / 3600), 'hour');
+  if (abs < 2592000) return RELATIVE_TIME_FORMATTER.format(Math.round(diffSec / 86400), 'day');
+  return date.toLocaleDateString('es-AR');
+}
+
+// Crece con el texto (como el cuadro de escribir de un chat) en vez de tener
+// un tamaño fijo con tirador para agrandar a mano.
+function autosizeTextarea(el) {
+  if (!el) return;
+  el.style.height = 'auto';
+  el.style.height = `${el.scrollHeight}px`;
+}
+
 const innerBoxStyle = {
   flex: 1,
   border: '1px solid var(--border)',
@@ -323,9 +368,17 @@ export default function IndiceProgramacionPage() {
   const [openNode, setOpenNode] = useState(null);
   const [openNodeLabel, setOpenNodeLabel] = useState('');
   const [fidelityChoiceOpen, setFidelityChoiceOpen] = useState(false);
-  // Nota + usuario/contraseña editables: se guardan juntos por nodo en
+  // Link + usuario/contraseña editables: se guardan juntos por nodo en
   // public.notas_nodo, así que lo que carga uno lo ve el resto del equipo.
-  const [nota, setNota] = useState('');
+  const [link, setLink] = useState('');
+  // "¿Qué se está trabajando acá?" - a diferencia de link/acceso, es UNA FILA
+  // POR ADMIN (public.notas_nodo_entradas): notaEntradas trae la de todos,
+  // misNotaTexto es mi borrador local. Así nadie pisa lo de otro.
+  const [misNotaTexto, setMisNotaTexto] = useState('');
+  const [notaEntradas, setNotaEntradas] = useState([]);
+  const [entradasLoading, setEntradasLoading] = useState(false);
+  const [entradaSaving, setEntradaSaving] = useState(false);
+  const [entradasError, setEntradasError] = useState('');
   // adminUserInput/adminPasswordInput: lo que se está tipeando (borrador).
   // savedAdminUser/savedAdminPassword: lo último realmente guardado - es lo
   // que se muestra como texto fijo hasta que alguien aprieta "Editar".
@@ -373,6 +426,7 @@ export default function IndiceProgramacionPage() {
   const [tempNotes, setTempNotes] = useState([]);
   const canvasRef = useRef(null);
   const dragRef = useRef(null);
+  const misNotaRef = useRef(null);
 
   const resetLayout = () => {
     try { localStorage.removeItem(LS_KEY); } catch {}
@@ -488,7 +542,7 @@ export default function IndiceProgramacionPage() {
 
   useEffect(() => {
     if (!openNode) return;
-    setNota('');
+    setLink('');
     setAdminUserInput('');
     setAdminPasswordInput('');
     setSavedAdminUser('');
@@ -501,7 +555,7 @@ export default function IndiceProgramacionPage() {
       .then(({ data }) => {
         const u = data?.admin_user || '';
         const p = data?.admin_password || '';
-        setNota(data?.nota || '');
+        setLink(data?.link || '');
         setAdminUserInput(u);
         setAdminPasswordInput(p);
         setSavedAdminUser(u);
@@ -526,6 +580,38 @@ export default function IndiceProgramacionPage() {
       .finally(() => setTestUsersLoading(false));
   }, [openNode]);
 
+  const cargarEntradas = () => {
+    if (!openNode) return;
+    adminListNotaEntradas(openNode)
+      .then(({ data }) => setNotaEntradas(Array.isArray(data?.entradas) ? data.entradas : []))
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    if (!openNode) return;
+    setMisNotaTexto('');
+    setNotaEntradas([]);
+    setEntradasError('');
+    setEntradasLoading(true);
+    adminListNotaEntradas(openNode)
+      .then(({ data }) => {
+        const entradas = Array.isArray(data?.entradas) ? data.entradas : [];
+        setNotaEntradas(entradas);
+        const mia = entradas.find((e) => e.autor_username === currentAdminUsername());
+        setMisNotaTexto(mia?.texto || '');
+        setTimeout(() => autosizeTextarea(misNotaRef.current), 0);
+      })
+      .catch((err) => setEntradasError(`No se pudo cargar: ${describeApiError(err)}`))
+      .finally(() => setEntradasLoading(false));
+
+    // Mientras el modal está abierto, refresca cada 6s lo que escribieron
+    // los demás (nunca toca mi propio borrador local) - así se siente "en
+    // tiempo real" sin necesitar un websocket.
+    const interval = setInterval(cargarEntradas, 6000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openNode]);
+
   const saveField = (payload) => {
     if (!openNode) return;
     setNotaSaving(true);
@@ -535,9 +621,35 @@ export default function IndiceProgramacionPage() {
       .finally(() => setNotaSaving(false));
   };
 
-  // La nota se sigue guardando sola al salir del campo (no manda usuario ni
+  // El link se guarda solo al salir del campo (no manda usuario ni
   // contraseña, así nunca los toca sin querer).
-  const saveNota = () => saveField({ nota });
+  const saveLink = () => saveField({ link });
+
+  // Guarda MI entrada (nunca la de otro - el autor lo pone el backend según
+  // quién está logueado). Actualiza la lista completa con lo que devuelve el
+  // servidor para que se vea al toque en el resto de las pestañas/usuarios.
+  // Se guarda solo con el botón "Enviar" - no hay autoguardado mientras se
+  // escribe (a propósito, para no publicar algo a medio terminar).
+  const saveMiEntrada = () => {
+    if (!openNode) return;
+    setEntradaSaving(true);
+    adminSetNotaEntrada(openNode, misNotaTexto)
+      .then(() => cargarEntradas())
+      .catch(() => {})
+      .finally(() => setEntradaSaving(false));
+  };
+
+  // Botón "Terminé, liberar": vacía y borra MI entrada de un click, sin
+  // tocar las de nadie más.
+  const liberarMiEntrada = () => {
+    setMisNotaTexto('');
+    if (!openNode) return;
+    setEntradaSaving(true);
+    adminDeleteNotaEntrada(openNode)
+      .then(() => cargarEntradas())
+      .catch(() => {})
+      .finally(() => setEntradaSaving(false));
+  };
 
   // El acceso (usuario/contraseña) SOLO se guarda con el botón "Guardar".
   // Una vez guardado, queda fijo como texto (savedAdminUser/Password) y sale
@@ -549,7 +661,7 @@ export default function IndiceProgramacionPage() {
     if (!usuario || !password) return;
     setNotaSaving(true);
     setAccessError('');
-    adminSetNotaNodo(openNode, { nota, admin_user: usuario, admin_password: password })
+    adminSetNotaNodo(openNode, { admin_user: usuario, admin_password: password })
       .then(({ data }) => {
         // Si el backend no devolvió lo que mandamos (ej. porque es una
         // versión vieja del servidor que todavía no conoce admin_user/
@@ -619,19 +731,27 @@ export default function IndiceProgramacionPage() {
         .ip-node { transition: transform .15s ease, box-shadow .15s ease; }
         .ip-node:hover { transform: scale(1.06); box-shadow: 0 8px 20px rgba(0,0,0,.18); }
 
+        @keyframes ip-fade-in {
+          from { opacity: 0; transform: translateY(-4px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .ip-entrada-nueva { animation: ip-fade-in .35s ease; }
+
         .ip-section-label {
+          display: flex; align-items: center; gap: 6px;
           font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
           color: var(--brand-700); margin: 0 0 8px;
         }
         .ip-lead { font-size: 15px; line-height: 1.6; color: var(--text); margin: 0; }
-        .ip-divider { height: 1px; border: none; background: var(--border); margin: 16px 0; }
+        .ip-divider { height: 1px; border: none; background: var(--border); margin: 18px 0; }
 
         .ip-access-box {
           border: 1px solid color-mix(in srgb, var(--brand) 35%, var(--border));
           background: var(--brand-100);
           border-radius: 10px;
-          padding: 10px 14px;
+          padding: 12px 14px;
           margin-top: 10px;
+          box-shadow: 0 2px 10px rgba(15, 23, 42, .05);
         }
         .ip-access-row { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text); line-height: 1.5; }
         .ip-access-row + .ip-access-row { margin-top: 5px; }
@@ -652,13 +772,14 @@ export default function IndiceProgramacionPage() {
           border-radius: 50%; background: var(--brand);
         }
 
-        .ip-db-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 7px; }
+        .ip-db-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
         .ip-db-row {
           font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
           font-size: 12px; line-height: 1.55; color: var(--text);
           background: color-mix(in srgb, var(--brand) 6%, var(--surface));
           border: 1px solid var(--border); border-left: 3px solid var(--brand);
-          border-radius: 6px; padding: 8px 11px;
+          border-radius: 8px; padding: 9px 12px;
+          box-shadow: 0 1px 4px rgba(15, 23, 42, .04);
         }
 
         .ip-testusers-grid {
@@ -671,8 +792,10 @@ export default function IndiceProgramacionPage() {
           background: linear-gradient(180deg, color-mix(in srgb, var(--brand) 9%, var(--surface)), var(--surface));
           border-radius: 10px;
           padding: 10px 30px 10px 12px;
-          box-shadow: 0 2px 6px rgba(0,0,0,.05);
+          box-shadow: 0 2px 8px rgba(15, 23, 42, .06);
+          transition: box-shadow .15s ease, transform .15s ease;
         }
+        .ip-testuser-card:hover { box-shadow: 0 4px 14px rgba(15, 23, 42, .1); transform: translateY(-1px); }
         .ip-testuser-label {
           font-weight: 800; color: var(--brand-700); font-size: 12px; margin-bottom: 4px;
         }
@@ -834,7 +957,8 @@ export default function IndiceProgramacionPage() {
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(0,0,0,.45)',
+            background: 'rgba(15,23,42,.5)',
+            backdropFilter: 'blur(2px)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -846,8 +970,8 @@ export default function IndiceProgramacionPage() {
             style={{
               background: 'var(--surface)',
               border: '1px solid var(--border)',
-              borderRadius: 14,
-              boxShadow: 'var(--shadow)',
+              borderRadius: 16,
+              boxShadow: '0 24px 60px rgba(15, 23, 42, .22)',
               padding: 20,
               minWidth: 260,
             }}
@@ -882,7 +1006,8 @@ export default function IndiceProgramacionPage() {
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(0,0,0,.45)',
+            background: 'rgba(15,23,42,.5)',
+            backdropFilter: 'blur(2px)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -894,8 +1019,8 @@ export default function IndiceProgramacionPage() {
             style={{
               background: 'var(--surface)',
               border: '1px solid var(--border)',
-              borderRadius: 14,
-              boxShadow: 'var(--shadow)',
+              borderRadius: 16,
+              boxShadow: '0 24px 60px rgba(15, 23, 42, .22)',
               padding: 20,
               minWidth: 320,
               maxWidth: '90vw',
@@ -903,14 +1028,14 @@ export default function IndiceProgramacionPage() {
               overflow: 'auto',
             }}
           >
-            <div style={{ marginBottom: 4 }}>
+            <div style={{ marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid var(--border)' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                 <h2
                   onClick={() => goToProgram(openContent?.url)}
                   title={openContent?.url ? 'Ir a este programa' : undefined}
                   style={{
                     margin: 0,
-                    fontSize: 19,
+                    fontSize: 20,
                     fontWeight: 900,
                     color: openContent?.url ? 'var(--brand-700)' : 'var(--text)',
                     cursor: openContent?.url ? 'pointer' : 'default',
@@ -922,13 +1047,40 @@ export default function IndiceProgramacionPage() {
               </div>
             </div>
 
-            <p className="ip-lead" style={{ margin: '10px 0 0' }}>
+            <p className="ip-lead" style={{ margin: 0 }}>
               {openContent?.description || 'Descripción pendiente de definir.'}
             </p>
 
             {openContent && (
               <div className="ip-access-box">
-                <div className="ip-section-label" style={{ marginBottom: 8 }}>Acceso</div>
+                <div className="ip-section-label" style={{ marginBottom: 8 }}>🔗 Link</div>
+                <div className="ip-access-row">
+                  <input
+                    type="url"
+                    className="ip-access-input"
+                    value={link}
+                    onChange={(e) => setLink(e.target.value)}
+                    onBlur={saveLink}
+                    disabled={notaLoading}
+                    placeholder="https://..."
+                  />
+                  {link.trim() && (
+                    <button
+                      type="button"
+                      className="btn"
+                      style={{ flex: 'none', padding: '4px 10px' }}
+                      onClick={() => goToProgram(link.trim())}
+                    >
+                      Abrir ↗
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {openContent && (
+              <div className="ip-access-box">
+                <div className="ip-section-label" style={{ marginBottom: 8 }}>🔒 Acceso</div>
 
                 {notaLoading ? (
                   <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>Cargando…</div>
@@ -1003,7 +1155,7 @@ export default function IndiceProgramacionPage() {
             {openContent?.items?.length > 0 && (
               <>
                 <hr className="ip-divider" />
-                <div className="ip-section-label">Qué hace</div>
+                <div className="ip-section-label">⚙️ Qué hace</div>
                 <ul className="ip-modal-list">
                   {openContent.items.map((item) => (
                     <li key={item}>{item}</li>
@@ -1015,7 +1167,7 @@ export default function IndiceProgramacionPage() {
             {openContent && (
               <>
                 <hr className="ip-divider" />
-                <div className="ip-section-label">Usuarios de prueba</div>
+                <div className="ip-section-label">👥 Usuarios de prueba</div>
 
                 {testUsers.length > 0 ? (
                   <div className="ip-testusers-grid">
@@ -1079,7 +1231,7 @@ export default function IndiceProgramacionPage() {
             {openContent?.database?.length > 0 && (
               <>
                 <hr className="ip-divider" />
-                <div className="ip-section-label">Base de datos</div>
+                <div className="ip-section-label">🗄️ Base de datos</div>
                 <ul className="ip-db-list">
                   {openContent.database.map((item) => (
                     <li key={item} className="ip-db-row">{item}</li>
@@ -1088,40 +1240,160 @@ export default function IndiceProgramacionPage() {
               </>
             )}
 
-            {openContent && (
-              <div style={{ marginTop: 16 }}>
-                <hr className="ip-divider" />
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 4 }}>
-                  ¿Qué estás trabajando en este programa? (se ve en tiempo real para todos)
-                </label>
-                <textarea
-                  value={nota}
-                  onChange={(e) => setNota(e.target.value)}
-                  onBlur={saveNota}
-                  disabled={notaLoading}
-                  rows={4}
-                  style={{
-                    width: '100%',
-                    boxSizing: 'border-box',
-                    border: '1px solid var(--border)',
-                    borderRadius: 8,
-                    padding: 8,
-                    font: 'inherit',
-                    color: 'var(--text)',
-                    background: 'var(--surface)',
-                    resize: 'vertical',
-                  }}
-                  placeholder="Ej: Juan - agregando validación de stock..."
-                />
-                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
-                  {notaSaving
-                    ? 'Guardando…'
-                    : notaMeta
-                      ? `Última edición: ${notaMeta.updatedBy || '—'}`
-                      : 'Se guarda automáticamente al salir del campo.'}
+            {openContent && (() => {
+              const miUsername = currentAdminUsername();
+              const otrasEntradas = notaEntradas.filter((e) => e.autor_username !== miUsername);
+              const miEntradaGuardada = notaEntradas.find((e) => e.autor_username === miUsername);
+              const haySinEnviar = (miEntradaGuardada?.texto || '') !== misNotaTexto;
+              const hayAlgo = misNotaTexto.trim() || otrasEntradas.length > 0;
+              return (
+                <div style={{ marginTop: 16 }}>
+                  <hr className="ip-divider" />
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          width: 8, height: 8, borderRadius: '50%', flex: 'none',
+                          background: hayAlgo ? 'var(--brand)' : 'var(--muted)',
+                          boxShadow: hayAlgo ? '0 0 0 3px color-mix(in srgb, var(--brand) 25%, transparent)' : 'none',
+                        }}
+                      />
+                      <span className="ip-section-label" style={{ margin: 0 }}>¿Qué se está trabajando acá?</span>
+                    </div>
+                    {misNotaTexto.trim() && !entradasLoading && (
+                      <button
+                        type="button"
+                        className="btn"
+                        style={{ padding: '3px 10px', fontSize: 11 }}
+                        onClick={liberarMiEntrada}
+                        disabled={entradaSaving}
+                      >
+                        Terminé, liberar
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Mi entrada: cada admin edita y borra SOLO la suya - nunca
+                      pisa lo que escribió otro, aunque estén tipeando al
+                      mismo tiempo en el mismo cuadro. El "usuario-" solo
+                      aparece adentro del cuadro, delante del texto, y recién
+                      cuando hay algo escrito (no antes). */}
+                  <div>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: 4,
+                        boxSizing: 'border-box',
+                        border: '1px solid var(--border)',
+                        background: 'var(--surface)',
+                        borderRadius: 10,
+                        padding: '8px 12px',
+                        boxShadow: '0 1px 4px rgba(15, 23, 42, .04)',
+                      }}
+                    >
+                      {misNotaTexto.trim() && (
+                        <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--brand-700)', flex: 'none', whiteSpace: 'nowrap' }}>
+                          {miUsername || 'Vos'}-
+                        </span>
+                      )}
+                      <textarea
+                        ref={misNotaRef}
+                        value={misNotaTexto}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setMisNotaTexto(val);
+                          autosizeTextarea(e.target);
+                        }}
+                        onKeyDown={(e) => {
+                          // Como en un chat: Enter manda, Shift+Enter hace un
+                          // salto de línea.
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            if (haySinEnviar && !entradasLoading && !entradaSaving) saveMiEntrada();
+                          }
+                        }}
+                        disabled={entradasLoading}
+                        rows={1}
+                        style={{
+                          flex: 1,
+                          minWidth: 0,
+                          boxSizing: 'border-box',
+                          border: 'none',
+                          outline: 'none',
+                          padding: 0,
+                          margin: 0,
+                          font: 'inherit',
+                          fontSize: 13,
+                          lineHeight: 1.4,
+                          color: 'var(--text)',
+                          background: 'transparent',
+                          resize: 'none',
+                          overflow: 'hidden',
+                        }}
+                        placeholder="yo estoy trabajando acá... (Enter envía)"
+                      />
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 4 }}>
+                      <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+                        {entradasLoading
+                          ? 'Cargando…'
+                          : entradaSaving
+                            ? 'Enviando…'
+                            : haySinEnviar
+                              ? 'Sin enviar'
+                              : miEntradaGuardada
+                                ? `Enviado · ${formatRelativeTime(miEntradaGuardada.updated_at)}`
+                                : ''}
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn--brand"
+                        style={{ padding: '4px 12px', fontSize: 12 }}
+                        onClick={saveMiEntrada}
+                        disabled={entradasLoading || entradaSaving || !haySinEnviar}
+                      >
+                        Enviar
+                      </button>
+                    </div>
+                  </div>
+
+                  {entradasError && (
+                    <div style={{ fontSize: 11.5, color: '#c0392b', marginTop: 6 }}>{entradasError}</div>
+                  )}
+
+                  {/* Entradas de los demás - solo lectura, cada una con el
+                      nombre de quien la escribió delante del texto. */}
+                  {otrasEntradas.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+                      {otrasEntradas.map((e) => (
+                        <div
+                          key={e.autor_username}
+                          className="ip-entrada-nueva"
+                          style={{
+                            border: '1px solid var(--border)',
+                            borderRadius: 10,
+                            padding: '8px 12px',
+                            background: 'var(--surface)',
+                            boxShadow: '0 1px 4px rgba(15, 23, 42, .04)',
+                          }}
+                        >
+                          <div style={{ fontSize: 13, whiteSpace: 'pre-wrap', color: 'var(--text)' }}>
+                            <span style={{ fontWeight: 800, color: 'var(--brand-700)' }}>{e.autor_username}-</span>
+                            {e.texto}
+                          </div>
+                          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
+                            {formatRelativeTime(e.updated_at)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              </div>
-            )}
+              );
+            })()}
+
           </div>
         </div>
       )}

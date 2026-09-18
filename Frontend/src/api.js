@@ -605,6 +605,12 @@ export const adminGetNotaNodo = (nodoId) => api.get(`/admin/notas-nodo/${nodoId}
 // el acceso principal solo se pisa si vienen los dos campos cargados.
 export const adminSetNotaNodo = (nodoId, payload) => api.put(`/admin/notas-nodo/${nodoId}`, payload);
 
+// "¿Qué se está trabajando acá?" - una entrada por admin (nunca se pisan
+// entre sí). El autor lo pone el backend (req.admin.username), no el body.
+export const adminListNotaEntradas = (nodoId) => api.get(`/admin/notas-nodo/${nodoId}/entradas`);
+export const adminSetNotaEntrada = (nodoId, texto) => api.put(`/admin/notas-nodo/${nodoId}/entradas`, { texto });
+export const adminDeleteNotaEntrada = (nodoId) => api.delete(`/admin/notas-nodo/${nodoId}/entradas`);
+
 export const adminListUsuariosPrueba = (nodoId) => api.get(`/admin/notas-nodo/${nodoId}/usuarios-prueba`);
 export const adminAddUsuarioPrueba = (nodoId, { etiqueta, usuario, password }) =>
   api.post(`/admin/notas-nodo/${nodoId}/usuarios-prueba`, { etiqueta, usuario, password });

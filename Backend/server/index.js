@@ -415,6 +415,195 @@ const MIGRATIONS = [
     `,
   },
   {
+    // Sistema de tickets: un botón "Tickets" (junto a "Menú" en las pantallas
+    // admin, y junto a "Refrescar" en los tableros de producción) permite a
+    // cualquier admin logueado abrir un ticket (categoría + texto libre); se
+    // ven y responden todos desde /admin/tickets. Tablas propias de esta app
+    // (no las de "Consultas de Logística", que apuntan a tablas del
+    // Presupuestador).
+    name: 'tickets',
+    sql: `
+      CREATE TABLE IF NOT EXISTS public.tickets (
+        id SERIAL PRIMARY KEY,
+        categoria TEXT NOT NULL,
+        mensaje TEXT NOT NULL,
+        estado TEXT NOT NULL DEFAULT 'pending',
+        creado_por_id INTEGER REFERENCES public.admin_users(id),
+        creado_por_username TEXT,
+        ruta_origen TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_tickets_estado ON public.tickets(estado);
+      CREATE INDEX IF NOT EXISTS idx_tickets_creado_por ON public.tickets(creado_por_id);
+    `,
+  },
+  {
+    name: 'ticket_mensajes',
+    sql: `
+      CREATE TABLE IF NOT EXISTS public.ticket_mensajes (
+        id SERIAL PRIMARY KEY,
+        ticket_id INTEGER NOT NULL REFERENCES public.tickets(id) ON DELETE CASCADE,
+        autor_id INTEGER REFERENCES public.admin_users(id),
+        autor_username TEXT,
+        es_admin BOOLEAN NOT NULL DEFAULT FALSE,
+        mensaje TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_ticket_mensajes_ticket ON public.ticket_mensajes(ticket_id);
+    `,
+  },
+  {
+    // Los tickets pasan a ser el almacén CENTRAL de todas las apps del
+    // ecosistema (primero planificación, ahora integrador, después el
+    // resto) — no solo de planificación. creado_por_id/autor_id ya no
+    // pueden tener FK a admin_users: un usuario de otra app no existe en
+    // esa tabla. app_origen dice de qué app vino cada ticket para poder
+    // filtrar/identificar en /admin/tickets.
+    name: 'tickets_multi_app',
+    sql: `
+      ALTER TABLE public.tickets DROP CONSTRAINT IF EXISTS tickets_creado_por_id_fkey;
+      ALTER TABLE public.ticket_mensajes DROP CONSTRAINT IF EXISTS ticket_mensajes_autor_id_fkey;
+      ALTER TABLE public.tickets ADD COLUMN IF NOT EXISTS app_origen TEXT NOT NULL DEFAULT 'planificacion';
+      CREATE INDEX IF NOT EXISTS idx_tickets_app_origen ON public.tickets(app_origen);
+    `,
+  },
+  {
+    // creado_por_id/autor_id eran INTEGER (id numerico de admin_users de
+    // planificacion). Integrador identifica usuarios con un UUID de
+    // Supabase Auth, no un numero — pasan a TEXT para que cualquier app
+    // pueda guardar el id que tenga, sea cual sea su forma.
+    name: 'tickets_creado_por_id_text',
+    sql: `
+      ALTER TABLE public.tickets ALTER COLUMN creado_por_id TYPE TEXT USING creado_por_id::text;
+      ALTER TABLE public.ticket_mensajes ALTER COLUMN autor_id TYPE TEXT USING autor_id::text;
+    `,
+  },
+  {
+    // Adjuntos en el ticket inicial (imagen/PDF/video) — mismo formato que ya
+    // usan las Consultas a Técnica/Comercial del Presupuestador y las
+    // Consultas de Logística: array de { name, type, size, data_url,
+    // uploaded_at } en JSONB. Ver Frontend/src/utils/ticketAttachment.js.
+    name: 'tickets_adjuntos',
+    sql: `
+      ALTER TABLE public.tickets ADD COLUMN IF NOT EXISTS adjuntos JSONB NOT NULL DEFAULT '[]'::jsonb;
+    `,
+  },
+  {
+    // Link editable por cuadro del diagrama "Índice de Programación" (ver
+    // server/sql/migration_notas_nodo*.sql) - pedido del usuario: poder
+    // guardar una URL de referencia (repo, doc, tablero) junto con la nota y
+    // el acceso de cada nodo, visible para todo el equipo.
+    name: 'notas_nodo_link',
+    sql: `
+      CREATE TABLE IF NOT EXISTS public.notas_nodo (
+        nodo_id TEXT PRIMARY KEY,
+        nota TEXT NOT NULL DEFAULT '',
+        admin_user TEXT NOT NULL DEFAULT '',
+        admin_password TEXT NOT NULL DEFAULT '',
+        updated_by TEXT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      ALTER TABLE public.notas_nodo ADD COLUMN IF NOT EXISTS link TEXT NOT NULL DEFAULT '';
+    `,
+  },
+  {
+    // En algunos entornos locales notas_nodo ya existía (creada a mano solo
+    // con migration_notas_nodo.sql, sin correr nunca
+    // migration_notas_nodo_credenciales.sql ni
+    // migration_notas_nodo_usuarios_prueba.sql) - el CREATE TABLE IF NOT
+    // EXISTS de arriba es un no-op en ese caso y deja faltando estas
+    // columnas/tabla. Estas dos ALTER/CREATE son additivas e idempotentes,
+    // así que no rompen nada donde ya estaban corridas a mano.
+    name: 'notas_nodo_credenciales_y_usuarios_prueba',
+    sql: `
+      ALTER TABLE public.notas_nodo
+        ADD COLUMN IF NOT EXISTS admin_user TEXT NOT NULL DEFAULT '',
+        ADD COLUMN IF NOT EXISTS admin_password TEXT NOT NULL DEFAULT '';
+
+      CREATE TABLE IF NOT EXISTS public.notas_nodo_usuarios_prueba (
+        id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        nodo_id TEXT NOT NULL,
+        etiqueta TEXT NOT NULL DEFAULT '',
+        usuario TEXT NOT NULL,
+        password TEXT NOT NULL,
+        created_by TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS notas_nodo_usuarios_prueba_nodo_id_idx
+        ON public.notas_nodo_usuarios_prueba (nodo_id, created_at);
+    `,
+  },
+  {
+    // "¿Qué se está trabajando acá?" pasa de un solo campo compartido
+    // (notas_nodo.nota, "gana el último que guarda") a una fila POR ADMIN:
+    // así dos personas escribiendo al mismo tiempo en el mismo nodo nunca se
+    // pisan - cada quien edita y borra solo la suya. notas_nodo.nota queda
+    // sin usar por esta pantalla (no se borra la columna, por si acaso).
+    name: 'notas_nodo_entradas',
+    sql: `
+      CREATE TABLE IF NOT EXISTS public.notas_nodo_entradas (
+        nodo_id TEXT NOT NULL,
+        autor_username TEXT NOT NULL,
+        texto TEXT NOT NULL DEFAULT '',
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        PRIMARY KEY (nodo_id, autor_username)
+      );
+      CREATE INDEX IF NOT EXISTS idx_notas_nodo_entradas_nodo
+        ON public.notas_nodo_entradas (nodo_id, updated_at);
+    `,
+  },
+  {
+    // Todas las consultas de tickets (listMyTickets, listAllTickets) ordenan
+    // por created_at desc y no había índice para eso - quedaba resuelto con
+    // un sort completo de la tabla en cada pedido. No afecta hoy con el
+    // volumen actual, pero es gratis agregarlo ahora.
+    name: 'tickets_created_at_index',
+    sql: `
+      CREATE INDEX IF NOT EXISTS idx_tickets_created_at ON public.tickets (created_at DESC);
+    `,
+  },
+  {
+    // Las tarjetas "tarea" (creadas a mano desde /admin/tickets-tablero, no
+    // mandadas por ninguna app - ver app_origen='tarea') se pueden arrastrar
+    // a CUALQUIER columna del tablero, no solo Cerrados/su propia columna
+    // como un ticket real. app_origen se queda fijo en 'tarea' siempre (así
+    // se sabe que es libre de mover/borrar en cualquier estado);
+    // board_column guarda en qué columna se ve HOY. NULL para cualquier
+    // ticket real (esos siempre se pintan por su app_origen, sin esta
+    // columna).
+    name: 'tickets_board_column',
+    sql: `
+      ALTER TABLE public.tickets ADD COLUMN IF NOT EXISTS board_column TEXT;
+    `,
+  },
+  {
+    // "Apartados": columnas EXTRA del tablero (/admin/tickets-tablero) que
+    // un admin puede crear a mano ("+ Nuevo apartado"), además de las fijas
+    // (una por app + "Tareas" + "Cerrados"). `clave` es lo que se guarda en
+    // tickets.board_column para ubicar ahí una tarjeta "tarea"; `nombre` es
+    // el título que se ve en el header de la columna.
+    name: 'ticket_board_apartados',
+    sql: `
+      CREATE TABLE IF NOT EXISTS public.ticket_board_apartados (
+        id SERIAL PRIMARY KEY,
+        clave TEXT UNIQUE NOT NULL,
+        nombre TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+    `,
+  },
+  {
+    // "¿Quién lo está trabajando ahora?" - se pisa con el username de quien
+    // pone el ticket/tarea en "En curso" (PATCH .../status), se limpia si
+    // vuelve a "Pendiente", y se conserva al cerrarlo (queda como "quién lo
+    // resolvió"). Ver ticketsDb.setEstado.
+    name: 'tickets_en_progreso_por',
+    sql: `
+      ALTER TABLE public.tickets ADD COLUMN IF NOT EXISTS en_progreso_por TEXT;
+    `,
+  },
+  {
     // Bandeja de WhatsApp Business: TODOS los mensajes (entrantes por webhook
     // + salientes desde la app) en una sola tabla, agrupados por teléfono,
     // para el chat tipo WhatsApp Web - pedido explícito del usuario. Ver
