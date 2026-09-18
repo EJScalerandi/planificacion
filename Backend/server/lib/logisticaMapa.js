@@ -13,6 +13,7 @@ const { pool } = require('../db');
 const { resolveQuoteCoords } = require('./geocoding');
 const { clasificarZonas } = require('./logisticaZonificacion');
 const db = require('./logisticaViajesDb');
+const { formatearTelefono } = require('./logisticaWhatsapp');
 
 // Igual patrón prefijo-agnóstico que ya usan routes/public/portones.js y
 // routes/external/ia.js: el prefijo de letras no siempre es "NV" (también
@@ -71,6 +72,7 @@ async function resolveCoordsForNvs(nvList) {
       const nombre = ec.name || null;
       const direccion = [ec.address, ec.city].filter(Boolean).join(' - ') || null;
       const maps_url = ec.maps_url || null;
+      const telefono = formatearTelefono(ec.phone) || null;
 
       let lat = q.geo_lat != null ? Number(q.geo_lat) : null;
       let lng = q.geo_lng != null ? Number(q.geo_lng) : null;
@@ -85,7 +87,7 @@ async function resolveCoordsForNvs(nvList) {
         cacheCoords(q.quote_id, resolved).catch(() => {});
       }
 
-      return { nv: q.nv, lat, lng, source, nombre, direccion, maps_url };
+      return { nv: q.nv, lat, lng, source, nombre, direccion, maps_url, telefono };
     })
   );
 
@@ -93,7 +95,7 @@ async function resolveCoordsForNvs(nvList) {
   // Los NV pedidos que no matchearon ninguna quote (o no tenían maps_url ni
   // dirección para geocodificar) igual se devuelven, sin ubicación, para que
   // el frontend pueda contar "X de Y con ubicación".
-  const puntos = nvs.map((nv) => byNv.get(nv) || { nv, lat: null, lng: null, source: null, nombre: null, direccion: null, maps_url: null });
+  const puntos = nvs.map((nv) => byNv.get(nv) || { nv, lat: null, lng: null, source: null, nombre: null, direccion: null, maps_url: null, telefono: null });
 
   // Zonificación determinística (Fase 0 del motor de logística IA): un solo
   // query de referencias para todo el lote. Si todavía no hay zonas/

@@ -39,6 +39,7 @@ import InsumosEntregasPage from '../pages/admin/InsumosEntregasPage';
 import IndiceProgramacionPage from '../pages/admin/IndiceProgramacionPage';
 import LogisticaViajesPage from '../pages/admin/LogisticaViajesPage';
 import LogisticaFechasPage from '../pages/admin/LogisticaFechasPage';
+import LogisticaWhatsappPage from '../pages/admin/LogisticaWhatsappPage';
 import ServicioTecnicoViajesPage from '../pages/admin/ServicioTecnicoViajesPage';
 import ServicioTecnicoFechasPage from '../pages/admin/ServicioTecnicoFechasPage';
 import AdminTicketsPage from '../pages/admin/AdminTicketsPage';
@@ -755,6 +756,14 @@ export default function App() {
             element={
               <FullBleed>
                 <LogisticaFechasPage />
+              </FullBleed>
+            }
+          />
+          <Route
+            path="/admin/logistica-whatsapp"
+            element={
+              <FullBleed>
+                <LogisticaWhatsappPage />
               </FullBleed>
             }
           />
