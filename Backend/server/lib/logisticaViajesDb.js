@@ -616,7 +616,7 @@ async function getViajesForSemana(semana) {
       vi.zona_id, z.nombre as zona_nombre,
       vi.cuadrilla_id, c.nombre as cuadrilla_nombre,
       vi.vehiculo_id, veh.nombre as vehiculo_nombre, coalesce(veh.capacidad_portones, 0) as vehiculo_capacidad,
-      vi.ruta_real, to_char(vi.hora_salida, 'HH24:MI') as hora_salida,
+      vi.ruta_real, to_char(vi.hora_salida, 'HH24:MI') as hora_salida, vi.fondo_efectivo,
       vi.created_at, vi.updated_at
     from public.logistica_viajes vi
     left join public.logistica_zonas z on z.id = vi.zona_id
@@ -702,7 +702,7 @@ function normalizaHoraSalida(horaSalida) {
   return s;
 }
 
-async function crearViaje(semana, { fecha, zona_id, cuadrilla_id, vehiculo_id, nombre, orden, hora_salida }) {
+async function crearViaje(semana, { fecha, zona_id, cuadrilla_id, vehiculo_id, nombre, orden, hora_salida, fondo_efectivo }) {
   await assertSemanaAbierta(semana);
   const fechaStr = String(fecha || '').trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaStr)) throw new Error('fecha inválida');
@@ -713,9 +713,12 @@ async function crearViaje(semana, { fecha, zona_id, cuadrilla_id, vehiculo_id, n
   }
 
   await pool.query(
-    `insert into public.logistica_viajes (semana, fecha, zona_id, cuadrilla_id, vehiculo_id, nombre, orden, hora_salida)
-     values ($1, $2, $3, $4, $5, $6, coalesce($7, 0), $8);`,
-    [semana, fechaStr, zona_id || null, cuadrilla_id || null, vehiculo_id || null, nombre || null, orden ?? null, normalizaHoraSalida(hora_salida)]
+    `insert into public.logistica_viajes (semana, fecha, zona_id, cuadrilla_id, vehiculo_id, nombre, orden, hora_salida, fondo_efectivo)
+     values ($1, $2, $3, $4, $5, $6, coalesce($7, 0), $8, $9);`,
+    [
+      semana, fechaStr, zona_id || null, cuadrilla_id || null, vehiculo_id || null, nombre || null, orden ?? null,
+      normalizaHoraSalida(hora_salida), fondo_efectivo != null && fondo_efectivo !== '' ? Number(fondo_efectivo) : null,
+    ]
   );
 
   return getSemanaDetalle(semana);
@@ -727,7 +730,7 @@ async function getViajeSemana(viajeId) {
   return rows[0].semana;
 }
 
-async function patchViaje(id, { fecha, zona_id, cuadrilla_id, vehiculo_id, nombre, orden, hora_salida }) {
+async function patchViaje(id, { fecha, zona_id, cuadrilla_id, vehiculo_id, nombre, orden, hora_salida, fondo_efectivo }) {
   const viajeId = Number(id);
   const semana = await getViajeSemana(viajeId);
   await assertSemanaAbierta(semana);
@@ -749,6 +752,10 @@ async function patchViaje(id, { fecha, zona_id, cuadrilla_id, vehiculo_id, nombr
   if (nombre !== undefined) { params.push(nombre || null); sets.push(`nombre = $${params.length}`); }
   if (orden !== undefined) { params.push(orden); sets.push(`orden = $${params.length}`); }
   if (hora_salida !== undefined) { params.push(normalizaHoraSalida(hora_salida)); sets.push(`hora_salida = $${params.length}`); }
+  if (fondo_efectivo !== undefined) {
+    params.push(fondo_efectivo != null && fondo_efectivo !== '' ? Number(fondo_efectivo) : null);
+    sets.push(`fondo_efectivo = $${params.length}`);
+  }
 
   if (sets.length) {
     sets.push('updated_at = now()');

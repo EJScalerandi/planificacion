@@ -9,11 +9,11 @@
 // un celular.
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  fetchDespachoV2QcUsers, despachoV2Login, fetchDespachoV2Viajes, marcarSalidaDespachoV2,
+  fetchDespachoV2QcUsers, despachoV2Login, fetchDespachoV2Viajes, marcarSalidaDespachoV2, marcarLlegadaDespachoV2,
   fetchParadasDespachoV2, fetchNvDespachoV2, fetchNvAdjuntosDespachoV2, crearSolicitudStDespachoV2,
   fetchRemitosPorNv, getDespachoV2Token, getDespachoV2User, setDespachoV2Session, clearDespachoV2Session,
   marcarEntregadoDespachoV2, avisarSiguienteDespachoV2,
-  fetchGastosDespachoV2, crearGastoDespachoV2, deleteGastoDespachoV2,
+  fetchGastosDespachoV2, crearGastoDespachoV2, actualizarGastoDespachoV2, deleteGastoDespachoV2,
   API_BASE_URL,
 } from '../src/api';
 
@@ -612,13 +612,91 @@ function montoLegible(n) {
   return Number(n || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 });
 }
 
+// Fila de un gasto ya cargado - si algún campo quedó incierto para la IA
+// (campos_inciertos), se puede corregir ahí mismo con un tap (pedido
+// explícito del usuario). Corregir NO le saca el resaltado a logística -
+// sigue viendo estado_revision='revisar' aunque se arregle acá.
+function GastoRow({ gasto, viajeId, onCambio, onBorrar }) {
+  const [editando, setEditando] = useState(null); // 'fecha'|'motivo'|'monto'|'tipo_comprobante'|null
+  const [valor, setValor] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  const incierto = (campo) => (gasto.campos_inciertos || []).includes(campo);
+
+  const abrirEdicion = (campo, valorActual) => {
+    setEditando(campo);
+    setValor(String(valorActual ?? ''));
+  };
+
+  const guardar = async () => {
+    setGuardando(true);
+    try {
+      const patch = { [editando]: editando === 'monto' ? Number(valor) : valor };
+      await actualizarGastoDespachoV2(viajeId, gasto.id, patch);
+      setEditando(null);
+      onCambio();
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const campoStyle = (campo) => ({
+    cursor: 'pointer',
+    ...(incierto(campo) ? { color: '#b45309', textDecoration: 'underline dotted', fontWeight: 800 } : {}),
+  });
+
+  return (
+    <div style={{ border: '1px solid #f0f0f0', borderRadius: 10, padding: 8 }}>
+      {gasto.estado_revision === 'revisar' ? (
+        <div style={{ fontSize: 10, fontWeight: 800, color: '#b45309', marginBottom: 4 }}>
+          ⚠️ La IA no pudo leer algo con confianza - revisá lo subrayado {gasto.detalle_revision ? `(${gasto.detalle_revision})` : ''}
+        </div>
+      ) : null}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {editando === 'monto' ? (
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input type="number" inputMode="decimal" style={{ ...s.input, padding: 6, fontSize: 13 }} value={valor} onChange={(e) => setValor(e.target.value)} autoFocus />
+              <button type="button" style={{ fontSize: 12 }} disabled={guardando} onClick={guardar}>✓</button>
+            </div>
+          ) : editando === 'motivo' ? (
+            <div style={{ display: 'flex', gap: 6 }}>
+              <select style={{ ...s.input, padding: 6, fontSize: 13 }} value={valor} onChange={(e) => setValor(e.target.value)} autoFocus>
+                {MOTIVOS_GASTO.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+              <button type="button" style={{ fontSize: 12 }} disabled={guardando} onClick={guardar}>✓</button>
+            </div>
+          ) : (
+            <div style={{ fontWeight: 800, fontSize: 13 }}>
+              <span onClick={() => abrirEdicion('motivo', gasto.motivo)} style={campoStyle('motivo')}>{gasto.motivo || '(sin motivo)'}</span>
+              {' · $'}
+              <span onClick={() => abrirEdicion('monto', gasto.monto)} style={campoStyle('monto')}>{montoLegible(gasto.monto)}</span>
+            </div>
+          )}
+          {editando === 'fecha' ? (
+            <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+              <input type="date" style={{ ...s.input, padding: 6, fontSize: 12 }} value={valor} onChange={(e) => setValor(e.target.value)} autoFocus />
+              <button type="button" style={{ fontSize: 12 }} disabled={guardando} onClick={guardar}>✓</button>
+            </div>
+          ) : (
+            <div style={{ fontSize: 11, opacity: 0.6 }}>
+              <span onClick={() => abrirEdicion('fecha', gasto.fecha)} style={campoStyle('fecha')}>{fechaLegible(gasto.fecha) || '(sin fecha)'}</span>
+              {' · '}{gasto.cargado_por || '—'}
+              {gasto.tipo_comprobante ? ` · ${gasto.tipo_comprobante}` : ''}
+            </div>
+          )}
+        </div>
+        <a href={gasto.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 18, textDecoration: 'none' }} title="Ver ticket">
+          {String(gasto.tipo_mime || '').startsWith('image/') ? '🖼️' : '📄'}
+        </a>
+        <button type="button" onClick={() => onBorrar(gasto.id)} style={{ background: 'none', border: 'none', color: '#991b1b', fontSize: 16, cursor: 'pointer', padding: 4 }}>🗑️</button>
+      </div>
+    </div>
+  );
+}
+
 function GastosSheet({ viaje, onClose }) {
   const [gastos, setGastos] = useState(null);
   const [err, setErr] = useState('');
-  const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10));
-  const [motivo, setMotivo] = useState(MOTIVOS_GASTO[0]);
-  const [monto, setMonto] = useState('');
-  const [archivo, setArchivo] = useState(null);
   const [subiendo, setSubiendo] = useState(false);
 
   const cargar = () => {
@@ -628,27 +706,17 @@ function GastosSheet({ viaje, onClose }) {
 
   const total = (gastos || []).reduce((acc, g) => acc + Number(g.monto), 0);
 
-  const onArchivoElegido = (e) => {
+  const onArchivoElegido = async (e) => {
     const f = e.target.files?.[0];
     e.target.value = '';
-    if (f) setArchivo(f);
-  };
-
-  const agregar = async () => {
-    if (!fecha) { setErr('Falta la fecha.'); return; }
-    if (!motivo) { setErr('Falta el motivo.'); return; }
-    const montoNum = Number(monto);
-    if (!Number.isFinite(montoNum) || montoNum <= 0) { setErr('Ingresá un monto válido.'); return; }
-    if (!archivo) { setErr('Adjuntá una foto o PDF del ticket.'); return; }
+    if (!f) return;
     setSubiendo(true);
     setErr('');
     try {
-      await crearGastoDespachoV2(viaje.id, { fecha, motivo, monto: montoNum, archivo });
-      setMonto('');
-      setArchivo(null);
+      await crearGastoDespachoV2(viaje.id, f);
       cargar();
-    } catch (e) {
-      setErr(e?.response?.data?.error || e.message);
+    } catch (e2) {
+      setErr(e2?.response?.data?.error || e2.message);
     } finally {
       setSubiendo(false);
     }
@@ -673,29 +741,15 @@ function GastosSheet({ viaje, onClose }) {
         </div>
 
         <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 12 }}>
-          Se comparte entre toda la cuadrilla - cargá cada ticket con su foto o PDF.
+          Se comparte entre toda la cuadrilla - subí la foto o PDF del ticket y la IA completa los datos sola.
+          Si algo queda subrayado en naranja, tocalo para corregirlo.
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16, border: '1px solid #e5e7eb', borderRadius: 12, padding: 12 }}>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input type="date" style={{ ...s.input, flex: 1 }} value={fecha} onChange={(e) => setFecha(e.target.value)} />
-            <select style={{ ...s.input, flex: 1 }} value={motivo} onChange={(e) => setMotivo(e.target.value)}>
-              {MOTIVOS_GASTO.map((m) => <option key={m} value={m}>{m}</option>)}
-            </select>
-          </div>
-          <input
-            type="number" inputMode="decimal" min="0" step="0.01" placeholder="Monto ($)"
-            style={s.input} value={monto} onChange={(e) => setMonto(e.target.value)}
-          />
-          <label style={{ ...s.botonBloque, textAlign: 'center' }}>
-            {archivo ? `✅ ${archivo.name}` : '📷 Foto o PDF del ticket'}
-            <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={onArchivoElegido} />
-          </label>
-          {err ? <div style={{ color: 'crimson', fontWeight: 700, fontSize: 13 }}>{err}</div> : null}
-          <button type="button" style={s.botonPrimario} disabled={subiendo} onClick={agregar}>
-            {subiendo ? 'Guardando…' : '+ Agregar gasto'}
-          </button>
-        </div>
+        <label style={{ ...s.botonPrimario, display: 'block', textAlign: 'center', marginBottom: 16 }}>
+          {subiendo ? 'Leyendo el comprobante…' : '📷 Agregar gasto (foto o PDF)'}
+          <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} disabled={subiendo} onChange={onArchivoElegido} />
+        </label>
+        {err ? <div style={{ color: 'crimson', fontWeight: 700, fontSize: 13, marginBottom: 10 }}>{err}</div> : null}
 
         <div style={{ fontWeight: 900, fontSize: 14, marginBottom: 6 }}>Gastos cargados</div>
         {gastos == null ? (
@@ -705,16 +759,7 @@ function GastosSheet({ viaje, onClose }) {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
             {gastos.map((g) => (
-              <div key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1px solid #f0f0f0', borderRadius: 10, padding: 8 }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 800, fontSize: 13 }}>{g.motivo} · ${montoLegible(g.monto)}</div>
-                  <div style={{ fontSize: 11, opacity: 0.6 }}>{fechaLegible(g.fecha)} · {g.cargado_por || '—'}</div>
-                </div>
-                <a href={g.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 18, textDecoration: 'none' }} title="Ver ticket">
-                  {String(g.tipo_mime || '').startsWith('image/') ? '🖼️' : '📄'}
-                </a>
-                <button type="button" onClick={() => borrar(g.id)} style={{ background: 'none', border: 'none', color: '#991b1b', fontSize: 16, cursor: 'pointer', padding: 4 }}>🗑️</button>
-              </div>
+              <GastoRow key={g.id} gasto={g} viajeId={viaje.id} onCambio={cargar} onBorrar={borrar} />
             ))}
           </div>
         )}
@@ -769,6 +814,7 @@ function ViajeCard({ viaje, onCambio, onAbrirNv, onAbrirExtra }) {
   const [paradas, setParadas] = useState(null);
   const [cargandoParadas, setCargandoParadas] = useState(false);
   const [marcando, setMarcando] = useState(false);
+  const [marcandoLlegada, setMarcandoLlegada] = useState(false);
   const [mostrarGastos, setMostrarGastos] = useState(false);
 
   const toggleExpandir = async () => {
@@ -805,6 +851,18 @@ function ViajeCard({ viaje, onCambio, onAbrirNv, onAbrirExtra }) {
       onCambio();
     } finally {
       setMarcando(false);
+    }
+  };
+
+  const marcarLlegada = async () => {
+    if (marcandoLlegada || viaje.hora_llegada_real) return;
+    if (!window.confirm('¿Confirmás que el viaje terminó? Esto cierra el rango de fechas para la rendición de gastos.')) return;
+    setMarcandoLlegada(true);
+    try {
+      await marcarLlegadaDespachoV2(viaje.id);
+      onCambio();
+    } finally {
+      setMarcandoLlegada(false);
     }
   };
 
@@ -851,6 +909,25 @@ function ViajeCard({ viaje, onCambio, onAbrirNv, onAbrirExtra }) {
       <button type="button" style={{ ...s.botonBloque, marginTop: 10, padding: '10px', fontSize: 13 }} onClick={() => setMostrarGastos(true)}>
         💰 Gastos del viaje
       </button>
+
+      {viaje.hora_salida_real ? (
+        <button
+          type="button"
+          style={{
+            ...s.botonBloque, marginTop: 6, padding: '10px', fontSize: 13,
+            background: viaje.hora_llegada_real ? '#f0fdf4' : undefined,
+            color: viaje.hora_llegada_real ? '#16a34a' : undefined,
+            borderColor: viaje.hora_llegada_real ? '#16a34a' : undefined,
+          }}
+          disabled={marcandoLlegada || !!viaje.hora_llegada_real}
+          onClick={marcarLlegada}
+          title="Cierra el rango de fechas para la rendición de gastos - sin esto, logística no puede aprobarla"
+        >
+          {viaje.hora_llegada_real
+            ? `✅ Viaje finalizado (${horaLegible(viaje.hora_llegada_real)})`
+            : marcandoLlegada ? 'Marcando…' : '🏁 Finalizar viaje'}
+        </button>
+      ) : null}
 
       {expandido ? (
         <div style={{ marginTop: 10, borderTop: '1px solid #eee', paddingTop: 6 }}>

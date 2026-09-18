@@ -65,7 +65,7 @@ async function listViajesDeCuadrillas(cuadrillaIds, { soloProximos10 } = {}) {
     `
     select
       vi.id, vi.nombre, vi.fecha::text as fecha, to_char(vi.hora_salida, 'HH24:MI') as hora_salida,
-      vi.hora_salida_real, vi.ruta_real,
+      vi.hora_salida_real, vi.hora_llegada_real, vi.ruta_real,
       c.id as cuadrilla_id, c.nombre as cuadrilla_nombre,
       ve.nombre as vehiculo_nombre, ve.capacidad_portones as vehiculo_capacidad,
       (select count(distinct p.nv)
@@ -108,6 +108,7 @@ async function listViajesDeCuadrillas(cuadrillaIds, { soloProximos10 } = {}) {
     fecha: r.fecha,
     hora_salida: r.hora_salida,
     hora_salida_real: r.hora_salida_real,
+    hora_llegada_real: r.hora_llegada_real,
     vehiculo_nombre: r.vehiculo_nombre,
     vehiculo_capacidad: r.vehiculo_capacidad,
     cuadrilla_id: r.cuadrilla_id,
@@ -121,7 +122,10 @@ async function listViajesDeCuadrillas(cuadrillaIds, { soloProximos10 } = {}) {
 }
 
 async function getViajeCuadrilla(viajeId) {
-  const { rows } = await pool.query(`select id, cuadrilla_id from public.logistica_viajes where id = $1;`, [Number(viajeId)]);
+  const { rows } = await pool.query(
+    `select id, cuadrilla_id, hora_salida_real, hora_llegada_real from public.logistica_viajes where id = $1;`,
+    [Number(viajeId)]
+  );
   return rows[0] || null;
 }
 
@@ -136,6 +140,21 @@ async function marcarSalidaReal(viajeId) {
     [Number(viajeId)]
   );
   return rows[0]?.hora_salida_real || null;
+}
+
+// "Finalizar viaje" - pedido explícito del usuario: cierra el rango de
+// fechas válido para los gastos de la rendición (hora_salida_real ->
+// hora_llegada_real). Sin esto cargado, logística no puede aprobar la
+// rendición (ver aprobarRendicion en logisticaGastosDb.js).
+async function marcarLlegadaReal(viajeId) {
+  const { rows } = await pool.query(
+    `update public.logistica_viajes
+        set hora_llegada_real = coalesce(hora_llegada_real, now())
+      where id = $1
+      returning hora_llegada_real;`,
+    [Number(viajeId)]
+  );
+  return rows[0]?.hora_llegada_real || null;
 }
 
 // Lista desplegable (botón de tres líneas) de portones + paradas extra de un
@@ -391,7 +410,7 @@ async function avisarSiguienteParada({ viajeId, nvOrigen, enviadoPor }) {
 
 module.exports = {
   listQcUsersDeCuadrillas, getQcUser, cuadrillasDeUsuario,
-  listViajesDeCuadrillas, getViajeCuadrilla, marcarSalidaReal,
+  listViajesDeCuadrillas, getViajeCuadrilla, marcarSalidaReal, marcarLlegadaReal,
   listParadasDeViaje, getNvDetalle, crearSolicitudSt,
-  marcarEntregado, siguienteParadaPorton, avisarSiguienteParada,
+  marcarEntregado, siguienteParadaPorton, avisarSiguienteParada, datosParaAviso,
 };
