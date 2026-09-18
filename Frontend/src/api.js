@@ -142,6 +142,10 @@ export async function marcarSalidaDespachoV2(viajeId) {
   const { data } = await apiDespachoV2.post(`/despacho-v2/viajes/${viajeId}/marcar-salida`);
   return data;
 }
+export async function marcarLlegadaDespachoV2(viajeId) {
+  const { data } = await apiDespachoV2.post(`/despacho-v2/viajes/${viajeId}/marcar-llegada`);
+  return data;
+}
 export async function fetchParadasDespachoV2(viajeId) {
   const { data } = await apiDespachoV2.get(`/despacho-v2/viajes/${viajeId}/paradas`);
   return data;
@@ -181,13 +185,17 @@ export async function fetchGastosDespachoV2(viajeId) {
   const { data } = await apiDespachoV2.get(`/despacho-v2/viajes/${viajeId}/gastos`);
   return data;
 }
-export async function crearGastoDespachoV2(viajeId, { fecha, motivo, monto, archivo }) {
+// Sube la foto/PDF PRIMERO - la IA lee fecha/motivo/monto/tipo de
+// comprobante (ver server/lib/logisticaGastosIa.js), no hace falta
+// completar nada a mano de entrada.
+export async function crearGastoDespachoV2(viajeId, archivo) {
   const form = new FormData();
-  form.append('fecha', fecha);
-  form.append('motivo', motivo);
-  form.append('monto', String(monto));
   form.append('archivo', archivo);
   const { data } = await apiDespachoV2.post(`/despacho-v2/viajes/${viajeId}/gastos`, form, { timeout: 60000 });
+  return data;
+}
+export async function actualizarGastoDespachoV2(viajeId, gastoId, patch) {
+  const { data } = await apiDespachoV2.patch(`/despacho-v2/viajes/${viajeId}/gastos/${gastoId}`, patch);
   return data;
 }
 export async function deleteGastoDespachoV2(viajeId, gastoId) {
@@ -842,6 +850,39 @@ export async function deleteLogisticaPuntoExtra(id) {
   const { data } = await api.delete(`/admin/logistica/puntos-extra/${id}`);
   return data;
 }
+export async function fetchLogisticaWhatsappTemplates() {
+  const { data } = await api.get('/admin/logistica/whatsapp-templates');
+  return data;
+}
+export async function fetchLogisticaWhatsappConversaciones() {
+  const { data } = await api.get('/admin/logistica/whatsapp/conversaciones');
+  return data;
+}
+export async function fetchLogisticaWhatsappMensajes(telefono) {
+  const { data } = await api.get(`/admin/logistica/whatsapp/conversaciones/${encodeURIComponent(telefono)}/mensajes`);
+  return data;
+}
+export async function enviarLogisticaWhatsappMensaje(telefono, texto) {
+  const { data } = await api.post(`/admin/logistica/whatsapp/conversaciones/${encodeURIComponent(telefono)}/mensajes`, { texto });
+  return data;
+}
+export async function setLogisticaWhatsappNombreContacto(telefono, nombre) {
+  const { data } = await api.patch(`/admin/logistica/whatsapp/conversaciones/${encodeURIComponent(telefono)}/nombre`, { nombre });
+  return data;
+}
+export async function enviarLogisticaWhatsappTemplateSimple(telefono, name, language) {
+  const { data } = await api.post(`/admin/logistica/whatsapp/conversaciones/${encodeURIComponent(telefono)}/template-simple`, { name, language });
+  return data;
+}
+export async function enviarLogisticaWhatsappMedia(telefono, archivo, caption) {
+  const form = new FormData();
+  form.append('archivo', archivo);
+  if (caption) form.append('caption', caption);
+  const { data } = await api.post(`/admin/logistica/whatsapp/conversaciones/${encodeURIComponent(telefono)}/media`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return data;
+}
 export async function asignarLogisticaParadaExtra(viajeId, puntoExtraId) {
   const { data } = await api.post(`/admin/logistica/viajes/${viajeId}/paradas-extra`, { punto_extra_id: puntoExtraId });
   return data;
@@ -983,6 +1024,14 @@ export async function fetchLogisticaMensajeViaje(viajeId) {
   return data;
 }
 
+// Modo de pruebas: manda el aviso "en camino" (collage + plantilla) de este
+// viaje a un teléfono cualquiera, para ver cómo sale antes de que se dispare
+// en producción con el cliente real.
+export async function probarAvisoWhatsappViaje(viajeId, { telefono, nombreCliente, horasTexto }) {
+  const { data } = await api.post(`/admin/logistica/viajes/${viajeId}/probar-aviso-whatsapp`, { telefono, nombreCliente, horasTexto });
+  return data;
+}
+
 // Rendiciones de gastos (consulta) - una fila por viaje con gastos
 // cargados desde /despacho_v2, con su detalle (gastos + ticket adjunto) y total.
 export async function fetchLogisticaRendiciones() {
@@ -991,6 +1040,10 @@ export async function fetchLogisticaRendiciones() {
 }
 export async function fetchLogisticaRendicionDetalle(viajeId) {
   const { data } = await api.get(`/admin/logistica/rendiciones/${viajeId}`);
+  return data;
+}
+export async function aprobarLogisticaRendicion(viajeId) {
+  const { data } = await api.post(`/admin/logistica/rendiciones/${viajeId}/aprobar`);
   return data;
 }
 

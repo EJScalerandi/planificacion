@@ -625,6 +625,107 @@ const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_reuniones_fecha ON public.reuniones(fecha);
     `,
   },
+  {
+    // Bandeja de WhatsApp Business: TODOS los mensajes (entrantes por webhook
+    // + salientes desde la app) en una sola tabla, agrupados por teléfono,
+    // para el chat tipo WhatsApp Web - pedido explícito del usuario. Ver
+    // server/sql/migration_logistica_whatsapp_mensajes.sql (mismo contenido).
+    name: 'logistica_whatsapp_mensajes',
+    sql: `
+      CREATE TABLE IF NOT EXISTS public.logistica_whatsapp_mensajes (
+        id BIGSERIAL PRIMARY KEY,
+        telefono TEXT NOT NULL,
+        direccion TEXT NOT NULL CHECK (direccion IN ('entrante', 'saliente')),
+        tipo TEXT NOT NULL DEFAULT 'text',
+        contenido TEXT,
+        media_id TEXT,
+        wa_message_id TEXT,
+        estado TEXT NOT NULL DEFAULT 'enviado',
+        detalle_error TEXT,
+        enviado_por TEXT,
+        raw JSONB,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_logistica_whatsapp_mensajes_telefono ON public.logistica_whatsapp_mensajes (telefono, created_at);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_logistica_whatsapp_mensajes_wa_id ON public.logistica_whatsapp_mensajes (wa_message_id) WHERE wa_message_id IS NOT NULL;
+    `,
+  },
+  {
+    // Imagen/video/audio/documento entrante o saliente por el chat de
+    // WhatsApp - path en Storage (mismo bucket que el collage), no la URL
+    // temporal de Meta que expira en minutos.
+    name: 'logistica_whatsapp_mensajes_media_storage_path',
+    sql: `
+      ALTER TABLE public.logistica_whatsapp_mensajes ADD COLUMN IF NOT EXISTS media_storage_path TEXT;
+    `,
+  },
+  {
+    // Nombre de contacto editable a mano - pedido explícito del usuario: el
+    // nombre resuelto automático contra presupuestador_quotes a veces sale
+    // mal (mezcla nombre + descripción de producto).
+    name: 'logistica_whatsapp_contactos',
+    sql: `
+      CREATE TABLE IF NOT EXISTS public.logistica_whatsapp_contactos (
+        telefono TEXT PRIMARY KEY,
+        nombre TEXT NOT NULL,
+        updated_by TEXT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+    `,
+  },
+  {
+    // Rendiciones con verificación por IA - pedido explícito del usuario.
+    // hora_llegada_real: la marca "finalizar viaje" que le falta a
+    // marcar-salida/hora_salida_real - define el fin del rango de fechas
+    // válido para los gastos, y logística no puede aprobar la rendición
+    // hasta que esté cargada. rendicion_aprobada_*: el "ok" final de
+    // logística sobre TODOS los gastos del viaje.
+    name: 'logistica_viajes_rendicion_aprobacion',
+    sql: `
+      ALTER TABLE public.logistica_viajes
+        ADD COLUMN IF NOT EXISTS hora_llegada_real TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS rendicion_aprobada_por TEXT,
+        ADD COLUMN IF NOT EXISTS rendicion_aprobada_at TIMESTAMPTZ;
+    `,
+  },
+  {
+    // Por gasto: qué leyó la IA del comprobante (tipo_comprobante,
+    // medio_pago - este último ya pensado para la Parte 2, reconciliación
+    // con Odoo/email) y si hizo falta revisión humana (estado_revision:
+    // pendiente/ok/revisar) - campos_inciertos guarda CUÁLES campos no supo
+    // resolver con confianza, para resaltarlos en la auditoría de logística.
+    name: 'logistica_gastos_revision_ia',
+    sql: `
+      ALTER TABLE public.logistica_gastos
+        ADD COLUMN IF NOT EXISTS tipo_comprobante TEXT,
+        ADD COLUMN IF NOT EXISTS medio_pago TEXT,
+        ADD COLUMN IF NOT EXISTS estado_revision TEXT NOT NULL DEFAULT 'pendiente',
+        ADD COLUMN IF NOT EXISTS detalle_revision TEXT,
+        ADD COLUMN IF NOT EXISTS campos_inciertos TEXT[];
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'logistica_gastos_estado_revision_check'
+        ) THEN
+          ALTER TABLE public.logistica_gastos
+            ADD CONSTRAINT logistica_gastos_estado_revision_check
+            CHECK (estado_revision IN ('pendiente','ok','revisar'));
+        END IF;
+      END $$;
+    `,
+  },
+  {
+    // Fondo de efectivo que logística le da a la cuadrilla al crear el
+    // viaje (ej. para viáticos en efectivo) - pedido explícito del usuario.
+    // El saldo a devolver se calcula como fondo_efectivo menos lo gastado en
+    // efectivo (hoy: medio_pago='efectivo' según la IA del ticket; a futuro,
+    // Parte 2 lo confirma contra el email de la tarjeta - lo que NO matchee
+    // ahí también cuenta como efectivo).
+    name: 'logistica_viajes_fondo_efectivo',
+    sql: `
+      ALTER TABLE public.logistica_viajes
+        ADD COLUMN IF NOT EXISTS fondo_efectivo NUMERIC(12,2);
+    `,
+  },
 ];
 
 async function runMigrations() {
