@@ -43,8 +43,6 @@ import LogisticaWhatsappPage from '../pages/admin/LogisticaWhatsappPage';
 import ServicioTecnicoViajesPage from '../pages/admin/ServicioTecnicoViajesPage';
 import ServicioTecnicoFechasPage from '../pages/admin/ServicioTecnicoFechasPage';
 import AdminTicketsPage from '../pages/admin/AdminTicketsPage';
-import AdminTicketsBoardPage from '../pages/admin/AdminTicketsBoardPage';
-import ReunionesPage from '../pages/admin/ReunionesPage';
 
 import PreproduccionValoresTable from '../src/components/PreproduccionValoresTable';
 import IpanelPreproduccionValoresTable from '../src/components/IpanelPreproduccionValoresTable';
@@ -741,8 +739,6 @@ export default function App() {
           <Route path="/admin" element={<AdminHomePage />} />
           <Route path="/admin/qc" element={<AdminQcPage />} />
           <Route path="/admin/tickets" element={<AdminTicketsPage />} />
-          <Route path="/admin/tickets-tablero" element={<AdminTicketsBoardPage />} />
-          <Route path="/admin/reuniones" element={<ReunionesPage />} />
           <Route path="/admin/workflow" element={<WorkflowDesignerPage />} />
           <Route path="/admin/excel-info" element={<AdminExcelInfoPage />} />
           <Route path="/admin/prefabricados" element={<PrefabricadosConfigPage />} />
