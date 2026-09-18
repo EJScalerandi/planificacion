@@ -12,6 +12,7 @@ import {
 } from './api';
 import StageColumn from './components/StageColumn';
 import InsumosCartButton from './components/InsumosCartButton';
+import TicketWidget from './components/TicketWidget';
 import PruebaLaserModal from './components/modals/PruebaLaserModal';
 import SessionExpiredOverlay from './components/SessionExpiredOverlay';
 
@@ -41,6 +42,7 @@ import LogisticaFechasPage from '../pages/admin/LogisticaFechasPage';
 import LogisticaWhatsappPage from '../pages/admin/LogisticaWhatsappPage';
 import ServicioTecnicoViajesPage from '../pages/admin/ServicioTecnicoViajesPage';
 import ServicioTecnicoFechasPage from '../pages/admin/ServicioTecnicoFechasPage';
+import AdminTicketsPage from '../pages/admin/AdminTicketsPage';
 
 import PreproduccionValoresTable from '../src/components/PreproduccionValoresTable';
 import IpanelPreproduccionValoresTable from '../src/components/IpanelPreproduccionValoresTable';
@@ -482,6 +484,7 @@ function Board({ stages, seccion }) {
               Generar Prueba Laser Plano
             </button>
           ) : null}
+          <TicketWidget />
           <button
             className="btn btn--brand"
             onClick={() => { refresh(); refreshIpanel(); refreshQcSummary(); refreshPrefab(); refreshSt(); }}
@@ -735,6 +738,7 @@ export default function App() {
 
           <Route path="/admin" element={<AdminHomePage />} />
           <Route path="/admin/qc" element={<AdminQcPage />} />
+          <Route path="/admin/tickets" element={<AdminTicketsPage />} />
           <Route path="/admin/workflow" element={<WorkflowDesignerPage />} />
           <Route path="/admin/excel-info" element={<AdminExcelInfoPage />} />
           <Route path="/admin/prefabricados" element={<PrefabricadosConfigPage />} />

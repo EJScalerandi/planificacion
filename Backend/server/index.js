@@ -276,6 +276,81 @@ const MIGRATIONS = [
     `,
   },
   {
+    // Sistema de tickets: un botón "Tickets" (junto a "Menú" en las pantallas
+    // admin, y junto a "Refrescar" en los tableros de producción) permite a
+    // cualquier admin logueado abrir un ticket (categoría + texto libre); se
+    // ven y responden todos desde /admin/tickets. Tablas propias de esta app
+    // (no las de "Consultas de Logística", que apuntan a tablas del
+    // Presupuestador).
+    name: 'tickets',
+    sql: `
+      CREATE TABLE IF NOT EXISTS public.tickets (
+        id SERIAL PRIMARY KEY,
+        categoria TEXT NOT NULL,
+        mensaje TEXT NOT NULL,
+        estado TEXT NOT NULL DEFAULT 'pending',
+        creado_por_id INTEGER REFERENCES public.admin_users(id),
+        creado_por_username TEXT,
+        ruta_origen TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_tickets_estado ON public.tickets(estado);
+      CREATE INDEX IF NOT EXISTS idx_tickets_creado_por ON public.tickets(creado_por_id);
+    `,
+  },
+  {
+    name: 'ticket_mensajes',
+    sql: `
+      CREATE TABLE IF NOT EXISTS public.ticket_mensajes (
+        id SERIAL PRIMARY KEY,
+        ticket_id INTEGER NOT NULL REFERENCES public.tickets(id) ON DELETE CASCADE,
+        autor_id INTEGER REFERENCES public.admin_users(id),
+        autor_username TEXT,
+        es_admin BOOLEAN NOT NULL DEFAULT FALSE,
+        mensaje TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_ticket_mensajes_ticket ON public.ticket_mensajes(ticket_id);
+    `,
+  },
+  {
+    // Los tickets pasan a ser el almacén CENTRAL de todas las apps del
+    // ecosistema (primero planificación, ahora integrador, después el
+    // resto) — no solo de planificación. creado_por_id/autor_id ya no
+    // pueden tener FK a admin_users: un usuario de otra app no existe en
+    // esa tabla. app_origen dice de qué app vino cada ticket para poder
+    // filtrar/identificar en /admin/tickets.
+    name: 'tickets_multi_app',
+    sql: `
+      ALTER TABLE public.tickets DROP CONSTRAINT IF EXISTS tickets_creado_por_id_fkey;
+      ALTER TABLE public.ticket_mensajes DROP CONSTRAINT IF EXISTS ticket_mensajes_autor_id_fkey;
+      ALTER TABLE public.tickets ADD COLUMN IF NOT EXISTS app_origen TEXT NOT NULL DEFAULT 'planificacion';
+      CREATE INDEX IF NOT EXISTS idx_tickets_app_origen ON public.tickets(app_origen);
+    `,
+  },
+  {
+    // creado_por_id/autor_id eran INTEGER (id numerico de admin_users de
+    // planificacion). Integrador identifica usuarios con un UUID de
+    // Supabase Auth, no un numero — pasan a TEXT para que cualquier app
+    // pueda guardar el id que tenga, sea cual sea su forma.
+    name: 'tickets_creado_por_id_text',
+    sql: `
+      ALTER TABLE public.tickets ALTER COLUMN creado_por_id TYPE TEXT USING creado_por_id::text;
+      ALTER TABLE public.ticket_mensajes ALTER COLUMN autor_id TYPE TEXT USING autor_id::text;
+    `,
+  },
+  {
+    // Adjuntos en el ticket inicial (imagen/PDF/video) — mismo formato que ya
+    // usan las Consultas a Técnica/Comercial del Presupuestador y las
+    // Consultas de Logística: array de { name, type, size, data_url,
+    // uploaded_at } en JSONB. Ver Frontend/src/utils/ticketAttachment.js.
+    name: 'tickets_adjuntos',
+    sql: `
+      ALTER TABLE public.tickets ADD COLUMN IF NOT EXISTS adjuntos JSONB NOT NULL DEFAULT '[]'::jsonb;
+    `,
+  },
+  {
     // Foto de perfil por integrante (qc_users - es genérico a la persona,
     // no solo a logística) y foto del vehículo - pedido del usuario: van en
     // el collage del mensaje automático de WhatsApp ("en camino"). Una sola
