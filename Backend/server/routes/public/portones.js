@@ -189,6 +189,7 @@ router.get('/portones', async (_req, res) => {
           sq.cliente_nombre
         )) as nombre_cliente,
         max(sq.fecha_aprobacion_cliente) as fecha_aprobacion_cliente,
+        max(sq.production_delivery_week_start) as production_delivery_week_start,
 
         -- ====== ESTADOS ======
         max(e.diseno) as diseno,
@@ -339,7 +340,8 @@ router.get('/portones', async (_req, res) => {
       left join lateral (
         select
           q.end_customer->>'name' as cliente_nombre,
-          q.measurement_client_accepted_at as fecha_aprobacion_cliente
+          q.measurement_client_accepted_at as fecha_aprobacion_cliente,
+          q.production_delivery_week_start as production_delivery_week_start
         from public.presupuestador_quotes q
         where q.quote_kind = 'original'
           and (
