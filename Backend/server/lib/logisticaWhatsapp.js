@@ -78,7 +78,10 @@ async function armarCollage({ fotosMiembros, fotoVehiculo }) {
 
   const [arriba, abajo] = await Promise.all([
     Promise.all(buffersMiembros.map((buf) => sharp(buf).resize(TILE, TILE, { fit: 'cover' }).toBuffer())),
-    sharp(bufferVehiculo).resize(anchoTotal, TILE, { fit: 'cover' }).toBuffer(),
+    // 'contain' en vez de 'cover' - pedido explícito del usuario: no quiere
+    // que se recorte el vehículo para llenar el ancho, prefiere verlo
+    // completo aunque quede espacio en blanco a los costados/arriba-abajo.
+    sharp(bufferVehiculo).resize(anchoTotal, TILE, { fit: 'contain', background: '#ffffff' }).toBuffer(),
   ]);
 
   // Líneas divisorias: verticales entre las fotos de la fila de arriba (si
