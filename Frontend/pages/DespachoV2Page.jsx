@@ -13,6 +13,7 @@ import {
   fetchParadasDespachoV2, fetchNvDespachoV2, fetchNvAdjuntosDespachoV2, crearSolicitudStDespachoV2,
   fetchRemitosPorNv, getDespachoV2Token, getDespachoV2User, setDespachoV2Session, clearDespachoV2Session,
   marcarEntregadoDespachoV2, avisarSiguienteDespachoV2,
+  fetchParadasRestantesDespachoV2, avisarParadaElegidaDespachoV2,
   fetchGastosDespachoV2, crearGastoDespachoV2, actualizarGastoDespachoV2, deleteGastoDespachoV2,
   API_BASE_URL,
 } from '../src/api';
@@ -54,23 +55,6 @@ function formatearDuracion(horas) {
   const min = Math.round((horas - h) * 60);
   const horaTxt = `${h} hora${h === 1 ? '' : 's'}`;
   return min > 0 ? `${horaTxt} y ${min} minutos` : horaTxt;
-}
-// Pedido explícito del usuario, texto tal cual lo escribió (ajustado a los
-// datos reales disponibles). No incluye fotos - wa.me solo prellena texto,
-// ver nota en el commit/memoria: para adjuntar fotos automáticamente hace
-// falta la API de WhatsApp Business (evaluar después, confirmado con el
-// usuario).
-function construirMensajeEnCamino({ nombreCliente, horasTramo, cuadrillaMiembros, vehiculoNombre }) {
-  const lineas = [
-    `Buenos días${nombreCliente ? ` ${nombreCliente}` : ''}, este es un mensaje automático enviado por el sistema de De Grandis Portones.`,
-    `Le comunicamos que su portón estará llegando en aproximadamente ${formatearDuracion(horasTramo)}.`,
-    '',
-    'La cuadrilla que le realizará la entrega / instalación está conformada por:',
-    ...(cuadrillaMiembros?.length ? cuadrillaMiembros.map((m) => `- ${m.name}${m.rol ? ` (${m.rol})` : ''}`) : ['- (sin cargar)']),
-    '',
-    `El vehículo que le está llevando el producto es ${vehiculoNombre || 'un camión'}.`,
-  ];
-  return lineas.join('\n');
 }
 function horaLegible(iso) {
   if (!iso) return '';
@@ -274,6 +258,72 @@ function ConfirmarRutaSheet({ siguienteParada, busy, resultado, onSi, onNo, onCe
   );
 }
 
+// "La ruta cambió, ¿cuál sigue?" - se abre desde el "No" de ConfirmarRutaSheet
+// (pedido explícito del usuario). Lista las paradas-portón que quedaban
+// después de la actual en el orden original armado por el sistema; al
+// elegir una, manda el aviso para ESA parada puntual.
+function ElegirParadaSheet({ viajeId, nvOrigen, busy, resultado, onElegir, onCerrar }) {
+  const [paradas, setParadas] = useState(null);
+  const [err, setErr] = useState('');
+
+  useEffect(() => {
+    if (resultado) return;
+    fetchParadasRestantesDespachoV2(viajeId, nvOrigen)
+      .then((d) => setParadas(d?.restantes || []))
+      .catch((e) => setErr(e?.response?.data?.error || e.message));
+  }, [viajeId, nvOrigen, resultado]);
+
+  return (
+    <div style={{ ...s.overlay, zIndex: 10000 }} onMouseDown={(e) => { if (e.target === e.currentTarget) onCerrar(); }}>
+      <div style={{ ...s.hoja, maxWidth: 400 }}>
+        {resultado ? (
+          <>
+            <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 14, textAlign: 'center' }}>
+              {resultado.ok ? '✅ Aviso enviado' : '⚠️ No se pudo avisar'}
+            </div>
+            <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 16, textAlign: 'center' }}>
+              {resultado.ok
+                ? `Le avisamos a ${resultado.nombreCliente || 'el cliente elegido'} por WhatsApp.`
+                : (resultado.error || 'Error desconocido')}
+            </div>
+            <button type="button" style={s.botonPrimario} onClick={onCerrar}>Listo</button>
+          </>
+        ) : (
+          <>
+            <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 10, textAlign: 'center' }}>¿Cuál es la próxima parada?</div>
+            <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 14, textAlign: 'center' }}>
+              Elegí a cuál de las paradas que quedan le avisamos que está en camino.
+            </div>
+            {err ? <div style={{ color: 'crimson', fontWeight: 700, fontSize: 13, marginBottom: 10 }}>{err}</div> : null}
+            {paradas == null ? (
+              <div style={{ textAlign: 'center', opacity: 0.7, marginBottom: 12 }}>Cargando…</div>
+            ) : paradas.length === 0 ? (
+              <div style={{ textAlign: 'center', opacity: 0.7, marginBottom: 12 }}>No quedan más paradas en esta ruta.</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+                {paradas.map((p) => (
+                  <button
+                    key={p.nv} type="button" disabled={busy} onClick={() => onElegir(p.nv)}
+                    style={{ ...s.botonBloque, textAlign: 'left', padding: 12 }}
+                  >
+                    <div style={{ fontWeight: 900 }}>NV {p.nv} · {p.nombre_cliente || 'Cliente sin nombre'}</div>
+                    <div style={{ fontSize: 12, opacity: 0.7 }}>
+                      {[p.distribuidor, p.localidad].filter(Boolean).join(' · ') || '—'} · llegando en aproximadamente {formatearDuracion(p.horas_tramo)}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+            <button type="button" style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: 13, fontWeight: 700, padding: 6, textAlign: 'center' }} disabled={busy} onClick={onCerrar}>
+              Cancelar
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ===========================================================================
 // "Marcar entregado/instalado" - cierre OFICIAL real: despacho pide PIN
 // (mismo mecanismo que /despacho), instalación no (no existe ese mecanismo
@@ -288,6 +338,7 @@ function MarcarEntregadoSection({ nv, viaje, parada, onParadaCambiada, stAbierta
   const [err, setErr] = useState('');
   const [confirmarRuta, setConfirmarRuta] = useState(null); // { siguienteParada } | null
   const [resultadoAviso, setResultadoAviso] = useState(null);
+  const [eligiendoParada, setEligiendoParada] = useState(false); // "la ruta cambió" -> picker
   // "¿Quedó todo bien o hubo un problema?" - paso intermedio al cerrar la
   // instalación (pedido explícito del usuario). Si hubo un problema, se
   // exige cargar la solicitud de ST/PV ANTES de cerrar la instalación (así
@@ -299,7 +350,7 @@ function MarcarEntregadoSection({ nv, viaje, parada, onParadaCambiada, stAbierta
 
   if (!parada) return null;
 
-  const cerrarTodo = () => { setConfirmarRuta(null); setResultadoAviso(null); };
+  const cerrarTodo = () => { setConfirmarRuta(null); setResultadoAviso(null); setEligiendoParada(false); };
 
   const confirmarMarcado = async (tipo, pin) => {
     setMarcando(true);
@@ -325,6 +376,18 @@ function MarcarEntregadoSection({ nv, viaje, parada, onParadaCambiada, stAbierta
     setMarcando(true);
     try {
       const r = await avisarSiguienteDespachoV2(viaje.id, nv);
+      setResultadoAviso(r);
+    } catch (e) {
+      setResultadoAviso({ ok: false, error: e?.response?.data?.error || e.message });
+    } finally {
+      setMarcando(false);
+    }
+  };
+
+  const avisarElegida = async (nvDestino) => {
+    setMarcando(true);
+    try {
+      const r = await avisarParadaElegidaDespachoV2(viaje.id, nv, nvDestino);
       setResultadoAviso(r);
     } catch (e) {
       setResultadoAviso({ ok: false, error: e?.response?.data?.error || e.message });
@@ -399,13 +462,24 @@ function MarcarEntregadoSection({ nv, viaje, parada, onParadaCambiada, stAbierta
         />
       ) : null}
 
-      {confirmarRuta ? (
+      {confirmarRuta && !eligiendoParada ? (
         <ConfirmarRutaSheet
           siguienteParada={confirmarRuta.siguienteParada}
           busy={marcando}
           resultado={resultadoAviso}
           onSi={avisar}
-          onNo={cerrarTodo}
+          onNo={() => setEligiendoParada(true)}
+          onCerrar={cerrarTodo}
+        />
+      ) : null}
+
+      {eligiendoParada ? (
+        <ElegirParadaSheet
+          viajeId={viaje.id}
+          nvOrigen={nv}
+          busy={marcando}
+          resultado={resultadoAviso}
+          onElegir={avisarElegida}
           onCerrar={cerrarTodo}
         />
       ) : null}
@@ -446,15 +520,6 @@ function NvDetailSheet({ nv, viaje, parada, onParadaCambiada, onClose }) {
   }, [nv]);
 
   const waPerfil = waLink(detalle?.telefono);
-  const waEnCamino = waLink(
-    detalle?.telefono,
-    construirMensajeEnCamino({
-      nombreCliente: detalle?.nombre_cliente,
-      horasTramo: parada?.horas_tramo,
-      cuadrillaMiembros: viaje?.cuadrilla_miembros,
-      vehiculoNombre: viaje?.vehiculo_nombre,
-    })
-  );
 
   return (
     <div style={s.overlay} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -484,11 +549,6 @@ function NvDetailSheet({ nv, viaje, parada, onParadaCambiada, onClose }) {
               {waPerfil ? (
                 <a href={waPerfil} target="_blank" rel="noopener noreferrer" style={{ ...s.botonBloque, background: '#25D366', color: '#fff', border: 'none' }}>
                   💬 WhatsApp al cliente
-                </a>
-              ) : null}
-              {waEnCamino ? (
-                <a href={waEnCamino} target="_blank" rel="noopener noreferrer" style={{ ...s.botonBloque, background: '#128C7E', color: '#fff', border: 'none' }} title="Abre WhatsApp con el mensaje ya escrito - falta que lo confirmes/mandes vos">
-                  🚚 Avisar que está en camino
                 </a>
               ) : null}
               {detalle?.maps_url ? (

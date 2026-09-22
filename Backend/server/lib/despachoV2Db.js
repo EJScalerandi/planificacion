@@ -323,6 +323,14 @@ async function siguienteParadaPorton(viajeId, nvActual) {
   return null;
 }
 
+// Primera PARADA-PORTÓN del viaje - se usa al arrancar la ruta (botón
+// Play/marcar-salida), donde todavía no hay ningún NV "actual" del cual
+// partir. null si el viaje no tiene ningún portón cargado.
+async function primeraParadaPorton(viajeId) {
+  const paradas = await listParadasDeViaje(viajeId);
+  return paradas.find((p) => p.tipo === 'porton') || null;
+}
+
 // ===========================================================================
 // Aviso automático de WhatsApp a la siguiente parada - collage de fotos de
 // la cuadrilla (qc_users.foto_storage_path) + del vehículo
@@ -381,23 +389,29 @@ async function registrarAviso({ viajeId, nvOrigen, nvDestino, telefono, resultad
   );
 }
 
-// Orquesta todo: busca la próxima parada-portón, arma el texto/collage, y
-// manda - pensado para llamarse DESPUÉS de que el usuario confirmó "sí, la
-// ruta sigue así" (ver el endpoint, que ya le mostró esta misma parada
-// antes de preguntar).
-async function avisarSiguienteParada({ viajeId, nvOrigen, enviadoPor }) {
+// Arma el texto/collage y manda el WhatsApp para UNA parada puntual -
+// compartido por los tres disparadores posibles (primera parada al iniciar
+// el viaje, siguiente parada en el orden original, o parada elegida a mano
+// porque la ruta cambió). `nvOrigen` es solo para el log (de qué NV se
+// viene) - en el caso de la primera parada no hay un "de dónde viene", así
+// que los callers pasan el mismo nv de destino.
+async function enviarAvisoParaParada({ viajeId, parada, nvOrigen, enviadoPor }) {
   const whatsapp = require('./logisticaWhatsapp');
 
-  const siguiente = await siguienteParadaPorton(viajeId, nvOrigen);
-  if (!siguiente) return { ok: false, sinSiguiente: true };
-
-  const [nvDetalle, datos] = await Promise.all([getNvDetalle(siguiente.nv), datosParaAviso(viajeId)]);
+  const [nvDetalle, datos] = await Promise.all([getNvDetalle(parada.nv), datosParaAviso(viajeId)]);
   if (!datos) return { ok: false, error: 'Viaje no encontrado' };
 
+  // Mientras se testea el flujo (pedido explícito del usuario): TODOS los
+  // avisos van a este celular en vez de al cliente real, sin importar el
+  // NV. Sacar esta env var en Render el día que se confirme que el flujo
+  // anda bien y se quiera activar para clientes de verdad.
+  const telefonoTest = String(process.env.WHATSAPP_AVISO_TELEFONO_TEST || '').trim();
+  const telefonoDestino = telefonoTest || nvDetalle?.telefono;
+
   const resultado = await whatsapp.enviarAvisoEnCamino({
-    telefono: nvDetalle?.telefono,
+    telefono: telefonoDestino,
     nombreCliente: nvDetalle?.nombre_cliente,
-    horasTexto: formatearDuracionHoras(siguiente.horas_tramo),
+    horasTexto: formatearDuracionHoras(parada.horas_tramo),
     cuadrillaTexto: datos.cuadrillaTexto,
     vehiculoNombre: datos.vehiculoNombre,
     fotosMiembros: datos.fotosMiembros,
@@ -405,15 +419,48 @@ async function avisarSiguienteParada({ viajeId, nvOrigen, enviadoPor }) {
   });
 
   await registrarAviso({
-    viajeId, nvOrigen, nvDestino: siguiente.nv, telefono: nvDetalle?.telefono, resultado, enviadoPor,
+    viajeId, nvOrigen, nvDestino: parada.nv, telefono: telefonoDestino, resultado, enviadoPor,
   }).catch((e) => console.error('No se pudo registrar el aviso de WhatsApp:', e.message));
 
-  return { ok: resultado.ok, error: resultado.error, siguienteNv: siguiente.nv, nombreCliente: nvDetalle?.nombre_cliente };
+  return {
+    ok: resultado.ok, error: resultado.error, siguienteNv: parada.nv,
+    nombreCliente: nvDetalle?.nombre_cliente, horasTramo: parada.horas_tramo,
+  };
+}
+
+// Se llama al arrancar el viaje (botón Play/marcar-salida) - manda el aviso
+// de la PRIMERA parada-portón de la ruta, sin pedirle confirmación a la
+// cuadrilla (pedido explícito del usuario: el primer mensaje sale solo).
+async function avisarPrimeraParada({ viajeId, enviadoPor }) {
+  const primera = await primeraParadaPorton(viajeId);
+  if (!primera) return { ok: false, sinSiguiente: true };
+  return enviarAvisoParaParada({ viajeId, parada: primera, nvOrigen: primera.nv, enviadoPor });
+}
+
+// Orquesta todo: busca la próxima parada-portón, arma el texto/collage, y
+// manda - pensado para llamarse DESPUÉS de que el usuario confirmó "sí, la
+// ruta sigue así" (ver el endpoint, que ya le mostró esta misma parada
+// antes de preguntar).
+async function avisarSiguienteParada({ viajeId, nvOrigen, enviadoPor }) {
+  const siguiente = await siguienteParadaPorton(viajeId, nvOrigen);
+  if (!siguiente) return { ok: false, sinSiguiente: true };
+  return enviarAvisoParaParada({ viajeId, parada: siguiente, nvOrigen, enviadoPor });
+}
+
+// La ruta cambió y la cuadrilla eligió a mano cuál es la próxima parada a
+// entregar - manda el aviso para ESA parada puntual (no necesariamente la
+// que seguía en el orden original armado por el sistema).
+async function avisarParadaElegida({ viajeId, nvOrigen, nvDestino, enviadoPor }) {
+  const paradas = await listParadasDeViaje(viajeId);
+  const parada = paradas.find((p) => p.tipo === 'porton' && p.nv === Number(nvDestino));
+  if (!parada) return { ok: false, error: 'Esa parada no pertenece a este viaje' };
+  return enviarAvisoParaParada({ viajeId, parada, nvOrigen: Number(nvOrigen), enviadoPor });
 }
 
 module.exports = {
   listQcUsersDeCuadrillas, getQcUser, cuadrillasDeUsuario,
   listViajesDeCuadrillas, getViajeCuadrilla, marcarSalidaReal, marcarLlegadaReal,
   listParadasDeViaje, getNvDetalle, crearSolicitudSt,
-  marcarEntregado, siguienteParadaPorton, avisarSiguienteParada, datosParaAviso,
+  marcarEntregado, siguienteParadaPorton, primeraParadaPorton,
+  avisarPrimeraParada, avisarSiguienteParada, avisarParadaElegida, datosParaAviso,
 };

@@ -179,6 +179,17 @@ export async function avisarSiguienteDespachoV2(viajeId, nv) {
   const { data } = await apiDespachoV2.post(`/despacho-v2/viajes/${viajeId}/nv/${nv}/avisar-siguiente`);
   return data;
 }
+// "La ruta cambió" - paradas-portón que quedaban después de `nv` en el
+// orden original, para el picker de "¿cuál sigue?".
+export async function fetchParadasRestantesDespachoV2(viajeId, nv) {
+  const { data } = await apiDespachoV2.get(`/despacho-v2/viajes/${viajeId}/nv/${nv}/paradas-restantes`);
+  return data;
+}
+// Manda el aviso para la parada que el usuario eligió a mano (ruta cambiada).
+export async function avisarParadaElegidaDespachoV2(viajeId, nvOrigen, nvDestino) {
+  const { data } = await apiDespachoV2.post(`/despacho-v2/viajes/${viajeId}/nv/${nvOrigen}/avisar-parada/${nvDestino}`);
+  return data;
+}
 // Gastos del viaje ("rendición de gastos") - se comparte entre toda la
 // cuadrilla del viaje, no solo quien los subió.
 export async function fetchGastosDespachoV2(viajeId) {

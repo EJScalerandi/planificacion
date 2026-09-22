@@ -18,10 +18,13 @@ const gastosIa = require('../../lib/logisticaGastosIa');
 const router = express.Router();
 
 // Aviso automático de WhatsApp a la siguiente parada - pedido explícito del
-// usuario: mergear /despacho_v2 a main YA, pero dejar esto apagado por ahora
-// (la cuadrilla sigue avisando manual desde su propio WhatsApp, como hasta
-// hoy). Prender con WHATSAPP_AVISO_HABILITADO=true en el entorno cuando se
-// decida activarlo - no hace falta tocar código, solo la env var.
+// usuario. Prender con WHATSAPP_AVISO_HABILITADO=true en el entorno cuando
+// se decida activarlo - no hace falta tocar código, solo la env var.
+// Mientras se está testeando el flujo (pedido explícito del usuario),
+// además hay que setear WHATSAPP_AVISO_TELEFONO_TEST=3572676710 (ver
+// enviarAvisoParaParada en lib/despachoV2Db.js) para que TODOS los avisos
+// vayan a ese celular de prueba en vez de al cliente real - sacar esa
+// segunda env var recién cuando se confirme que el flujo anda bien.
 const WHATSAPP_AVISO_HABILITADO = String(process.env.WHATSAPP_AVISO_HABILITADO || '').toLowerCase() === 'true';
 
 // Mismo salt/hash que ya usa el resto del sistema QC (routes/public/qc.js,
@@ -90,10 +93,18 @@ router.get('/despacho-v2/viajes', asyncRoute(async (req, res) => {
   res.json({ ok: true, cuadrillas, viajes });
 }));
 
-// POST /despacho-v2/viajes/:id/marcar-salida - botón Play.
+// POST /despacho-v2/viajes/:id/marcar-salida - botón Play. Si el aviso
+// automático está habilitado, dispara (sin bloquear la respuesta - el
+// collage de fotos puede tardar unos segundos) el WhatsApp de la PRIMERA
+// parada-portón de la ruta: pedido explícito del usuario, el primer
+// mensaje sale solo apenas la cuadrilla arranca, sin pedirle confirmación.
 router.post('/despacho-v2/viajes/:id/marcar-salida', asyncRoute(async (req, res) => {
   if (!(await requireViajeDeMiCuadrilla(req, res, req.params.id))) return;
   const hora_salida_real = await db.marcarSalidaReal(req.params.id);
+  if (WHATSAPP_AVISO_HABILITADO) {
+    db.avisarPrimeraParada({ viajeId: req.params.id, enviadoPor: req.despachoUser.name })
+      .catch((e) => console.error('No se pudo enviar el primer aviso de WhatsApp:', e.message));
+  }
   res.json({ ok: true, hora_salida_real });
 }));
 
@@ -152,6 +163,33 @@ router.post('/despacho-v2/viajes/:id/nv/:nv/avisar-siguiente', asyncRoute(async 
   if (!(await requireViajeDeMiCuadrilla(req, res, req.params.id))) return;
   const resultado = await db.avisarSiguienteParada({
     viajeId: req.params.id, nvOrigen: req.params.nv, enviadoPor: req.despachoUser.name,
+  });
+  res.json({ ok: resultado.ok, ...resultado });
+}));
+
+// GET /despacho-v2/viajes/:id/nv/:nv/paradas-restantes - para el picker de
+// "la ruta cambió, ¿cuál sigue?": todas las paradas-portón que venían
+// DESPUÉS de `nv` en el orden original (mismo criterio que
+// siguienteParadaPorton, por posición en la ruta - no hay forma de saber
+// acá cuáles ya se entregaron de verdad, solo cuáles no se habían pasado
+// todavía en el plan).
+router.get('/despacho-v2/viajes/:id/nv/:nv/paradas-restantes', asyncRoute(async (req, res) => {
+  if (!(await requireViajeDeMiCuadrilla(req, res, req.params.id))) return;
+  const paradas = await db.listParadasDeViaje(req.params.id);
+  const idx = paradas.findIndex((p) => p.tipo === 'porton' && p.nv === Number(req.params.nv));
+  const restantes = idx === -1 ? [] : paradas.slice(idx + 1).filter((p) => p.tipo === 'porton');
+  res.json({ ok: true, restantes });
+}));
+
+// POST /despacho-v2/viajes/:id/nv/:nvOrigen/avisar-parada/:nvDestino - la
+// ruta cambió y el usuario eligió a mano cuál es la próxima parada a
+// entregar (pedido explícito del usuario) - manda el aviso para ESA parada
+// puntual, no la que seguía en el orden original.
+router.post('/despacho-v2/viajes/:id/nv/:nvOrigen/avisar-parada/:nvDestino', asyncRoute(async (req, res) => {
+  if (!WHATSAPP_AVISO_HABILITADO) return res.status(403).json({ ok: false, error: 'Aviso automático de WhatsApp deshabilitado en este entorno' });
+  if (!(await requireViajeDeMiCuadrilla(req, res, req.params.id))) return;
+  const resultado = await db.avisarParadaElegida({
+    viajeId: req.params.id, nvOrigen: req.params.nvOrigen, nvDestino: req.params.nvDestino, enviadoPor: req.despachoUser.name,
   });
   res.json({ ok: resultado.ok, ...resultado });
 }));
