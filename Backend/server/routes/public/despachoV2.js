@@ -15,6 +15,7 @@ const adjuntosStorage = require('../../lib/logisticaAdjuntosStorage');
 const gastosDb = require('../../lib/logisticaGastosDb');
 const gastosIa = require('../../lib/logisticaGastosIa');
 const medicionMediaDb = require('../../lib/presupuestadorMediaDb');
+const checklistDb = require('../../lib/logisticaChecklistDb');
 
 const router = express.Router();
 
@@ -94,13 +95,37 @@ router.get('/despacho-v2/viajes', asyncRoute(async (req, res) => {
   res.json({ ok: true, cuadrillas, viajes });
 }));
 
-// POST /despacho-v2/viajes/:id/marcar-salida - botón Play. Si el aviso
-// automático está habilitado, dispara (sin bloquear la respuesta - el
-// collage de fotos puede tardar unos segundos) el WhatsApp de la PRIMERA
-// parada-portón de la ruta: pedido explícito del usuario, el primer
-// mensaje sale solo apenas la cuadrilla arranca, sin pedirle confirmación.
+// GET /despacho-v2/checklist/:tipo - ítems activos configurados para ese
+// tipo (solo_despacho | con_instalacion), lo que la cuadrilla tilda antes de
+// poder arrancar el viaje (pedido explícito del usuario).
+router.get('/despacho-v2/checklist/:tipo', asyncRoute(async (req, res) => {
+  res.json({ ok: true, items: await checklistDb.listChecklistItemsActivos(req.params.tipo) });
+}));
+
+// POST /despacho-v2/viajes/:id/marcar-salida - botón Play. Si el viaje
+// todavía no arrancó, exige el checklist configurado para su tipo (todos
+// los ítems activos en checklist_item_ids) ANTES de asentar la salida -
+// pedido explícito del usuario: sin completarlo no se habilita el viaje. Se
+// revalida acá contra lo que está configurado ahora mismo (no se confía en
+// la lista que ya vio el frontend). Si el viaje ya había arrancado (re-toque
+// del botón, ya sin efecto), no vuelve a exigirlo.
+// Si el aviso automático de WhatsApp está habilitado, dispara (sin bloquear
+// la respuesta - el collage de fotos puede tardar unos segundos) el de la
+// PRIMERA parada-portón de la ruta: el primer mensaje sale solo apenas la
+// cuadrilla arranca, sin pedirle confirmación.
 router.post('/despacho-v2/viajes/:id/marcar-salida', asyncRoute(async (req, res) => {
-  if (!(await requireViajeDeMiCuadrilla(req, res, req.params.id))) return;
+  const viaje = await requireViajeDeMiCuadrilla(req, res, req.params.id);
+  if (!viaje) return;
+
+  if (!viaje.hora_salida_real) {
+    await checklistDb.confirmarChecklistViaje({
+      viajeId: req.params.id,
+      tipo: String(req.body?.checklist_tipo || '').trim(),
+      itemIds: Array.isArray(req.body?.checklist_item_ids) ? req.body.checklist_item_ids : [],
+      confirmadoPor: req.despachoUser.name,
+    });
+  }
+
   const hora_salida_real = await db.marcarSalidaReal(req.params.id);
   if (WHATSAPP_AVISO_HABILITADO) {
     db.avisarPrimeraParada({ viajeId: req.params.id, enviadoPor: req.despachoUser.name })

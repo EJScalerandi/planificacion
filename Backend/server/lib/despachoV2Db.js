@@ -72,7 +72,11 @@ async function listViajesDeCuadrillas(cuadrillaIds, { soloProximos10 } = {}) {
          from public.logistica_viaje_portones vp
          join public.portones p on p.id = vp.porton_id
         where vp.viaje_id = vi.id) as cantidad_portones,
-      (select count(*) from public.logistica_viaje_paradas_extra pe where pe.viaje_id = vi.id) as cantidad_paradas_extra
+      (select count(*) from public.logistica_viaje_paradas_extra pe where pe.viaje_id = vi.id) as cantidad_paradas_extra,
+      exists(
+        select 1 from public.logistica_viaje_portones vp2
+         where vp2.viaje_id = vi.id and vp2.tipo = 'instalacion'
+      ) as tiene_instalacion
     from public.logistica_viajes vi
     left join public.logistica_cuadrillas c on c.id = vi.cuadrilla_id
     left join public.logistica_vehiculos ve on ve.id = vi.vehiculo_id
@@ -118,6 +122,10 @@ async function listViajesDeCuadrillas(cuadrillaIds, { soloProximos10 } = {}) {
     cantidad_paradas: (Number(r.cantidad_portones) || 0) + (Number(r.cantidad_paradas_extra) || 0),
     distancia_km: r.ruta_real?.distancia_km ?? null,
     duracion_horas: r.ruta_real?.duracion_horas ?? null,
+    // Para elegir qué checklist mostrar al arrancar el viaje (pedido
+    // explícito del usuario): "con_instalacion" si tiene AL MENOS una
+    // parada de instalación, "solo_despacho" si no.
+    checklist_tipo: r.tiene_instalacion ? 'con_instalacion' : 'solo_despacho',
   }));
 }
 

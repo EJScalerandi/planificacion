@@ -16,8 +16,15 @@ import {
   marcarEntregadoDespachoV2, avisarSiguienteDespachoV2,
   fetchParadasRestantesDespachoV2, avisarParadaElegidaDespachoV2,
   fetchGastosDespachoV2, crearGastoDespachoV2, actualizarGastoDespachoV2, deleteGastoDespachoV2,
+  fetchChecklistDespachoV2,
   API_BASE_URL,
 } from '../src/api';
+// Mismo modal de "Pedido de insumos del día" que ya usa /despacho (y el
+// resto de los tableros de producción) - pedido explícito del usuario: la
+// cuadrilla de /despacho_v2 tiene que poder hacer los mismos pedidos. Sin
+// auth de por medio (routes/public/insumos.js es público, solo pide PIN al
+// confirmar), así que se reusa tal cual, sin tocarlo.
+import InsumosCartButton from '../src/components/InsumosCartButton';
 
 // Motivos de gasto - catálogo simple hoy, "después vamos a agregar más
 // motivos" (pedido explícito del usuario): alcanza con extender este array,
@@ -984,6 +991,66 @@ function ParadaRow({ parada, viaje, onAbrirNv, onAbrirExtra }) {
   );
 }
 
+// "Antes de arrancar…" - checklist configurable (/admin/logistica-fechas,
+// panel de configuración, botón CheckList) que la cuadrilla debe completar
+// para habilitar el botón Play (pedido explícito del usuario). Si el admin
+// no cargó ítems para este tipo de viaje, ni se llega a mostrar (ver
+// tocarPlay: arranca directo).
+function ChecklistSheet({ tipo, busy, errorExterno, onConfirmar, onCerrar }) {
+  const [items, setItems] = useState(null);
+  const [marcados, setMarcados] = useState(() => new Set());
+  const [err, setErr] = useState('');
+
+  useEffect(() => {
+    fetchChecklistDespachoV2(tipo)
+      .then((d) => setItems(d?.items || []))
+      .catch((e) => setErr(e?.response?.data?.error || e.message));
+  }, [tipo]);
+
+  const toggle = (id) => {
+    setMarcados((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const todoTildado = Array.isArray(items) && items.length > 0 && items.every((it) => marcados.has(it.id));
+
+  return (
+    <div style={{ ...s.overlay, zIndex: 10000 }} onMouseDown={(e) => { if (e.target === e.currentTarget) onCerrar(); }}>
+      <div style={{ ...s.hoja, maxWidth: 420 }}>
+        <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 10, textAlign: 'center' }}>Antes de arrancar…</div>
+        <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 14, textAlign: 'center' }}>
+          Tildá cada ítem para habilitar el viaje.
+        </div>
+        {err || errorExterno ? <div style={{ color: 'crimson', fontWeight: 700, fontSize: 13, marginBottom: 10, textAlign: 'center' }}>{err || errorExterno}</div> : null}
+        {items == null ? (
+          <div style={{ textAlign: 'center', opacity: 0.7, marginBottom: 12 }}>Cargando…</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+            {items.map((it) => (
+              <label
+                key={it.id}
+                style={{ ...s.botonBloque, display: 'flex', gap: 10, alignItems: 'center', cursor: 'pointer', background: marcados.has(it.id) ? '#dcfce7' : '#fff' }}
+              >
+                <input type="checkbox" checked={marcados.has(it.id)} onChange={() => toggle(it.id)} style={{ width: 18, height: 18, flex: '0 0 auto' }} />
+                <span style={{ fontSize: 14 }}>{it.texto}</span>
+              </label>
+            ))}
+          </div>
+        )}
+        <button type="button" style={s.botonPrimario} disabled={busy || !todoTildado} onClick={() => onConfirmar(items.map((it) => it.id))}>
+          {busy ? 'Arrancando…' : '▶ Confirmar y arrancar viaje'}
+        </button>
+        <button type="button" style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: 13, fontWeight: 700, padding: 10, textAlign: 'center', width: '100%' }} disabled={busy} onClick={onCerrar}>
+          Cancelar
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ===========================================================================
 // Tarjeta de un viaje
 // ===========================================================================
@@ -994,6 +1061,8 @@ function ViajeCard({ viaje, onCambio, onAbrirNv, onAbrirExtra }) {
   const [marcando, setMarcando] = useState(false);
   const [marcandoLlegada, setMarcandoLlegada] = useState(false);
   const [mostrarGastos, setMostrarGastos] = useState(false);
+  const [mostrarChecklist, setMostrarChecklist] = useState(false);
+  const [errChecklist, setErrChecklist] = useState('');
 
   const toggleExpandir = async () => {
     if (!expandido && paradas == null) {
@@ -1021,12 +1090,35 @@ function ViajeCard({ viaje, onCambio, onAbrirNv, onAbrirExtra }) {
     } catch {}
   };
 
-  const marcarSalida = async () => {
+  // Botón Play: si el admin configuró ítems de checklist para el tipo de
+  // este viaje (solo_despacho | con_instalacion), primero hay que tildarlos
+  // todos (pedido explícito del usuario) - si no hay ninguno cargado,
+  // arranca directo, como antes de este feature.
+  const tocarPlay = async () => {
     if (marcando || viaje.hora_salida_real) return;
     setMarcando(true);
     try {
-      await marcarSalidaDespachoV2(viaje.id);
+      const { items } = await fetchChecklistDespachoV2(viaje.checklist_tipo);
+      if (items?.length) {
+        setMostrarChecklist(true);
+      } else {
+        await marcarSalidaDespachoV2(viaje.id, { tipo: viaje.checklist_tipo, item_ids: [] });
+        onCambio();
+      }
+    } finally {
+      setMarcando(false);
+    }
+  };
+
+  const confirmarChecklist = async (itemIds) => {
+    setMarcando(true);
+    setErrChecklist('');
+    try {
+      await marcarSalidaDespachoV2(viaje.id, { tipo: viaje.checklist_tipo, item_ids: itemIds });
+      setMostrarChecklist(false);
       onCambio();
+    } catch (e) {
+      setErrChecklist(e?.response?.data?.error || e.message);
     } finally {
       setMarcando(false);
     }
@@ -1057,7 +1149,7 @@ function ViajeCard({ viaje, onCambio, onAbrirNv, onAbrirExtra }) {
           </div>
         </div>
         <button
-          type="button" onClick={marcarSalida} disabled={marcando}
+          type="button" onClick={tocarPlay} disabled={marcando}
           style={{
             flex: '0 0 auto', width: 44, height: 44, borderRadius: 999, border: 'none',
             background: viaje.hora_salida_real ? '#16a34a' : BRAND, color: '#fff', fontSize: 18,
@@ -1126,6 +1218,15 @@ function ViajeCard({ viaje, onCambio, onAbrirNv, onAbrirExtra }) {
       ) : null}
 
       {mostrarGastos ? <GastosSheet viaje={viaje} onClose={() => setMostrarGastos(false)} /> : null}
+      {mostrarChecklist ? (
+        <ChecklistSheet
+          tipo={viaje.checklist_tipo}
+          busy={marcando}
+          errorExterno={errChecklist}
+          onConfirmar={confirmarChecklist}
+          onCerrar={() => { setMostrarChecklist(false); setErrChecklist(''); }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1163,9 +1264,12 @@ function ViajesScreen({ qcUser, onSalir }) {
     <div style={s.pantalla}>
       <div style={s.header}>
         <div style={{ fontWeight: 900, fontSize: 16 }}>👋 {qcUser?.name}</div>
-        <button type="button" onClick={() => { clearDespachoV2Session(); onSalir(); }} style={{ marginLeft: 'auto', background: 'rgba(255,255,255,.15)', border: 'none', color: '#fff', borderRadius: 8, padding: '6px 10px', fontSize: 12, fontWeight: 700 }}>
-          Salir
-        </button>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+          <InsumosCartButton seccion="despacho" />
+          <button type="button" onClick={() => { clearDespachoV2Session(); onSalir(); }} style={{ background: 'rgba(255,255,255,.15)', border: 'none', color: '#fff', borderRadius: 8, padding: '6px 10px', fontSize: 12, fontWeight: 700 }}>
+            Salir
+          </button>
+        </div>
       </div>
 
       <div style={{ padding: '10px 14px', display: 'flex', gap: 6 }}>

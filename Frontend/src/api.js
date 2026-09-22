@@ -138,8 +138,19 @@ export async function fetchDespachoV2Viajes(rango) {
   const { data } = await apiDespachoV2.get('/despacho-v2/viajes', { params: { rango } });
   return data;
 }
-export async function marcarSalidaDespachoV2(viajeId) {
-  const { data } = await apiDespachoV2.post(`/despacho-v2/viajes/${viajeId}/marcar-salida`);
+// checklist: { tipo, item_ids } - obligatorio la primera vez que se arranca
+// el viaje (ver checklistDb.confirmarChecklistViaje en el backend); se
+// ignora en un segundo toque (el viaje ya arrancó, ya no tiene efecto).
+export async function marcarSalidaDespachoV2(viajeId, checklist) {
+  const { data } = await apiDespachoV2.post(`/despacho-v2/viajes/${viajeId}/marcar-salida`, {
+    checklist_tipo: checklist?.tipo,
+    checklist_item_ids: checklist?.item_ids,
+  });
+  return data;
+}
+// Ítems activos del checklist de arranque para un tipo (solo_despacho | con_instalacion).
+export async function fetchChecklistDespachoV2(tipo) {
+  const { data } = await apiDespachoV2.get(`/despacho-v2/checklist/${tipo}`);
   return data;
 }
 export async function marcarLlegadaDespachoV2(viajeId) {
@@ -716,6 +727,22 @@ export async function deleteLogisticaCuadrilla(id) {
 }
 export async function setLogisticaCuadrillaMiembros(id, qcUserIds) {
   const { data } = await api.put(`/admin/logistica/cuadrillas/${id}/miembros`, { qc_user_ids: qcUserIds });
+  return data;
+}
+
+// CheckList de arranque de viaje en /despacho_v2 (botón Play) - dos tipos:
+// solo_despacho | con_instalacion. Los ítems vienen junto al resto de la
+// config (fetchLogisticaViajesConfig -> config.checklist_items).
+export async function createLogisticaChecklistItem(payload) {
+  const { data } = await api.post('/admin/logistica/checklist-items', payload);
+  return data;
+}
+export async function updateLogisticaChecklistItem(id, patch) {
+  const { data } = await api.patch(`/admin/logistica/checklist-items/${id}`, patch);
+  return data;
+}
+export async function deleteLogisticaChecklistItem(id) {
+  const { data } = await api.delete(`/admin/logistica/checklist-items/${id}`);
   return data;
 }
 
