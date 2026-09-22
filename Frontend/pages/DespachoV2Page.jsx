@@ -11,6 +11,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   fetchDespachoV2QcUsers, despachoV2Login, fetchDespachoV2Viajes, marcarSalidaDespachoV2, marcarLlegadaDespachoV2,
   fetchParadasDespachoV2, fetchNvDespachoV2, fetchNvAdjuntosDespachoV2, crearSolicitudStDespachoV2,
+  fetchNvMedicionMediaDespachoV2, fetchMedicionMediaItemDespachoV2,
   fetchRemitosPorNv, getDespachoV2Token, getDespachoV2User, setDespachoV2Session, clearDespachoV2Session,
   marcarEntregadoDespachoV2, avisarSiguienteDespachoV2,
   fetchParadasRestantesDespachoV2, avisarParadaElegidaDespachoV2,
@@ -497,6 +498,8 @@ function MarcarEntregadoSection({ nv, viaje, parada, onParadaCambiada, stAbierta
 function NvDetailSheet({ nv, viaje, parada, onParadaCambiada, onClose }) {
   const [detalle, setDetalle] = useState(null);
   const [adjuntos, setAdjuntos] = useState([]);
+  const [medicionMedia, setMedicionMedia] = useState([]);
+  const [medioAbierto, setMedioAbierto] = useState(null); // { index, nombre_archivo, tipo_mime } | null
   const [remitos, setRemitos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
@@ -508,11 +511,13 @@ function NvDetailSheet({ nv, viaje, parada, onParadaCambiada, onClose }) {
     Promise.all([
       fetchNvDespachoV2(nv).catch(() => null),
       fetchNvAdjuntosDespachoV2(nv).catch(() => null),
+      fetchNvMedicionMediaDespachoV2(nv).catch(() => null),
       fetchRemitosPorNv(nv).catch(() => null),
     ])
-      .then(([d, a, r]) => {
+      .then(([d, a, m, r]) => {
         setDetalle(d?.nv || null);
         setAdjuntos(a?.adjuntos || []);
+        setMedicionMedia(m?.media || []);
         setRemitos(r?.items || []);
       })
       .catch((e) => setErr(e?.response?.data?.error || e.message))
@@ -589,6 +594,25 @@ function NvDetailSheet({ nv, viaje, parada, onParadaCambiada, onClose }) {
             )}
             <div style={{ fontSize: 11, opacity: 0.55, marginBottom: 16 }}>Fotos adjuntas desde acá: más adelante.</div>
 
+            <div style={{ fontWeight: 900, fontSize: 14, marginBottom: 6 }}>📸 Fotos/Videos de la medición</div>
+            {medicionMedia.length === 0 ? (
+              <div style={{ fontSize: 13, opacity: 0.6, marginBottom: 16 }}>El vendedor no adjuntó fotos/videos al medir este portón.</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
+                {medicionMedia.map((m) => (
+                  <button
+                    key={m.index} type="button"
+                    onClick={() => setMedioAbierto({ index: m.index, nombre_archivo: m.nombre_archivo, tipo_mime: m.tipo_mime })}
+                    style={{ ...s.botonBloque, textAlign: 'left', display: 'flex', gap: 8, alignItems: 'center' }}
+                  >
+                    <span>{String(m.tipo_mime || '').startsWith('video/') ? '🎥' : '🖼️'}</span>
+                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 13 }}>{m.nombre_archivo}</span>
+                    <span style={{ fontSize: 11, opacity: 0.6 }}>{tamanoLegible(m.tamano_bytes)}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
             <button type="button" style={{ ...s.botonPrimario, background: '#dc2626' }} onClick={() => setMostrarSt(true)}>
               🛠️ ST/PV — Reportar un problema
             </button>
@@ -596,6 +620,48 @@ function NvDetailSheet({ nv, viaje, parada, onParadaCambiada, onClose }) {
         )}
       </div>
       {mostrarSt ? <StFormSheet nv={nv} onClose={() => setMostrarSt(false)} /> : null}
+      {medioAbierto ? (
+        <MedicionMediaViewer nv={nv} medio={medioAbierto} onClose={() => setMedioAbierto(null)} />
+      ) : null}
+    </div>
+  );
+}
+
+// Visor de UNA foto/video de medición - se pide recién acá (no en el
+// listado) porque el archivo entero viaja en base64 dentro del JSON y puede
+// pesar varios MB (hasta 30MB un video) - pedirlos todos de entrada haría
+// re-lento el detalle del portón para nada, si la cuadrilla ni los mira.
+function MedicionMediaViewer({ nv, medio, onClose }) {
+  const [dataUrl, setDataUrl] = useState(null);
+  const [err, setErr] = useState('');
+
+  useEffect(() => {
+    setDataUrl(null);
+    setErr('');
+    fetchMedicionMediaItemDespachoV2(nv, medio.index)
+      .then((d) => setDataUrl(d?.item?.data_url || null))
+      .catch((e) => setErr(e?.response?.data?.error || e.message));
+  }, [nv, medio.index]);
+
+  const esVideo = String(medio.tipo_mime || '').startsWith('video/');
+
+  return (
+    <div style={{ ...s.overlay, zIndex: 10001 }} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={{ ...s.hoja, maxWidth: 480 }}>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 10 }}>
+          <div style={{ fontWeight: 900, fontSize: 15, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{medio.nombre_archivo}</div>
+          <button type="button" onClick={onClose} style={{ marginLeft: 8, background: 'none', border: 'none', fontSize: 22, lineHeight: 1, padding: 4 }}>✕</button>
+        </div>
+        {err ? (
+          <div style={{ color: 'crimson', fontWeight: 700, textAlign: 'center', padding: 20 }}>{err}</div>
+        ) : !dataUrl ? (
+          <div style={{ opacity: 0.7, textAlign: 'center', padding: 20 }}>Cargando…</div>
+        ) : esVideo ? (
+          <video src={dataUrl} controls style={{ width: '100%', borderRadius: 10, background: '#000' }} />
+        ) : (
+          <img src={dataUrl} alt={medio.nombre_archivo} style={{ width: '100%', borderRadius: 10 }} />
+        )}
+      </div>
     </div>
   );
 }

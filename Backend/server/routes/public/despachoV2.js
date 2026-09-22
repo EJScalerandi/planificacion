@@ -14,6 +14,7 @@ const adjuntosDb = require('../../lib/logisticaAdjuntosDb');
 const adjuntosStorage = require('../../lib/logisticaAdjuntosStorage');
 const gastosDb = require('../../lib/logisticaGastosDb');
 const gastosIa = require('../../lib/logisticaGastosIa');
+const medicionMediaDb = require('../../lib/presupuestadorMediaDb');
 
 const router = express.Router();
 
@@ -138,6 +139,23 @@ router.get('/despacho-v2/nv/:nv/adjuntos', asyncRoute(async (req, res) => {
   const rows = await adjuntosDb.listAdjuntos({ nv: Number(req.params.nv) });
   const conUrl = await Promise.all(rows.map(async (r) => ({ ...r, url: await adjuntosStorage.urlFirmada(r.storage_path) })));
   res.json({ ok: true, adjuntos: conUrl });
+}));
+
+// GET /despacho-v2/nv/:nv/medicion-media - fotos/videos que el vendedor
+// adjuntó al tomar la medición en el Presupuestador (pedido explícito del
+// usuario) - listado liviano, sin el archivo en sí (ver el endpoint de
+// abajo para pedir uno puntual al tocarlo).
+router.get('/despacho-v2/nv/:nv/medicion-media', asyncRoute(async (req, res) => {
+  res.json({ ok: true, media: await medicionMediaDb.listMedicionMedia(req.params.nv) });
+}));
+
+// GET /despacho-v2/nv/:nv/medicion-media/:index - el archivo puntual (data
+// URL base64, tal cual lo guardó el Presupuestador - no hay Storage/URL
+// firmada para esto).
+router.get('/despacho-v2/nv/:nv/medicion-media/:index', asyncRoute(async (req, res) => {
+  const item = await medicionMediaDb.getMedicionMediaItem(req.params.nv, req.params.index);
+  if (!item) return res.status(404).json({ error: 'No se encontró ese archivo' });
+  res.json({ ok: true, item });
 }));
 
 // POST /despacho-v2/viajes/:id/nv/:nv/marcar-entregado { tipo, pin? } -

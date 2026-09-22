@@ -158,6 +158,17 @@ export async function fetchNvAdjuntosDespachoV2(nv) {
   const { data } = await apiDespachoV2.get(`/despacho-v2/nv/${nv}/adjuntos`);
   return data;
 }
+// Fotos/videos adjuntados al tomar la medición en el Presupuestador (listado
+// liviano, sin el archivo en sí).
+export async function fetchNvMedicionMediaDespachoV2(nv) {
+  const { data } = await apiDespachoV2.get(`/despacho-v2/nv/${nv}/medicion-media`);
+  return data;
+}
+// El archivo puntual (data URL base64) - se pide recién al tocar un ítem.
+export async function fetchMedicionMediaItemDespachoV2(nv, index) {
+  const { data } = await apiDespachoV2.get(`/despacho-v2/nv/${nv}/medicion-media/${index}`);
+  return data;
+}
 export async function crearSolicitudStDespachoV2(nv, { descripcion, attachment }) {
   const { data } = await apiDespachoV2.post(`/despacho-v2/nv/${nv}/st`, { descripcion, attachment }, { timeout: 30000 });
   return data;
