@@ -33,6 +33,7 @@ import {
   isoWeekLabelFromDate,
   weekNumberFromLabel,
   weekTitleFromSelection,
+  colorForWeekLabel,
 } from '../utils/isoWeek';
 
 import { getCurrentScopes, hasAny } from '../utils/adminScopes';
@@ -2240,15 +2241,23 @@ export default function PreproduccionValoresTable() {
               </thead>
 
               <tbody>
-                {pagedRows.map((row) => (
-                  <tr key={row.id}>
-                    {visibleColsList.map((col) => (
-                      <td key={`${row.id}_${col.id}`}>
-                        {renderCell(row, col)}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
+                {pagedRows.map((row) => {
+                  // Pedido explícito del usuario: portones con la misma
+                  // semana de despacho se pintan del mismo pastel, y ese
+                  // color va cambiando de semana a semana (ver
+                  // colorForWeekLabel en utils/isoWeek.js) - así se ve de
+                  // un vistazo dónde corta una semana y empieza la otra.
+                  const colorSemana = colorForWeekLabel(weekLabelFromRow(row, 'despacho'));
+                  return (
+                    <tr key={row.id} style={colorSemana ? { background: colorSemana } : undefined}>
+                      {visibleColsList.map((col) => (
+                        <td key={`${row.id}_${col.id}`}>
+                          {renderCell(row, col)}
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })}
 
                 {!loading && pagedRows.length === 0 ? (
                   <tr>
