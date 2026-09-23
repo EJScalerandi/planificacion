@@ -554,6 +554,20 @@ const MIGRATIONS = [
     `,
   },
   {
+    // Dos campos más por nodo del diagrama "Índice de Programación": las
+    // variables de entorno de esa app (para no tener que ir a buscar el
+    // .env real) y un texto libre de información relevante para programación.
+    // Igual que el link, es un solo valor compartido por nodo (a diferencia
+    // de notas_nodo_entradas, que es "qué se está trabajando ahora" y tiene
+    // una fila por admin).
+    name: 'notas_nodo_env_vars_e_info_programacion',
+    sql: `
+      ALTER TABLE public.notas_nodo
+        ADD COLUMN IF NOT EXISTS env_vars TEXT NOT NULL DEFAULT '',
+        ADD COLUMN IF NOT EXISTS info_programacion TEXT NOT NULL DEFAULT '';
+    `,
+  },
+  {
     // Todas las consultas de tickets (listMyTickets, listAllTickets) ordenan
     // por created_at desc y no había índice para eso - quedaba resuelto con
     // un sort completo de la tabla en cada pedido. No afecta hoy con el
