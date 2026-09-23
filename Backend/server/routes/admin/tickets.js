@@ -309,15 +309,14 @@ router.patch('/tickets/:id/board-column', adminAuth, async (req, res) => {
   }
 });
 
-// DELETE /admin/tickets/:id — borrar un ticket, a mano. Cualquier admin
-// logueado (no hace falta ser quien lo creó). Un ticket real solo se puede
-// borrar si está "closed" (historial ya resuelto); una tarjeta "tarea" se
-// puede borrar en cualquier estado - ver deleteTicketAdmin.
+// DELETE /admin/tickets/:id — borrar un ticket, a mano, sea cual sea su
+// estado (pendiente/en curso/cerrado o una tarea) - a pedido explícito del
+// usuario, ver el comentario en ticketsDb.deleteTicketAdmin.
 router.delete('/tickets/:id', adminAuth, async (req, res) => {
   try {
     const borrado = await ticketsDb.deleteTicketAdmin(Number(req.params.id));
     if (!borrado) {
-      return res.status(404).json({ error: 'Ticket no encontrado o todavía no está cerrado' });
+      return res.status(404).json({ error: 'Ticket no encontrado' });
     }
     return res.json({ ok: true });
   } catch (err) {

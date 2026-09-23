@@ -173,20 +173,14 @@ async function deleteOwnTicket(id, userId) {
 }
 
 // Borrar un ticket, a mano, desde el panel admin. Cualquier admin (no hace
-// falta ser quien lo creó, a diferencia de deleteOwnTicket). Dos reglas
-// distintas según qué es la fila:
-// - Un ticket REAL (mandado por otra app) solo se puede borrar si está
-//   "closed": es una decisión explícita de alguien de soporte sobre
-//   historial ya resuelto, no algo que pase solo mientras sigue activo.
-// - Una tarjeta "tarea" (creada a mano en el tablero, app_origen='tarea') se
-//   puede borrar en CUALQUIER estado - no es un registro de soporte que haya
-//   que conservar como historial, es una tarea propia que se puede cancelar
-//   en el momento que sea.
-// `ticket_mensajes` tiene ON DELETE CASCADE, así que sus respuestas se
-// borran solas con cualquiera de los dos casos.
+// falta ser quien lo creó, a diferencia de deleteOwnTicket). Sea cual sea su
+// estado (pendiente/en curso/cerrado) - a pedido explícito del usuario, que
+// ya conocía la alternativa de dejarlo limitado a solo cerrados/tareas y
+// prefirió esto. `ticket_mensajes.ticket_id` tiene ON DELETE CASCADE (ver la
+// migración de esa tabla en index.js), así que sus respuestas se borran solas.
 async function deleteTicketAdmin(id) {
   const { rows } = await pool.query(
-    `delete from public.tickets where id = $1 and (estado = 'closed' or app_origen = 'tarea') returning id;`,
+    `delete from public.tickets where id = $1 returning id;`,
     [id]
   );
   return rows[0] || null;

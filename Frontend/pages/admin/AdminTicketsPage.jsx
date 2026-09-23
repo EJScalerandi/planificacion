@@ -55,7 +55,7 @@ export default function AdminTicketsPage() {
   );
 
   return (
-    <div className="container" style={{ maxWidth: 1000 }}>
+    <div className="container" style={{ maxWidth: '100%' }}>
       <div className="header-row" style={{ alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
         <div style={{ display: 'flex', gap: 8 }}>
           <Link className="btn" to="/admin">← Admin</Link>
