@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { createTicket, fetchMyTickets, fetchMyTicketDetail, addMyTicketMessage, cancelMyTicket } from '../api';
+import { createTicket, fetchMyTickets, fetchMyTicketDetail, addMyTicketMessage, cancelMyTicket, getAdminToken } from '../api';
 import {
   fileToTicketAttachment,
   formatTicketAttachmentMeta,
@@ -145,6 +145,12 @@ export default function TicketWidget() {
   }, []);
 
   async function cargarMisTickets(opts = {}) {
+    // Este widget solo tiene sentido logueado como admin — sin token no hay
+    // "mis tickets" que traer. Evita pedirle al backend algo que va a dar
+    // 401 sí o sí: en una pantalla pública (tablero de producción, sin
+    // login) eso disparaba el aviso global de "sesión expirada" y mandaba a
+    // operarios que nunca se loguearon a la pantalla de login.
+    if (!getAdminToken()) return;
     const silent = !!opts.silent;
     if (!silent) setCargandoMias(true);
     try {

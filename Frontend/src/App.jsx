@@ -12,7 +12,6 @@ import {
 } from './api';
 import StageColumn from './components/StageColumn';
 import InsumosCartButton from './components/InsumosCartButton';
-import TicketWidget from './components/TicketWidget';
 import PruebaLaserModal from './components/modals/PruebaLaserModal';
 import SessionExpiredOverlay from './components/SessionExpiredOverlay';
 
@@ -489,7 +488,6 @@ function Board({ stages, seccion }) {
               Generar Prueba Laser Plano
             </button>
           ) : null}
-          <TicketWidget />
           <button
             className="btn btn--brand"
             onClick={() => { refresh(); refreshIpanel(); refreshQcSummary(); refreshPrefab(); refreshSt(); }}
