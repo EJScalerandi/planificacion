@@ -250,6 +250,11 @@ export const setFechaMed = (id, fechaOrNull) => api.post(`/portones/${id}/fecha-
 export const setFechaPlanEntrega = (id, fechaOrNull) =>
   api.post(`/portones/${id}/fecha-plan-entrega`, { fecha_plan_entrega: fechaOrNull });
 
+// Flujo Logística (Fase 2c del motor de reglas de tiempo): fecha editable
+// aparte de fecha_plan_entrega. Null = usa fecha_plan_entrega como fallback.
+export const setFechaDespachoLogistica = (id, fechaOrNull) =>
+  api.post(`/portones/${id}/fecha-despacho-logistica`, { fecha_despacho_logistica: fechaOrNull });
+
 export const setSistemaPorton = (id, sistemaOrNull) =>
   api.post(`/portones/${id}/sistema`, { sistema: sistemaOrNull });
 
@@ -312,6 +317,113 @@ export async function saveWorkflowConfig(line, payload) {
 
 export async function getWorkflowConditionFields(line) {
   const { data } = await api.get('/admin/workflow/condition-fields', { params: { line } });
+  return data;
+}
+
+/* ============ ADMIN SCHEDULING (motor de reglas de tiempo — Fase 0/1, en sombra) ============ */
+export async function getSchedulingStandard(line) {
+  const { data } = await api.get('/admin/scheduling/standard', { params: { line } });
+  return data;
+}
+
+export async function saveSchedulingStandard(line, standards) {
+  const { data } = await api.put('/admin/scheduling/standard', { standards }, { params: { line } });
+  return data;
+}
+
+export async function getSchedulingRules(line) {
+  const { data } = await api.get('/admin/scheduling/rules', { params: { line } });
+  return data;
+}
+
+export async function saveSchedulingRules(line, rules) {
+  const { data } = await api.put('/admin/scheduling/rules', { rules }, { params: { line } });
+  return data;
+}
+
+export async function getSchedulingPreview(line, limit) {
+  const { data } = await api.get('/admin/scheduling/preview', { params: { line, limit } });
+  return data;
+}
+
+export async function getSchedulingRegressionPreview(line, { porton_id, limit, mode, flow } = {}) {
+  // La regresión de flota recorre varios portones — puede tardar más que el
+  // timeout global de 15s (mismo criterio que ya usan las llamadas a IA en
+  // este archivo, ej. recomendarLogisticaViajeIa).
+  const { data } = await api.get('/admin/scheduling/regression/preview', {
+    params: { line, porton_id, limit, mode, flow },
+    timeout: 60000,
+  });
+  return data;
+}
+
+// Fase 3: recursos físicos compartidos entre etapas (ej. una sola cortadora
+// para guillotina + corte_revest). El catálogo (scheduling_resource) es
+// global, no por línea; el mapeo (scheduling_stage_resource) sí es por línea.
+export async function getSchedulingResources() {
+  const { data } = await api.get('/admin/scheduling/resources');
+  return data;
+}
+
+export async function saveSchedulingResource(resource) {
+  const { data } = await api.post('/admin/scheduling/resources', resource);
+  return data;
+}
+
+export async function deleteSchedulingResource(resourceKey) {
+  const { data } = await api.delete(`/admin/scheduling/resources/${encodeURIComponent(resourceKey)}`);
+  return data;
+}
+
+export async function getSchedulingStageResource(line) {
+  const { data } = await api.get('/admin/scheduling/stage-resource', { params: { line } });
+  return data;
+}
+
+export async function saveSchedulingStageResource(line, mappings) {
+  const { data } = await api.put('/admin/scheduling/stage-resource', { mappings }, { params: { line } });
+  return data;
+}
+
+// Calendario laboral por recurso (categoría "Tiempo"). Sin cargar nada, un
+// recurso cae al fallback Lun-Vie 08:00-18:00 (ver lib/scheduling/calendar.js).
+export async function getSchedulingCalendar(resourceKey) {
+  const { data } = await api.get('/admin/scheduling/calendar', { params: { resource_key: resourceKey } });
+  return data;
+}
+
+export async function saveSchedulingCalendar(resourceKey, shifts) {
+  const { data } = await api.put('/admin/scheduling/calendar', { shifts }, { params: { resource_key: resourceKey } });
+  return data;
+}
+
+// resourceKey null/undefined = excepciones globales (feriado de planta completa).
+export async function getSchedulingCalendarExceptions(resourceKey) {
+  const { data } = await api.get('/admin/scheduling/calendar/exceptions', {
+    params: resourceKey ? { resource_key: resourceKey } : {},
+  });
+  return data;
+}
+
+export async function saveSchedulingCalendarExceptions(resourceKey, exceptions) {
+  const { data } = await api.put('/admin/scheduling/calendar/exceptions', { exceptions }, {
+    params: resourceKey ? { resource_key: resourceKey } : {},
+  });
+  return data;
+}
+
+// Variables de recurso (Fase 3b): atributos de sección/máquina (no del
+// portón) que se suman al contexto de evaluación de las etapas mapeadas a
+// ese resource_key. resourceKey null/undefined = todas (todas las secciones).
+export async function getSchedulingResourceVariables(resourceKey) {
+  const { data } = await api.get('/admin/scheduling/resource-variables', {
+    params: resourceKey ? { resource_key: resourceKey } : {},
+  });
+  return data;
+}
+
+export async function saveSchedulingResourceVariables(resourceKey, variables) {
+  const { data } = await api.put('/admin/scheduling/resource-variables', { variables }, { params: { resource_key: resourceKey } });
   return data;
 }
 

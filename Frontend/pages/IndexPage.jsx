@@ -82,6 +82,11 @@ export default function IndexPage({ routes = [] }) {
   const isPrefabAdmin = has('prefabricados:admin');
   const isStAdmin = has('servicio_tecnico:admin');
   const isComprasAdmin = has('compras:admin');
+  // Nota: scheduling:admin sigue existiendo y protegiendo las rutas de API
+  // /admin/scheduling/* en el backend — acá en la nav ya no se usa solo, la
+  // sección "Programadores" (Motor de Reglas, Gantt, Tickets, Índice de
+  // Programación) se gatea con este scope nuevo, aparte.
+  const isProgramadoresAdmin = has('programadores:admin');
 
   const isPreprodOnly = isPreprodAdmin && !isQcAdmin && !isWfAdmin && !canUsers;
 
@@ -256,7 +261,7 @@ export default function IndexPage({ routes = [] }) {
     </li>
   );
 
-  const hasAny = publicRoutes.length || adminRoutes.length || opsRoutes.length || revisionRoutes.length || infoRoutes.length;
+  const hasAny = publicRoutes.length || adminRoutes.length || programadoresRoutes.length || opsRoutes.length || revisionRoutes.length || infoRoutes.length;
 
   return (
     <div className="container">
@@ -297,6 +302,19 @@ export default function IndexPage({ routes = [] }) {
                 <span className="idx-pill">Admin</span>
               </div>
               <div className="idx-section__body"><ul className="idx-links">{adminRoutes.map((r) => <LinkRow key={r.path} r={r} />)}</ul></div>
+            </section>
+          )}
+
+          {programadoresRoutes.length > 0 && (
+            <section className="idx-section idx-section--admin">
+              <div className="idx-section__head">
+                <div>
+                  <div className="idx-section__title">Programadores</div>
+                  <div className="idx-section__sub">Motor de reglas de tiempo, tickets e índice de programación</div>
+                </div>
+                <span className="idx-pill">Programadores</span>
+              </div>
+              <div className="idx-section__body"><ul className="idx-links">{programadoresRoutes.map((r) => <LinkRow key={r.path} r={r} />)}</ul></div>
             </section>
           )}
 
