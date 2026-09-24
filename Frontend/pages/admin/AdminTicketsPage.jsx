@@ -20,7 +20,8 @@ const ESTADOS = [
 
 export default function AdminTicketsPage() {
   const nav = useNavigate();
-  const [estadoFiltro, setEstadoFiltro] = useState('');
+  // Arranca en "Pendientes": es lo que hay que atender al entrar.
+  const [estadoFiltro, setEstadoFiltro] = useState('pending');
   const [tickets, setTickets] = useState([]);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState('');
@@ -75,7 +76,7 @@ export default function AdminTicketsPage() {
             onClick={() => setEstadoFiltro(e.key)}
           >
             {e.label}
-            {e.key === 'pending' && pendientesCount > 0 && !estadoFiltro ? ` (${pendientesCount})` : ''}
+            {e.key === 'pending' && pendientesCount > 0 && (!estadoFiltro || estadoFiltro === 'pending') ? ` (${pendientesCount})` : ''}
           </button>
         ))}
         <button className="btn" type="button" onClick={cargar} disabled={cargando} style={{ marginLeft: 'auto' }}>
