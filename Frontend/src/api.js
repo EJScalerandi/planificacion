@@ -815,6 +815,22 @@ export const createReunion = (payload) => api.post('/admin/reuniones', payload);
 export const updateReunion = (id, payload) => api.put(`/admin/reuniones/${id}`, payload);
 export const deleteReunion = (id) => api.delete(`/admin/reuniones/${id}`);
 
+/* ========= Chat de Programadores (/admin/programadores/chat) =========
+   Un único grupo tipo WhatsApp, solo scope programadores:admin.
+   params: { despues_de } (polling) | { antes_de } (anteriores) | nada. */
+export const fetchProgramadoresChat = (params) => api.get('/admin/programadores/chat/mensajes', { params });
+export function enviarProgramadoresChat({ texto, archivos = [] }) {
+  const form = new FormData();
+  if (texto) form.append('texto', texto);
+  for (const f of archivos) form.append('archivos', f);
+  return api.post('/admin/programadores/chat/mensajes', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120000, // subir varios archivos grandes tarda más que los 30s por defecto
+  });
+}
+export const marcarProgramadoresChatLeido = (hastaId) => api.post('/admin/programadores/chat/leido', { hasta_id: hastaId });
+export const fetchProgramadoresChatNoLeidos = () => api.get('/admin/programadores/chat/no-leidos');
+
 /* ========= Logística de Viajes (despacho + instalación por semana, desde /a) =========
    Arma "viajes" (fecha + zona + cuadrilla + vehículo) por semana ISO y reparte en
    ellos los portones con despacho/instalación de esa semana. Ver

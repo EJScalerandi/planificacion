@@ -1,7 +1,7 @@
 // src/pages/IndexPage.jsx
 import { Link, useNavigate } from 'react-router-dom';
 import { useEffect, useMemo, useState } from 'react';
-import { fetchAdminTickets, fetchReuniones } from '../src/api';
+import { fetchAdminTickets, fetchReuniones, fetchProgramadoresChatNoLeidos } from '../src/api';
 import { todayISO10 } from '../src/utils/isoWeek';
 
 function parseJwtPayload(token) {
@@ -142,6 +142,29 @@ export default function IndexPage({ routes = [] }) {
     };
   }, []);
 
+  // Mensajes nuevos del Chat de Programadores desde la última vez que se
+  // abrió. El backend fija la línea de base la primera vez que se consulta,
+  // así el historial que ya existía no aparece de golpe como "no leído".
+  const [chatNoLeidosCount, setChatNoLeidosCount] = useState(0);
+  useEffect(() => {
+    if (isPreprodOnly || !isProgramadoresAdmin) return undefined;
+    let cancelled = false;
+    async function cargarChatNoLeidos() {
+      try {
+        const { data } = await fetchProgramadoresChatNoLeidos();
+        if (!cancelled) setChatNoLeidosCount(Number(data?.count) || 0);
+      } catch (err) {
+        console.error('Error cargando mensajes nuevos del chat:', err);
+      }
+    }
+    cargarChatNoLeidos();
+    const interval = setInterval(cargarChatNoLeidos, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [isPreprodOnly, isProgramadoresAdmin]);
+
   const logout = () => {
     clearAdminSession();
     nav('/admin/login', { replace: true });
@@ -238,6 +261,19 @@ export default function IndexPage({ routes = [] }) {
     ];
   }, [isPreprodOnly, isPreprodAdmin, isQcAdmin, isWfAdmin, preprodRoutes]);
 
+  // Lo que se muestra en la sección "Programadores": el Chat primero (con su
+  // badge de mensajes nuevos) y después programadoresRoutes. Mismo gate.
+  const seccionProgramadores = useMemo(() => {
+    if (isPreprodOnly || !isProgramadoresAdmin) return programadoresRoutes;
+    return [
+      {
+        path: '/admin/programadores/chat', label: 'Admin · Chat de Programadores', badge: chatNoLeidosCount,
+        badgeTitle: `${chatNoLeidosCount} mensaje${chatNoLeidosCount === 1 ? '' : 's'} nuevo${chatNoLeidosCount === 1 ? '' : 's'}`,
+      },
+      ...programadoresRoutes,
+    ];
+  }, [isPreprodOnly, isProgramadoresAdmin, programadoresRoutes, chatNoLeidosCount]);
+
   const NavBadge = ({ r }) => {
     if (!r.badge) return null;
     return (
@@ -278,7 +314,7 @@ export default function IndexPage({ routes = [] }) {
     </li>
   );
 
-  const hasAny = publicRoutes.length || adminRoutes.length || programadoresRoutes.length || opsRoutes.length || revisionRoutes.length || infoRoutes.length;
+  const hasAny = publicRoutes.length || adminRoutes.length || seccionProgramadores.length || opsRoutes.length || revisionRoutes.length || infoRoutes.length;
 
   return (
     <div className="container">
@@ -322,16 +358,16 @@ export default function IndexPage({ routes = [] }) {
             </section>
           )}
 
-          {programadoresRoutes.length > 0 && (
+          {seccionProgramadores.length > 0 && (
             <section className="idx-section idx-section--admin">
               <div className="idx-section__head">
                 <div>
                   <div className="idx-section__title">Programadores</div>
-                  <div className="idx-section__sub">Motor de reglas de tiempo, tickets e índice de programación</div>
+                  <div className="idx-section__sub">Chat del equipo, motor de reglas de tiempo, tickets e índice de programación</div>
                 </div>
                 <span className="idx-pill">Programadores</span>
               </div>
-              <div className="idx-section__body"><ul className="idx-links">{programadoresRoutes.map((r) => <LinkRow key={r.path} r={r} />)}</ul></div>
+              <div className="idx-section__body"><ul className="idx-links">{seccionProgramadores.map((r) => <LinkRow key={r.path} r={r} />)}</ul></div>
             </section>
           )}
 

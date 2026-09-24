@@ -30,6 +30,7 @@ import WorkflowDesignerPage from '../pages/admin/WorkflowDesignerPage';
 import SchedulingRulesPage from '../pages/admin/SchedulingRulesPage';
 import SchedulingGanttPage from '../pages/admin/SchedulingGanttPage';
 import SchedulingRulesNavPage from '../pages/admin/SchedulingRulesNavPage';
+import ProgramadoresChatPage from '../pages/admin/ProgramadoresChatPage';
 import AdminQcPage from '../pages/admin/AdminQcPage';
 import AdminExcelInfoPage from '../pages/admin/AdminExcelInfoPage';
 import PrefabricadosConfigPage from '../pages/admin/PrefabricadosConfigPage';
@@ -746,6 +747,7 @@ export default function App() {
           <Route path="/admin/scheduling" element={<SchedulingRulesPage />} />
           <Route path="/admin/scheduling/gantt" element={<SchedulingGanttPage />} />
           <Route path="/admin/scheduling/reglas" element={<SchedulingRulesNavPage />} />
+          <Route path="/admin/programadores/chat" element={<ProgramadoresChatPage />} />
           <Route path="/admin/excel-info" element={<AdminExcelInfoPage />} />
           <Route path="/admin/prefabricados" element={<PrefabricadosConfigPage />} />
           <Route path="/admin/servicio-tecnico" element={<ServicioTecnicoPage />} />

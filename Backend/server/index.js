@@ -786,6 +786,30 @@ const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_reuniones_fecha ON public.reuniones(fecha);
     `,
   },
+  {
+    // Chat de Programadores (/admin/programadores/chat) - un único grupo tipo
+    // WhatsApp, solo para quien tiene el scope programadores:admin. Los
+    // adjuntos viven en Supabase Storage (bucket privado "programadores-chat",
+    // ver lib/programadoresChatStorage.js); acá solo la metadata + el path.
+    // _lecturas guarda hasta qué mensaje leyó cada uno: de ahí salen el
+    // contador de no leídos del menú y los tildes de "visto".
+    name: 'programadores_chat',
+    sql: `
+      CREATE TABLE IF NOT EXISTS public.programadores_chat_mensajes (
+        id BIGSERIAL PRIMARY KEY,
+        autor_id TEXT,
+        autor_username TEXT NOT NULL,
+        texto TEXT,
+        adjuntos JSONB NOT NULL DEFAULT '[]'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE TABLE IF NOT EXISTS public.programadores_chat_lecturas (
+        username TEXT PRIMARY KEY,
+        ultimo_leido_id BIGINT NOT NULL DEFAULT 0,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+    `,
+  },
 ];
 
 async function runMigrations() {
