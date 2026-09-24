@@ -703,6 +703,16 @@ export const createReunion = (payload) => api.post('/admin/reuniones', payload);
 export const updateReunion = (id, payload) => api.put(`/admin/reuniones/${id}`, payload);
 export const deleteReunion = (id) => api.delete(`/admin/reuniones/${id}`);
 
+/* ========= Reuniones y Tareas (/admin/reuniones) =========
+   Agenda compartida entre admins - sin scope propio, cualquier admin
+   logueado ve/crea/edita/borra cualquier reunión (mismo criterio que
+   /admin/tickets). El link a "tareas" apunta a la columna "Tareas" del
+   tablero de Tickets (/admin/tickets-tablero), no es una pantalla nueva. */
+export const fetchReuniones = (params) => api.get('/admin/reuniones', { params });
+export const createReunion = (payload) => api.post('/admin/reuniones', payload);
+export const updateReunion = (id, payload) => api.put(`/admin/reuniones/${id}`, payload);
+export const deleteReunion = (id) => api.delete(`/admin/reuniones/${id}`);
+
 /* ========= Logística de Viajes (despacho + instalación por semana, desde /a) =========
    Arma "viajes" (fecha + zona + cuadrilla + vehículo) por semana ISO y reparte en
    ellos los portones con despacho/instalación de esa semana. Ver
