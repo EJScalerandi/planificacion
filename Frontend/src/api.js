@@ -6,9 +6,17 @@ const API_BASE =
   import.meta.env.VITE_API_BASE ||
   'http://localhost:4000';
 
+// Exportado para armar a mano un link ABSOLUTO al backend (ej. el PDF del
+// remito en despacho_v2: un <a href="/remitos-proxy/...">  relativo apunta
+// al propio dominio del FRONTEND -Vercel-, no al backend -Render-, y ahí
+// no hay ninguna ruta así, cae al router de React y termina en el login).
+export const API_BASE_URL = String(API_BASE).replace(/\/+$/, '');
+
 const api = axios.create({
   baseURL: String(API_BASE).replace(/\/+$/, ''), // sin trailing slash
-  timeout: 15000,
+  // 30s en vez de 15s: el backend en Render se "duerme" con inactividad y el
+  // primer pedido después de eso tarda en despertarlo (cold start).
+  timeout: 30000,
 });
 
 // ====== ADMIN TOKEN (localStorage) ======
@@ -51,6 +59,182 @@ api.interceptors.request.use((config) => {
   if (t) config.headers.Authorization = `Bearer ${t}`;
   return config;
 });
+
+// Si el token vencido/inválido - avisa (evento global, lo escucha
+// SessionExpiredOverlay) en vez de dejar que cada pantalla muestre su propio
+// error crudo (ej. "Network Error"). Se excluye /admin/login: ahí un 401 es
+// "usuario o contraseña incorrectos", no una sesión vencida.
+api.interceptors.response.use(
+  (res) => res,
+  (error) => {
+    const status = error?.response?.status;
+    const url = error?.config?.url || '';
+    if (status === 401 && !url.includes('/admin/login')) {
+      window.dispatchEvent(new CustomEvent('admin-session-expired'));
+    }
+    return Promise.reject(error);
+  }
+);
+
+// ====== /despacho_v2 (login de cuadrilla: nombre QC + PIN) ======
+// Instancia de axios PROPIA, separada de `api` - no debe mezclarse con el
+// token de admin (ni pisarlo ni ser pisada por él): quien entra acá nunca
+// tiene ni necesita un login de admin.
+const apiDespachoV2 = axios.create({
+  baseURL: String(API_BASE).replace(/\/+$/, ''),
+  timeout: 15000,
+});
+const LS_DESPACHO_V2_TOKEN = 'despacho_v2_token';
+const LS_DESPACHO_V2_USER = 'despacho_v2_user'; // { id, name } - para mostrar sin depender de un request
+
+export function getDespachoV2Token() {
+  try { return localStorage.getItem(LS_DESPACHO_V2_TOKEN) || ''; } catch { return ''; }
+}
+export function setDespachoV2Session(token, qcUser) {
+  try {
+    localStorage.setItem(LS_DESPACHO_V2_TOKEN, token || '');
+    localStorage.setItem(LS_DESPACHO_V2_USER, JSON.stringify(qcUser || null));
+  } catch {}
+}
+export function getDespachoV2User() {
+  try { return JSON.parse(localStorage.getItem(LS_DESPACHO_V2_USER) || 'null'); } catch { return null; }
+}
+export function clearDespachoV2Session() {
+  try {
+    localStorage.removeItem(LS_DESPACHO_V2_TOKEN);
+    localStorage.removeItem(LS_DESPACHO_V2_USER);
+  } catch {}
+}
+
+apiDespachoV2.interceptors.request.use((config) => {
+  const t = getDespachoV2Token();
+  if (t) config.headers.Authorization = `Bearer ${t}`;
+  return config;
+});
+
+// Mismo aviso de sesión vencida que en `api`, pero para la cuadrilla de
+// /despacho_v2 (excluye /despacho-v2/login: ahí un 401 es PIN incorrecto).
+apiDespachoV2.interceptors.response.use(
+  (res) => res,
+  (error) => {
+    const status = error?.response?.status;
+    const url = error?.config?.url || '';
+    if (status === 401 && !url.includes('/despacho-v2/login')) {
+      window.dispatchEvent(new CustomEvent('despacho-session-expired'));
+    }
+    return Promise.reject(error);
+  }
+);
+
+export async function fetchDespachoV2QcUsers() {
+  const { data } = await apiDespachoV2.get('/despacho-v2/qc-users');
+  return data;
+}
+export async function despachoV2Login({ qc_user_id, pin }) {
+  const { data } = await apiDespachoV2.post('/despacho-v2/login', { qc_user_id, pin });
+  return data;
+}
+export async function fetchDespachoV2Viajes(rango) {
+  const { data } = await apiDespachoV2.get('/despacho-v2/viajes', { params: { rango } });
+  return data;
+}
+// checklist: { tipo, item_ids } - obligatorio la primera vez que se arranca
+// el viaje (ver checklistDb.confirmarChecklistViaje en el backend); se
+// ignora en un segundo toque (el viaje ya arrancó, ya no tiene efecto).
+export async function marcarSalidaDespachoV2(viajeId, checklist) {
+  const { data } = await apiDespachoV2.post(`/despacho-v2/viajes/${viajeId}/marcar-salida`, {
+    checklist_tipo: checklist?.tipo,
+    checklist_item_ids: checklist?.item_ids,
+  });
+  return data;
+}
+// Ítems activos del checklist de arranque para un tipo (solo_despacho | con_instalacion).
+export async function fetchChecklistDespachoV2(tipo) {
+  const { data } = await apiDespachoV2.get(`/despacho-v2/checklist/${tipo}`);
+  return data;
+}
+export async function marcarLlegadaDespachoV2(viajeId) {
+  const { data } = await apiDespachoV2.post(`/despacho-v2/viajes/${viajeId}/marcar-llegada`);
+  return data;
+}
+export async function fetchParadasDespachoV2(viajeId) {
+  const { data } = await apiDespachoV2.get(`/despacho-v2/viajes/${viajeId}/paradas`);
+  return data;
+}
+export async function fetchNvDespachoV2(nv) {
+  const { data } = await apiDespachoV2.get(`/despacho-v2/nv/${nv}`);
+  return data;
+}
+export async function fetchNvAdjuntosDespachoV2(nv) {
+  const { data } = await apiDespachoV2.get(`/despacho-v2/nv/${nv}/adjuntos`);
+  return data;
+}
+// Fotos/videos adjuntados al tomar la medición en el Presupuestador (listado
+// liviano, sin el archivo en sí).
+export async function fetchNvMedicionMediaDespachoV2(nv) {
+  const { data } = await apiDespachoV2.get(`/despacho-v2/nv/${nv}/medicion-media`);
+  return data;
+}
+// El archivo puntual (data URL base64) - se pide recién al tocar un ítem.
+export async function fetchMedicionMediaItemDespachoV2(nv, index) {
+  const { data } = await apiDespachoV2.get(`/despacho-v2/nv/${nv}/medicion-media/${index}`);
+  return data;
+}
+export async function crearSolicitudStDespachoV2(nv, { descripcion, attachment }) {
+  const { data } = await apiDespachoV2.post(`/despacho-v2/nv/${nv}/st`, { descripcion, attachment }, { timeout: 30000 });
+  return data;
+}
+// Remito por NV - endpoint ya público, sin login de despacho_v2 (routes/public/remitosProxy.js).
+export async function fetchRemitosPorNv(nv) {
+  const { data } = await apiDespachoV2.get('/remitos-proxy/search-by-nv', { params: { nv } });
+  return data;
+}
+// "Marcar entregado/instalado" - cierre OFICIAL (despacho: pin; instalación:
+// sin pin). Devuelve la siguiente parada-portón de la ruta (o null si esta
+// era la última) para preguntarle al usuario antes de avisar por WhatsApp.
+export async function marcarEntregadoDespachoV2(viajeId, nv, { tipo, pin } = {}) {
+  const { data } = await apiDespachoV2.post(`/despacho-v2/viajes/${viajeId}/nv/${nv}/marcar-entregado`, { tipo, pin });
+  return data;
+}
+// Se llama SOLO después de que el usuario confirmó "sí, la ruta sigue así".
+export async function avisarSiguienteDespachoV2(viajeId, nv) {
+  const { data } = await apiDespachoV2.post(`/despacho-v2/viajes/${viajeId}/nv/${nv}/avisar-siguiente`);
+  return data;
+}
+// "La ruta cambió" - paradas-portón que quedaban después de `nv` en el
+// orden original, para el picker de "¿cuál sigue?".
+export async function fetchParadasRestantesDespachoV2(viajeId, nv) {
+  const { data } = await apiDespachoV2.get(`/despacho-v2/viajes/${viajeId}/nv/${nv}/paradas-restantes`);
+  return data;
+}
+// Manda el aviso para la parada que el usuario eligió a mano (ruta cambiada).
+export async function avisarParadaElegidaDespachoV2(viajeId, nvOrigen, nvDestino) {
+  const { data } = await apiDespachoV2.post(`/despacho-v2/viajes/${viajeId}/nv/${nvOrigen}/avisar-parada/${nvDestino}`);
+  return data;
+}
+// Gastos del viaje ("rendición de gastos") - se comparte entre toda la
+// cuadrilla del viaje, no solo quien los subió.
+export async function fetchGastosDespachoV2(viajeId) {
+  const { data } = await apiDespachoV2.get(`/despacho-v2/viajes/${viajeId}/gastos`);
+  return data;
+}
+// Sube la foto/PDF PRIMERO - la IA lee fecha/motivo/monto/tipo de
+// comprobante (ver server/lib/logisticaGastosIa.js), no hace falta
+// completar nada a mano de entrada.
+export async function crearGastoDespachoV2(viajeId, archivo) {
+  const form = new FormData();
+  form.append('archivo', archivo);
+  const { data } = await apiDespachoV2.post(`/despacho-v2/viajes/${viajeId}/gastos`, form, { timeout: 60000 });
+  return data;
+}
+export async function actualizarGastoDespachoV2(viajeId, gastoId, patch) {
+  const { data } = await apiDespachoV2.patch(`/despacho-v2/viajes/${viajeId}/gastos/${gastoId}`, patch);
+  return data;
+}
+export async function deleteGastoDespachoV2(viajeId, gastoId) {
+  const { data } = await apiDespachoV2.delete(`/despacho-v2/viajes/${viajeId}/gastos/${gastoId}`);
+  return data;
+}
 
 /* ========= Portones ========= */
 export const fetchPortones = () => api.get('/portones');
@@ -376,6 +560,8 @@ export const adminUpdatePrefabricadoTipo = (id, payload) => api.put(`/admin/pref
 export const fetchServicioTecnico = () => api.get('/servicio-tecnico');
 export const startStStage = (id, stage) => api.post(`/servicio-tecnico/${id}/stage`, { stage, action: 'start' });
 export const stopStStage = (id, stage) => api.post(`/servicio-tecnico/${id}/stage`, { stage, action: 'stop' });
+export const createPruebaLaserOrden = (descripcion, pasoPorPlegadora) =>
+  api.post('/servicio-tecnico/prueba-laser', { descripcion, paso_por_plegadora: Boolean(pasoPorPlegadora) });
 
 export const adminListStOrdenes = () => api.get('/admin/servicio-tecnico/ordenes');
 export const adminCreateStOrden = (payload) => api.post('/admin/servicio-tecnico/ordenes', payload);
@@ -558,6 +744,23 @@ export const adminUpdateInsumosPedidoItem = (pedidoId, itemId, patch) => api.put
 export const adminAddInsumosPedidoItem = (pedidoId, payload) => api.post(`/admin/insumos/pedidos/${pedidoId}/items`, payload);
 export const adminSetInsumoProductoNombre = (productoId, nombreDisplay) =>
   api.put(`/admin/insumos/productos/${productoId}/nombre`, { nombre_display: nombreDisplay });
+
+export const adminGetNotaNodo = (nodoId) => api.get(`/admin/notas-nodo/${nodoId}`);
+// payload: { nota, admin_user, admin_password } - los tres se guardan juntos;
+// el acceso principal solo se pisa si vienen los dos campos cargados.
+export const adminSetNotaNodo = (nodoId, payload) => api.put(`/admin/notas-nodo/${nodoId}`, payload);
+
+// "¿Qué se está trabajando acá?" - una entrada por admin (nunca se pisan
+// entre sí). El autor lo pone el backend (req.admin.username), no el body.
+export const adminListNotaEntradas = (nodoId) => api.get(`/admin/notas-nodo/${nodoId}/entradas`);
+export const adminSetNotaEntrada = (nodoId, texto) => api.put(`/admin/notas-nodo/${nodoId}/entradas`, { texto });
+export const adminDeleteNotaEntrada = (nodoId) => api.delete(`/admin/notas-nodo/${nodoId}/entradas`);
+
+export const adminListUsuariosPrueba = (nodoId) => api.get(`/admin/notas-nodo/${nodoId}/usuarios-prueba`);
+export const adminAddUsuarioPrueba = (nodoId, { etiqueta, usuario, password }) =>
+  api.post(`/admin/notas-nodo/${nodoId}/usuarios-prueba`, { etiqueta, usuario, password });
+export const adminDeleteUsuarioPrueba = (nodoId, id) =>
+  api.delete(`/admin/notas-nodo/${nodoId}/usuarios-prueba/${id}`);
 export const adminFetchInsumosSeccionesCierre = () => api.get('/admin/insumos/secciones-cierre');
 export const adminSaveInsumosSeccionesCierre = (entries) => api.put('/admin/insumos/secciones-cierre', { entries });
 
@@ -573,6 +776,19 @@ export const addLogisticaConsultaMessage = (kind, id, payload) =>
   api.post(`/admin/logistica-consultas/${kind}/${id}/messages`, payload);
 export const markLogisticaConsultaRead = (kind, id) => api.post(`/admin/logistica-consultas/${kind}/${id}/read`, {});
 export const fetchLogisticaConsultasUnreadSummary = (kind) => api.get(`/admin/logistica-consultas/${kind}/unread-summary`);
+
+/* ========= Sistema de Tickets (botón junto a "Menú" / "Refrescar") =========
+   Cualquier admin logueado puede crear un ticket y ver/responder los propios;
+   también puede ver/responder/cerrar cualquier ticket desde /admin/tickets
+   (sin scope propio, como /admin/indice-programacion). */
+export const createTicket = (payload) => api.post('/admin/tickets', payload);
+export const fetchMyTickets = () => api.get('/admin/tickets/mine');
+export const fetchMyTicketDetail = (id) => api.get(`/admin/tickets/mine/${id}`);
+export const addMyTicketMessage = (id, payload) => api.post(`/admin/tickets/mine/${id}/messages`, payload);
+export const fetchAdminTickets = (params) => api.get('/admin/tickets', { params });
+export const fetchAdminTicketDetail = (id) => api.get(`/admin/tickets/${id}`);
+export const addAdminTicketMessage = (id, payload) => api.post(`/admin/tickets/${id}/messages`, payload);
+export const updateTicketStatus = (id, estado) => api.patch(`/admin/tickets/${id}/status`, { estado });
 
 /* ========= Logística de Viajes (despacho + instalación por semana, desde /a) =========
    Arma "viajes" (fecha + zona + cuadrilla + vehículo) por semana ISO y reparte en
@@ -623,6 +839,22 @@ export async function deleteLogisticaCuadrilla(id) {
 }
 export async function setLogisticaCuadrillaMiembros(id, qcUserIds) {
   const { data } = await api.put(`/admin/logistica/cuadrillas/${id}/miembros`, { qc_user_ids: qcUserIds });
+  return data;
+}
+
+// CheckList de arranque de viaje en /despacho_v2 (botón Play) - dos tipos:
+// solo_despacho | con_instalacion. Los ítems vienen junto al resto de la
+// config (fetchLogisticaViajesConfig -> config.checklist_items).
+export async function createLogisticaChecklistItem(payload) {
+  const { data } = await api.post('/admin/logistica/checklist-items', payload);
+  return data;
+}
+export async function updateLogisticaChecklistItem(id, patch) {
+  const { data } = await api.patch(`/admin/logistica/checklist-items/${id}`, patch);
+  return data;
+}
+export async function deleteLogisticaChecklistItem(id) {
+  const { data } = await api.delete(`/admin/logistica/checklist-items/${id}`);
   return data;
 }
 
@@ -755,12 +987,135 @@ export async function deleteLogisticaPuntoExtra(id) {
   const { data } = await api.delete(`/admin/logistica/puntos-extra/${id}`);
   return data;
 }
+export async function fetchLogisticaWhatsappTemplates() {
+  const { data } = await api.get('/admin/logistica/whatsapp-templates');
+  return data;
+}
+export async function fetchLogisticaWhatsappConversaciones() {
+  const { data } = await api.get('/admin/logistica/whatsapp/conversaciones');
+  return data;
+}
+export async function fetchLogisticaWhatsappMensajes(telefono) {
+  const { data } = await api.get(`/admin/logistica/whatsapp/conversaciones/${encodeURIComponent(telefono)}/mensajes`);
+  return data;
+}
+export async function enviarLogisticaWhatsappMensaje(telefono, texto) {
+  const { data } = await api.post(`/admin/logistica/whatsapp/conversaciones/${encodeURIComponent(telefono)}/mensajes`, { texto });
+  return data;
+}
+export async function setLogisticaWhatsappNombreContacto(telefono, nombre) {
+  const { data } = await api.patch(`/admin/logistica/whatsapp/conversaciones/${encodeURIComponent(telefono)}/nombre`, { nombre });
+  return data;
+}
+export async function enviarLogisticaWhatsappTemplateSimple(telefono, name, language) {
+  const { data } = await api.post(`/admin/logistica/whatsapp/conversaciones/${encodeURIComponent(telefono)}/template-simple`, { name, language });
+  return data;
+}
+export async function enviarLogisticaWhatsappMedia(telefono, archivo, caption) {
+  const form = new FormData();
+  form.append('archivo', archivo);
+  if (caption) form.append('caption', caption);
+  const { data } = await api.post(`/admin/logistica/whatsapp/conversaciones/${encodeURIComponent(telefono)}/media`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return data;
+}
 export async function asignarLogisticaParadaExtra(viajeId, puntoExtraId) {
   const { data } = await api.post(`/admin/logistica/viajes/${viajeId}/paradas-extra`, { punto_extra_id: puntoExtraId });
   return data;
 }
 export async function desasignarLogisticaParadaExtra(viajeId, puntoExtraId) {
   const { data } = await api.delete(`/admin/logistica/viajes/${viajeId}/paradas-extra/${puntoExtraId}`);
+  return data;
+}
+// patch: { duracion_minutos?, hora_salida_siguiente? } - duracion_minutos es
+// para cualquier parada (ej. "retirar un cobro" = 15 min); hora_salida_siguiente
+// es solo para paradas de descanso/hospedaje (la ruta retoma desde ese
+// horario al día siguiente). Cualquiera de los dos acepta null para borrarlo.
+export async function updateLogisticaParadaExtraViaje(viajeId, puntoExtraId, patch) {
+  const { data } = await api.patch(`/admin/logistica/viajes/${viajeId}/paradas-extra/${puntoExtraId}`, patch);
+  return data;
+}
+
+// Adjuntos (DNI, certificado de reincidencia que piden algunos countrys,
+// etc.) - de un viaje y/o de un NV puntual. Ver Backend/server/routes/admin/logisticaAdjuntos.js.
+export async function fetchLogisticaAdjuntos({ viajeId, nv } = {}) {
+  const params = {};
+  if (viajeId != null) params.viaje_id = viajeId;
+  if (nv != null) params.nv = nv;
+  const { data } = await api.get('/admin/logistica/adjuntos', { params });
+  return data;
+}
+export async function uploadLogisticaAdjunto({ viajeId, nv, descripcion, archivo }) {
+  const form = new FormData();
+  if (viajeId != null) form.append('viaje_id', String(viajeId));
+  if (nv != null) form.append('nv', String(nv));
+  if (descripcion) form.append('descripcion', descripcion);
+  form.append('archivo', archivo);
+  // Timeout más largo que el default (15s) - una foto de celular puede
+  // pesar varios MB y tardar más en subir, sobre todo desde el celular en
+  // el depósito con mala señal.
+  const { data } = await api.post('/admin/logistica/adjuntos', form, { timeout: 60000 });
+  return data;
+}
+export async function deleteLogisticaAdjunto(id) {
+  const { data } = await api.delete(`/admin/logistica/adjuntos/${id}`);
+  return data;
+}
+// Catálogo de adjuntos por integrante de cuadrilla (ej. DNI) - se sube una
+// vez y de ahí se "habilita" (sin volver a subirlo) para un viaje y/o NV.
+export async function fetchLogisticaAdjuntosMiembro(qcUserId) {
+  const { data } = await api.get(`/admin/logistica/adjuntos-miembro/${qcUserId}`);
+  return data;
+}
+export async function fetchLogisticaAdjuntosMiembroPorCuadrilla(cuadrillaId) {
+  const { data } = await api.get(`/admin/logistica/adjuntos-miembro/por-cuadrilla/${cuadrillaId}`);
+  return data;
+}
+export async function uploadLogisticaAdjuntoMiembro({ qc_user_id, descripcion, archivo }) {
+  const form = new FormData();
+  form.append('qc_user_id', String(qc_user_id));
+  if (descripcion) form.append('descripcion', descripcion);
+  form.append('archivo', archivo);
+  const { data } = await api.post('/admin/logistica/adjuntos-miembro', form, { timeout: 60000 });
+  return data;
+}
+export async function deleteLogisticaAdjuntoMiembro(id) {
+  const { data } = await api.delete(`/admin/logistica/adjuntos-miembro/${id}`);
+  return data;
+}
+export async function habilitarLogisticaAdjuntoMiembro({ origen_miembro_id, viaje_id, nv }) {
+  const { data } = await api.post('/admin/logistica/adjuntos/habilitar-miembro', { origen_miembro_id, viaje_id, nv });
+  return data;
+}
+// Foto de perfil (integrante) y foto de vehículo - una sola cada uno, para
+// el collage del mensaje automático de WhatsApp "en camino".
+export async function fetchLogisticaFotoQcUser(qcUserId) {
+  const { data } = await api.get(`/admin/logistica/qc-users/${qcUserId}/foto`);
+  return data;
+}
+export async function uploadLogisticaFotoQcUser(qcUserId, archivo) {
+  const form = new FormData();
+  form.append('archivo', archivo);
+  const { data } = await api.post(`/admin/logistica/qc-users/${qcUserId}/foto`, form, { timeout: 60000 });
+  return data;
+}
+export async function deleteLogisticaFotoQcUser(qcUserId) {
+  const { data } = await api.delete(`/admin/logistica/qc-users/${qcUserId}/foto`);
+  return data;
+}
+export async function fetchLogisticaFotoVehiculo(vehiculoId) {
+  const { data } = await api.get(`/admin/logistica/vehiculos/${vehiculoId}/foto`);
+  return data;
+}
+export async function uploadLogisticaFotoVehiculo(vehiculoId, archivo) {
+  const form = new FormData();
+  form.append('archivo', archivo);
+  const { data } = await api.post(`/admin/logistica/vehiculos/${vehiculoId}/foto`, form, { timeout: 60000 });
+  return data;
+}
+export async function deleteLogisticaFotoVehiculo(vehiculoId) {
+  const { data } = await api.delete(`/admin/logistica/vehiculos/${vehiculoId}/foto`);
   return data;
 }
 export async function cerrarLogisticaSemana(semana) {
@@ -803,6 +1158,29 @@ export async function fetchLogisticaSemanaPromesaMapa(semana) {
 // Mensaje de texto (borrador) para mandarle a la cuadrilla de un viaje.
 export async function fetchLogisticaMensajeViaje(viajeId) {
   const { data } = await api.get(`/admin/logistica/viajes/${viajeId}/mensaje`);
+  return data;
+}
+
+// Modo de pruebas: manda el aviso "en camino" (collage + plantilla) de este
+// viaje a un teléfono cualquiera, para ver cómo sale antes de que se dispare
+// en producción con el cliente real.
+export async function probarAvisoWhatsappViaje(viajeId, { telefono, nombreCliente, horasTexto }) {
+  const { data } = await api.post(`/admin/logistica/viajes/${viajeId}/probar-aviso-whatsapp`, { telefono, nombreCliente, horasTexto });
+  return data;
+}
+
+// Rendiciones de gastos (consulta) - una fila por viaje con gastos
+// cargados desde /despacho_v2, con su detalle (gastos + ticket adjunto) y total.
+export async function fetchLogisticaRendiciones() {
+  const { data } = await api.get('/admin/logistica/rendiciones');
+  return data;
+}
+export async function fetchLogisticaRendicionDetalle(viajeId) {
+  const { data } = await api.get(`/admin/logistica/rendiciones/${viajeId}`);
+  return data;
+}
+export async function aprobarLogisticaRendicion(viajeId) {
+  const { data } = await api.post(`/admin/logistica/rendiciones/${viajeId}/aprobar`);
   return data;
 }
 

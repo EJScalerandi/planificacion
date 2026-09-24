@@ -9,6 +9,7 @@ const LINES = [
   { key: 'prefabricados', label: 'Prefabricados' },
   { key: 'servicio_tecnico', label: 'Servicio Técnico' },
   { key: 'orden_externa', label: 'Orden Externa' },
+  { key: 'prueba', label: 'Prueba Laser Plano' },
   { key: 'insumos', label: 'Insumos (pedidos del día)' },
 ];
 
@@ -27,7 +28,9 @@ const PORTON_STAGES = [
   { key: 'diseno', label: 'Diseño Tubos' },
   { key: 'diseno_piernas', label: 'Diseño Piernas' },
   { key: 'diseno_revestimiento', label: 'Diseño Revestimiento' },
-  { key: 'laser', label: 'Láser' },
+  { key: 'laser_dintel', label: 'Laser tubos Dintel' },
+  { key: 'laser_hojas', label: 'Laser tubos Hojas' },
+  { key: 'laser_brazos_espada', label: 'Laser tubos Brazos y Espada' },
   { key: 'guillotina', label: 'Guillotina / Corte piernas' },
   { key: 'corte_revest', label: 'Corte revestimiento' },
   { key: 'plegadora', label: 'Plegadora / Plegado piernas' },
@@ -57,6 +60,8 @@ const STAGES_BY_LINE = {
   prefabricados: PORTON_STAGES,
   servicio_tecnico: PORTON_STAGES,
   orden_externa: PORTON_STAGES,
+  // Prueba Laser Plano solo pasa por Corte piernas (guillotina) - un solo paso.
+  prueba: [{ key: 'guillotina', label: 'Guillotina / Corte piernas' }],
   // Insumos usa "secciones" por ruta/tablet (guion medio), no stage_key de
   // workflow (guion bajo) — universo distinto, ver lib/insumosSecciones.js.
   insumos: [

@@ -1,5 +1,7 @@
 import { Outlet, useNavigate } from 'react-router-dom';
 import { clearAdminToken } from '../api';
+import TicketWidget from './TicketWidget';
+import WhatsappToastWatcher from './WhatsappToastWatcher';
 
 export default function NonProductionLayout() {
   const nav = useNavigate();
@@ -25,6 +27,7 @@ export default function NonProductionLayout() {
           <button className="btn btn--brand" type="button" onClick={goMenu}>
             Menú
           </button>
+          <TicketWidget />
           <button className="btn" type="button" onClick={logout}>
             Cerrar Sesión
           </button>
@@ -32,6 +35,7 @@ export default function NonProductionLayout() {
       </div>
 
       <Outlet />
+      <WhatsappToastWatcher />
     </div>
   );
 }

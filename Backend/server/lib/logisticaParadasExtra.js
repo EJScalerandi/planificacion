@@ -101,7 +101,9 @@ async function nextOrdenViaje(viajeId) {
 
 async function listParadasExtraViaje(viajeId) {
   const { rows } = await pool.query(
-    `select vp.id, vp.punto_extra_id, vp.orden, p.nombre, p.maps_url, p.lat, p.lng
+    `select vp.id, vp.punto_extra_id, vp.orden, vp.duracion_minutos,
+            to_char(vp.hora_salida_siguiente, 'HH24:MI') as hora_salida_siguiente,
+            p.nombre, p.maps_url, p.lat, p.lng
        from public.logistica_viaje_paradas_extra vp
        join public.logistica_puntos_extra p on p.id = vp.punto_extra_id
       where vp.viaje_id = $1
@@ -109,6 +111,55 @@ async function listParadasExtraViaje(viajeId) {
     [Number(viajeId)]
   );
   return rows;
+}
+
+// Acepta HH:MM o HH:MM:SS (lo que ya entiende <input type="time">), o vacío
+// para borrarlo (la parada vuelve a ser "sin horario propio" - la ruta sigue
+// acumulando normal desde la hora_salida del viaje, sin saltar de día).
+function normalizaHoraSalidaSiguiente(hora) {
+  if (hora == null || hora === '') return null;
+  const s = String(hora).trim();
+  if (!/^\d{2}:\d{2}(:\d{2})?$/.test(s)) throw new Error('hora_salida_siguiente debe tener formato HH:MM');
+  return s;
+}
+
+function normalizaDuracionMinutos(minutos) {
+  if (minutos == null || minutos === '') return null;
+  const n = Number(minutos);
+  if (!Number.isFinite(n) || n < 0) throw new Error('duracion_minutos debe ser un número positivo');
+  return Math.round(n);
+}
+
+// Horario propio de una parada extra - pedido del usuario, dos casos:
+// - `duracion_minutos`: cuánto tarda hacer la parada (ej. "retirar un
+//   cobro" = 15 min) - se SUMA al horario de llegada antes de seguir a la
+//   siguiente parada, sin saltar de día.
+// - `hora_salida_siguiente`: solo para paradas de descanso/hospedaje - la
+//   ruta RETOMA desde ese horario al DÍA SIGUIENTE de llegar ahí (no suma,
+//   reemplaza el reloj entero). Si está cargada, gana por sobre
+//   duracion_minutos para esa parada (ver calcularHorariosLlegada en el
+//   frontend, que hace ambos cálculos).
+// Los dos son independientes - se puede cargar uno, otro, los dos, o
+// ninguno (ninguno = parada sin demora, comportamiento de siempre).
+async function updateParadaExtraViaje(viajeId, puntoExtraId, { duracion_minutos, hora_salida_siguiente } = {}) {
+  const sets = [];
+  const params = [Number(viajeId), Number(puntoExtraId)];
+  if (duracion_minutos !== undefined) {
+    params.push(normalizaDuracionMinutos(duracion_minutos));
+    sets.push(`duracion_minutos = $${params.length}`);
+  }
+  if (hora_salida_siguiente !== undefined) {
+    params.push(normalizaHoraSalidaSiguiente(hora_salida_siguiente));
+    sets.push(`hora_salida_siguiente = $${params.length}`);
+  }
+  if (!sets.length) throw new Error('Nada para actualizar');
+  const { rowCount } = await pool.query(
+    `update public.logistica_viaje_paradas_extra set ${sets.join(', ')}
+      where viaje_id = $1 and punto_extra_id = $2;`,
+    params
+  );
+  if (!rowCount) throw new Error('Esa parada no está asignada a este viaje');
+  return listParadasExtraViaje(viajeId);
 }
 
 async function asignarParadaExtra(viajeId, puntoExtraId) {
@@ -136,5 +187,5 @@ async function desasignarParadaExtra(viajeId, puntoExtraId) {
 module.exports = {
   resolveUrlCoords,
   listPuntosExtra, crearPuntoExtra, updatePuntoExtra, deletePuntoExtra,
-  listParadasExtraViaje, asignarParadaExtra, desasignarParadaExtra,
+  listParadasExtraViaje, asignarParadaExtra, desasignarParadaExtra, updateParadaExtraViaje,
 };

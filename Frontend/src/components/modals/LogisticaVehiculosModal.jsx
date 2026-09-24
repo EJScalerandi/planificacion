@@ -4,10 +4,88 @@
 // despacho. Capacidad 0 = no lleva despacho (solo instala), como la Partner
 // del pedido original.
 import React, { useEffect, useState } from 'react';
-import { createLogisticaVehiculo, updateLogisticaVehiculo, deleteLogisticaVehiculo } from '../../api';
+import {
+  createLogisticaVehiculo, updateLogisticaVehiculo, deleteLogisticaVehiculo,
+  fetchLogisticaFotoVehiculo, uploadLogisticaFotoVehiculo, deleteLogisticaFotoVehiculo,
+} from '../../api';
 
 const th = { textAlign: 'left', padding: 10, borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' };
 const td = { padding: 10, borderBottom: '1px solid var(--border)', verticalAlign: 'top' };
+
+// Foto del vehículo (una sola) - para el collage del mensaje automático de
+// WhatsApp "en camino" (logisticaWhatsapp.js). Mismo patrón que la foto de
+// perfil por integrante (LogisticaCuadrillasModal.jsx).
+function FotoVehiculoControl({ vehiculoId, vehiculoNombre }) {
+  const [abierto, setAbierto] = useState(false);
+  const [url, setUrl] = useState(undefined);
+  const [subiendo, setSubiendo] = useState(false);
+  const [err, setErr] = useState('');
+
+  const cargar = () => {
+    fetchLogisticaFotoVehiculo(vehiculoId).then((d) => setUrl(d?.url || null)).catch(() => setUrl(null));
+  };
+  useEffect(cargar, [vehiculoId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const onArchivo = async (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f) return;
+    setSubiendo(true);
+    setErr('');
+    try {
+      await uploadLogisticaFotoVehiculo(vehiculoId, f);
+      cargar();
+    } catch (e2) {
+      setErr(e2?.response?.data?.error || e2.message);
+    } finally {
+      setSubiendo(false);
+    }
+  };
+
+  const borrar = async () => {
+    if (!window.confirm('¿Borrar la foto del vehículo?')) return;
+    try {
+      await deleteLogisticaFotoVehiculo(vehiculoId);
+      cargar();
+    } catch (e2) {
+      setErr(e2?.response?.data?.error || e2.message);
+    }
+  };
+
+  if (!abierto) {
+    return (
+      <button type="button" className="btn" style={{ fontSize: 11, padding: '3px 7px' }} onClick={() => setAbierto(true)}>
+        {url ? '📷 Foto ✓' : '📷 Foto'}
+      </button>
+    );
+  }
+
+  return (
+    <div style={{ border: '1px dashed var(--border)', borderRadius: 8, padding: 6, fontSize: 10, display: 'flex', flexDirection: 'column', gap: 4, minWidth: 140 }}>
+      <div style={{ display: 'flex', alignItems: 'center' }}>
+        <b>Foto de {vehiculoNombre}</b>
+        <button type="button" onClick={() => setAbierto(false)} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
+      </div>
+      {err ? <div style={{ color: 'crimson', fontWeight: 700 }}>{err}</div> : null}
+      {url === undefined ? (
+        <div style={{ opacity: 0.6 }}>Cargando…</div>
+      ) : url ? (
+        <img src={url} alt="" style={{ width: '100%', borderRadius: 6, objectFit: 'cover', aspectRatio: '1/1' }} />
+      ) : (
+        <div style={{ opacity: 0.6 }}>Sin foto todavía.</div>
+      )}
+      <label className="btn" style={{ fontSize: 10, padding: '2px 6px', textAlign: 'center' }}>
+        {subiendo ? 'Subiendo…' : url ? 'Reemplazar' : '+ Subir foto'}
+        <input type="file" accept="image/jpeg,image/png,image/webp,image/heic" style={{ display: 'none' }} disabled={subiendo} onChange={onArchivo} />
+      </label>
+      {url ? (
+        <button type="button" className="btn" style={{ fontSize: 10, padding: '2px 6px', borderColor: '#ef4444', color: '#991b1b' }} onClick={borrar}>
+          Borrar foto
+        </button>
+      ) : null}
+    </div>
+  );
+}
 
 export default function LogisticaVehiculosModal({ open, config, onClose, onChanged }) {
   const [nombre, setNombre] = useState('');
@@ -115,6 +193,7 @@ export default function LogisticaVehiculosModal({ open, config, onClose, onChang
               <tr style={{ background: 'var(--surface-muted, #f9fafb)' }}>
                 <th style={th}>Nombre</th>
                 <th style={th}>Capacidad</th>
+                <th style={th}>Foto</th>
                 <th style={th}>Activo</th>
                 <th style={th}></th>
               </tr>
@@ -137,6 +216,9 @@ export default function LogisticaVehiculosModal({ open, config, onClose, onChang
                     )}
                   </td>
                   <td style={td}>
+                    <FotoVehiculoControl vehiculoId={v.id} vehiculoNombre={v.nombre} />
+                  </td>
+                  <td style={td}>
                     <button className="btn" disabled={busy} onClick={() => toggleActivo(v)}>{v.activo ? 'Sí' : 'No'}</button>
                   </td>
                   <td style={td}>
@@ -145,7 +227,7 @@ export default function LogisticaVehiculosModal({ open, config, onClose, onChang
                 </tr>
               ))}
               {vehiculos.length === 0 ? (
-                <tr><td style={{ ...td, color: '#6b7280' }} colSpan={4}>No hay vehículos cargados todavía.</td></tr>
+                <tr><td style={{ ...td, color: '#6b7280' }} colSpan={5}>No hay vehículos cargados todavía.</td></tr>
               ) : null}
             </tbody>
           </table>

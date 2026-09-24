@@ -129,7 +129,9 @@ const STATUS_STAGES_DESPACHO = [
 // que es lo que a Producción le interesa seguir semana a semana.
 const STATUS_STAGES_PRODUCCION = [
   { key: 'diseno', label: 'Diseño Tubos' },
-  { key: 'laser', label: 'Laser' },
+  { key: 'laser_dintel', label: 'Laser Dintel' },
+  { key: 'laser_hojas', label: 'Laser Hojas' },
+  { key: 'laser_brazos_espada', label: 'Laser Brazos/Espada' },
   { key: 'guillotina', label: 'Corte Piernas' },
   { key: 'corte_revest', label: 'Corte Revest.' },
   { key: 'plegadora', label: 'Plegado Piernas' },

@@ -32,7 +32,15 @@ const ORS_URL = 'https://api.openrouteservice.org/v2/directions/driving-hgv/geoj
  *   acumulada de segmentos_horas hasta ahí).
  */
 async function calcularRutaReal(puntosEnOrden) {
-  if (!ORS_API_KEY) return null;
+  if (!ORS_API_KEY) {
+    // Log explícito (no solo el catch de abajo): si esto aparece en los
+    // logs de Render es que a ESE entorno le falta la variable de entorno
+    // ORS_API_KEY (pasó una vez - se perdió sin que nadie la borrara a
+    // mano, o nunca se terminó de cargar ahí) - se agrega en el dashboard
+    // de Render, no acá.
+    console.warn('OpenRouteService: falta ORS_API_KEY en este entorno, no se puede calcular la ruta real.');
+    return null;
+  }
   const validos = (puntosEnOrden || []).filter((p) => Number.isFinite(p?.lat) && Number.isFinite(p?.lng));
   if (validos.length < 2) return null;
 
@@ -89,10 +97,22 @@ async function sincronizarRutaReal(viajeId) {
   }
 
   const resultado = await calcularRutaReal(ruta);
-  const guardado = resultado ? { ...resultado, calculada_at: new Date().toISOString() } : null;
+  if (!resultado) {
+    // ORS falló (key faltante en este entorno, rate limit, timeout, punto no
+    // ruteable, etc.) - NO pisar con null una ruta real que ya estaba
+    // calculada: una ruta por calle desactualizada sigue siendo mejor
+    // referencia visual que la línea recta de respaldo, y calculada_at ya
+    // deja ver que quedó vieja. El botón "🔄 Recalcular" del viaje sirve
+    // para forzarlo de nuevo a mano una vez resuelto lo que haya fallado.
+    // Pasó de verdad: un fallo silencioso acá borró rutas ya buenas.
+    const { rows } = await pool.query(`select ruta_real from public.logistica_viajes where id = $1;`, [vId]);
+    return rows[0]?.ruta_real ?? null;
+  }
+
+  const guardado = { ...resultado, calculada_at: new Date().toISOString() };
   await pool.query(
     `update public.logistica_viajes set ruta_real = $2 where id = $1;`,
-    [vId, guardado ? JSON.stringify(guardado) : null]
+    [vId, JSON.stringify(guardado)]
   );
   return guardado;
 }

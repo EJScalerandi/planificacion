@@ -8,10 +8,13 @@ import useServicioTecnico from './hooks/useServicioTecnico';
 import {
   startStage, stopStage, startIpanelStage, stopIpanelStage, qcSummary,
   fetchPrefabricadoTipos, createPrefabricadoOrden, startPrefabricadoStage, stopPrefabricadoStage,
-  startStStage, stopStStage,
+  startStStage, stopStStage, createPruebaLaserOrden,
 } from './api';
 import StageColumn from './components/StageColumn';
 import InsumosCartButton from './components/InsumosCartButton';
+import TicketWidget from './components/TicketWidget';
+import PruebaLaserModal from './components/modals/PruebaLaserModal';
+import SessionExpiredOverlay from './components/SessionExpiredOverlay';
 
 import StatusGatePage from '../src/components/StatusGatePage';
 import CreateGatePage from '../pages/CreateGatePage';
@@ -36,10 +39,13 @@ import ServicioTecnicoSolicitudesPage from '../pages/admin/ServicioTecnicoSolici
 import InsumosComprasPage from '../pages/admin/InsumosComprasPage';
 import InsumosConfigPage from '../pages/admin/InsumosConfigPage';
 import InsumosEntregasPage from '../pages/admin/InsumosEntregasPage';
+import IndiceProgramacionPage from '../pages/admin/IndiceProgramacionPage';
 import LogisticaViajesPage from '../pages/admin/LogisticaViajesPage';
 import LogisticaFechasPage from '../pages/admin/LogisticaFechasPage';
+import LogisticaWhatsappPage from '../pages/admin/LogisticaWhatsappPage';
 import ServicioTecnicoViajesPage from '../pages/admin/ServicioTecnicoViajesPage';
 import ServicioTecnicoFechasPage from '../pages/admin/ServicioTecnicoFechasPage';
+import AdminTicketsPage from '../pages/admin/AdminTicketsPage';
 
 import PreproduccionValoresTable from '../src/components/PreproduccionValoresTable';
 import IpanelPreproduccionValoresTable from '../src/components/IpanelPreproduccionValoresTable';
@@ -47,6 +53,7 @@ import UserAdminDashboard from './components/UserAdminDashboard';
 
 import IndexPage from '../pages/IndexPage';
 import RefabricacionPage from '../pages/RefabricacionPage';
+import DespachoV2Page from '../pages/DespachoV2Page';
 import NonProductionLayout from './components/NonProductionLayout';
 
 const color = 'var(--brand)';
@@ -153,6 +160,8 @@ function Board({ stages, seccion }) {
   const [qcSumSt, setQcSumSt] = useState({});
   const [qcSumOe, setQcSumOe] = useState({});
   const [qcSumRefab, setQcSumRefab] = useState({});
+  const [qcSumPrueba, setQcSumPrueba] = useState({});
+  const [pruebaLaserOpen, setPruebaLaserOpen] = useState(false);
   const [qcSummaryReady, setQcSummaryReady] = useState(false);
 
   const [wfReady, setWfReady] = useState(false);
@@ -328,9 +337,20 @@ function Board({ stages, seccion }) {
     }
   };
 
-  const handleCreatePrefabOrden = async (tipoId, seccion, cantidad) => {
-    await createPrefabricadoOrden({ tipo_id: tipoId, seccion, cantidad });
+  const handleCreatePrefabOrden = async (tipoId, seccion, cantidad, referencia) => {
+    await createPrefabricadoOrden({ tipo_id: tipoId, seccion, cantidad, referencia });
     await refreshPrefab();
+  };
+
+  const nextPruebaNumero = useMemo(() => {
+    const existentes = (Array.isArray(stOrdenes) ? stOrdenes : []).filter((o) => o?.tipo === 'PRUEBA');
+    const maxNumero = existentes.reduce((max, o) => Math.max(max, Number(o?.numero) || 0), 0);
+    return maxNumero + 1;
+  }, [stOrdenes]);
+
+  const handleCreatePruebaLaser = async (detalle, pasoPorPlegadora) => {
+    await createPruebaLaserOrden(detalle, pasoPorPlegadora);
+    await refreshSt();
   };
 
   const handleStartSt = async (id, stage) => {
@@ -374,7 +394,7 @@ function Board({ stages, seccion }) {
         .filter((n) => Number.isInteger(n));
 
       const stIds = (Array.isArray(stOrdenes) ? stOrdenes : [])
-        .filter((p) => p?.tipo !== 'OE' && p?.tipo !== 'REFAB')
+        .filter((p) => p?.tipo !== 'OE' && p?.tipo !== 'REFAB' && p?.tipo !== 'PRUEBA')
         .map((p) => Number(p?.nv))
         .filter((n) => Number.isInteger(n));
 
@@ -388,12 +408,18 @@ function Board({ stages, seccion }) {
         .map((p) => Number(p?.nv))
         .filter((n) => Number.isInteger(n));
 
+      const pruebaIds = (Array.isArray(stOrdenes) ? stOrdenes : [])
+        .filter((p) => p?.tipo === 'PRUEBA')
+        .map((p) => Number(p?.numero))
+        .filter((n) => Number.isInteger(n));
+
       if (!pIds.length) setQcSumPortones({});
       if (!iIds.length) setQcSumIpanel({});
       if (!prefIds.length) setQcSumPrefab({});
       if (!stIds.length) setQcSumSt({});
       if (!oeIds.length) setQcSumOe({});
       if (!refabIds.length) setQcSumRefab({});
+      if (!pruebaIds.length) setQcSumPrueba({});
 
       async function loadLine(line, ids) {
         const out = {};
@@ -406,13 +432,14 @@ function Board({ stages, seccion }) {
         return out;
       }
 
-      const [pMap, iMap, prefMap, stMap, oeMap, refabMap] = await Promise.all([
+      const [pMap, iMap, prefMap, stMap, oeMap, refabMap, pruebaMap] = await Promise.all([
         pIds.length ? loadLine('portones', pIds) : Promise.resolve({}),
         iIds.length ? loadLine('ipanel', iIds) : Promise.resolve({}),
         prefIds.length ? loadLine('prefabricados', prefIds) : Promise.resolve({}),
         stIds.length ? loadLine('servicio_tecnico', stIds) : Promise.resolve({}),
         oeIds.length ? loadLine('orden_externa', oeIds) : Promise.resolve({}),
         refabIds.length ? loadLine('refabricado', refabIds) : Promise.resolve({}),
+        pruebaIds.length ? loadLine('prueba', pruebaIds) : Promise.resolve({}),
       ]);
 
       setQcSumPortones(pMap);
@@ -421,6 +448,7 @@ function Board({ stages, seccion }) {
       setQcSumSt(stMap);
       setQcSumOe(oeMap);
       setQcSumRefab(refabMap);
+      setQcSumPrueba(pruebaMap);
     } catch (e) {
       console.warn('No se pudo cargar qcSummary:', e?.message || e);
     } finally {
@@ -454,6 +482,12 @@ function Board({ stages, seccion }) {
         <h2 className="h1" style={{ borderColor: color }}>DE GRANDIS PORTONES</h2>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {seccion ? <InsumosCartButton seccion={seccion} /> : null}
+          {seccion === 'diseno' ? (
+            <button className="btn" onClick={() => setPruebaLaserOpen(true)}>
+              Generar Prueba Laser Plano
+            </button>
+          ) : null}
+          <TicketWidget />
           <button
             className="btn btn--brand"
             onClick={() => { refresh(); refreshIpanel(); refreshQcSummary(); refreshPrefab(); refreshSt(); }}
@@ -463,6 +497,13 @@ function Board({ stages, seccion }) {
           </button>
         </div>
       </div>
+
+      <PruebaLaserModal
+        open={pruebaLaserOpen}
+        onClose={() => setPruebaLaserOpen(false)}
+        nextNumero={nextPruebaNumero}
+        onCreate={handleCreatePruebaLaser}
+      />
 
       <form
         onSubmit={(e) => { e.preventDefault(); setFilter(q.trim()); }}
@@ -537,6 +578,7 @@ function Board({ stages, seccion }) {
               qcSummaryMapSt={qcSumSt}
               qcSummaryMapOe={qcSumOe}
               qcSummaryMapRefab={qcSumRefab}
+              qcSummaryMapPrueba={qcSumPrueba}
               onQcSaved={refreshQcSummary}
               prefabTipos={prefabTipos}
               onCreatePrefabOrden={handleCreatePrefabOrden}
@@ -563,7 +605,9 @@ const ROUTES = [
       { key: 'diseno_piernas', label: 'Diseño Piernas', mode: 'porton' },
       { key: 'diseno_revestimiento', label: 'Diseño Revestimiento', mode: 'porton' },
       { key: 'diseno', label: 'Diseño (iPanel)', mode: 'ipanel' },
-      { key: 'laser', label: 'Laser', mode: 'porton' },
+      { key: 'laser_dintel', label: 'Laser tubos Dintel', mode: 'porton' },
+      { key: 'laser_hojas', label: 'Laser tubos Hojas', mode: 'porton' },
+      { key: 'laser_brazos_espada', label: 'Laser tubos Brazos y Espada', mode: 'porton' },
       { key: 'guillotina', label: 'Corte piernas', mode: 'porton' },
       { key: 'corte_revest', label: 'Corte revestimiento', mode: 'porton' },
       { key: 'guillotina', label: 'Corte Ipanel', mode: 'ipanel' },
@@ -595,7 +639,15 @@ const ROUTES = [
       { key: 'diseno', label: 'Diseño (iPanel)', mode: 'ipanel' },
     ],
   },
-  { path: '/laser', label: 'Producción · Laser', stages: ONE('laser', 'Laser') },
+  {
+    path: '/laser',
+    label: 'Producción · Laser',
+    stages: [
+      { key: 'laser_dintel', label: 'Laser tubos Dintel', mode: 'porton' },
+      { key: 'laser_hojas', label: 'Laser tubos Hojas', mode: 'porton' },
+      { key: 'laser_brazos_espada', label: 'Laser tubos Brazos y Espada', mode: 'porton' },
+    ],
+  },
   {
     path: '/corte',
     label: 'Producción · Corte',
@@ -679,6 +731,7 @@ const ROUTES = [
 export default function App() {
   return (
     <BrowserRouter>
+      <SessionExpiredOverlay />
       <Routes>
         <Route path="/" element={<Navigate to="/admin/login" replace />} />
         <Route path="/admin/login" element={<AdminLoginPage />} />
@@ -688,6 +741,7 @@ export default function App() {
 
           <Route path="/admin" element={<AdminHomePage />} />
           <Route path="/admin/qc" element={<AdminQcPage />} />
+          <Route path="/admin/tickets" element={<AdminTicketsPage />} />
           <Route path="/admin/workflow" element={<WorkflowDesignerPage />} />
           <Route path="/admin/scheduling" element={<SchedulingRulesPage />} />
           <Route path="/admin/scheduling/gantt" element={<SchedulingGanttPage />} />
@@ -699,12 +753,21 @@ export default function App() {
           <Route path="/admin/insumos" element={<InsumosComprasPage />} />
           <Route path="/admin/insumos/config" element={<InsumosConfigPage />} />
           <Route path="/admin/insumos/entregas" element={<InsumosEntregasPage />} />
+          <Route path="/admin/indice-programacion" element={<IndiceProgramacionPage />} />
           <Route path="/admin/logistica-viajes" element={<LogisticaViajesPage />} />
           <Route
             path="/admin/logistica-fechas"
             element={
               <FullBleed>
                 <LogisticaFechasPage />
+              </FullBleed>
+            }
+          />
+          <Route
+            path="/admin/logistica-whatsapp"
+            element={
+              <FullBleed>
+                <LogisticaWhatsappPage />
               </FullBleed>
             }
           />
@@ -758,6 +821,7 @@ export default function App() {
         <Route path="/statusIpanels" element={<StatusIpanelsPage />} />
         <Route path="/stats/portones" element={<PortonesStatsPage />} />
         <Route path="/refabricacion" element={<RefabricacionPage />} />
+        <Route path="/despacho_v2" element={<DespachoV2Page />} />
 
         <Route path="*" element={<Navigate to="/admin/login" replace />} />
       </Routes>

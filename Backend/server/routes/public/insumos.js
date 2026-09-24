@@ -22,7 +22,7 @@ function hashPin(pin) {
 // confirmar pedidos de insumos ahí, sin tener que duplicar el alta.
 const INSUMOS_TO_PORTON_STAGE_CANDIDATES = {
   diseno: ['diseno'],
-  laser: ['laser'],
+  laser: ['laser', 'laser_dintel', 'laser_hojas', 'laser_brazos_espada'],
   corte: ['guillotina', 'corte_revest'],
   plegado: ['plegadora', 'plegado_revest'],
   prefabricados: ['armado_piernas', 'armado_marco_piernas', 'armado_hojas'],

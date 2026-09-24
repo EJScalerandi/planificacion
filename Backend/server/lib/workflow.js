@@ -35,6 +35,14 @@ function getByPath(obj, path) {
  * - Busca en ctx[field]
  * - Fallback: busca en ctx.data[field] si ctx.data es objeto
  * - Fallback case-insensitive (ctx y ctx.data)
+ *
+ * IMPORTANTE: un candidato con la clave presente pero valor null/undefined
+ * (ej. preproduccion_valores.data trae "Sistema": null explícito en ~68% de
+ * los NV, aunque portones.sistema sí tenga el valor real) NO corta la
+ * búsqueda - sigue probando los siguientes fallbacks. Antes cortaba ahí y
+ * una regla de workflow_edge condicionada por Sistema podía evaluar contra
+ * null y no matchear nunca, dejando el portón sin poder avanzar de etapa
+ * (caso real: NV 4326, 2026-09-08).
  */
 function getValueByField(ctx, field) {
   if (!ctx || !field) return undefined;
@@ -42,30 +50,32 @@ function getValueByField(ctx, field) {
   const f = String(field).trim();
   if (!f) return undefined;
 
-  // path explícito
-  if (f.includes('.')) {
-    const v = getByPath(ctx, f);
-    if (v !== undefined) return v;
-  }
-
-  // top-level exacto
-  if (Object.prototype.hasOwnProperty.call(ctx, f)) return ctx[f];
-
-  // data exacto
   const data = ctx?.data;
-  if (data && typeof data === 'object' && Object.prototype.hasOwnProperty.call(data, f)) return data[f];
-
-  // case-insensitive top-level
   const fk = f.toLowerCase();
-  for (const k of Object.keys(ctx)) {
-    if (String(k).toLowerCase() === fk) return ctx[k];
-  }
 
-  // case-insensitive data
-  if (data && typeof data === 'object') {
-    for (const k of Object.keys(data)) {
-      if (String(k).toLowerCase() === fk) return data[k];
-    }
+  const candidates = [
+    () => (f.includes('.') ? getByPath(ctx, f) : undefined),
+    () => (Object.prototype.hasOwnProperty.call(ctx, f) ? ctx[f] : undefined),
+    () => (data && typeof data === 'object' && Object.prototype.hasOwnProperty.call(data, f) ? data[f] : undefined),
+    () => {
+      for (const k of Object.keys(ctx)) {
+        if (String(k).toLowerCase() === fk) return ctx[k];
+      }
+      return undefined;
+    },
+    () => {
+      if (data && typeof data === 'object') {
+        for (const k of Object.keys(data)) {
+          if (String(k).toLowerCase() === fk) return data[k];
+        }
+      }
+      return undefined;
+    },
+  ];
+
+  for (const getCandidate of candidates) {
+    const v = getCandidate();
+    if (v !== null && v !== undefined) return v;
   }
 
   return undefined;

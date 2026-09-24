@@ -385,6 +385,17 @@ body {
 .pp-table tbody tr:hover{
   background: color-mix(in srgb, var(--brand) 10%, #fff);
 }
+/* Color pastel por semana de despacho (PreproduccionValoresTable.jsx) - el
+   rayado cebra de arriba y, sobre todo, force-light.css (mismo selector con
+   !important, para forzar tema claro en celulares en modo oscuro) pisaban
+   el background inline que pusimos en la fila con !important - un inline
+   style nunca le gana a un !important, así que la única forma de que la
+   fila se pinte SIEMPRE (fila par o impar) es esta clase, con más
+   especificidad que la de force-light.css (misma cantidad de selectores +
+   la clase repetida) para ganarle pase lo que pase el orden de imports. */
+.pp-table tbody tr.pp-row-semana.pp-row-semana{
+  background: var(--row-semana-bg) !important;
+}
 
 .pp-input,
 .pp-select{

@@ -12,6 +12,7 @@
 // LogisticaIaMapaModal.jsx (no se duplica la lógica de negocio, se adapta a
 // vivir embebido en la página en vez de en un modal).
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import {
@@ -32,12 +33,19 @@ import {
   createLogisticaPuntoExtra,
   asignarLogisticaParadaExtra,
   desasignarLogisticaParadaExtra,
+  updateLogisticaParadaExtraViaje,
 } from '../api';
 import { isoWeekStartEndFromLabel, weekNumberFromLabel, weekTitleFromSelection, todayISO10, buildWeekRange, isoWeekLabelFromDate } from '../utils/isoWeek';
 import LogisticaZonasModal from './modals/LogisticaZonasModal';
 import LogisticaIaConfigModal from './modals/LogisticaIaConfigModal';
 import LogisticaPromesaConfigModal from './modals/LogisticaPromesaConfigModal';
 import LogisticaMensajeViajeModal from './modals/LogisticaMensajeViajeModal';
+import LogisticaVehiculosModal from './modals/LogisticaVehiculosModal';
+import LogisticaCuadrillasModal from './modals/LogisticaCuadrillasModal';
+import LogisticaChecklistModal from './modals/LogisticaChecklistModal';
+import LogisticaParadasExtraModal from './modals/LogisticaParadasExtraModal';
+import LogisticaWhatsappTemplatesModal from './modals/LogisticaWhatsappTemplatesModal';
+import LogisticaAdjuntosModal from './modals/LogisticaAdjuntosModal';
 import LogisticaViajeSemanaModal, { AgregarParadaExtra } from './LogisticaViajeSemanaModal';
 
 const ARGENTINA_CENTER = [-38.4, -63.6];
@@ -123,6 +131,52 @@ function agruparPorSemana(nvsSeleccionados, itemsByNv) {
   return { semana, incluidos, excluidos };
 }
 
+// Horario propio de una parada extra, editable inline en la fila de la ruta
+// (mismos dos campos que ParadaExtraChip en LogisticaViajeSemanaModal.jsx):
+// duracion_minutos (cualquier parada, ej. "retirar un cobro" = 15 min, se
+// SUMA al horario de llegada) y hora_salida_siguiente (solo descanso/
+// hospedaje, la ruta SALTA a ese horario al día siguiente). Estado local
+// para no perder lo que se está tipeando entre renders - se confirma con
+// onBlur, no en cada tecla.
+function ParadaHorarioInputs({ item, onGuardar }) {
+  const [duracion, setDuracion] = useState(item.duracion_minutos ?? '');
+  const [horaSalidaSig, setHoraSalidaSig] = useState(item.hora_salida_siguiente ?? '');
+  useEffect(() => { setDuracion(item.duracion_minutos ?? ''); }, [item.duracion_minutos]);
+  useEffect(() => { setHoraSalidaSig(item.hora_salida_siguiente ?? ''); }, [item.hora_salida_siguiente]);
+
+  return (
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', fontSize: 9, alignItems: 'center', paddingLeft: 18 }}>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 2 }} title="Cuánto tarda hacer esta parada (ej. retirar un cobro = 15 min) - se suma al horario de llegada">
+        Dura (min)
+        <input
+          type="number" min="0" step="1" className="pp-input" style={{ width: 44, fontSize: 9, padding: '0 3px' }}
+          value={duracion}
+          onChange={(e) => setDuracion(e.target.value)}
+          onBlur={() => onGuardar({ duracion_minutos: duracion === '' ? null : Number(duracion) })}
+        />
+      </label>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 2 }} title="Solo para descanso/hospedaje: la ruta retoma desde este horario AL DÍA SIGUIENTE de llegar acá">
+        Sale día sig.
+        <input
+          type="time" className="pp-input" style={{ fontSize: 9, padding: '0 3px' }}
+          value={horaSalidaSig}
+          onChange={(e) => setHoraSalidaSig(e.target.value)}
+          onBlur={() => onGuardar({ hora_salida_siguiente: horaSalidaSig || null })}
+        />
+      </label>
+    </div>
+  );
+}
+
+// Formato "HH:MM" con "(+Nd)" si el acumulado de minutos cruza medianoche
+// (viajes largos, ej. 27hs totales, son reales en esta app).
+function formatearHorario(totalMin) {
+  const dias = Math.floor(totalMin / 1440);
+  const minDia = totalMin % 1440;
+  const hora = `${String(Math.floor(minDia / 60)).padStart(2, '0')}:${String(minDia % 60).padStart(2, '0')}`;
+  return dias > 0 ? `${hora} (+${dias}d)` : hora;
+}
+
 function nvsEnOrdenSugerido(nvsList, ordenParadas) {
   if (!ordenParadas?.length) return nvsList;
   const ordenPorNv = new Map(ordenParadas.map((p) => [p.nv, p.orden]));
@@ -175,6 +229,8 @@ function expandirSinFechaSalida(items) {
 }
 
 export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
+  const nav = useNavigate();
+
   // Arranca en la semana en curso (pedido del usuario) - '' sigue siendo una
   // opción válida desde el selector ("Pendientes de asignar (todas)"), solo
   // que ya no es el default al entrar a la página.
@@ -208,9 +264,19 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
   const [creando, setCreando] = useState(false);
   const [resultado, setResultado] = useState(null);
 
+  // Panel de acciones/config del costado - colapsado por defecto para que el
+  // mapa ocupe todo el ancho (pedido explícito del usuario); el botón ⚙️ lo
+  // despliega cuando hace falta seleccionar/crear un viaje o configurar algo.
+  const [panelAbierto, setPanelAbierto] = useState(false);
   const [showZonas, setShowZonas] = useState(false);
   const [showIaConfig, setShowIaConfig] = useState(false);
+  const [showVehiculos, setShowVehiculos] = useState(false);
+  const [showCuadrillas, setShowCuadrillas] = useState(false);
+  const [showChecklist, setShowChecklist] = useState(false);
+  const [showParadasExtra, setShowParadasExtra] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
   const [mensajeViaje, setMensajeViaje] = useState(null); // { viajeId, titulo } | null
+  const [adjuntos, setAdjuntos] = useState(null); // { viajeId, titulo, cuadrillaId } | { nv, titulo, cuadrillaId } | null
   const [semanaModalAbierta, setSemanaModalAbierta] = useState(false); // abre LogisticaViajeSemanaModal (mismo popup que en Logística de Viajes) - ahora solo para fecha/zona/cuadrilla/vehículo/borrar; reordenar y agregar/quitar paradas ya se hace acá mismo
 
   // Editar la ruta de un viaje directamente en el panel del mapa (sin abrir
@@ -421,7 +487,7 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
     for (const v of viajesSemana) {
       for (const p of v.paradas_extra || []) {
         if (!map.has(v.id)) map.set(v.id, []);
-        map.get(v.id).push({ punto_extra_id: p.punto_extra_id, nombre: p.nombre, maps_url: p.maps_url, orden: p.orden });
+        map.get(v.id).push({ punto_extra_id: p.punto_extra_id, nombre: p.nombre, maps_url: p.maps_url, orden: p.orden, duracion_minutos: p.duracion_minutos, hora_salida_siguiente: p.hora_salida_siguiente });
       }
     }
     for (const arr of map.values()) {
@@ -692,6 +758,22 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
     layer.clearLayers();
 
     for (const { puntosRuta, color, viaje, viajeId } of rutasPorViaje) {
+      // Reloj de llegada tramo a tramo (en el mismo orden que puntosRuta -
+      // construirRutaViaje en el backend dedupea/ordena con el mismo
+      // criterio) - null si el viaje no tiene hora_salida u ruta_real
+      // todavía, ahí simplemente no se agrega el horario al tooltip. Una
+      // parada extra puede correr el reloj: duracion_minutos lo SUMA
+      // (cualquier parada, ej. "retirar un cobro" = 15 min);
+      // hora_salida_siguiente lo hace SALTAR (reemplaza, no suma) al día
+      // siguiente - solo descanso/hospedaje, gana por sobre
+      // duracion_minutos si están las dos cargadas.
+      const segmentosHoras = viaje.ruta_real?.segmentos_horas;
+      let minutosClock = null;
+      if (viaje.hora_salida && segmentosHoras?.length) {
+        const [h, m] = viaje.hora_salida.split(':').map(Number);
+        minutosClock = h * 60 + m;
+      }
+      let segIdx = 0;
       // Todo viaje sale del depósito (De Grandis Portones) - lo agregamos
       // como primer punto de la línea, sin numerito (el numerito 1 sigue
       // siendo la primera parada real).
@@ -703,6 +785,22 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
         if (!it || it.lat == null || it.lng == null) return;
         puntos.push([it.lat, it.lng]);
         numParada += 1;
+
+        let horaLlegada = null;
+        if (minutosClock != null && segmentosHoras[segIdx] != null) {
+          minutosClock += segmentosHoras[segIdx] * 60;
+          const totalMin = Math.round(minutosClock);
+          horaLlegada = formatearHorario(totalMin);
+          if (esExtra && p.hora_salida_siguiente) {
+            const dia = Math.floor(totalMin / 1440);
+            const [hs, ms] = p.hora_salida_siguiente.split(':').map(Number);
+            minutosClock = (dia + 1) * 1440 + hs * 60 + ms;
+          } else if (esExtra && p.duracion_minutos) {
+            minutosClock += Number(p.duracion_minutos);
+          }
+          segIdx += 1;
+        }
+
         const icon = L.divIcon({
           className: '',
           html: `<div style="background:${esExtra ? '#f59e0b' : color};color:#fff;border-radius:999px;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4)">${esExtra ? '🏨' : numParada}</div>`,
@@ -710,7 +808,7 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
         });
         const m = L.marker([it.lat, it.lng], { icon, zIndexOffset: 900 });
         const etiqueta = esExtra ? p.nombre : `parada ${numParada}`;
-        m.bindTooltip(`${viaje.nombre?.trim() || `Viaje #${viajeId}`} · ${etiqueta}`, { direction: 'top' });
+        m.bindTooltip(`${viaje.nombre?.trim() || `Viaje #${viajeId}`} · ${etiqueta}${horaLlegada ? ` · 🕒 ${horaLlegada}` : ''}`, { direction: 'top' });
         m.addTo(layer);
       });
       // Ruta real por calle (OpenRouteService, perfil camión), si ya se
@@ -796,6 +894,7 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
       cuadrilla_id: '',
       vehiculo_id: vehiculoSugerido ? String(vehiculoSugerido.id) : '',
       nombre: opts.nombreSugerido || `Viaje · Semana ${weekNumberFromLabel(semana)}`,
+      fondo_efectivo: '',
     });
     setConfirmando(true);
   };
@@ -818,12 +917,13 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
     setCreando(true);
     setErr('');
     try {
-      const { semana, incluidos, excluidos, fecha, zona_id, cuadrilla_id, vehiculo_id, nombre } = confirmForm;
+      const { semana, incluidos, excluidos, fecha, zona_id, cuadrilla_id, vehiculo_id, nombre, fondo_efectivo } = confirmForm;
       const crearRes = await crearLogisticaViaje(semana, {
         fecha, zona_id: zona_id ? Number(zona_id) : null,
         cuadrilla_id: cuadrilla_id ? Number(cuadrilla_id) : null,
         vehiculo_id: vehiculo_id ? Number(vehiculo_id) : null,
         nombre: nombre || null,
+        fondo_efectivo: fondo_efectivo || null,
       });
       const detalle = crearRes?.detalle;
       const viaje = (detalle?.viajes || []).reduce((max, v) => (max == null || v.id > max.id ? v : max), null);
@@ -914,6 +1014,18 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
   const quitarParadaExtraRuta = async (viajeId, puntoExtraId) => {
     try {
       await desasignarLogisticaParadaExtra(viajeId, puntoExtraId);
+      load();
+    } catch (e) {
+      setErr(e?.response?.data?.error || e.message);
+    }
+  };
+
+  // Horario propio de una parada extra - duracion_minutos (cualquier
+  // parada, ej. "retirar un cobro" = 15 min) y/o hora_salida_siguiente
+  // (solo descanso/hospedaje, la ruta retoma desde ahí al día siguiente).
+  const guardarHorarioParadaRuta = async (viajeId, puntoExtraId, patch) => {
+    try {
+      await updateLogisticaParadaExtraViaje(viajeId, puntoExtraId, patch);
       load();
     } catch (e) {
       setErr(e?.response?.data?.error || e.message);
@@ -1053,9 +1165,17 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
             </>
           )}
         </div>
-        {canEdit ? <button className="btn" onClick={() => setShowZonas(true)}>Zonas</button> : null}
-        {canEdit ? <button className="btn" onClick={() => setShowIaConfig(true)}>🤖 Config IA</button> : null}
-        {canEdit ? <button className="btn" onClick={() => setShowPromesaConfig(true)}>📅 Config promesa</button> : null}
+        {canEdit ? (
+          <button
+            type="button"
+            className="btn"
+            title={panelAbierto ? 'Ocultar panel de acciones/config' : 'Mostrar panel de acciones/config'}
+            style={panelAbierto ? { background: 'var(--brand)', color: '#fff', borderColor: 'var(--brand)' } : undefined}
+            onClick={() => setPanelAbierto((v) => !v)}
+          >
+            ⚙️ {panelAbierto ? 'Ocultar panel' : 'Panel'}
+          </button>
+        ) : null}
       </div>
 
       {err ? <div style={{ color: 'crimson', fontWeight: 800, fontSize: 12 }}>{err}</div> : null}
@@ -1194,6 +1314,24 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
                                 <div style={{ fontSize: 9, opacity: 0.7, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.nombre}</div>
                               ) : null}
                             </div>
+                            {!esExtra && it.telefono ? (
+                              <button
+                                type="button" className="btn" style={{ padding: '0 4px', fontSize: 10, flex: '0 0 auto' }}
+                                onClick={() => nav(`/admin/logistica-whatsapp?telefono=${encodeURIComponent(it.telefono)}`)}
+                                title="Abrir chat de WhatsApp con el cliente"
+                              >
+                                💬
+                              </button>
+                            ) : null}
+                            {!esExtra ? (
+                              <button
+                                type="button" className="btn" style={{ padding: '0 4px', fontSize: 10, flex: '0 0 auto' }}
+                                onClick={() => setAdjuntos({ nv: it.nv, titulo: `NV ${it.nv}`, cuadrillaId: viaje.cuadrilla_id })}
+                                title="Adjuntos (DNI, certificados, etc.)"
+                              >
+                                📎
+                              </button>
+                            ) : null}
                             {canEdit ? (
                               <>
                                 <div style={{ display: 'flex', flexDirection: 'column', flex: '0 0 auto' }}>
@@ -1210,6 +1348,9 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
                               </>
                             ) : null}
                           </div>
+                          {esExtra && canEdit ? (
+                            <ParadaHorarioInputs item={it} onGuardar={(patch) => guardarHorarioParadaRuta(viajeId, it.punto_extra_id, patch)} />
+                          ) : null}
                         </div>
                       );
                     })}
@@ -1231,20 +1372,39 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
                     )
                   ) : null}
 
-                  <button
-                    type="button" className="btn" style={{ fontSize: 10, padding: '1px 6px', alignSelf: 'flex-start' }}
-                    onClick={() => setMensajeViaje({ viajeId, titulo: viaje.nombre?.trim() || `Viaje #${viajeId}` })}
-                  >
-                    📋 Mensaje
-                  </button>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    <button
+                      type="button" className="btn" style={{ fontSize: 10, padding: '1px 6px' }}
+                      onClick={() => setMensajeViaje({ viajeId, titulo: viaje.nombre?.trim() || `Viaje #${viajeId}` })}
+                    >
+                      📋 Mensaje
+                    </button>
+                    <button
+                      type="button" className="btn" style={{ fontSize: 10, padding: '1px 6px' }}
+                      onClick={() => setAdjuntos({ viajeId, titulo: viaje.nombre?.trim() || `Viaje #${viajeId}`, cuadrillaId: viaje.cuadrilla_id })}
+                      title="Adjuntos del viaje (manifiesto, etc.)"
+                    >
+                      📎 Adjuntos
+                    </button>
+                  </div>
                 </div>
               );
             })}
           </div>
         ) : null}
 
-        {canEdit && modoSemana === 'sin_fecha_salida' ? (
+        {panelAbierto && canEdit && modoSemana === 'sin_fecha_salida' ? (
           <div style={{ width: 340, flex: '0 0 auto', display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              <button type="button" className="btn" onClick={() => setShowZonas(true)}>Zonas</button>
+              <button type="button" className="btn" onClick={() => setShowIaConfig(true)}>🤖 Config IA</button>
+              <button type="button" className="btn" onClick={() => setShowPromesaConfig(true)}>📅 Config promesa</button>
+              <button type="button" className="btn" onClick={() => setShowCuadrillas(true)}>👷 Cuadrillas</button>
+              <button type="button" className="btn" onClick={() => setShowChecklist(true)}>✅ CheckList</button>
+              <button type="button" className="btn" onClick={() => setShowVehiculos(true)}>🚚 Vehículos</button>
+              <button type="button" className="btn" onClick={() => setShowParadasExtra(true)}>🏨 Paradas estándar</button>
+              <button type="button" className="btn" onClick={() => setShowTemplates(true)}>📄 Templates WhatsApp</button>
+            </div>
             <div style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 12, fontSize: 12, opacity: 0.85 }}>
               Son NV sin "Fecha Salida" cargada todavía en /a (mismo filtro "Sin fecha" de esa
               columna). Hacé click en los pines para seleccionar los que quieras agrupar por
@@ -1285,8 +1445,18 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
               </div>
             )}
           </div>
-        ) : canEdit ? (
+        ) : panelAbierto && canEdit ? (
           <div style={{ width: 340, flex: '0 0 auto', display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              <button type="button" className="btn" onClick={() => setShowZonas(true)}>Zonas</button>
+              <button type="button" className="btn" onClick={() => setShowIaConfig(true)}>🤖 Config IA</button>
+              <button type="button" className="btn" onClick={() => setShowPromesaConfig(true)}>📅 Config promesa</button>
+              <button type="button" className="btn" onClick={() => setShowCuadrillas(true)}>👷 Cuadrillas</button>
+              <button type="button" className="btn" onClick={() => setShowChecklist(true)}>✅ CheckList</button>
+              <button type="button" className="btn" onClick={() => setShowVehiculos(true)}>🚚 Vehículos</button>
+              <button type="button" className="btn" onClick={() => setShowParadasExtra(true)}>🏨 Paradas estándar</button>
+              <button type="button" className="btn" onClick={() => setShowTemplates(true)}>📄 Templates WhatsApp</button>
+            </div>
             {resultado ? (
               <div style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 12, background: 'var(--surface-muted, #f9fafb)' }}>
                 <div style={{ fontWeight: 900, marginBottom: 6 }}>✅ Viaje creado</div>
@@ -1339,6 +1509,14 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
                 <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 11, marginBottom: 10 }}>
                   Nombre
                   <input className="pp-input" value={confirmForm.nombre} onChange={(e) => setConfirmForm((f) => ({ ...f, nombre: e.target.value }))} />
+                </label>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 11, marginBottom: 10 }}>
+                  Fondo en efectivo para la cuadrilla (opcional)
+                  <input
+                    className="pp-input" type="number" min="0" step="0.01" placeholder="$"
+                    value={confirmForm.fondo_efectivo}
+                    onChange={(e) => setConfirmForm((f) => ({ ...f, fondo_efectivo: e.target.value }))}
+                  />
                 </label>
 
                 <div style={{ display: 'flex', gap: 6 }}>
@@ -1486,7 +1664,13 @@ export default function LogisticaFechasMapaView({ canEdit, onCreated }) {
       <LogisticaZonasModal open={showZonas} config={config} onClose={() => setShowZonas(false)} onChanged={reloadConfig} />
       <LogisticaIaConfigModal open={showIaConfig} onClose={() => setShowIaConfig(false)} />
       <LogisticaPromesaConfigModal open={showPromesaConfig} onClose={() => setShowPromesaConfig(false)} onChanged={load} />
+      <LogisticaVehiculosModal open={showVehiculos} config={config} onClose={() => setShowVehiculos(false)} onChanged={reloadConfig} />
+      <LogisticaCuadrillasModal open={showCuadrillas} config={config} onClose={() => setShowCuadrillas(false)} onChanged={reloadConfig} />
+      <LogisticaChecklistModal open={showChecklist} config={config} onClose={() => setShowChecklist(false)} onChanged={reloadConfig} />
+      <LogisticaParadasExtraModal open={showParadasExtra} puntosExtra={puntosExtra} onClose={() => setShowParadasExtra(false)} onChanged={load} />
+      <LogisticaWhatsappTemplatesModal open={showTemplates} onClose={() => setShowTemplates(false)} />
       <LogisticaMensajeViajeModal open={!!mensajeViaje} viajeId={mensajeViaje?.viajeId} titulo={mensajeViaje?.titulo} onClose={() => setMensajeViaje(null)} />
+      <LogisticaAdjuntosModal open={!!adjuntos} viajeId={adjuntos?.viajeId} nv={adjuntos?.nv} titulo={adjuntos?.titulo} canEdit={canEdit} cuadrillaId={adjuntos?.cuadrillaId} onClose={() => setAdjuntos(null)} />
       <LogisticaViajeSemanaModal
         semana={semanaFiltro}
         open={semanaModalAbierta}

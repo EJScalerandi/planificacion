@@ -6,6 +6,7 @@ const healthRoutes = require('./routes/health');
 
 const adminAuthRoutes = require('./routes/admin/auth');
 const adminUsersRoutes = require('./routes/admin/users');
+const adminTicketsRoutes = require('./routes/admin/tickets');
 const adminQcRoutes = require('./routes/admin/qc');
 const adminWorkflowRoutes = require('./routes/admin/workflow');
 const adminPrefabricadosRoutes = require('./routes/admin/prefabricados');
@@ -15,6 +16,8 @@ const adminServicioTecnicoViajesRoutes = require('./routes/admin/servicioTecnico
 const adminInsumosRoutes = require('./routes/admin/insumos');
 const adminLogisticaConsultasRoutes = require('./routes/admin/logisticaConsultas');
 const adminLogisticaViajesRoutes = require('./routes/admin/logisticaViajes');
+const adminLogisticaAdjuntosRoutes = require('./routes/admin/logisticaAdjuntos');
+const adminNotasNodoRoutes = require('./routes/admin/notasNodo');
 
 const plantaRoutes = require('./routes/public/planta');
 const despacharRoutes = require('./routes/public/despachar');
@@ -30,6 +33,8 @@ const priceCategoriesRoutes = require('./routes/public/priceCategories');
 const prefabricadosRoutes = require('./routes/public/prefabricados');
 const servicioTecnicoRoutes = require('./routes/public/servicioTecnico');
 const insumosRoutes = require('./routes/public/insumos');
+const despachoV2Routes = require('./routes/public/despachoV2');
+const webhookWhatsappRoutes = require('./routes/public/webhookWhatsapp');
 const iaRoutes = require('./routes/external/ia');
 
 const { errorHandler } = require('./middleware/errorHandler');
@@ -79,6 +84,7 @@ app.use('/', healthRoutes);
 
 app.use('/admin', adminAuthRoutes);
 app.use('/admin', adminUsersRoutes);
+app.use('/admin', adminTicketsRoutes);
 // Montado antes que qc/workflow/prefabricados/servicio-tecnico: esos routers usan
 // router.use(adminAuth, requireScope(SU_SCOPE)) SIN path especifico, asi que
 // interceptan cualquier /admin/* que llegue a ellos primero (incluso rutas que no
@@ -88,12 +94,14 @@ app.use('/admin', adminUsersRoutes);
 app.use('/admin', adminInsumosRoutes);
 app.use('/admin', adminLogisticaConsultasRoutes);
 app.use('/admin', adminLogisticaViajesRoutes);
+app.use('/admin', adminLogisticaAdjuntosRoutes);
 app.use('/admin', adminQcRoutes);
 app.use('/admin', adminWorkflowRoutes);
 app.use('/admin', adminPrefabricadosRoutes);
 app.use('/admin', adminServicioTecnicoRoutes);
 app.use('/admin', adminServicioTecnicoViajesRoutes);
 app.use('/admin', adminSchedulingRoutes);
+app.use('/admin', adminNotasNodoRoutes);
 
 // ---------------------------------------------------------------------------
 // Backward-compat aliases (legacy frontend)
@@ -117,6 +125,8 @@ app.use('/', priceCategoriesRoutes);
 app.use('/', prefabricadosRoutes);
 app.use('/', servicioTecnicoRoutes);
 app.use('/', insumosRoutes);
+app.use('/', despachoV2Routes);
+app.use('/', webhookWhatsappRoutes);
 app.use('/', iaRoutes);
 
 app.use(errorHandler);

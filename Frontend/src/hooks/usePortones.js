@@ -5,7 +5,7 @@ const BASE_URL = import.meta.env.VITE_API_BASE || 'https://planificacion-uprm.on
 
 // Etapas válidas del backend para Portones (referencia útil para UI/autocomplete)
 export const PORTONES_STAGES = [
-  'diseno','laser','guillotina','plegadora',
+  'diseno','laser_dintel','laser_hojas','laser_brazos_espada','guillotina','plegadora',
   'armado_marco_piernas','armado_piernas','armado_primario','armado_hojas',
   'inyeccion','revestimiento','pintura','armado_final','despacho'
 ];

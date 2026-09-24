@@ -21,21 +21,13 @@ function escapeHtml(str) {
   }[c]));
 }
 
-// Horario estimado de llegada a cada tramo, acumulando desde horaSalida -
-// segmentosHoras viene de ruta_real (uno por tramo real entre paradas
-// consecutivas, OpenRouteService). +Nd si el acumulado cruza medianoche.
-function calcularHorariosLlegada(horaSalida, segmentosHoras) {
-  if (!horaSalida || !segmentosHoras?.length) return [];
-  const [h, m] = horaSalida.split(':').map(Number);
-  let minutosAcumulados = h * 60 + m;
-  return segmentosHoras.map((horas) => {
-    minutosAcumulados += horas * 60;
-    const totalMin = Math.round(minutosAcumulados);
-    const dias = Math.floor(totalMin / 1440);
-    const minDia = totalMin % 1440;
-    const hora = `${String(Math.floor(minDia / 60)).padStart(2, '0')}:${String(minDia % 60).padStart(2, '0')}`;
-    return dias > 0 ? `${hora} (+${dias}d)` : hora;
-  });
+// Formato "HH:MM" con "(+Nd)" si el acumulado de minutos cruza medianoche
+// (viajes largos, ej. 27hs totales, son reales en esta app).
+function formatearHorario(totalMin) {
+  const dias = Math.floor(totalMin / 1440);
+  const minDia = totalMin % 1440;
+  const hora = `${String(Math.floor(minDia / 60)).padStart(2, '0')}:${String(minDia % 60).padStart(2, '0')}`;
+  return dias > 0 ? `${hora} (+${dias}d)` : hora;
 }
 
 export default function PortonesMapaModal({ open, onClose, nvs, titulo, rutaNvs, rutaOrden, paradasExtra, rutaReal, horaSalida }) {
@@ -174,10 +166,20 @@ export default function PortonesMapaModal({ open, onClose, nvs, titulo, rutaNvs,
     layer.clearLayers();
     if (!ordenRuta.length) return;
 
-    // Solo tiene sentido si ruta_real ya se calculó: segmentos_horas viene
-    // de ahí (un tramo real por OpenRouteService), y ordenRuta ya está
-    // dedupeado por NV (armado así en el llamador) - mismo orden.
-    const horarios = calcularHorariosLlegada(horaSalida, rutaReal?.segmentos_horas);
+    // Reloj de llegada tramo a tramo - segmentos_horas viene de ruta_real
+    // (uno por tramo real, OpenRouteService), y ordenRuta ya está dedupeado
+    // por NV (armado así en el llamador) - mismo orden. Una parada extra
+    // puede correr el reloj: duracion_minutos lo SUMA (cualquier parada, ej.
+    // "retirar un cobro" = 15 min); hora_salida_siguiente lo hace SALTAR
+    // (reemplaza, no suma) al día siguiente - solo descanso/hospedaje, gana
+    // por sobre duracion_minutos si están las dos cargadas.
+    const segmentosHoras = rutaReal?.segmentos_horas;
+    let minutosClock = null;
+    if (horaSalida && segmentosHoras?.length) {
+      const [h, m] = horaSalida.split(':').map(Number);
+      minutosClock = h * 60 + m;
+    }
+    let segIdx = 0;
 
     const puntosRuta = [];
     let numParada = 0;
@@ -186,8 +188,23 @@ export default function PortonesMapaModal({ open, onClose, nvs, titulo, rutaNvs,
       const p = esExtra ? paradasExtraPorId.get(w.punto_extra_id) : puntosPorNv.get(w.nv);
       if (!p || p.lat == null || p.lng == null) return;
       puntosRuta.push([p.lat, p.lng]);
-      const horaLlegada = horarios[numParada];
       numParada += 1;
+
+      let horaLlegada = null;
+      if (minutosClock != null && segmentosHoras[segIdx] != null) {
+        minutosClock += segmentosHoras[segIdx] * 60;
+        const totalMin = Math.round(minutosClock);
+        horaLlegada = formatearHorario(totalMin);
+        if (esExtra && p.hora_salida_siguiente) {
+          const dia = Math.floor(totalMin / 1440);
+          const [hs, ms] = p.hora_salida_siguiente.split(':').map(Number);
+          minutosClock = (dia + 1) * 1440 + hs * 60 + ms;
+        } else if (esExtra && p.duracion_minutos) {
+          minutosClock += Number(p.duracion_minutos);
+        }
+        segIdx += 1;
+      }
+
       const icon = L.divIcon({
         className: '',
         html: `<div style="background:${esExtra ? '#f59e0b' : '#dc2626'};color:#fff;border-radius:999px;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4)">${esExtra ? '🏨' : numParada}</div>`,

@@ -3,7 +3,9 @@ import usePortones from '../src/hooks/usePortones';
 
 const STAGES = [
   { key: 'diseno',               label: 'Diseño' },
-  { key: 'laser',                label: 'Laser' },
+  { key: 'laser_dintel',         label: 'Laser tubos Dintel' },
+  { key: 'laser_hojas',          label: 'Laser tubos Hojas' },
+  { key: 'laser_brazos_espada',  label: 'Laser tubos Brazos y Espada' },
 
   // Corte
   { key: 'guillotina',           label: 'Corte (Piernas)' },

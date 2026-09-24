@@ -9,24 +9,192 @@ import {
   updateLogisticaCuadrilla,
   deleteLogisticaCuadrilla,
   setLogisticaCuadrillaMiembros,
+  fetchLogisticaAdjuntosMiembro,
+  uploadLogisticaAdjuntoMiembro,
+  deleteLogisticaAdjuntoMiembro,
+  fetchLogisticaFotoQcUser,
+  uploadLogisticaFotoQcUser,
+  deleteLogisticaFotoQcUser,
 } from '../../api';
 
 const th = { textAlign: 'left', padding: 10, borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' };
 const td = { padding: 10, borderBottom: '1px solid var(--border)', verticalAlign: 'top' };
 
+// Catálogo de DNI de un integrante (persona, no de esta cuadrilla puntual -
+// si cambia de cuadrilla el DNI lo sigue) - se carga UNA vez acá y de ahí se
+// "habilita" (sin volver a subirlo) para un viaje y/o NV puntual desde
+// LogisticaAdjuntosModal.jsx. Admite más de un archivo (ej. frente y dorso).
+function DniMiembroControl({ qcUserId, qcUserName }) {
+  const [abierto, setAbierto] = useState(false);
+  const [adjuntos, setAdjuntos] = useState(null);
+  const [subiendo, setSubiendo] = useState(false);
+  const [err, setErr] = useState('');
+
+  const cargar = () => {
+    fetchLogisticaAdjuntosMiembro(qcUserId).then((d) => setAdjuntos(d?.adjuntos || [])).catch(() => setAdjuntos([]));
+  };
+  // Se carga una sola vez al montar (no solo al abrir) para que el badge
+  // "DNI (N)" ya muestre la cantidad sin tener que desplegar primero.
+  useEffect(cargar, [qcUserId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const onArchivo = async (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f) return;
+    setSubiendo(true);
+    setErr('');
+    try {
+      await uploadLogisticaAdjuntoMiembro({ qc_user_id: qcUserId, descripcion: `DNI de ${qcUserName}`, archivo: f });
+      cargar();
+    } catch (e2) {
+      setErr(e2?.response?.data?.error || e2.message);
+    } finally {
+      setSubiendo(false);
+    }
+  };
+
+  const borrar = async (id) => {
+    if (!window.confirm('¿Borrar este archivo del DNI?')) return;
+    try {
+      await deleteLogisticaAdjuntoMiembro(id);
+      cargar();
+    } catch (e) {
+      setErr(e?.response?.data?.error || e.message);
+    }
+  };
+
+  if (!abierto) {
+    return (
+      <button type="button" className="btn" style={{ fontSize: 10, padding: '2px 6px' }} onClick={() => setAbierto(true)}>
+        📎 DNI{adjuntos?.length ? ` (${adjuntos.length})` : ''}
+      </button>
+    );
+  }
+
+  return (
+    <div style={{ border: '1px dashed var(--border)', borderRadius: 8, padding: 6, fontSize: 10, display: 'flex', flexDirection: 'column', gap: 4, minWidth: 160 }}>
+      <div style={{ display: 'flex', alignItems: 'center' }}>
+        <b>DNI de {qcUserName}</b>
+        <button type="button" onClick={() => setAbierto(false)} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
+      </div>
+      {err ? <div style={{ color: 'crimson', fontWeight: 700 }}>{err}</div> : null}
+      {adjuntos == null ? (
+        <div style={{ opacity: 0.6 }}>Cargando…</div>
+      ) : adjuntos.length === 0 ? (
+        <div style={{ opacity: 0.6 }}>Sin archivos todavía.</div>
+      ) : (
+        adjuntos.map((a) => (
+          <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <a href={a.url} target="_blank" rel="noopener noreferrer" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+              {String(a.tipo_mime || '').startsWith('image/') ? '🖼️' : '📄'} {a.nombre_archivo}
+            </a>
+            <button type="button" onClick={() => borrar(a.id)} style={{ background: 'none', border: 'none', color: '#991b1b', cursor: 'pointer' }}>🗑️</button>
+          </div>
+        ))
+      )}
+      <label className="btn" style={{ fontSize: 10, padding: '2px 6px', textAlign: 'center' }}>
+        {subiendo ? 'Subiendo…' : '+ Agregar (frente/dorso)'}
+        <input type="file" accept="image/jpeg,image/png,image/webp,image/heic,application/pdf" style={{ display: 'none' }} disabled={subiendo} onChange={onArchivo} />
+      </label>
+    </div>
+  );
+}
+
+// Foto de perfil del integrante (una sola, no un catálogo como el DNI) -
+// para el collage del mensaje automático de WhatsApp "en camino"
+// (logisticaWhatsapp.js). Reemplazar sube la nueva y borra la vieja sola.
+function FotoMiembroControl({ qcUserId, qcUserName }) {
+  const [abierto, setAbierto] = useState(false);
+  const [url, setUrl] = useState(undefined); // undefined = todavía no se pidió
+  const [subiendo, setSubiendo] = useState(false);
+  const [err, setErr] = useState('');
+
+  const cargar = () => {
+    fetchLogisticaFotoQcUser(qcUserId).then((d) => setUrl(d?.url || null)).catch(() => setUrl(null));
+  };
+  useEffect(cargar, [qcUserId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const onArchivo = async (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f) return;
+    setSubiendo(true);
+    setErr('');
+    try {
+      await uploadLogisticaFotoQcUser(qcUserId, f);
+      cargar();
+    } catch (e2) {
+      setErr(e2?.response?.data?.error || e2.message);
+    } finally {
+      setSubiendo(false);
+    }
+  };
+
+  const borrar = async () => {
+    if (!window.confirm('¿Borrar la foto de perfil?')) return;
+    try {
+      await deleteLogisticaFotoQcUser(qcUserId);
+      cargar();
+    } catch (e2) {
+      setErr(e2?.response?.data?.error || e2.message);
+    }
+  };
+
+  if (!abierto) {
+    return (
+      <button type="button" className="btn" style={{ fontSize: 10, padding: '2px 6px' }} onClick={() => setAbierto(true)}>
+        {url ? '📷 Foto ✓' : '📷 Foto'}
+      </button>
+    );
+  }
+
+  return (
+    <div style={{ border: '1px dashed var(--border)', borderRadius: 8, padding: 6, fontSize: 10, display: 'flex', flexDirection: 'column', gap: 4, minWidth: 140 }}>
+      <div style={{ display: 'flex', alignItems: 'center' }}>
+        <b>Foto de {qcUserName}</b>
+        <button type="button" onClick={() => setAbierto(false)} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
+      </div>
+      {err ? <div style={{ color: 'crimson', fontWeight: 700 }}>{err}</div> : null}
+      {url === undefined ? (
+        <div style={{ opacity: 0.6 }}>Cargando…</div>
+      ) : url ? (
+        <img src={url} alt="" style={{ width: '100%', borderRadius: 6, objectFit: 'cover', aspectRatio: '1/1' }} />
+      ) : (
+        <div style={{ opacity: 0.6 }}>Sin foto todavía.</div>
+      )}
+      <label className="btn" style={{ fontSize: 10, padding: '2px 6px', textAlign: 'center' }}>
+        {subiendo ? 'Subiendo…' : url ? 'Reemplazar' : '+ Subir foto'}
+        <input type="file" accept="image/jpeg,image/png,image/webp,image/heic" style={{ display: 'none' }} disabled={subiendo} onChange={onArchivo} />
+      </label>
+      {url ? (
+        <button type="button" className="btn" style={{ fontSize: 10, padding: '2px 6px', borderColor: '#ef4444', color: '#991b1b' }} onClick={borrar}>
+          Borrar foto
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+// miembros: Map<qc_user_id, rol|null> en vez de un Set - "rol" (ej.
+// "Chofer") es la "calidad" que pidió el usuario para el mensaje de
+// WhatsApp automático de /despacho_v2 ("La cuadrilla... Nombre / Calidad:
+// Chofer"). Solo tiene sentido cargarlo para quien está seleccionado, así
+// que el input de texto aparece al lado del checkbox, no antes.
 function MiembrosEditor({ cuadrilla, qcUsers, busy, onSave }) {
   const [open, setOpen] = useState(false);
-  const [selected, setSelected] = useState(() => new Set((cuadrilla.miembros || []).map((m) => Number(m.qc_user_id))));
+  const [seleccion, setSeleccion] = useState(() => new Map((cuadrilla.miembros || []).map((m) => [Number(m.qc_user_id), m.rol || ''])));
 
   useEffect(() => {
-    setSelected(new Set((cuadrilla.miembros || []).map((m) => Number(m.qc_user_id))));
+    setSeleccion(new Map((cuadrilla.miembros || []).map((m) => [Number(m.qc_user_id), m.rol || ''])));
   }, [cuadrilla]);
 
   if (!open) {
     return (
       <div>
         <div style={{ marginBottom: 4 }}>
-          {(cuadrilla.miembros || []).length ? cuadrilla.miembros.map((m) => m.name).join(', ') : <span style={{ color: '#9ca3af' }}>(sin miembros)</span>}
+          {(cuadrilla.miembros || []).length
+            ? cuadrilla.miembros.map((m) => `${m.name}${m.rol ? ` (${m.rol})` : ''}`).join(', ')
+            : <span style={{ color: '#9ca3af' }}>(sin miembros)</span>}
         </div>
         <button className="btn" disabled={busy} onClick={() => setOpen(true)}>Editar miembros</button>
       </div>
@@ -34,36 +202,60 @@ function MiembrosEditor({ cuadrilla, qcUsers, busy, onSave }) {
   }
 
   const toggle = (id) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+    setSeleccion((prev) => {
+      const next = new Map(prev);
+      if (next.has(id)) next.delete(id); else next.set(id, '');
       return next;
     });
+  };
+  const setRol = (id, rol) => {
+    setSeleccion((prev) => new Map(prev).set(id, rol));
   };
 
   return (
     <div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxWidth: 340, marginBottom: 8 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxWidth: 340, marginBottom: 8 }}>
         {(qcUsers || []).map((u) => {
           const id = Number(u.id);
-          const active = selected.has(id);
+          const active = seleccion.has(id);
           return (
-            <label
-              key={id}
-              className="btn"
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 11, padding: '4px 8px',
-                background: active ? 'var(--brand)' : undefined, color: active ? '#fff' : undefined,
-              }}
-            >
-              <input type="checkbox" checked={active} onChange={() => toggle(id)} style={{ margin: 0 }} />
-              {u.name}
-            </label>
+            <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <label
+                className="btn"
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 11, padding: '4px 8px',
+                  background: active ? 'var(--brand)' : undefined, color: active ? '#fff' : undefined, flex: '0 0 auto',
+                }}
+              >
+                <input type="checkbox" checked={active} onChange={() => toggle(id)} style={{ margin: 0 }} />
+                {u.name}
+              </label>
+              {active ? (
+                <>
+                  <input
+                    className="pp-input" style={{ fontSize: 11, padding: '3px 6px', maxWidth: 130 }}
+                    placeholder="Calidad (ej: Chofer)"
+                    value={seleccion.get(id) || ''}
+                    onChange={(e) => setRol(id, e.target.value)}
+                  />
+                  <DniMiembroControl qcUserId={id} qcUserName={u.name} />
+                  <FotoMiembroControl qcUserId={id} qcUserName={u.name} />
+                </>
+              ) : null}
+            </div>
           );
         })}
       </div>
       <div style={{ display: 'flex', gap: 8 }}>
-        <button className="btn btn--brand" disabled={busy} onClick={() => { onSave(Array.from(selected)); setOpen(false); }}>Guardar miembros</button>
+        <button
+          className="btn btn--brand" disabled={busy}
+          onClick={() => {
+            onSave(Array.from(seleccion.entries()).map(([qc_user_id, rol]) => ({ qc_user_id, rol: rol.trim() || null })));
+            setOpen(false);
+          }}
+        >
+          Guardar miembros
+        </button>
         <button className="btn" disabled={busy} onClick={() => setOpen(false)}>Cancelar</button>
       </div>
     </div>

@@ -25,6 +25,7 @@ const { DEPOSITO } = require('./logisticaDeposito');
 // desde la capa de rutas (routes/admin/logisticaViajes.js), no desde acá -
 // mismo patrón ya usado para logisticaMapaExtras.js.
 const { geocodeAddress } = require('./geocoding');
+const { listChecklistItems } = require('./logisticaChecklistDb');
 
 async function withTx(fn) {
   const client = await pool.connect();
@@ -153,7 +154,7 @@ async function listCuadrillas() {
   const [cQ, mQ] = await Promise.all([
     pool.query(`select id, nombre, activo, created_at, updated_at from public.logistica_cuadrillas order by nombre asc;`),
     pool.query(
-      `select cm.cuadrilla_id, cm.qc_user_id, u.name as qc_user_name
+      `select cm.cuadrilla_id, cm.qc_user_id, cm.rol, u.name as qc_user_name
        from public.logistica_cuadrilla_miembros cm
        join public.qc_users u on u.id = cm.qc_user_id
        order by u.name asc;`
@@ -162,7 +163,7 @@ async function listCuadrillas() {
   const miembrosByCuadrilla = new Map();
   for (const m of mQ.rows) {
     if (!miembrosByCuadrilla.has(m.cuadrilla_id)) miembrosByCuadrilla.set(m.cuadrilla_id, []);
-    miembrosByCuadrilla.get(m.cuadrilla_id).push({ qc_user_id: m.qc_user_id, name: m.qc_user_name });
+    miembrosByCuadrilla.get(m.cuadrilla_id).push({ qc_user_id: m.qc_user_id, name: m.qc_user_name, rol: m.rol });
   }
   return cQ.rows.map((c) => ({ ...c, miembros: miembrosByCuadrilla.get(c.id) || [] }));
 }
@@ -198,18 +199,27 @@ async function deleteCuadrilla(id) {
   await pool.query(`delete from public.logistica_cuadrillas where id = $1;`, [Number(id)]);
 }
 
-async function setCuadrillaMiembros(id, qcUserIds) {
+// miembros: acepta tanto [id, id, ...] (formato viejo, rol queda null) como
+// [{qc_user_id, rol}, ...] (formato nuevo, con "calidad" - ej. "Chofer" -
+// pedido del usuario para el mensaje de WhatsApp de /despacho_v2).
+async function setCuadrillaMiembros(id, miembros) {
   const cuadrillaId = Number(id);
-  const ids = Array.from(new Set((Array.isArray(qcUserIds) ? qcUserIds : []).map((v) => Number(v)).filter(Number.isFinite)));
+  const normalizados = new Map(); // qc_user_id -> rol
+  for (const m of Array.isArray(miembros) ? miembros : []) {
+    const uid = Number(typeof m === 'object' && m !== null ? m.qc_user_id : m);
+    if (!Number.isFinite(uid)) continue;
+    const rol = typeof m === 'object' && m !== null ? (String(m.rol || '').trim() || null) : null;
+    normalizados.set(uid, rol);
+  }
   await withTx(async (client) => {
     const exists = await client.query(`select id from public.logistica_cuadrillas where id = $1;`, [cuadrillaId]);
     if (!exists.rowCount) throw new Error('Cuadrilla no encontrada');
     await client.query(`delete from public.logistica_cuadrilla_miembros where cuadrilla_id = $1;`, [cuadrillaId]);
-    for (const uid of ids) {
+    for (const [uid, rol] of normalizados) {
       await client.query(
-        `insert into public.logistica_cuadrilla_miembros (cuadrilla_id, qc_user_id) values ($1, $2)
+        `insert into public.logistica_cuadrilla_miembros (cuadrilla_id, qc_user_id, rol) values ($1, $2, $3)
          on conflict do nothing;`,
-        [cuadrillaId, uid]
+        [cuadrillaId, uid, rol]
       );
     }
   });
@@ -357,7 +367,7 @@ async function deleteReglaEnvio(id) {
 }
 
 async function getConfig() {
-  const [zonas, vehiculos, cuadrillas, reglas, zonaReferencias, reglasEnvio, qcUsersQ] = await Promise.all([
+  const [zonas, vehiculos, cuadrillas, reglas, zonaReferencias, reglasEnvio, qcUsersQ, checklistItems] = await Promise.all([
     listZonas(),
     listVehiculos(),
     listCuadrillas(),
@@ -365,8 +375,12 @@ async function getConfig() {
     listZonaReferencias(),
     listReglasEnvio(),
     pool.query(`select id, name, is_active from public.qc_users where is_active is true order by name asc;`),
+    listChecklistItems(),
   ]);
-  return { zonas, vehiculos, cuadrillas, reglas, zona_referencias: zonaReferencias, reglas_envio: reglasEnvio, qc_users: qcUsersQ.rows, deposito: DEPOSITO };
+  return {
+    zonas, vehiculos, cuadrillas, reglas, zona_referencias: zonaReferencias, reglas_envio: reglasEnvio,
+    qc_users: qcUsersQ.rows, deposito: DEPOSITO, checklist_items: checklistItems,
+  };
 }
 
 // ===========================================================================
@@ -607,7 +621,7 @@ async function getViajesForSemana(semana) {
       vi.zona_id, z.nombre as zona_nombre,
       vi.cuadrilla_id, c.nombre as cuadrilla_nombre,
       vi.vehiculo_id, veh.nombre as vehiculo_nombre, coalesce(veh.capacidad_portones, 0) as vehiculo_capacidad,
-      vi.ruta_real, to_char(vi.hora_salida, 'HH24:MI') as hora_salida,
+      vi.ruta_real, to_char(vi.hora_salida, 'HH24:MI') as hora_salida, vi.fondo_efectivo,
       vi.created_at, vi.updated_at
     from public.logistica_viajes vi
     left join public.logistica_zonas z on z.id = vi.zona_id
@@ -693,7 +707,7 @@ function normalizaHoraSalida(horaSalida) {
   return s;
 }
 
-async function crearViaje(semana, { fecha, zona_id, cuadrilla_id, vehiculo_id, nombre, orden, hora_salida }) {
+async function crearViaje(semana, { fecha, zona_id, cuadrilla_id, vehiculo_id, nombre, orden, hora_salida, fondo_efectivo }) {
   await assertSemanaAbierta(semana);
   const fechaStr = String(fecha || '').trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaStr)) throw new Error('fecha inválida');
@@ -704,9 +718,12 @@ async function crearViaje(semana, { fecha, zona_id, cuadrilla_id, vehiculo_id, n
   }
 
   await pool.query(
-    `insert into public.logistica_viajes (semana, fecha, zona_id, cuadrilla_id, vehiculo_id, nombre, orden, hora_salida)
-     values ($1, $2, $3, $4, $5, $6, coalesce($7, 0), $8);`,
-    [semana, fechaStr, zona_id || null, cuadrilla_id || null, vehiculo_id || null, nombre || null, orden ?? null, normalizaHoraSalida(hora_salida)]
+    `insert into public.logistica_viajes (semana, fecha, zona_id, cuadrilla_id, vehiculo_id, nombre, orden, hora_salida, fondo_efectivo)
+     values ($1, $2, $3, $4, $5, $6, coalesce($7, 0), $8, $9);`,
+    [
+      semana, fechaStr, zona_id || null, cuadrilla_id || null, vehiculo_id || null, nombre || null, orden ?? null,
+      normalizaHoraSalida(hora_salida), fondo_efectivo != null && fondo_efectivo !== '' ? Number(fondo_efectivo) : null,
+    ]
   );
 
   return getSemanaDetalle(semana);
@@ -718,7 +735,7 @@ async function getViajeSemana(viajeId) {
   return rows[0].semana;
 }
 
-async function patchViaje(id, { fecha, zona_id, cuadrilla_id, vehiculo_id, nombre, orden, hora_salida }) {
+async function patchViaje(id, { fecha, zona_id, cuadrilla_id, vehiculo_id, nombre, orden, hora_salida, fondo_efectivo }) {
   const viajeId = Number(id);
   const semana = await getViajeSemana(viajeId);
   await assertSemanaAbierta(semana);
@@ -740,6 +757,10 @@ async function patchViaje(id, { fecha, zona_id, cuadrilla_id, vehiculo_id, nombr
   if (nombre !== undefined) { params.push(nombre || null); sets.push(`nombre = $${params.length}`); }
   if (orden !== undefined) { params.push(orden); sets.push(`orden = $${params.length}`); }
   if (hora_salida !== undefined) { params.push(normalizaHoraSalida(hora_salida)); sets.push(`hora_salida = $${params.length}`); }
+  if (fondo_efectivo !== undefined) {
+    params.push(fondo_efectivo != null && fondo_efectivo !== '' ? Number(fondo_efectivo) : null);
+    sets.push(`fondo_efectivo = $${params.length}`);
+  }
 
   if (sets.length) {
     sets.push('updated_at = now()');

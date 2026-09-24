@@ -1,6 +1,7 @@
 // src/pages/IndexPage.jsx
 import { Link, useNavigate } from 'react-router-dom';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { fetchAdminTickets } from '../src/api';
 
 function parseJwtPayload(token) {
   try {
@@ -80,7 +81,11 @@ export default function IndexPage({ routes = [] }) {
   const isPrefabAdmin = has('prefabricados:admin');
   const isStAdmin = has('servicio_tecnico:admin');
   const isComprasAdmin = has('compras:admin');
-  const isSchedAdmin = has('scheduling:admin');
+  // Nota: scheduling:admin sigue existiendo y protegiendo las rutas de API
+  // /admin/scheduling/* en el backend — acá en la nav ya no se usa solo, la
+  // sección "Programadores" (Motor de Reglas, Gantt, Tickets, Índice de
+  // Programación) se gatea con este scope nuevo, aparte.
+  const isProgramadoresAdmin = has('programadores:admin');
 
   const isPreprodOnly = isPreprodAdmin && !isQcAdmin && !isWfAdmin && !canUsers;
 
@@ -88,6 +93,30 @@ export default function IndexPage({ routes = [] }) {
     const token = readAdminToken();
     if (!String(token || '').trim()) nav('/admin/login', { replace: true });
   }, [nav]);
+
+  // Cuántos tickets están "pending" (recién llegados, nadie los tomó
+  // todavía) — se muestra como badge junto a "Admin · Tickets" para que no
+  // haga falta entrar a /admin/tickets a ver si hay algo nuevo. Se pollea acá
+  // (no en el botón del header, que es el widget de "mis tickets" de cada
+  // admin) porque esto es la cola compartida entre todos los admins.
+  const [pendingTicketsCount, setPendingTicketsCount] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    async function cargarPendientes() {
+      try {
+        const { data } = await fetchAdminTickets({ estado: 'pending' });
+        if (!cancelled) setPendingTicketsCount((data?.tickets || []).length);
+      } catch (err) {
+        console.error('Error cargando tickets pendientes:', err);
+      }
+    }
+    cargarPendientes();
+    const interval = setInterval(cargarPendientes, 60000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
 
   const logout = () => {
     clearAdminSession();
@@ -103,9 +132,6 @@ export default function IndexPage({ routes = [] }) {
     const out = [];
     if (isQcAdmin) out.push({ path: '/admin/qc', label: 'Admin · Usuarios QC' });
     if (isWfAdmin) out.push({ path: '/admin/workflow', label: 'Admin · Workflow (Designer)' });
-    if (isSchedAdmin) out.push({ path: '/admin/scheduling', label: 'Admin · Motor de Reglas de Tiempo (Beta)' });
-    if (isSchedAdmin) out.push({ path: '/admin/scheduling/reglas', label: 'Admin · Reglas de Desvío (Beta)' });
-    if (isSchedAdmin) out.push({ path: '/admin/scheduling/gantt', label: 'Admin · Gantt de Producción (Beta)' });
     if (canUsers) out.push({ path: '/b', label: 'Admin · Usuarios / Permisos (Dashboard)' });
     if (isQcAdmin || isWfAdmin) out.push({ path: '/admin/excel-info', label: 'Admin · Información Excel' });
     if (isPrefabAdmin) out.push({ path: '/admin/prefabricados', label: 'Admin · Prefabricados' });
@@ -114,7 +140,22 @@ export default function IndexPage({ routes = [] }) {
     if (isComprasAdmin) out.push({ path: '/admin/insumos/entregas', label: 'Admin · Compras · Entregas de Insumos' });
     if (isComprasAdmin) out.push({ path: '/admin/insumos/config', label: 'Admin · Compras · Config Categorías↔Sección' });
     return out;
-  }, [isPreprodOnly, isQcAdmin, isWfAdmin, canUsers, isPrefabAdmin, isStAdmin, isComprasAdmin, isSchedAdmin]);
+  }, [isPreprodOnly, isQcAdmin, isWfAdmin, canUsers, isPrefabAdmin, isStAdmin, isComprasAdmin]);
+
+  // Sección "Programadores" — scope nuevo y separado (programadores:admin),
+  // hoy solo en el usuario admin. Motor de reglas de tiempo, sus dos
+  // pantallas satélite, y (movidos de Admin general, donde antes se veían
+  // sin ningún scope) Tickets e Índice de Programación.
+  const programadoresRoutes = useMemo(() => {
+    if (isPreprodOnly || !isProgramadoresAdmin) return [];
+    return [
+      { path: '/admin/scheduling', label: 'Admin · Motor de Reglas de Tiempo (Beta)' },
+      { path: '/admin/scheduling/reglas', label: 'Admin · Reglas de Desvío (Beta)' },
+      { path: '/admin/scheduling/gantt', label: 'Admin · Gantt de Producción (Beta)' },
+      { path: '/admin/tickets', label: 'Admin · Tickets', badge: pendingTicketsCount },
+      { path: '/admin/indice-programacion', label: 'Admin · Índice de Programación (BETA)' },
+    ];
+  }, [isPreprodOnly, isProgramadoresAdmin, pendingTicketsCount]);
 
   const opsRoutes = useMemo(() => {
     if (isPreprodOnly) return [];
@@ -162,11 +203,27 @@ export default function IndexPage({ routes = [] }) {
     ];
   }, [isPreprodOnly, isPreprodAdmin, isQcAdmin, isWfAdmin, preprodRoutes]);
 
+  const NavBadge = ({ r }) => {
+    if (!r.badge) return null;
+    return (
+      <span
+        title={`${r.badge} ticket${r.badge === 1 ? '' : 's'} pendiente${r.badge === 1 ? '' : 's'}`}
+        style={{
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          minWidth: 18, height: 18, padding: '0 5px', marginLeft: 6, borderRadius: 999,
+          background: '#dc2626', color: '#fff', fontSize: 11, fontWeight: 700, lineHeight: 1,
+        }}
+      >
+        {r.badge > 99 ? '99+' : r.badge}
+      </span>
+    );
+  };
+
   const NavTitle = ({ r }) => {
     if (isStaticPage(r.path)) {
-      return <a href={r.path} className="idx-linkTitle">{r.label}</a>;
+      return <a href={r.path} className="idx-linkTitle">{r.label}<NavBadge r={r} /></a>;
     }
-    return <Link to={r.path} className="idx-linkTitle">{r.label}</Link>;
+    return <Link to={r.path} className="idx-linkTitle">{r.label}<NavBadge r={r} /></Link>;
   };
 
   const NavButton = ({ r }) => {
@@ -186,7 +243,7 @@ export default function IndexPage({ routes = [] }) {
     </li>
   );
 
-  const hasAny = publicRoutes.length || adminRoutes.length || opsRoutes.length || revisionRoutes.length || infoRoutes.length;
+  const hasAny = publicRoutes.length || adminRoutes.length || programadoresRoutes.length || opsRoutes.length || revisionRoutes.length || infoRoutes.length;
 
   return (
     <div className="container">
@@ -227,6 +284,19 @@ export default function IndexPage({ routes = [] }) {
                 <span className="idx-pill">Admin</span>
               </div>
               <div className="idx-section__body"><ul className="idx-links">{adminRoutes.map((r) => <LinkRow key={r.path} r={r} />)}</ul></div>
+            </section>
+          )}
+
+          {programadoresRoutes.length > 0 && (
+            <section className="idx-section idx-section--admin">
+              <div className="idx-section__head">
+                <div>
+                  <div className="idx-section__title">Programadores</div>
+                  <div className="idx-section__sub">Motor de reglas de tiempo, tickets e índice de programación</div>
+                </div>
+                <span className="idx-pill">Programadores</span>
+              </div>
+              <div className="idx-section__body"><ul className="idx-links">{programadoresRoutes.map((r) => <LinkRow key={r.path} r={r} />)}</ul></div>
             </section>
           )}
 
