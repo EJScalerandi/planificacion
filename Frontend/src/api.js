@@ -785,10 +785,35 @@ export const createTicket = (payload) => api.post('/admin/tickets', payload);
 export const fetchMyTickets = () => api.get('/admin/tickets/mine');
 export const fetchMyTicketDetail = (id) => api.get(`/admin/tickets/mine/${id}`);
 export const addMyTicketMessage = (id, payload) => api.post(`/admin/tickets/mine/${id}/messages`, payload);
+export const cancelMyTicket = (id) => api.delete(`/admin/tickets/mine/${id}`);
 export const fetchAdminTickets = (params) => api.get('/admin/tickets', { params });
 export const fetchAdminTicketDetail = (id) => api.get(`/admin/tickets/${id}`);
 export const addAdminTicketMessage = (id, payload) => api.post(`/admin/tickets/${id}/messages`, payload);
 export const updateTicketStatus = (id, estado) => api.patch(`/admin/tickets/${id}/status`, { estado });
+// "Asignarme"/"Tomar" (quedo yo como quien está trabajando en esto) o
+// "Quitarme" (queda sin nadie) - un click directo, en cualquier estado.
+export const assignTicketToMe = (id) => api.patch(`/admin/tickets/${id}/asignado`, { accion: 'asignar' });
+export const unassignTicket = (id) => api.patch(`/admin/tickets/${id}/asignado`, { accion: 'liberar' });
+// Solo para tarjetas "tarea" (creadas a mano en el tablero) - mueve la
+// tarjeta a otra columna del tablero, sin tocar su estado.
+export const updateTicketBoardColumn = (id, column) => api.patch(`/admin/tickets/${id}/board-column`, { column });
+// Borra el ticket sea cual sea su estado (pendiente/en curso/cerrado).
+export const deleteAdminTicket = (id) => api.delete(`/admin/tickets/${id}`);
+// "Apartados": columnas extra del tablero que un admin crea a mano ("+
+// Nuevo apartado" en AdminTicketsBoardPage.jsx), además de las fijas.
+export const fetchTicketApartados = () => api.get('/admin/tickets/apartados');
+export const createTicketApartado = (nombre) => api.post('/admin/tickets/apartados', { nombre });
+export const deleteTicketApartado = (clave) => api.delete(`/admin/tickets/apartados/${encodeURIComponent(clave)}`);
+
+/* ========= Reuniones y Tareas (/admin/reuniones) =========
+   Agenda compartida entre admins - sin scope propio, cualquier admin
+   logueado ve/crea/edita/borra cualquier reunión (mismo criterio que
+   /admin/tickets). El link a "tareas" apunta a la columna "Tareas" del
+   tablero de Tickets (/admin/tickets-tablero), no es una pantalla nueva. */
+export const fetchReuniones = (params) => api.get('/admin/reuniones', { params });
+export const createReunion = (payload) => api.post('/admin/reuniones', payload);
+export const updateReunion = (id, payload) => api.put(`/admin/reuniones/${id}`, payload);
+export const deleteReunion = (id) => api.delete(`/admin/reuniones/${id}`);
 
 /* ========= Reuniones y Tareas (/admin/reuniones) =========
    Agenda compartida entre admins - sin scope propio, cualquier admin
