@@ -163,34 +163,35 @@ export default function IndexPage({ routes = [] }) {
     if (isComprasAdmin) out.push({ path: '/admin/insumos', label: 'Admin · Compras (Pedidos de Insumos)' });
     if (isComprasAdmin) out.push({ path: '/admin/insumos/entregas', label: 'Admin · Compras · Entregas de Insumos' });
     if (isComprasAdmin) out.push({ path: '/admin/insumos/config', label: 'Admin · Compras · Config Categorías↔Sección' });
+    // Tickets e Índice de Programación van acá, visibles para cualquier admin
+    // (sin scope, igual que las páginas en sí). La PR #18 los había movido a
+    // "Programadores" (programadores:admin), pero ese scope no lo tiene nadie
+    // en producción y desaparecieron del menú para todos — se devolvieron.
+    // No volver a agregarlos en programadoresRoutes: quedarían duplicados.
+    out.push({
+      path: '/admin/tickets', label: 'Admin · Tickets', badge: pendingTicketsCount,
+      badgeTitle: `${pendingTicketsCount} ticket${pendingTicketsCount === 1 ? '' : 's'} pendiente${pendingTicketsCount === 1 ? '' : 's'}`,
+    });
     out.push({
       path: '/admin/reuniones', label: 'Admin · Reuniones y Tareas', badge: reunionesHoyCount,
       badgeTitle: `${reunionesHoyCount} reunión${reunionesHoyCount === 1 ? '' : 'es'} hoy`,
     });
+    out.push({ path: '/admin/indice-programacion', label: 'Admin · Índice de Programación (BETA)' });
     return out;
-  }, [isPreprodOnly, isQcAdmin, isWfAdmin, canUsers, isPrefabAdmin, isStAdmin, isComprasAdmin, reunionesHoyCount]);
+  }, [isPreprodOnly, isQcAdmin, isWfAdmin, canUsers, isPrefabAdmin, isStAdmin, isComprasAdmin, pendingTicketsCount, reunionesHoyCount]);
 
   // Sección "Programadores" — scope nuevo y separado (programadores:admin),
-  // hoy solo en el usuario admin. Motor de reglas de tiempo, sus dos
-  // pantallas satélite, y Tickets / Índice de Programación (movidos de
-  // Admin general, donde antes se veían sin ningún scope). NOTA: esta
-  // declaración se perdió en un merge posterior (PRs #14/#15 reintrodujeron
-  // Tickets/Índice en adminRoutes sin saber que se habían movido acá) y se
-  // restauró en un hotfix — si ves Tickets/Índice duplicados de nuevo,
-  // revisar adminRoutes primero.
+  // hoy solo en el usuario admin. Motor de reglas de tiempo y sus dos
+  // pantallas satélite. (Tickets / Índice de Programación estuvieron acá un
+  // tiempo; ahora viven en adminRoutes, ver el comentario ahí.)
   const programadoresRoutes = useMemo(() => {
     if (isPreprodOnly || !isProgramadoresAdmin) return [];
     return [
       { path: '/admin/scheduling', label: 'Admin · Motor de Reglas de Tiempo (Beta)' },
       { path: '/admin/scheduling/reglas', label: 'Admin · Reglas de Desvío (Beta)' },
       { path: '/admin/scheduling/gantt', label: 'Admin · Gantt de Producción (Beta)' },
-      {
-        path: '/admin/tickets', label: 'Admin · Tickets', badge: pendingTicketsCount,
-        badgeTitle: `${pendingTicketsCount} ticket${pendingTicketsCount === 1 ? '' : 's'} pendiente${pendingTicketsCount === 1 ? '' : 's'}`,
-      },
-      { path: '/admin/indice-programacion', label: 'Admin · Índice de Programación (BETA)' },
     ];
-  }, [isPreprodOnly, isProgramadoresAdmin, pendingTicketsCount]);
+  }, [isPreprodOnly, isProgramadoresAdmin]);
 
   const opsRoutes = useMemo(() => {
     if (isPreprodOnly) return [];
