@@ -19,6 +19,7 @@ const adminLogisticaViajesRoutes = require('./routes/admin/logisticaViajes');
 const adminLogisticaAdjuntosRoutes = require('./routes/admin/logisticaAdjuntos');
 const adminNotasNodoRoutes = require('./routes/admin/notasNodo');
 const adminReunionesRoutes = require('./routes/admin/reuniones');
+const adminProgramadoresChatRoutes = require('./routes/admin/programadoresChat');
 
 const plantaRoutes = require('./routes/public/planta');
 const despacharRoutes = require('./routes/public/despachar');
@@ -104,6 +105,7 @@ app.use('/admin', adminServicioTecnicoViajesRoutes);
 app.use('/admin', adminSchedulingRoutes);
 app.use('/admin', adminNotasNodoRoutes);
 app.use('/admin', adminReunionesRoutes);
+app.use('/admin', adminProgramadoresChatRoutes);
 
 // ---------------------------------------------------------------------------
 // Backward-compat aliases (legacy frontend)
